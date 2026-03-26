@@ -13,6 +13,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev --prefer-offline && npm cache clean --force
 COPY --from=builder /app/dist ./dist
+COPY server.js ./server.js
 RUN chown -R bibelo:bibelo /app
 USER bibelo
 EXPOSE 3000
