@@ -82,6 +82,9 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 ├── docker-compose.yml
 ├── .env                         ← NUNCA commitar
 ├── .env.example                 ← template sem secrets
+├── docs/
+│   ├── infraestrutura-seguranca.md ← firewall, Nginx, SSL, Docker, DNS
+│   └── bibelo-dns-import.txt       ← registros DNS para Cloudflare
 └── CLAUDE.md                    ← este arquivo
 ```
 
