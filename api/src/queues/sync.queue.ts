@@ -1,0 +1,127 @@
+import { Queue, Worker } from "bullmq";
+import { logger } from "../utils/logger";
+import { incrementalSync } from "../integrations/bling/sync";
+import { calculateScore } from "../services/customer.service";
+import { query } from "../db";
+
+// ── Redis connection ───────────────────────────────────────────
+
+const redisConnection = {
+  host: process.env.REDIS_HOST || "localhost",
+  port: Number(process.env.REDIS_PORT) || 6379,
+  password: process.env.REDIS_PASS || undefined,
+};
+
+// ── Queue ──────────────────────────────────────────────────────
+
+export const syncQueue = new Queue("bibelo-sync", {
+  connection: redisConnection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 5000 },
+    removeOnComplete: 100,
+    removeOnFail: 200,
+  },
+});
+
+// ── Worker ─────────────────────────────────────────────────────
+
+export const syncWorker = new Worker(
+  "bibelo-sync",
+  async (job) => {
+    const startTime = Date.now();
+    logger.info("Job iniciado", { name: job.name, id: job.id });
+
+    try {
+      let result: Record<string, unknown> = {};
+
+      switch (job.name) {
+        case "bling-sync-incremental": {
+          const syncResult = await incrementalSync();
+          result = { ...syncResult };
+          break;
+        }
+
+        case "score-recalculation": {
+          const customers = await query<{ id: string }>(
+            "SELECT id FROM crm.customers WHERE ativo = true"
+          );
+
+          let processed = 0;
+          for (const c of customers) {
+            await calculateScore(c.id);
+            processed++;
+          }
+          result = { processed };
+          break;
+        }
+
+        default:
+          logger.warn("Job desconhecido", { name: job.name });
+          return;
+      }
+
+      const duration = Date.now() - startTime;
+
+      // Log no banco
+      await query(
+        `INSERT INTO sync.sync_logs (fonte, tipo, status, registros, erro)
+         VALUES ($1, $2, 'ok', $3, $4)`,
+        [
+          "queue",
+          job.name,
+          result.processed || (result.customers as number || 0) + (result.orders as number || 0),
+          `Duração: ${duration}ms`,
+        ]
+      );
+
+      logger.info("Job concluído", { name: job.name, duration, result });
+      return result;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro desconhecido";
+      const duration = Date.now() - startTime;
+
+      await query(
+        `INSERT INTO sync.sync_logs (fonte, tipo, status, registros, erro)
+         VALUES ('queue', $1, 'erro', 0, $2)`,
+        [job.name, message]
+      ).catch(() => {});
+
+      logger.error("Job falhou", { name: job.name, duration, error: message });
+      throw err;
+    }
+  },
+  { connection: redisConnection, concurrency: 1 }
+);
+
+// ── Registrar jobs recorrentes ─────────────────────────────────
+
+export async function registerScheduledJobs(): Promise<void> {
+  // Remove repeatables antigos para evitar duplicatas
+  const existing = await syncQueue.getRepeatableJobs();
+  for (const job of existing) {
+    await syncQueue.removeRepeatableByKey(job.key);
+  }
+
+  // Bling sync incremental: a cada 30 minutos
+  await syncQueue.add("bling-sync-incremental", {}, {
+    repeat: { pattern: "*/30 * * * *" },
+  });
+
+  // Recálculo de scores: diário às 2h
+  await syncQueue.add("score-recalculation", {}, {
+    repeat: { pattern: "0 2 * * *" },
+  });
+
+  logger.info("Jobs agendados registrados: bling-sync-incremental (30min), score-recalculation (2h diário)");
+}
+
+// ── Event listeners ────────────────────────────────────────────
+
+syncWorker.on("failed", (job, err) => {
+  logger.error("Job falhou definitivamente", { name: job?.name, id: job?.id, error: err.message });
+});
+
+syncWorker.on("completed", (job) => {
+  logger.info("Job completado", { name: job.name, id: job.id });
+});

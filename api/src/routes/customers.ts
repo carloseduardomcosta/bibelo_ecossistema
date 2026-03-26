@@ -1,0 +1,213 @@
+import { Router, Request, Response } from "express";
+import { z } from "zod";
+import { query, queryOne } from "../db";
+import { authMiddleware } from "../middleware/auth";
+import { logger } from "../utils/logger";
+import {
+  upsertCustomer,
+  getTimeline,
+  Customer,
+  CustomerScore,
+} from "../services/customer.service";
+
+export const customersRouter = Router();
+customersRouter.use(authMiddleware);
+
+// ── Schemas Zod ────────────────────────────────────────────────
+
+const createCustomerSchema = z.object({
+  nome: z.string().min(2).max(255),
+  email: z.string().email().optional(),
+  telefone: z.string().max(30).optional(),
+  cpf: z.string().max(14).optional(),
+  data_nasc: z.string().optional(),
+  canal_origem: z.string().max(50).optional(),
+  bling_id: z.string().max(50).optional(),
+  nuvemshop_id: z.string().max(50).optional(),
+  instagram: z.string().max(100).optional(),
+  cidade: z.string().max(100).optional(),
+  estado: z.string().max(2).optional(),
+  cep: z.string().max(10).optional(),
+});
+
+const updateCustomerSchema = createCustomerSchema.partial();
+
+const listQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().optional(),
+  segmento: z.string().optional(),
+  canal_origem: z.string().optional(),
+});
+
+// ── GET /api/customers — lista paginada ────────────────────────
+
+customersRouter.get("/", async (req: Request, res: Response) => {
+  const parse = listQuerySchema.safeParse(req.query);
+  if (!parse.success) {
+    res.status(400).json({ error: "Parâmetros inválidos", detalhes: parse.error.errors });
+    return;
+  }
+
+  const { page, limit, search, segmento, canal_origem } = parse.data;
+  const offset = (page - 1) * limit;
+
+  const conditions: string[] = ["c.ativo = true"];
+  const params: unknown[] = [];
+  let idx = 1;
+
+  if (search) {
+    conditions.push(`(c.nome ILIKE $${idx} OR c.email ILIKE $${idx} OR c.telefone ILIKE $${idx})`);
+    params.push(`%${search}%`);
+    idx++;
+  }
+
+  if (canal_origem) {
+    conditions.push(`c.canal_origem = $${idx}`);
+    params.push(canal_origem);
+    idx++;
+  }
+
+  if (segmento) {
+    conditions.push(`cs.segmento = $${idx}`);
+    params.push(segmento);
+    idx++;
+  }
+
+  const where = conditions.join(" AND ");
+
+  const countResult = await queryOne<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM crm.customers c
+     LEFT JOIN crm.customer_scores cs ON cs.customer_id = c.id
+     WHERE ${where}`,
+    params
+  );
+
+  const total = parseInt(countResult?.total || "0", 10);
+
+  params.push(limit, offset);
+  const rows = await query(
+    `SELECT c.*, cs.score, cs.ltv, cs.segmento, cs.risco_churn
+     FROM crm.customers c
+     LEFT JOIN crm.customer_scores cs ON cs.customer_id = c.id
+     WHERE ${where}
+     ORDER BY c.criado_em DESC
+     LIMIT $${idx} OFFSET $${idx + 1}`,
+    params
+  );
+
+  res.json({
+    data: rows,
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+    },
+  });
+});
+
+// ── GET /api/customers/:id — perfil completo ───────────────────
+
+customersRouter.get("/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const customer = await queryOne<Customer>(
+    "SELECT * FROM crm.customers WHERE id = $1",
+    [id]
+  );
+
+  if (!customer) {
+    res.status(404).json({ error: "Cliente não encontrado" });
+    return;
+  }
+
+  const score = await queryOne<CustomerScore>(
+    "SELECT * FROM crm.customer_scores WHERE customer_id = $1",
+    [id]
+  );
+
+  const recentInteractions = await query(
+    `SELECT * FROM crm.interactions WHERE customer_id = $1 ORDER BY criado_em DESC LIMIT 10`,
+    [id]
+  );
+
+  res.json({ ...customer, score, recentInteractions });
+});
+
+// ── POST /api/customers — criar/upsert ─────────────────────────
+
+customersRouter.post("/", async (req: Request, res: Response) => {
+  const parse = createCustomerSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: "Dados inválidos", detalhes: parse.error.errors });
+    return;
+  }
+
+  try {
+    const customer = await upsertCustomer(parse.data);
+    logger.info("Cliente criado/atualizado via API", { id: customer.id, user: req.user?.email });
+    res.status(201).json(customer);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro ao criar cliente";
+    logger.error("Erro ao criar cliente", { error: message });
+    res.status(500).json({ error: "Erro ao criar cliente" });
+  }
+});
+
+// ── PUT /api/customers/:id — atualizar ─────────────────────────
+
+customersRouter.put("/:id", async (req: Request, res: Response) => {
+  const parse = updateCustomerSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: "Dados inválidos", detalhes: parse.error.errors });
+    return;
+  }
+
+  const { id } = req.params;
+
+  const existing = await queryOne<Customer>(
+    "SELECT id FROM crm.customers WHERE id = $1",
+    [id]
+  );
+
+  if (!existing) {
+    res.status(404).json({ error: "Cliente não encontrado" });
+    return;
+  }
+
+  const entries = Object.entries(parse.data).filter(([, v]) => v !== undefined);
+  if (entries.length === 0) {
+    res.status(400).json({ error: "Nenhum campo para atualizar" });
+    return;
+  }
+
+  const sets = entries.map(([k], i) => `${k} = $${i + 1}`);
+  const values = entries.map(([, v]) => v);
+  values.push(id);
+
+  const updated = await queryOne<Customer>(
+    `UPDATE crm.customers SET ${sets.join(", ")} WHERE id = $${values.length} RETURNING *`,
+    values
+  );
+
+  logger.info("Cliente atualizado via API", { id, user: req.user?.email });
+  res.json(updated);
+});
+
+// ── GET /api/customers/:id/timeline ────────────────────────────
+
+customersRouter.get("/:id/timeline", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const limit = Math.min(Number(req.query.limit) || 50, 100);
+  const offset = Number(req.query.offset) || 0;
+
+  const customer = await queryOne("SELECT id FROM crm.customers WHERE id = $1", [id]);
+  if (!customer) {
+    res.status(404).json({ error: "Cliente não encontrado" });
+    return;
+  }
+
+  const timeline = await getTimeline(id, limit, offset);
+  res.json({ data: timeline });
+});
