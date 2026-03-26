@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import jwt, { SignOptions } from "jsonwebtoken";
 import { z } from "zod";
 import { queryOne, query } from "../db";
 import { authMiddleware } from "../middleware/auth";
@@ -13,7 +13,6 @@ const loginSchema = z.object({
   senha: z.string().min(6),
 });
 
-// POST /api/auth/login
 authRouter.post("/login", async (req: Request, res: Response) => {
   const parse = loginSchema.safeParse(req.body);
   if (!parse.success) {
@@ -38,22 +37,20 @@ authRouter.post("/login", async (req: Request, res: Response) => {
 
   const senhaOk = await bcrypt.compare(senha, user.senha_hash);
   if (!senhaOk) {
-    logger.warn("Tentativa de login falhou", { email, ip: req.ip });
+    logger.warn("Login falhou", { email, ip: req.ip });
     res.status(401).json({ error: "Credenciais inválidas" });
     return;
   }
 
+  const secret = process.env.JWT_SECRET as string;
   const payload = { userId: user.id, email: user.email, papel: user.papel };
 
-  const accessToken = jwt.sign(payload, process.env.JWT_SECRET!, {
-    expiresIn: process.env.JWT_EXPIRES_IN || "8h",
-  });
+  const accessOptions: SignOptions  = { expiresIn: "8h" };
+  const refreshOptions: SignOptions = { expiresIn: "30d" };
 
-  const refreshToken = jwt.sign(payload, process.env.JWT_SECRET!, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "30d",
-  });
+  const accessToken  = jwt.sign(payload, secret, accessOptions);
+  const refreshToken = jwt.sign(payload, secret, refreshOptions);
 
-  // Salva refresh token
   await query(
     `INSERT INTO public.sessions (user_id, refresh_token, ip, expira_em)
      VALUES ($1, $2, $3, NOW() + INTERVAL '30 days')`,
@@ -74,7 +71,6 @@ authRouter.post("/login", async (req: Request, res: Response) => {
   });
 });
 
-// GET /api/auth/me
 authRouter.get("/me", authMiddleware, async (req: Request, res: Response) => {
   const user = await queryOne(
     "SELECT id, nome, email, papel, criado_em FROM public.users WHERE id = $1",
@@ -83,7 +79,6 @@ authRouter.get("/me", authMiddleware, async (req: Request, res: Response) => {
   res.json(user);
 });
 
-// POST /api/auth/logout
 authRouter.post("/logout", authMiddleware, async (req: Request, res: Response) => {
   const token = req.headers.authorization?.substring(7);
   if (token) {
