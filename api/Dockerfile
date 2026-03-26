@@ -18,5 +18,5 @@ RUN mkdir -p logs && chown -R bibelo:bibelo /app
 USER bibelo
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-  CMD wget -qO- http://localhost:4000/health || exit 1
+  CMD wget -qO- http://0.0.0.0:4000/health || exit 1
 CMD ["node", "dist/server.js"]
