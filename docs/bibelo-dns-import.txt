@@ -1,0 +1,23 @@
+; BibelôCRM — Registros DNS faltantes para importar no Cloudflare
+; papelariabibelo.com.br
+
+; NuvemShop
+inmail 14400 IN CNAME inmail.tiendanube.net
+
+; Edrone — e-mail marketing
+edrone._domainkey 14400 IN CNAME c797f0-797f21.mf-settings.com
+edrone-mail 14400 IN CNAME dda8f0-da8f55.mf-settings.com
+click 14400 IN CNAME tracking.mf-settings.com
+sms 14400 IN CNAME edrn.io
+papelariabibelo-com-br.sparkpost.edrone-click.me 14400 IN CNAME eu.spgo.io
+
+; DKIM Edrone
+scph0226._domainkey 14400 IN TXT "v=DKIM1; k=rsa; h=sha256; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDAbV9/bGmifl52FP9flex5df3X9mtogK7xVmFI1kA0HM7fQ/8czw687YdGimgDVxXMEPmwot/aCl/aKQBZ1+/fUe3m6xmqoCuRAw57etdJ6TPtK04e40vN//0/2RwOlvafzvwbJhVA2Hy+s0frqn61nZuyFZmWeHi6rOantJrGiQIDAQAB"
+
+; SPF
+@ 3600 IN TXT "v=spf1 include:_spf.mail.hostinger.com include:amazonses.com ~all"
+
+; Subdomínios
+homolog 1800 IN A 185.173.111.171
+loja 1800 IN A 185.173.111.171
+sublimacao 1800 IN A 185.173.111.171
