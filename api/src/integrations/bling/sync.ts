@@ -216,37 +216,60 @@ export async function syncProducts(): Promise<number> {
 }
 
 // ── Sync Stock ──────────────────────────────────────────────────
+// Bling /estoques/saldos requer idsProdutos[] — enviamos em lotes de 50
 
 export async function syncStock(): Promise<number> {
   const token = await getValidToken();
-  let page = 1;
   let total = 0;
 
   try {
-    while (true) {
+    // Busca todos os bling_ids dos produtos
+    const allProducts = await query<{ id: string; bling_id: string }>(
+      "SELECT id, bling_id FROM sync.bling_products WHERE ativo = true"
+    );
+
+    if (allProducts.length === 0) return 0;
+
+    // Processa em lotes de 50
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < allProducts.length; i += BATCH_SIZE) {
+      const batch = allProducts.slice(i, i + BATCH_SIZE);
+      const idsParam = batch.map((p) => `idsProdutos[]=${p.bling_id}`).join("&");
+
       const data = await rateLimitedGet<{ data: Array<Record<string, unknown>> }>(
-        `${BLING_API}/estoques/saldos?pagina=${page}&limite=100`,
+        `${BLING_API}/estoques/saldos?${idsParam}`,
         token
       );
 
-      if (!data.data || data.data.length === 0) break;
+      if (!data.data) continue;
 
       for (const entry of data.data) {
         const produto = entry.produto as Record<string, unknown> | undefined;
         if (!produto?.id) continue;
 
         const blingProductId = String(produto.id);
-
-        // Busca o UUID interno do produto
-        const existing = await queryOne<{ id: string }>(
-          "SELECT id FROM sync.bling_products WHERE bling_id = $1",
-          [blingProductId]
-        );
-
-        if (!existing) continue;
+        const localProduct = batch.find((p) => p.bling_id === blingProductId);
+        if (!localProduct) continue;
 
         const depositos = entry.depositos as Array<Record<string, unknown>> | undefined;
-        if (!depositos) continue;
+        if (!depositos || depositos.length === 0) {
+          // Sem depósitos, salva saldo total
+          await query(
+            `INSERT INTO sync.bling_stock
+             (product_id, bling_product_id, deposito_id, deposito_nome, saldo_fisico, saldo_virtual, sincronizado_em)
+             VALUES ($1, $2, 'default', 'Principal', $3, $4, NOW())
+             ON CONFLICT (bling_product_id, deposito_id) DO UPDATE SET
+               product_id = $1, saldo_fisico = $3, saldo_virtual = $4, sincronizado_em = NOW()`,
+            [
+              localProduct.id,
+              blingProductId,
+              entry.saldoFisicoTotal || 0,
+              entry.saldoVirtualTotal || 0,
+            ]
+          );
+          total++;
+          continue;
+        }
 
         for (const dep of depositos) {
           await query(
@@ -256,7 +279,7 @@ export async function syncStock(): Promise<number> {
              ON CONFLICT (bling_product_id, deposito_id) DO UPDATE SET
                product_id = $1, deposito_nome = $4, saldo_fisico = $5, saldo_virtual = $6, sincronizado_em = NOW()`,
             [
-              existing.id,
+              localProduct.id,
               blingProductId,
               String(dep.id || "default"),
               dep.nome || dep.descricao || "Principal",
@@ -264,12 +287,9 @@ export async function syncStock(): Promise<number> {
               dep.saldoVirtual || 0,
             ]
           );
-
           total++;
         }
       }
-
-      page++;
     }
 
     await logSync("bling", "stock", "ok", total);
