@@ -43,6 +43,18 @@ analyticsRouter.get("/overview", async (req: Request, res: Response) => {
       AND criado_bling < NOW() - INTERVAL '${intervalo}'
   `);
 
+  // Clientes que compraram no período (ativos de verdade)
+  const clientesPeriodo = await queryOne<{ compraram: string; compraram_anterior: string }>(`
+    SELECT
+      COUNT(DISTINCT customer_id) FILTER (WHERE criado_bling >= NOW() - INTERVAL '${intervalo}')::text AS compraram,
+      COUNT(DISTINCT customer_id) FILTER (
+        WHERE criado_bling >= NOW() - INTERVAL '${dias * 2} days'
+          AND criado_bling < NOW() - INTERVAL '${intervalo}'
+      )::text AS compraram_anterior
+    FROM sync.bling_orders
+    WHERE customer_id IS NOT NULL
+  `);
+
   const totalClientes = await queryOne<{ total: string; novos: string; novos_anterior: string }>(`
     SELECT COUNT(*)::text AS total,
            COUNT(*) FILTER (WHERE criado_em >= NOW() - INTERVAL '${intervalo}')::text AS novos,
@@ -55,6 +67,18 @@ analyticsRouter.get("/overview", async (req: Request, res: Response) => {
 
   const receitaTotal = await queryOne<{ total: string }>(`
     SELECT COALESCE(SUM(valor), 0)::text AS total FROM sync.bling_orders
+  `);
+
+  // Despesas no período (do módulo financeiro)
+  const despesasPeriodo = await queryOne<{ total: string; anterior: string }>(`
+    SELECT
+      COALESCE(SUM(valor) FILTER (WHERE data >= (CURRENT_DATE - INTERVAL '${intervalo}')::date), 0)::text AS total,
+      COALESCE(SUM(valor) FILTER (
+        WHERE data >= (CURRENT_DATE - INTERVAL '${dias * 2} days')::date
+          AND data < (CURRENT_DATE - INTERVAL '${intervalo}')::date
+      ), 0)::text AS anterior
+    FROM financeiro.lancamentos
+    WHERE tipo = 'despesa' AND status != 'cancelado'
   `);
 
   // Estoque alertas
@@ -83,6 +107,10 @@ analyticsRouter.get("/overview", async (req: Request, res: Response) => {
   const ticketAnterior = parseFloat(anterior?.ticket || "0");
   const novosAtual = parseInt(totalClientes?.novos || "0", 10);
   const novosAnterior = parseInt(totalClientes?.novos_anterior || "0", 10);
+  const clientesCompraram = parseInt(clientesPeriodo?.compraram || "0", 10);
+  const clientesCompraramAnt = parseInt(clientesPeriodo?.compraram_anterior || "0", 10);
+  const despAtual = parseFloat(despesasPeriodo?.total || "0");
+  const despAnterior = parseFloat(despesasPeriodo?.anterior || "0");
 
   function variacao(a: number, b: number): number {
     if (b === 0) return a > 0 ? 100 : 0;
@@ -90,22 +118,31 @@ analyticsRouter.get("/overview", async (req: Request, res: Response) => {
   }
 
   res.json({
-    receita_mes: recAtual,
-    receita_mes_anterior: recAnterior,
+    receita_periodo: recAtual,
+    receita_anterior: recAnterior,
     receita_variacao: variacao(recAtual, recAnterior),
     receita_total: parseFloat(receitaTotal?.total || "0"),
 
-    pedidos_mes: pedAtual,
-    pedidos_mes_anterior: pedAnterior,
+    despesas_periodo: despAtual,
+    despesas_anterior: despAnterior,
+    despesas_variacao: variacao(despAtual, despAnterior),
+
+    saldo_periodo: recAtual - despAtual,
+
+    pedidos_periodo: pedAtual,
+    pedidos_anterior: pedAnterior,
     pedidos_variacao: variacao(pedAtual, pedAnterior),
 
     ticket_medio: ticketAtual,
     ticket_anterior: ticketAnterior,
     ticket_variacao: variacao(ticketAtual, ticketAnterior),
 
+    clientes_compraram: clientesCompraram,
+    clientes_compraram_anterior: clientesCompraramAnt,
+    clientes_compraram_variacao: variacao(clientesCompraram, clientesCompraramAnt),
     total_clientes: parseInt(totalClientes?.total || "0", 10),
-    novos_clientes_mes: novosAtual,
-    novos_clientes_anterior: novosAnterior,
+    novos_clientes: novosAtual,
+    novos_anterior: novosAnterior,
     novos_variacao: variacao(novosAtual, novosAnterior),
 
     total_produtos: parseInt(estoque?.total_produtos || "0", 10),
