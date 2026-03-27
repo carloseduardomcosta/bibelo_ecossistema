@@ -7,6 +7,7 @@ secrets/
 *.key
 data/
 backups/
+uploads/
 logs/
 *.log
 node_modules/
