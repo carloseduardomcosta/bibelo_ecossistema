@@ -471,6 +471,11 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - c7bd130 feat: integração Resend ativa — disparo real de campanhas
 - 35f677a fix: auditoria completa — acentos pt-BR, filtros de período, ProdutoPerfil
 - 8eb833c feat: UX — toasts, busca global (Ctrl+K), export CSV
+- 48dd871 fix: sync contatos busca detalhe do Bling (email, endereço, CPF)
+- c1a8457 feat: Pipeline kanban + Campanhas completas com templates e Resend
+- d691ceb feat: 5 templates de email com branding Papelaria Bibelô
+- f3ddbf6 feat: template dinâmico de novidades — produtos das NFs no email
+- 06856ba feat: template novidades com fotos dos produtos e link por item
 
 
 ## Protocolo de atualização deste arquivo
@@ -519,4 +524,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 27 de Março de 2026 — Financeiro + Resend + UX*
+*Última atualização: 27 de Março de 2026 — Pipeline, Campanhas, Templates, UX*
