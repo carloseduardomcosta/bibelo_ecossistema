@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  DollarSign, TrendingDown, TrendingUp, Wallet, ShoppingCart, Target,
+  DollarSign, Wallet, ShoppingCart, Target,
   ChevronLeft, ChevronRight, Search, Plus, ArrowUpRight, ArrowDownRight,
-  Receipt, X, Pencil, Trash2,
+  Receipt, X, Pencil, Trash2, ArrowDown, ArrowUp, Minus,
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -254,20 +254,100 @@ export default function Financeiro() {
             ))}
           </div>
 
-          {/* KPIs */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+          {/* Fluxo de Caixa Visual */}
+          {loading ? (
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-6 mb-6 animate-pulse h-44" />
+          ) : (
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-6 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-4 md:gap-2">
+                {/* Entradas */}
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-400/10 flex items-center justify-center shrink-0">
+                    <ArrowDown size={24} className="text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-bibelo-muted uppercase tracking-wider">Entradas</p>
+                    <p className="text-2xl font-bold text-emerald-400">{fmt(dash?.receitas || 0)}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-bibelo-muted">{dash?.total_vendas || 0} vendas Bling</span>
+                      {(dash?.variacao_receita || 0) !== 0 && <VariacaoBadge valor={dash?.variacao_receita || 0} />}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Separador */}
+                <div className="hidden md:flex items-center justify-center">
+                  <Minus size={20} className="text-bibelo-border" />
+                </div>
+
+                {/* Saídas */}
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-red-400/10 flex items-center justify-center shrink-0">
+                    <ArrowUp size={24} className="text-red-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-bibelo-muted uppercase tracking-wider">Saídas</p>
+                    <p className="text-2xl font-bold text-red-400">{fmt(dash?.despesas || 0)}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-bibelo-muted">despesas + fornecedores</span>
+                      {(dash?.variacao_despesa || 0) !== 0 && <VariacaoBadge valor={dash?.variacao_despesa || 0} />}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Separador = */}
+                <div className="hidden md:flex items-center justify-center text-bibelo-border font-bold text-lg">=</div>
+
+                {/* Saldo */}
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${(dash?.saldo || 0) >= 0 ? 'bg-bibelo-primary/10' : 'bg-red-400/10'}`}>
+                    <Wallet size={24} className={(dash?.saldo || 0) >= 0 ? 'text-bibelo-primary' : 'text-red-400'} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-bibelo-muted uppercase tracking-wider">Saldo</p>
+                    <p className={`text-2xl font-bold ${(dash?.saldo || 0) >= 0 ? 'text-bibelo-primary' : 'text-red-400'}`}>{fmt(dash?.saldo || 0)}</p>
+                    <span className="text-xs text-bibelo-muted">
+                      margem {dash?.receitas ? Math.round(((dash.saldo || 0) / dash.receitas) * 100) : 0}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Barra de proporção */}
+              {(dash?.receitas || 0) > 0 && (
+                <div className="mt-5 pt-4 border-t border-bibelo-border">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="flex-1 h-3 bg-bibelo-bg rounded-full overflow-hidden flex">
+                      <div
+                        className="h-full bg-emerald-400 rounded-l-full transition-all"
+                        style={{ width: `${Math.min(100, ((dash?.receitas || 0) / ((dash?.receitas || 0) + (dash?.despesas || 0))) * 100)}%` }}
+                      />
+                      <div
+                        className="h-full bg-red-400 rounded-r-full transition-all"
+                        style={{ width: `${Math.min(100, ((dash?.despesas || 0) / ((dash?.receitas || 0) + (dash?.despesas || 0))) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-xs text-bibelo-muted">
+                    <span>Entradas {Math.round(((dash?.receitas || 0) / ((dash?.receitas || 0) + (dash?.despesas || 0))) * 100)}%</span>
+                    <span>Saídas {Math.round(((dash?.despesas || 0) / ((dash?.receitas || 0) + (dash?.despesas || 0))) * 100)}%</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* KPIs secundários */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             {loading ? (
-              Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="bg-bibelo-card border border-bibelo-border rounded-xl p-5 animate-pulse h-28" />
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="bg-bibelo-card border border-bibelo-border rounded-xl p-5 animate-pulse h-24" />
               ))
             ) : (
               <>
-                <KpiCard label="Receitas" value={fmt(dash?.receitas || 0)} variacao={dash?.variacao_receita} icon={TrendingUp} color="text-emerald-400" />
-                <KpiCard label="Despesas" value={fmt(dash?.despesas || 0)} variacao={dash?.variacao_despesa} icon={TrendingDown} color="text-red-400" />
-                <KpiCard label="Saldo" value={fmt(dash?.saldo || 0)} icon={Wallet} color={(dash?.saldo || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} />
-                <KpiCard label="Vendas" value={String(dash?.total_vendas || 0)} icon={ShoppingCart} color="text-blue-400" />
                 <KpiCard label="Ticket Médio" value={fmt(dash?.ticket_medio || 0)} icon={DollarSign} color="text-amber-400" />
-                <KpiCard label="Ponto Equilíbrio" value={`${dash?.ponto_equilibrio || 0} vendas`} icon={Target} color="text-purple-400" />
+                <KpiCard label="Despesas Fixas/Mês" value={fmt(dash?.despesas_fixas_mensal || 0)} icon={Target} color="text-purple-400" />
+                <KpiCard label="Ponto de Equilíbrio" value={`${dash?.ponto_equilibrio || 0} vendas/mês`} icon={ShoppingCart} color="text-blue-400" />
               </>
             )}
           </div>
