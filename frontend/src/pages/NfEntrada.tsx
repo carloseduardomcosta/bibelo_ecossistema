@@ -73,8 +73,11 @@ function fmt(v: number | string) {
 }
 
 function fmtDate(d: string) {
-  if (!d) return '-';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  if (!d || d === 'null') return '-';
+  const dateStr = d.includes('T') ? d : d + 'T12:00:00';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 function fmtCnpj(v: string) {
