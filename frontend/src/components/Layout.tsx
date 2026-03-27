@@ -1,38 +1,158 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import {
   LayoutDashboard,
   Users,
-  Megaphone,
+  Target,
   Package,
   Warehouse,
   TrendingUp,
-  Target,
-  RefreshCw,
-  LogOut,
-  Menu,
-  X,
   Wallet,
   CalendarClock,
   Calculator,
   FileText,
+  Megaphone,
+  RefreshCw,
+  LogOut,
+  Menu,
+  X,
+  ChevronDown,
+  type LucideIcon,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
-const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/clientes', label: 'Clientes', icon: Users },
-  { to: '/produtos', label: 'Produtos', icon: Package },
-  { to: '/estoque', label: 'Estoque', icon: Warehouse },
-  { to: '/lucratividade', label: 'Lucratividade', icon: TrendingUp },
-  { to: '/segmentos', label: 'Segmentos', icon: Target },
-  { to: '/financeiro', label: 'Financeiro', icon: Wallet },
-  { to: '/despesas-fixas', label: 'Despesas Fixas', icon: CalendarClock },
-  { to: '/simulador', label: 'Simulador', icon: Calculator },
-  { to: '/nf-entrada', label: 'NF Entrada', icon: FileText },
-  { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
-  { to: '/sync', label: 'Sync', icon: RefreshCw },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const navGroups: NavGroup[] = [
+  {
+    label: '',
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'CRM',
+    items: [
+      { to: '/clientes', label: 'Clientes', icon: Users },
+      { to: '/segmentos', label: 'Segmentos', icon: Target },
+    ],
+  },
+  {
+    label: 'Produtos',
+    items: [
+      { to: '/produtos', label: 'Catalogo', icon: Package },
+      { to: '/estoque', label: 'Estoque', icon: Warehouse },
+      { to: '/lucratividade', label: 'Lucratividade', icon: TrendingUp },
+    ],
+  },
+  {
+    label: 'Financeiro',
+    items: [
+      { to: '/financeiro', label: 'Fluxo de Caixa', icon: Wallet },
+      { to: '/despesas-fixas', label: 'Despesas Fixas', icon: CalendarClock },
+      { to: '/simulador', label: 'Simulador', icon: Calculator },
+      { to: '/nf-entrada', label: 'NF Entrada', icon: FileText },
+    ],
+  },
+  {
+    label: 'Marketing',
+    items: [
+      { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
+    ],
+  },
+  {
+    label: 'Sistema',
+    items: [
+      { to: '/sync', label: 'Sync', icon: RefreshCw },
+    ],
+  },
 ];
+
+function NavSection({ group, onNavigate }: { group: NavGroup; onNavigate: () => void }) {
+  const location = useLocation();
+  const isActive = group.items.some(
+    (item) => item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)
+  );
+
+  // Grupos sem label (Dashboard) sempre abertos
+  const [open, setOpen] = useState(group.label === '' || isActive);
+
+  // Abrir automaticamente quando navegar para um item do grupo
+  useEffect(() => {
+    if (isActive) setOpen(true);
+  }, [isActive]);
+
+  if (group.label === '') {
+    // Dashboard sem header de grupo
+    return (
+      <div className="space-y-0.5">
+        {group.items.map(({ to, label, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            onClick={onNavigate}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-bibelo-primary/20 text-bibelo-primary'
+                  : 'text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50'
+              }`
+            }
+            end={to === '/'}
+          >
+            <Icon size={18} />
+            {label}
+          </NavLink>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center justify-between w-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-bibelo-muted/60 hover:text-bibelo-muted transition-colors"
+      >
+        {group.label}
+        <ChevronDown
+          size={14}
+          className={`transition-transform ${open ? '' : '-rotate-90'}`}
+        />
+      </button>
+      {open && (
+        <div className="space-y-0.5 mt-0.5">
+          {group.items.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              onClick={onNavigate}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-bibelo-primary/20 text-bibelo-primary'
+                    : 'text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50'
+                }`
+              }
+            >
+              <Icon size={16} />
+              {label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -52,15 +172,15 @@ export default function Layout() {
       <aside
         className={`
           fixed lg:static inset-y-0 left-0 z-30
-          w-64 bg-bibelo-card border-r border-bibelo-border
+          w-60 bg-bibelo-card border-r border-bibelo-border
           flex flex-col transition-transform lg:translate-x-0
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
         {/* Logo */}
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-bibelo-border">
-          <span className="text-2xl">🎀</span>
-          <span className="text-lg font-bold text-bibelo-text">BibeloCRM</span>
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-bibelo-border">
+          <span className="text-xl">🎀</span>
+          <span className="text-base font-bold text-bibelo-text">BibeloCRM</span>
           <button
             className="ml-auto lg:hidden text-bibelo-muted hover:text-bibelo-text"
             onClick={() => setSidebarOpen(false)}
@@ -70,29 +190,18 @@ export default function Layout() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {navItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-bibelo-primary/20 text-bibelo-primary'
-                    : 'text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50'
-                }`
-              }
-              end={to === '/'}
-            >
-              <Icon size={18} />
-              {label}
-            </NavLink>
+        <nav className="flex-1 px-2.5 py-3 space-y-3 overflow-y-auto">
+          {navGroups.map((group) => (
+            <NavSection
+              key={group.label || 'root'}
+              group={group}
+              onNavigate={() => setSidebarOpen(false)}
+            />
           ))}
         </nav>
 
         {/* User + Logout */}
-        <div className="px-3 py-4 border-t border-bibelo-border">
+        <div className="px-2.5 py-3 border-t border-bibelo-border">
           <div className="flex items-center gap-3 px-3 py-2">
             <div className="w-8 h-8 rounded-full bg-bibelo-primary/30 flex items-center justify-center text-sm font-bold text-bibelo-primary">
               {user?.nome?.charAt(0).toUpperCase()}
