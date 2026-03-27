@@ -239,8 +239,11 @@ export default function Layout() {
             <Menu size={24} />
           </button>
           <span className="lg:hidden text-lg font-bold text-bibelo-text">BibeloCRM</span>
-          <div className="flex-1" />
-          <GlobalSearch />
+          <div className="flex-1 flex justify-center">
+            <div className="w-full max-w-md">
+              <GlobalSearch />
+            </div>
+          </div>
         </header>
 
         {/* Page content */}
