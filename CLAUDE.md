@@ -70,7 +70,9 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   ├── index.css            ← Tailwind directives
 │   │   ├── pages/
 │   │   │   ├── Login.tsx        ← login Google Sign-In
-│   │   │   └── Dashboard.tsx    ← KPIs placeholder
+│   │   │   ├── Dashboard.tsx    ← KPIs + gráficos receita/segmentos
+│   │   │   ├── Clientes.tsx     ← tabela paginada + busca + filtros
+│   │   │   └── ClientePerfil.tsx ← perfil completo + score + timeline
 │   │   ├── components/
 │   │   │   ├── Layout.tsx       ← sidebar responsiva + Outlet
 │   │   │   └── ProtectedRoute.tsx ← redirect se não autenticado
@@ -285,9 +287,9 @@ Bling ERP (PDV físico + NF-e) ──────┘
 
 ### P0 — Próximos (sem isso o CRM não funciona)
 1. ~~**Frontend: Login + Layout**~~ ✅ — Google Sign-In, AuthContext, sidebar responsiva, proteção de rotas
-2. **Frontend: Dashboard** — KPIs do /api/analytics/overview + gráfico receita mensal (Recharts)
-3. **Frontend: Lista de Clientes** — Tabela paginada, busca, filtro segmento, link perfil
-4. **Frontend: Perfil do Cliente** — Dados, score, timeline interações/pedidos
+2. ~~**Frontend: Dashboard**~~ ✅ — KPIs reais, gráfico receita mensal, gráfico segmentos (Recharts)
+3. ~~**Frontend: Lista de Clientes**~~ ✅ — Tabela paginada, busca, filtro segmento, link perfil
+4. ~~**Frontend: Perfil do Cliente**~~ ✅ — Dados, score, timeline interações/pedidos
 5. **Rotas de Campanhas** — `api/src/routes/campaigns.ts` — CRUD + disparo (tabelas marketing.* existem)
 6. **Rotas de Sync** — `api/src/routes/sync.ts` — GET status, POST sync manual Bling, POST OAuth redirect
 
@@ -324,6 +326,8 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - 5f352ce fix: copia server.js no Dockerfile do frontend
 - e605b5b feat: customers, analytics, Bling sync, NuvemShop webhooks, BullMQ queues
 - a049d41 docs: documenta infraestrutura completa — firewall, Nginx, SSL, Docker, DNS
+- c4f5d83 feat: frontend login Google OAuth, layout sidebar, rotas protegidas
+- cf61c7a feat: dashboard com KPIs reais, gráfico receita mensal e segmentos
 
 
 ## Protocolo de atualização deste arquivo
@@ -347,7 +351,7 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Nginx + SSL | ✅ produção | crm.papelariabibelo.com.br |
 | API Node.js | ✅ produção | /health respondendo |
 | Google OAuth2 | ✅ produção | login exclusivo via Google Sign-In |
-| Frontend React | 🔧 login + layout | sidebar, dashboard placeholder, falta KPIs reais |
+| Frontend React | 🔧 dashboard + clientes | login, dashboard KPIs, lista/perfil clientes |
 | GitHub Actions | ✅ configurado | deploy automático no push |
 | Bling OAuth2 | 🔧 código pronto | aguardando credenciais reais |
 | Bling Sync | 🔧 código pronto | aguardando OAuth2 funcional |
