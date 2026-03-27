@@ -261,8 +261,22 @@ productsRouter.get("/:id", async (req: Request, res: Response) => {
 
 // ── GET /api/products/profitability — análise de lucratividade ──
 
+function periodoToInterval(periodo?: string): string {
+  switch (periodo) {
+    case "7d":  return "7 days";
+    case "15d": return "15 days";
+    case "30d": return "30 days";
+    case "3m":  return "3 months";
+    case "6m":  return "6 months";
+    case "1a":  return "12 months";
+    default:    return "";
+  }
+}
+
 productsRouter.get("/analytics/profitability", async (req: Request, res: Response) => {
   const limit = Math.min(Number(req.query.limit) || 20, 100);
+  const intervalo = periodoToInterval(req.query.periodo as string);
+  const dateFilter = intervalo ? `AND o.criado_bling >= NOW() - INTERVAL '${intervalo}'` : "";
 
   // Top produtos por receita
   const topProdutos = await query<{
@@ -280,7 +294,7 @@ productsRouter.get("/analytics/profitability", async (req: Request, res: Respons
     FROM sync.bling_orders o,
          jsonb_array_elements(o.itens) AS item
     JOIN sync.bling_products p ON (p.sku = item->>'codigo' OR p.bling_id = item->'produto'->>'id')
-    WHERE o.status NOT IN ('cancelado', 'devolvido')
+    WHERE o.status NOT IN ('cancelado', 'devolvido') ${dateFilter}
     GROUP BY p.bling_id, p.nome, p.sku, p.preco_custo
     ORDER BY SUM((item->>'quantidade')::numeric * (item->>'valor')::numeric) DESC
     LIMIT $1
@@ -320,7 +334,7 @@ productsRouter.get("/analytics/profitability", async (req: Request, res: Respons
     FROM sync.bling_orders o,
          jsonb_array_elements(o.itens) AS item
     JOIN sync.bling_products p ON (p.sku = item->>'codigo' OR p.bling_id = item->'produto'->>'id')
-    WHERE o.status NOT IN ('cancelado', 'devolvido')
+    WHERE o.status NOT IN ('cancelado', 'devolvido') ${dateFilter}
     GROUP BY p.categoria
     ORDER BY SUM((item->>'quantidade')::numeric * (item->>'valor')::numeric) DESC
   `);

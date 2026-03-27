@@ -23,8 +23,12 @@ function formatCurrency(v: number) {
 }
 
 function formatDate(d: string) {
-  if (!d) return '—';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  if (!d || d === 'null') return '—';
+  // Suporta tanto "2026-01-03" quanto "2026-01-03T00:00:00.000Z"
+  const dateStr = d.includes('T') ? d : d + 'T12:00:00';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 const SITUACAO: Record<number, { label: string; color: string }> = {
@@ -218,12 +222,14 @@ export default function ContasPagar() {
                 ) : (
                   contas.map((c) => {
                     const sit = SITUACAO[c.situacao] || SITUACAO[1];
-                    const vencida = c.situacao === 1 && c.vencimento && new Date(c.vencimento + 'T12:00:00') < new Date();
+                    const vencStr = c.vencimento?.includes('T') ? c.vencimento : (c.vencimento ? c.vencimento + 'T12:00:00' : '');
+                    const vencida = c.situacao === 1 && vencStr && new Date(vencStr) < new Date();
                     return (
                       <tr key={c.bling_id} className={`border-b border-bibelo-border/50 ${vencida ? 'bg-red-500/5' : 'hover:bg-bibelo-border/20'} transition-colors`}>
                         <td className="px-4 py-2.5">
-                          <p className="text-bibelo-text font-medium truncate max-w-[200px]">{c.contato_nome || 'Nao informado'}</p>
-                          <p className="text-xs text-bibelo-muted">{c.numero_documento || c.historico || '—'}</p>
+                          <p className="text-bibelo-text font-medium truncate max-w-[220px]">{c.contato_nome || 'Nao informado'}</p>
+                          {c.numero_documento && <p className="text-xs text-bibelo-muted">NF {c.numero_documento}</p>}
+                          {c.historico && <p className="text-xs text-bibelo-muted/70 truncate max-w-[220px]">{c.historico}</p>}
                         </td>
                         <td className={`px-4 py-2.5 ${vencida ? 'text-red-400 font-medium' : 'text-bibelo-muted'}`}>
                           {formatDate(c.vencimento)}

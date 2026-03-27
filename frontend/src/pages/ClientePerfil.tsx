@@ -93,7 +93,7 @@ export default function ClientePerfil() {
   if (notFound || !cliente) {
     return (
       <div className="text-center py-16">
-        <p className="text-bibelo-muted mb-4">Cliente nao encontrado</p>
+        <p className="text-bibelo-muted mb-4">Cliente não encontrado</p>
         <Link to="/clientes" className="text-bibelo-primary hover:underline text-sm">Voltar para lista</Link>
       </div>
     );
@@ -136,7 +136,7 @@ export default function ClientePerfil() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Info Card */}
         <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5 space-y-4">
-          <h2 className="text-sm font-medium text-bibelo-muted">Informacoes</h2>
+          <h2 className="text-sm font-medium text-bibelo-muted">Informações</h2>
 
           {cliente.email && (
             <div className="flex items-center gap-2.5 text-sm">
@@ -176,7 +176,7 @@ export default function ClientePerfil() {
           {score && (
             <div className="pt-3 border-t border-bibelo-border space-y-2">
               <h3 className="text-sm font-medium text-bibelo-muted flex items-center gap-1.5">
-                <TrendingUp size={14} /> Metricas
+                <TrendingUp size={14} /> Métricas
               </h3>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="bg-bibelo-bg rounded-lg p-2.5 text-center">
@@ -207,7 +207,7 @@ export default function ClientePerfil() {
           <h2 className="text-sm font-medium text-bibelo-muted mb-4">Timeline</h2>
 
           {timeline.length === 0 && cliente.recentInteractions.length === 0 ? (
-            <p className="text-bibelo-muted text-sm py-8 text-center">Nenhuma interacao registrada</p>
+            <p className="text-bibelo-muted text-sm py-8 text-center">Nenhuma interação registrada</p>
           ) : (
             <div className="space-y-3">
               {(timeline.length > 0 ? timeline : cliente.recentInteractions).map((entry) => {

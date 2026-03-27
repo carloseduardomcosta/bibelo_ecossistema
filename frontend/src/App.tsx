@@ -19,6 +19,7 @@ import SimuladorCustos from './pages/SimuladorCustos';
 import NfEntrada from './pages/NfEntrada';
 import Vendas from './pages/Vendas';
 import ContasPagar from './pages/ContasPagar';
+import ProdutoPerfil from './pages/ProdutoPerfil';
 
 const GOOGLE_CLIENT_ID = '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
 
@@ -40,7 +41,7 @@ export default function App() {
               <Route path="/clientes" element={<Clientes />} />
               <Route path="/clientes/:id" element={<ClientePerfil />} />
               <Route path="/produtos" element={<Produtos />} />
-              <Route path="/produtos/:id" element={<Placeholder titulo="Detalhe Produto" />} />
+              <Route path="/produtos/:id" element={<ProdutoPerfil />} />
               <Route path="/estoque" element={<Estoque />} />
               <Route path="/vendas" element={<Vendas />} />
               <Route path="/contas-pagar" element={<ContasPagar />} />
@@ -57,14 +58,5 @@ export default function App() {
         </AuthProvider>
       </BrowserRouter>
     </GoogleOAuthProvider>
-  );
-}
-
-function Placeholder({ titulo }: { titulo: string }) {
-  return (
-    <div>
-      <h1 className="text-2xl font-bold text-bibelo-text">{titulo}</h1>
-      <p className="text-bibelo-muted mt-1">Em desenvolvimento.</p>
-    </div>
   );
 }

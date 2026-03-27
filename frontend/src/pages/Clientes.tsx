@@ -173,7 +173,7 @@ export default function Clientes() {
         {pagination.pages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-bibelo-border">
             <p className="text-xs text-bibelo-muted">
-              Pagina {pagination.page} de {pagination.pages}
+              Página {pagination.page} de {pagination.pages}
             </p>
             <div className="flex gap-1">
               <button

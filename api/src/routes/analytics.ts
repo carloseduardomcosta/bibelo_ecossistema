@@ -292,11 +292,14 @@ analyticsRouter.get("/insights", async (req: Request, res: Response) => {
 // ── GET /api/analytics/contas-pagar — contas a pagar ────────────
 
 analyticsRouter.get("/contas-pagar", async (req: Request, res: Response) => {
-  const status = req.query.status as string | undefined; // 'pendente', 'pago', 'todos'
+  const status = req.query.status as string | undefined;
+  const { intervalo } = periodoToInterval(req.query.periodo as string);
+  const cpDateFilter = req.query.periodo ? `AND vencimento >= NOW() - INTERVAL '${intervalo}'` : "";
 
-  let where = "";
-  if (status === "pendente") where = "WHERE situacao = 1";
-  else if (status === "pago") where = "WHERE situacao = 2";
+  const conditions: string[] = [];
+  if (status === "pendente") conditions.push("situacao = 1");
+  else if (status === "pago") conditions.push("situacao = 2");
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const resumo = await queryOne<{
     total: string; pendentes: string; pagas: string;
@@ -312,6 +315,7 @@ analyticsRouter.get("/contas-pagar", async (req: Request, res: Response) => {
       COUNT(*) FILTER (WHERE situacao = 1 AND vencimento < CURRENT_DATE)::text AS vencidas,
       COALESCE(SUM(valor) FILTER (WHERE situacao = 1 AND vencimento < CURRENT_DATE), 0)::text AS valor_vencido
     FROM sync.bling_contas_pagar
+    WHERE 1=1 ${cpDateFilter}
   `);
 
   const contas = await query<{
@@ -322,7 +326,7 @@ analyticsRouter.get("/contas-pagar", async (req: Request, res: Response) => {
     SELECT bling_id, situacao, vencimento, valor, numero_documento, historico,
            contato_nome, forma_pagamento, data_pagamento, valor_pago
     FROM sync.bling_contas_pagar
-    ${where}
+    ${where} ${where ? cpDateFilter : cpDateFilter.replace("AND", "WHERE")}
     ORDER BY CASE WHEN situacao = 1 AND vencimento < CURRENT_DATE THEN 0
                   WHEN situacao = 1 THEN 1
                   ELSE 2 END,
@@ -331,10 +335,11 @@ analyticsRouter.get("/contas-pagar", async (req: Request, res: Response) => {
   `);
 
   const porFornecedor = await query<{ fornecedor: string; total: string; valor: string }>(`
-    SELECT COALESCE(NULLIF(contato_nome, ''), 'Nao informado') AS fornecedor,
+    SELECT COALESCE(NULLIF(contato_nome, ''), 'Não informado') AS fornecedor,
            COUNT(*)::text AS total,
            COALESCE(SUM(valor), 0)::text AS valor
     FROM sync.bling_contas_pagar
+    WHERE 1=1 ${cpDateFilter}
     GROUP BY contato_nome
     ORDER BY SUM(valor) DESC
     LIMIT 10
@@ -361,13 +366,18 @@ analyticsRouter.get("/contas-pagar", async (req: Request, res: Response) => {
 
 // ── GET /api/analytics/pagamentos — formas de pagamento ─────────
 
-analyticsRouter.get("/pagamentos", async (_req: Request, res: Response) => {
+analyticsRouter.get("/pagamentos", async (req: Request, res: Response) => {
+  const { intervalo } = periodoToInterval(req.query.periodo as string);
+  const dateFilter = intervalo !== "1 month" || req.query.periodo ? `WHERE p.data_vencimento >= NOW() - INTERVAL '${intervalo}'` : "";
+  const dateFilterAnd = dateFilter ? `AND p.data_vencimento >= NOW() - INTERVAL '${intervalo}'` : "";
+
   const porForma = await query<{ forma: string; total_pedidos: string; valor_total: string }>(`
     SELECT
-      COALESCE(p.forma_descricao, 'Nao informado') AS forma,
+      COALESCE(p.forma_descricao, 'Não informado') AS forma,
       COUNT(DISTINCT p.order_bling_id)::text AS total_pedidos,
       COALESCE(SUM(p.valor), 0)::text AS valor_total
     FROM sync.bling_order_parcelas p
+    ${dateFilter}
     GROUP BY p.forma_descricao
     ORDER BY SUM(p.valor) DESC
   `);
@@ -378,7 +388,7 @@ analyticsRouter.get("/pagamentos", async (_req: Request, res: Response) => {
       COALESCE(p.forma_descricao, 'Outros') AS forma,
       SUM(p.valor)::text AS valor
     FROM sync.bling_order_parcelas p
-    WHERE p.data_vencimento IS NOT NULL
+    WHERE p.data_vencimento IS NOT NULL ${dateFilterAnd}
     GROUP BY TO_CHAR(p.data_vencimento, 'YYYY-MM'), p.forma_descricao
     ORDER BY mes ASC
   `);
@@ -403,7 +413,10 @@ analyticsRouter.get("/pagamentos", async (_req: Request, res: Response) => {
 
 // ── GET /api/analytics/nfe — NF-e emitidas ──────────────────────
 
-analyticsRouter.get("/nfe", async (_req: Request, res: Response) => {
+analyticsRouter.get("/nfe", async (req: Request, res: Response) => {
+  const { intervalo } = periodoToInterval(req.query.periodo as string);
+  const nfeDateFilter = req.query.periodo ? `AND data_emissao >= NOW() - INTERVAL '${intervalo}'` : "";
+
   const resumo = await queryOne<{
     total: string; autorizadas: string; canceladas: string;
     valor_total: string; valor_autorizadas: string;
@@ -415,6 +428,7 @@ analyticsRouter.get("/nfe", async (_req: Request, res: Response) => {
       COALESCE(SUM(valor_total), 0)::text AS valor_total,
       COALESCE(SUM(valor_total) FILTER (WHERE situacao IN (4, 6)), 0)::text AS valor_autorizadas
     FROM sync.bling_nfe
+    WHERE 1=1 ${nfeDateFilter}
   `);
 
   const porMes = await query<{ mes: string; quantidade: string; valor: string }>(`
@@ -423,7 +437,7 @@ analyticsRouter.get("/nfe", async (_req: Request, res: Response) => {
       COUNT(*)::text AS quantidade,
       COALESCE(SUM(valor_total), 0)::text AS valor
     FROM sync.bling_nfe
-    WHERE data_emissao IS NOT NULL AND situacao IN (4, 6)
+    WHERE data_emissao IS NOT NULL AND situacao IN (4, 6) ${nfeDateFilter}
     GROUP BY TO_CHAR(data_emissao, 'YYYY-MM')
     ORDER BY mes ASC
   `);

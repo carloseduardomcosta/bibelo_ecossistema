@@ -111,9 +111,9 @@ export default function Dashboard() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-bibelo-text">
-            Ola, {user?.nome?.split(' ')[0]}!
+            Olá, {user?.nome?.split(' ')[0]}!
           </h1>
-          <p className="text-sm text-bibelo-muted mt-0.5">Visao geral do seu negocio</p>
+          <p className="text-sm text-bibelo-muted mt-0.5">Visão geral do seu negócio</p>
         </div>
         <div className="flex gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1 flex-wrap">
           {PERIODOS.map((p) => (

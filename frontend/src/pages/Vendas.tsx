@@ -37,16 +37,25 @@ const NFE_STATUS: Record<number, { label: string; color: string }> = {
   6: { label: 'Autorizada', color: 'text-emerald-400' },
 };
 
+const PERIODOS = [
+  { value: '30d', label: '30 dias' },
+  { value: '3m', label: '3 meses' },
+  { value: '6m', label: '6 meses' },
+  { value: '1a', label: '1 ano' },
+];
+
 export default function Vendas() {
   const [pagamentos, setPagamentos] = useState<PagamentosData | null>(null);
   const [nfe, setNfe] = useState<NfeData | null>(null);
   const [tab, setTab] = useState<'pagamentos' | 'nfe'>('pagamentos');
   const [loading, setLoading] = useState(true);
+  const [periodo, setPeriodo] = useState('3m');
 
   useEffect(() => {
+    setLoading(true);
     Promise.all([
-      api.get('/analytics/pagamentos'),
-      api.get('/analytics/nfe'),
+      api.get(`/analytics/pagamentos?periodo=${periodo}`),
+      api.get(`/analytics/nfe?periodo=${periodo}`),
     ])
       .then(([pagRes, nfeRes]) => {
         setPagamentos(pagRes.data);
@@ -54,11 +63,26 @@ export default function Vendas() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [periodo]);
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-bibelo-text mb-6">Vendas</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <h1 className="text-2xl font-bold text-bibelo-text">Vendas</h1>
+        <div className="flex gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1 flex-wrap">
+          {PERIODOS.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => setPeriodo(p.value)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                periodo === p.value ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1 mb-6 w-fit">
@@ -102,7 +126,7 @@ export default function Vendas() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Pie chart */}
             <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
-              <h2 className="text-sm font-medium text-bibelo-muted mb-4">Distribuicao por Forma</h2>
+              <h2 className="text-sm font-medium text-bibelo-muted mb-4">Distribuição por Forma</h2>
               {!pagamentos?.por_forma.length ? (
                 <div className="h-64 flex items-center justify-center text-bibelo-muted">
                   Sem dados — execute um Sync Completo primeiro
@@ -219,7 +243,7 @@ export default function Vendas() {
 
             {/* Ultimas NF-e */}
             <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
-              <h2 className="text-sm font-medium text-bibelo-muted mb-4">Ultimas NF-e Emitidas</h2>
+              <h2 className="text-sm font-medium text-bibelo-muted mb-4">Últimas NF-e Emitidas</h2>
               {!nfe?.ultimas.length ? (
                 <div className="h-64 flex items-center justify-center text-bibelo-muted">Sem notas fiscais</div>
               ) : (
@@ -227,7 +251,7 @@ export default function Vendas() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-bibelo-border text-bibelo-muted text-left">
-                        <th className="px-3 py-2 font-medium">Numero</th>
+                        <th className="px-3 py-2 font-medium">Número</th>
                         <th className="px-3 py-2 font-medium">Cliente</th>
                         <th className="px-3 py-2 font-medium text-right">Valor</th>
                         <th className="px-3 py-2 font-medium">Status</th>

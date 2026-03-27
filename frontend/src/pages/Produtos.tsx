@@ -213,7 +213,7 @@ export default function Produtos() {
 
         {pagination.pages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-bibelo-border">
-            <p className="text-xs text-bibelo-muted">Pagina {pagination.page} de {pagination.pages}</p>
+            <p className="text-xs text-bibelo-muted">Página {pagination.page} de {pagination.pages}</p>
             <div className="flex gap-1">
               <button onClick={() => fetchProdutos(pagination.page - 1)} disabled={pagination.page <= 1}
                 className="p-1.5 rounded-lg text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50 disabled:opacity-30 transition-colors">

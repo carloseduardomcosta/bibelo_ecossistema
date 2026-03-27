@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { TrendingUp, DollarSign, Percent, ShoppingCart } from 'lucide-react';
 import api from '../lib/api';
 
@@ -36,27 +36,60 @@ function margemColor(m: number) {
   return 'text-red-400';
 }
 
+const PERIODOS = [
+  { value: '7d', label: '7 dias' },
+  { value: '15d', label: '15 dias' },
+  { value: '30d', label: '30 dias' },
+  { value: '3m', label: '3 meses' },
+  { value: '6m', label: '6 meses' },
+  { value: '1a', label: '1 ano' },
+  { value: 'total', label: 'Total' },
+];
+
 export default function Lucratividade() {
   const [data, setData] = useState<ProfitData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [periodo, setPeriodo] = useState('total');
 
-  useEffect(() => {
-    api.get('/products/analytics/profitability')
-      .then(({ data }) => setData(data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = periodo !== 'total' ? `?periodo=${periodo}` : '';
+      const { data } = await api.get(`/products/analytics/profitability${params}`);
+      setData(data);
+    } catch {}
+    finally { setLoading(false); }
+  }, [periodo]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const periodoLabel = PERIODOS.find(p => p.value === periodo)?.label || periodo;
 
   const kpis = data ? [
     { label: 'Receita Total', value: formatCurrency(data.resumo.receita_total), icon: DollarSign, color: 'text-emerald-400' },
     { label: 'Custo Total', value: formatCurrency(data.resumo.custo_total), icon: ShoppingCart, color: 'text-amber-400' },
     { label: 'Lucro Bruto', value: formatCurrency(data.resumo.lucro_bruto), icon: TrendingUp, color: 'text-violet-400' },
-    { label: 'Margem Media', value: `${data.resumo.margem_media}%`, icon: Percent, color: 'text-pink-400' },
+    { label: 'Margem Média', value: `${data.resumo.margem_media}%`, icon: Percent, color: 'text-pink-400' },
   ] : [];
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-bibelo-text mb-6">Lucratividade</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <h1 className="text-2xl font-bold text-bibelo-text">Lucratividade</h1>
+        <div className="flex gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1 flex-wrap">
+          {PERIODOS.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => setPeriodo(p.value)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                periodo === p.value ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -83,11 +116,11 @@ export default function Lucratividade() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Top Produtos */}
         <div className="lg:col-span-2 bg-bibelo-card border border-bibelo-border rounded-xl p-5">
-          <h2 className="text-sm font-medium text-bibelo-muted mb-4">Top Produtos por Receita</h2>
+          <h2 className="text-sm font-medium text-bibelo-muted mb-4">Top Produtos por Receita — {periodoLabel}</h2>
           {loading ? (
             <div className="h-64 flex items-center justify-center text-bibelo-muted">Carregando...</div>
           ) : !data?.top_produtos.length ? (
-            <div className="h-64 flex items-center justify-center text-bibelo-muted">Sem dados de vendas</div>
+            <div className="h-64 flex items-center justify-center text-bibelo-muted">Sem dados de vendas no período</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
