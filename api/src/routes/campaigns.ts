@@ -3,6 +3,7 @@ import { z } from "zod";
 import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
+import { sendCampaignEmails, sendEmail, isResendConfigured, getResendStatus } from "../integrations/resend/email";
 
 export const campaignsRouter = Router();
 campaignsRouter.use(authMiddleware);
@@ -79,6 +80,44 @@ campaignsRouter.get("/", async (req: Request, res: Response) => {
     data: rows,
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
+});
+
+// ── GET /api/campaigns/resend-status — status da integração ─────
+
+campaignsRouter.get("/resend-status", async (_req: Request, res: Response) => {
+  const status = await getResendStatus();
+  res.json(status);
+});
+
+// ── POST /api/campaigns/test-email — enviar email de teste ──────
+
+const testEmailSchema = z.object({
+  to: z.string().email(),
+  subject: z.string().min(1).default("Teste BibelôCRM"),
+  html: z.string().min(1).default("<h1>Olá!</h1><p>Este é um email de teste do BibelôCRM.</p><p>Se você recebeu, a integração está funcionando! 🎀</p>"),
+});
+
+campaignsRouter.post("/test-email", async (req: Request, res: Response) => {
+  if (!isResendConfigured()) {
+    res.status(400).json({ error: "Resend não configurado" });
+    return;
+  }
+
+  const parse = testEmailSchema.safeParse(req.body);
+  if (!parse.success) { res.status(400).json({ error: "Dados inválidos" }); return; }
+
+  try {
+    const result = await sendEmail({
+      to: parse.data.to,
+      subject: parse.data.subject,
+      html: parse.data.html,
+    });
+    logger.info("Email de teste enviado", { to: parse.data.to, user: req.user?.email });
+    res.json({ message: "Email de teste enviado", resend_id: result?.id });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Erro ao enviar";
+    res.status(500).json({ error: msg });
+  }
 });
 
 // ── GET /api/campaigns/:id — detalhes ───────────────────────────
@@ -249,9 +288,22 @@ campaignsRouter.post("/:id/send", async (req: Request, res: Response) => {
     user: req.user?.email,
   });
 
-  // TODO: enfileirar envio real (Resend/Evolution) via BullMQ
+  // Disparo real via Resend (email) — síncrono para volumes baixos
+  if (campaign.canal === "email") {
+    if (!isResendConfigured()) {
+      res.status(400).json({ error: "Resend não configurado. Adicione RESEND_API_KEY no .env" });
+      return;
+    }
+
+    // Dispara em background (não bloqueia resposta)
+    sendCampaignEmails(campaign.id).catch((err) => {
+      logger.error("Erro no disparo de campanha", { campaignId: campaign.id, error: err.message });
+    });
+  }
+
   res.json({
-    message: "Campanha disparada",
+    message: campaign.canal === "email" ? "Campanha de email em envio" : "Campanha criada (WhatsApp pendente de integração)",
     total_envios: customers.length,
   });
 });
+
