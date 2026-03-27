@@ -13,6 +13,7 @@ import { customersRouter } from "./routes/customers";
 import { analyticsRouter } from "./routes/analytics";
 import { campaignsRouter }  from "./routes/campaigns";
 import { templatesRouter }  from "./routes/templates";
+import { syncRouter }       from "./routes/sync";
 import { nuvemshopWebhookRouter } from "./integrations/nuvemshop/webhook";
 import { registerScheduledJobs } from "./queues/sync.queue";
 
@@ -54,6 +55,8 @@ app.use("/api/customers", customersRouter);
 app.use("/api/analytics", analyticsRouter);
 app.use("/api/campaigns", campaignsRouter);
 app.use("/api/templates", templatesRouter);
+app.use("/api/sync", syncRouter);
+app.use("/api",      syncRouter);  // /api/auth/bling e /api/auth/bling/callback
 app.use("/api/webhooks/nuvemshop", nuvemshopWebhookRouter);
 
 // ── 404
