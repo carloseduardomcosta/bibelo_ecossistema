@@ -38,19 +38,30 @@ const SITUACAO: Record<number, { label: string; color: string }> = {
   5: { label: 'Cancelado', color: 'bg-red-500/20 text-red-400' },
 };
 
-const PERIODOS = [
-  { value: '30d', label: '30 dias' },
-  { value: '3m', label: '3 meses' },
-  { value: '6m', label: '6 meses' },
-  { value: '1a', label: '1 ano' },
-];
+const MESES = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+function getMesAtual() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function mesLabel(mes: string) {
+  const [year, month] = mes.split('-');
+  return `${MESES[parseInt(month, 10) - 1]} ${year}`;
+}
+
+function navMes(mes: string, dir: number) {
+  const [y, m] = mes.split('-').map(Number);
+  const d = new Date(y, m - 1 + dir, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
 export default function ContasPagar() {
   const [resumo, setResumo] = useState<Resumo | null>(null);
   const [contas, setContas] = useState<Conta[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [filtro, setFiltro] = useState('todos');
-  const [periodo, setPeriodo] = useState('3m');
+  const [mes, setMes] = useState(getMesAtual());
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -59,7 +70,7 @@ export default function ContasPagar() {
     setLoading(true);
     const p = new URLSearchParams();
     if (filtro !== 'todos') p.set('status', filtro);
-    p.set('periodo', periodo);
+    p.set('mes', mes);
     api.get(`/analytics/contas-pagar?${p.toString()}`)
       .then(({ data }) => {
         setResumo(data.resumo);
@@ -70,7 +81,7 @@ export default function ContasPagar() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchData(); }, [filtro, periodo]);
+  useEffect(() => { fetchData(); }, [filtro, mes]);
 
   const handlePagar = async (blingId: string) => {
     if (!confirm('Confirma pagamento desta conta? Será registrado no Bling.')) return;
@@ -108,36 +119,48 @@ export default function ContasPagar() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-2xl font-bold text-bibelo-text">Contas a Pagar</h1>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
+          {/* Navegador de mes */}
+          <div className="flex items-center gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1">
+            <button
+              onClick={() => setMes(navMes(mes, -1))}
+              className="px-2 py-1.5 rounded-md text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50 transition-colors"
+            >
+              ←
+            </button>
+            <span className="px-3 py-1.5 text-sm font-medium text-bibelo-text min-w-[140px] text-center">
+              {mesLabel(mes)}
+            </span>
+            <button
+              onClick={() => setMes(navMes(mes, 1))}
+              className="px-2 py-1.5 rounded-md text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50 transition-colors"
+            >
+              →
+            </button>
+            <button
+              onClick={() => setMes(getMesAtual())}
+              className="px-2 py-1.5 rounded-md text-xs text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50 transition-colors"
+            >
+              Hoje
+            </button>
+          </div>
+          {/* Filtro status */}
           <div className="flex gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1">
-            {PERIODOS.map((p) => (
+            {[
+              { value: 'todos', label: 'Todos' },
+              { value: 'pendente', label: 'Pendentes' },
+              { value: 'pago', label: 'Pagos' },
+            ].map((f) => (
               <button
-                key={p.value}
-                onClick={() => setPeriodo(p.value)}
+                key={f.value}
+                onClick={() => setFiltro(f.value)}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  periodo === p.value ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50'
+                  filtro === f.value ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text'
                 }`}
               >
-                {p.label}
+                {f.label}
               </button>
             ))}
-          </div>
-          <div className="flex gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1">
-          {[
-            { value: 'todos', label: 'Todos' },
-            { value: 'pendente', label: 'Pendentes' },
-            { value: 'pago', label: 'Pagos' },
-          ].map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setFiltro(f.value)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                filtro === f.value ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
           </div>
         </div>
       </div>

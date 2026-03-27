@@ -293,8 +293,16 @@ analyticsRouter.get("/insights", async (req: Request, res: Response) => {
 
 analyticsRouter.get("/contas-pagar", async (req: Request, res: Response) => {
   const status = req.query.status as string | undefined;
-  const { intervalo } = periodoToInterval(req.query.periodo as string);
-  const cpDateFilter = req.query.periodo ? `AND vencimento >= NOW() - INTERVAL '${intervalo}'` : "";
+  const mes = req.query.mes as string | undefined; // formato YYYY-MM
+
+  // Filtro por mes: vencimento dentro do mes selecionado
+  let cpDateFilter = "";
+  if (mes && /^\d{4}-\d{2}$/.test(mes)) {
+    cpDateFilter = `AND vencimento >= '${mes}-01'::date AND vencimento < ('${mes}-01'::date + INTERVAL '1 month')`;
+  } else {
+    const { intervalo } = periodoToInterval(req.query.periodo as string);
+    if (req.query.periodo) cpDateFilter = `AND vencimento >= NOW() - INTERVAL '${intervalo}'`;
+  }
 
   const conditions: string[] = [];
   if (status === "pendente") conditions.push("situacao = 1");
