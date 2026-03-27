@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, ChevronLeft, ChevronRight, Package } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Package, ArrowUpDown } from 'lucide-react';
 import api from '../lib/api';
 
 interface Product {
@@ -46,6 +46,9 @@ export default function Produtos() {
   const [searchInput, setSearchInput] = useState('');
   const [categoria, setCategoria] = useState('');
   const [categorias, setCategorias] = useState<string[]>([]);
+  const [estoqueFilter, setEstoqueFilter] = useState('');
+  const [sortCol, setSortCol] = useState<'nome' | 'preco_venda' | 'preco_custo' | 'margem_percentual' | 'estoque_total'>('preco_venda');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -75,6 +78,35 @@ export default function Produtos() {
     setSearch(searchInput);
   };
 
+  const toggleSort = (col: typeof sortCol) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(col); setSortDir(col === 'nome' ? 'asc' : 'desc'); }
+  };
+
+  const filteredAndSorted = [...produtos]
+    .filter((p) => {
+      if (estoqueFilter === 'sem') return p.estoque_total === 0;
+      if (estoqueFilter === 'baixo') return p.estoque_total > 0 && p.estoque_total <= 5;
+      if (estoqueFilter === 'ok') return p.estoque_total > 5;
+      return true;
+    })
+    .sort((a, b) => {
+      const va = a[sortCol];
+      const vb = b[sortCol];
+      if (typeof va === 'string') return sortDir === 'asc' ? va.localeCompare(vb as string) : (vb as string).localeCompare(va);
+      return sortDir === 'asc' ? (va as number) - (vb as number) : (vb as number) - (va as number);
+    });
+
+  const SortHeader = ({ col, children }: { col: typeof sortCol; children: React.ReactNode }) => (
+    <th
+      className="px-4 py-3 font-medium cursor-pointer hover:text-bibelo-text transition-colors"
+      onClick={() => toggleSort(col)}
+    >
+      {children}
+      <ArrowUpDown size={11} className={`inline ml-1 ${sortCol === col ? 'text-bibelo-primary' : ''}`} />
+    </th>
+  );
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -102,6 +134,16 @@ export default function Produtos() {
           <option value="">Todas categorias</option>
           {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
+        <select
+          value={estoqueFilter}
+          onChange={(e) => setEstoqueFilter(e.target.value)}
+          className="px-3 py-2 bg-bibelo-card border border-bibelo-border rounded-lg text-sm text-bibelo-text focus:outline-none focus:border-bibelo-primary transition-colors"
+        >
+          <option value="">Todo estoque</option>
+          <option value="sem">Sem estoque</option>
+          <option value="baixo">Estoque baixo (1-5)</option>
+          <option value="ok">Estoque OK (&gt;5)</option>
+        </select>
       </div>
 
       {/* Table */}
@@ -110,13 +152,13 @@ export default function Produtos() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-bibelo-border text-bibelo-muted text-left">
-                <th className="px-4 py-3 font-medium">Produto</th>
+                <SortHeader col="nome">Produto</SortHeader>
                 <th className="px-4 py-3 font-medium hidden sm:table-cell">SKU</th>
                 <th className="px-4 py-3 font-medium hidden md:table-cell">Categoria</th>
-                <th className="px-4 py-3 font-medium text-right">Custo</th>
-                <th className="px-4 py-3 font-medium text-right">Venda</th>
-                <th className="px-4 py-3 font-medium text-right hidden lg:table-cell">Margem</th>
-                <th className="px-4 py-3 font-medium text-right">Estoque</th>
+                <SortHeader col="preco_custo"><span className="flex justify-end">Custo</span></SortHeader>
+                <SortHeader col="preco_venda"><span className="flex justify-end">Venda</span></SortHeader>
+                <SortHeader col="margem_percentual"><span className="hidden lg:flex justify-end">Margem</span></SortHeader>
+                <SortHeader col="estoque_total"><span className="flex justify-end">Estoque</span></SortHeader>
               </tr>
             </thead>
             <tbody>
@@ -128,7 +170,7 @@ export default function Produtos() {
                     ))}
                   </tr>
                 ))
-              ) : produtos.length === 0 ? (
+              ) : filteredAndSorted.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-bibelo-muted">
                     <Package size={32} className="mx-auto mb-2 opacity-50" />
@@ -136,7 +178,7 @@ export default function Produtos() {
                   </td>
                 </tr>
               ) : (
-                produtos.map((p) => (
+                filteredAndSorted.map((p) => (
                   <tr key={p.id} className="border-b border-bibelo-border/50 hover:bg-bibelo-border/20 transition-colors">
                     <td className="px-4 py-3">
                       <Link to={`/produtos/${p.id}`} className="flex items-center gap-3">

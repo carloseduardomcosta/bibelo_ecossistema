@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Package, AlertTriangle, PackageX, ArrowDownCircle, Box } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { Package, AlertTriangle, PackageX, ArrowDownCircle, Box, X, ArrowUpDown } from 'lucide-react';
 import api from '../lib/api';
 
 interface StockOverview {
@@ -34,6 +35,16 @@ interface StockAlerts {
   custo_reposicao: number;
 }
 
+interface Product {
+  id: string;
+  nome: string;
+  sku: string;
+  preco_venda: number;
+  preco_custo: number;
+  estoque_total: number;
+  margem_percentual: number;
+}
+
 function formatCurrency(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
@@ -43,6 +54,11 @@ export default function Estoque() {
   const [alerts, setAlerts] = useState<StockAlerts | null>(null);
   const [tab, setTab] = useState<'sem' | 'baixo'>('sem');
   const [loading, setLoading] = useState(true);
+  const [catSelecionada, setCatSelecionada] = useState<string | null>(null);
+  const [catProdutos, setCatProdutos] = useState<Product[]>([]);
+  const [catLoading, setCatLoading] = useState(false);
+  const [catSort, setCatSort] = useState<'nome' | 'preco_venda' | 'estoque_total'>('preco_venda');
+  const [catSortDir, setCatSortDir] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     Promise.all([
@@ -57,13 +73,41 @@ export default function Estoque() {
       .finally(() => setLoading(false));
   }, []);
 
+  const handleBarClick = async (catData: { categoria: string }) => {
+    const cat = catData.categoria;
+    if (catSelecionada === cat) {
+      setCatSelecionada(null);
+      setCatProdutos([]);
+      return;
+    }
+    setCatSelecionada(cat);
+    setCatLoading(true);
+    try {
+      const { data } = await api.get('/products', { params: { categoria: cat, limit: 100, ativo: 1 } });
+      setCatProdutos(data.data);
+    } catch { setCatProdutos([]); }
+    finally { setCatLoading(false); }
+  };
+
+  const sortedCatProdutos = [...catProdutos].sort((a, b) => {
+    const va = a[catSort];
+    const vb = b[catSort];
+    if (typeof va === 'string') return catSortDir === 'asc' ? va.localeCompare(vb as string) : (vb as string).localeCompare(va);
+    return catSortDir === 'asc' ? (va as number) - (vb as number) : (vb as number) - (va as number);
+  });
+
+  const toggleSort = (col: typeof catSort) => {
+    if (catSort === col) setCatSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setCatSort(col); setCatSortDir(col === 'nome' ? 'asc' : 'desc'); }
+  };
+
   const listaAtual = tab === 'sem' ? alerts?.sem_estoque : alerts?.estoque_baixo;
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-bibelo-text mb-6">Estoque</h1>
 
-      {/* Resumo financeiro principal */}
+      {/* Resumo financeiro */}
       {data && !loading && (
         <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-6 mb-6">
           <h2 className="text-sm font-medium text-bibelo-muted mb-4">Resumo do Estoque Atual</h2>
@@ -96,7 +140,7 @@ export default function Estoque() {
         </div>
       )}
 
-      {/* KPI Cards */}
+      {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => (
@@ -119,7 +163,7 @@ export default function Estoque() {
         ))}
       </div>
 
-      {/* Alerta de reposicao */}
+      {/* Alerta reposicao */}
       {alerts && alerts.sem_estoque.length > 0 && (
         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -127,65 +171,68 @@ export default function Estoque() {
             <div>
               <p className="text-sm font-medium text-red-400">Reposicao necessaria</p>
               <p className="text-xs text-red-400/70">
-                {alerts.sem_estoque.length} produtos zerados — voce precisa investir ~{formatCurrency(alerts.custo_reposicao)} para repor
+                {alerts.sem_estoque.length} produtos zerados — investimento: ~{formatCurrency(alerts.custo_reposicao)}
               </p>
             </div>
           </div>
           <div className="text-right">
-            <p className="text-xs text-bibelo-muted">Valor de venda parado</p>
+            <p className="text-xs text-bibelo-muted">Venda parada</p>
             <p className="text-lg font-bold text-red-400">{formatCurrency(alerts.valor_perdido)}</p>
           </div>
         </div>
       )}
 
+      {/* Grafico + Saude */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-        {/* Grafico */}
         <div className="lg:col-span-2 bg-bibelo-card border border-bibelo-border rounded-xl p-5">
-          <h2 className="text-sm font-medium text-bibelo-muted mb-4">Estoque por Categoria</h2>
-          {loading ? (
-            <div className="h-72 flex items-center justify-center text-bibelo-muted">Carregando...</div>
-          ) : !data?.por_categoria.length ? (
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-medium text-bibelo-muted">Estoque por Categoria</h2>
+            <p className="text-xs text-bibelo-muted">Clique numa barra para ver os produtos</p>
+          </div>
+          {!data?.por_categoria.length ? (
             <div className="h-72 flex items-center justify-center text-bibelo-muted">Sem dados</div>
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={data.por_categoria.slice(0, 10)} layout="vertical" margin={{ left: 20 }}>
+            <ResponsiveContainer width="100%" height={Math.max(300, data.por_categoria.length * 35)}>
+              <BarChart
+                data={[...data.por_categoria].sort((a, b) => b.estoque_total - a.estoque_total)}
+                layout="vertical"
+                margin={{ left: 20 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3A" />
                 <XAxis type="number" stroke="#64748B" fontSize={12} />
-                <YAxis dataKey="categoria" type="category" stroke="#64748B" fontSize={11} width={130} tick={{ fill: '#94A3B8' }} />
-                <Tooltip formatter={(v: number) => [v, 'Unidades']} contentStyle={{ background: '#0F1419', border: '1px solid #1E2A3A', borderRadius: 8 }} />
-                <Bar dataKey="estoque_total" fill="#8B5CF6" radius={[0, 4, 4, 0]} />
+                <YAxis dataKey="categoria" type="category" stroke="#64748B" fontSize={11} width={140} tick={{ fill: '#94A3B8' }} />
+                <Tooltip
+                  formatter={(v: number) => [`${v} un.`, 'Estoque']}
+                  contentStyle={{ background: '#0F1419', border: '1px solid #1E2A3A', borderRadius: 8 }}
+                />
+                <Bar dataKey="estoque_total" radius={[0, 4, 4, 0]} cursor="pointer" onClick={handleBarClick}>
+                  {data.por_categoria.sort((a, b) => b.estoque_total - a.estoque_total).map((entry) => (
+                    <Cell
+                      key={entry.categoria}
+                      fill={catSelecionada === entry.categoria ? '#7C3AED' : '#8B5CF6'}
+                      opacity={catSelecionada && catSelecionada !== entry.categoria ? 0.4 : 1}
+                    />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
 
-        {/* Saude do estoque */}
+        {/* Saude */}
         <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
           <h2 className="text-sm font-medium text-bibelo-muted mb-4">Saude do Estoque</h2>
           {data && (
             <div className="space-y-5">
-              {/* Barra visual */}
               <div>
                 <div className="flex justify-between text-xs text-bibelo-muted mb-2">
                   <span>Cobertura do catalogo</span>
                   <span>{Math.round(data.com_estoque / data.total_ativos * 100)}%</span>
                 </div>
                 <div className="h-3 bg-bibelo-border rounded-full overflow-hidden flex">
-                  <div
-                    className="h-full bg-emerald-500"
-                    style={{ width: `${(data.com_estoque - data.estoque_baixo) / data.total_ativos * 100}%` }}
-                    title="Estoque saudavel"
-                  />
-                  <div
-                    className="h-full bg-amber-500"
-                    style={{ width: `${data.estoque_baixo / data.total_ativos * 100}%` }}
-                    title="Estoque baixo"
-                  />
-                  <div
-                    className="h-full bg-red-500"
-                    style={{ width: `${data.sem_estoque / data.total_ativos * 100}%` }}
-                    title="Sem estoque"
-                  />
+                  <div className="h-full bg-emerald-500" style={{ width: `${(data.com_estoque - data.estoque_baixo) / data.total_ativos * 100}%` }} />
+                  <div className="h-full bg-amber-500" style={{ width: `${data.estoque_baixo / data.total_ativos * 100}%` }} />
+                  <div className="h-full bg-red-500" style={{ width: `${data.sem_estoque / data.total_ativos * 100}%` }} />
                 </div>
                 <div className="flex gap-4 mt-2 text-xs">
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Saudavel</span>
@@ -193,8 +240,6 @@ export default function Estoque() {
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> Zerado</span>
                 </div>
               </div>
-
-              {/* Detalhes */}
               <div className="space-y-3 pt-3 border-t border-bibelo-border">
                 <div className="flex justify-between text-sm">
                   <span className="text-bibelo-muted">Investido (custo)</span>
@@ -213,7 +258,6 @@ export default function Estoque() {
                   <span className="text-bibelo-primary font-medium">{data.margem_potencial}%</span>
                 </div>
               </div>
-
               <div className="pt-3 border-t border-bibelo-border text-xs text-bibelo-muted">
                 Atualizado a cada sync com o Bling (30 min)
               </div>
@@ -222,15 +266,78 @@ export default function Estoque() {
         </div>
       </div>
 
-      {/* Tabela de alertas */}
+      {/* Drill-down da categoria selecionada */}
+      {catSelecionada && (
+        <div className="bg-bibelo-card border border-bibelo-primary/30 rounded-xl overflow-hidden mb-6">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-bibelo-border bg-bibelo-primary/5">
+            <div className="flex items-center gap-2">
+              <Package size={16} className="text-bibelo-primary" />
+              <span className="text-sm font-medium text-bibelo-text">{catSelecionada}</span>
+              <span className="text-xs text-bibelo-muted">— {catProdutos.length} produtos</span>
+            </div>
+            <button onClick={() => { setCatSelecionada(null); setCatProdutos([]); }} className="text-bibelo-muted hover:text-bibelo-text">
+              <X size={16} />
+            </button>
+          </div>
+
+          {catLoading ? (
+            <div className="p-6 text-center text-bibelo-muted">Carregando...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-bibelo-border text-bibelo-muted text-left">
+                    <th className="px-4 py-3 font-medium cursor-pointer hover:text-bibelo-text" onClick={() => toggleSort('nome')}>
+                      Produto <ArrowUpDown size={12} className="inline ml-1" />
+                    </th>
+                    <th className="px-4 py-3 font-medium hidden sm:table-cell">SKU</th>
+                    <th className="px-4 py-3 font-medium text-right">Custo</th>
+                    <th className="px-4 py-3 font-medium text-right cursor-pointer hover:text-bibelo-text" onClick={() => toggleSort('preco_venda')}>
+                      Venda <ArrowUpDown size={12} className="inline ml-1" />
+                    </th>
+                    <th className="px-4 py-3 font-medium text-right hidden md:table-cell">Margem</th>
+                    <th className="px-4 py-3 font-medium text-right cursor-pointer hover:text-bibelo-text" onClick={() => toggleSort('estoque_total')}>
+                      Estoque <ArrowUpDown size={12} className="inline ml-1" />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedCatProdutos.map((p) => (
+                    <tr key={p.id} className="border-b border-bibelo-border/50 hover:bg-bibelo-border/20 transition-colors">
+                      <td className="px-4 py-2.5">
+                        <Link to={`/produtos/${p.id}`} className="text-bibelo-text hover:text-bibelo-primary font-medium transition-colors truncate block max-w-[250px]">
+                          {p.nome}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-2.5 text-bibelo-muted hidden sm:table-cell">{p.sku || '—'}</td>
+                      <td className="px-4 py-2.5 text-bibelo-muted text-right">{formatCurrency(p.preco_custo)}</td>
+                      <td className="px-4 py-2.5 text-bibelo-text text-right font-medium">{formatCurrency(p.preco_venda)}</td>
+                      <td className={`px-4 py-2.5 text-right hidden md:table-cell font-medium ${
+                        p.margem_percentual >= 50 ? 'text-emerald-400' : p.margem_percentual >= 20 ? 'text-amber-400' : 'text-red-400'
+                      }`}>
+                        {p.margem_percentual}%
+                      </td>
+                      <td className={`px-4 py-2.5 text-right font-medium ${
+                        p.estoque_total === 0 ? 'text-red-400' : p.estoque_total <= 5 ? 'text-amber-400' : 'text-bibelo-text'
+                      }`}>
+                        {p.estoque_total}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tabela alertas */}
       <div className="bg-bibelo-card border border-bibelo-border rounded-xl overflow-hidden">
         <div className="flex border-b border-bibelo-border">
           <button
             onClick={() => setTab('sem')}
             className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-              tab === 'sem'
-                ? 'text-red-400 border-b-2 border-red-400 bg-red-400/5'
-                : 'text-bibelo-muted hover:text-bibelo-text'
+              tab === 'sem' ? 'text-red-400 border-b-2 border-red-400 bg-red-400/5' : 'text-bibelo-muted hover:text-bibelo-text'
             }`}
           >
             <PackageX size={14} className="inline mr-1.5" />
@@ -239,16 +346,13 @@ export default function Estoque() {
           <button
             onClick={() => setTab('baixo')}
             className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-              tab === 'baixo'
-                ? 'text-amber-400 border-b-2 border-amber-400 bg-amber-400/5'
-                : 'text-bibelo-muted hover:text-bibelo-text'
+              tab === 'baixo' ? 'text-amber-400 border-b-2 border-amber-400 bg-amber-400/5' : 'text-bibelo-muted hover:text-bibelo-text'
             }`}
           >
             <AlertTriangle size={14} className="inline mr-1.5" />
             Estoque Baixo ({alerts?.estoque_baixo.length || 0})
           </button>
         </div>
-
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -256,32 +360,24 @@ export default function Estoque() {
                 <th className="px-4 py-3 font-medium">Produto</th>
                 <th className="px-4 py-3 font-medium hidden sm:table-cell">SKU</th>
                 <th className="px-4 py-3 font-medium hidden md:table-cell">Categoria</th>
-                <th className="px-4 py-3 font-medium text-right">Custo Unit.</th>
-                <th className="px-4 py-3 font-medium text-right">Venda Unit.</th>
+                <th className="px-4 py-3 font-medium text-right">Custo</th>
+                <th className="px-4 py-3 font-medium text-right">Venda</th>
                 <th className="px-4 py-3 font-medium text-right">Estoque</th>
               </tr>
             </thead>
             <tbody>
               {!listaAtual?.length ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-bibelo-muted">
-                    {loading ? 'Carregando...' : 'Nenhum produto nesta categoria'}
-                  </td>
-                </tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-bibelo-muted">{loading ? 'Carregando...' : 'Nenhum produto'}</td></tr>
               ) : (
                 listaAtual.map((p) => (
                   <tr key={p.id} className="border-b border-bibelo-border/50 hover:bg-bibelo-border/20 transition-colors">
-                    <td className="px-4 py-2.5">
-                      <span className="text-bibelo-text font-medium truncate block max-w-[220px]">{p.nome}</span>
-                    </td>
+                    <td className="px-4 py-2.5"><span className="text-bibelo-text font-medium truncate block max-w-[220px]">{p.nome}</span></td>
                     <td className="px-4 py-2.5 text-bibelo-muted hidden sm:table-cell">{p.sku || '—'}</td>
                     <td className="px-4 py-2.5 text-bibelo-muted hidden md:table-cell">{p.categoria}</td>
                     <td className="px-4 py-2.5 text-bibelo-muted text-right">{formatCurrency(p.preco_custo)}</td>
                     <td className="px-4 py-2.5 text-bibelo-text text-right">{formatCurrency(p.preco_venda)}</td>
                     <td className="px-4 py-2.5 text-right">
-                      <span className={`font-medium ${p.saldo === 0 ? 'text-red-400' : 'text-amber-400'}`}>
-                        {p.saldo}
-                      </span>
+                      <span className={`font-medium ${p.saldo === 0 ? 'text-red-400' : 'text-amber-400'}`}>{p.saldo}</span>
                     </td>
                   </tr>
                 ))
