@@ -256,7 +256,12 @@ Este projeto pode ter **múltiplos agents Claude trabalhando simultaneamente**.
 2. **Antes de editar um arquivo**, verificar se ele foi modificado recentemente por outro agent (o sistema avisa via `<system-reminder>`)
 3. **Nunca sobrescrever** mudanças de outro agent — integrar as mudanças
 4. **Se houver conflito de build** (erros TS em arquivos que você não criou), apenas corrija o erro mínimo (unused imports etc) sem alterar a lógica do outro agent
-5. **Protocolo STOP**: Se o dono pedir STOP, o agent deve parar imediatamente e só retomar quando autorizado. Apenas 1 agent trabalha por vez até concluir.
+
+### Protocolo STOP:
+- Se o dono pedir **STOP**, o agent deve parar imediatamente
+- Apenas **1 agent trabalha por vez** até concluir
+- O agent parado **NÃO retoma sozinho** — só o dono pode autorizar com "pode retomar", "volta", "continua" etc.
+- Ao retomar, o agent deve fazer `git pull` e verificar mudanças feitas pelo outro agent antes de continuar
 
 ### Como identificar outro agent:
 - Arquivos novos que você não criou aparecendo no projeto
