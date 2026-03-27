@@ -22,132 +22,172 @@ const dashboardSchema = z.object({
   periodo: z.enum(["mes_atual", "mes_anterior", "3m", "6m", "1a", "total"]).default("mes_atual"),
 });
 
+// ── Helpers de filtro por período (usados em Bling e lançamentos) ──
+
+function blingDateFilter(periodo: string): string {
+  if (periodo === "mes_atual") return "AND o.criado_bling >= DATE_TRUNC('month', CURRENT_DATE) AND o.criado_bling < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'";
+  if (periodo === "mes_anterior") return "AND o.criado_bling >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month' AND o.criado_bling < DATE_TRUNC('month', CURRENT_DATE)";
+  if (periodo === "3m") return "AND o.criado_bling >= CURRENT_DATE - INTERVAL '3 months'";
+  if (periodo === "6m") return "AND o.criado_bling >= CURRENT_DATE - INTERVAL '6 months'";
+  if (periodo === "1a") return "AND o.criado_bling >= CURRENT_DATE - INTERVAL '1 year'";
+  return "";
+}
+
+function lancDateFilter(periodo: string): string {
+  if (periodo === "mes_atual") return "AND l.data >= DATE_TRUNC('month', CURRENT_DATE) AND l.data < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'";
+  if (periodo === "mes_anterior") return "AND l.data >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month' AND l.data < DATE_TRUNC('month', CURRENT_DATE)";
+  if (periodo === "3m") return "AND l.data >= CURRENT_DATE - INTERVAL '3 months'";
+  if (periodo === "6m") return "AND l.data >= CURRENT_DATE - INTERVAL '6 months'";
+  if (periodo === "1a") return "AND l.data >= CURRENT_DATE - INTERVAL '1 year'";
+  return "";
+}
+
 financeiroRouter.get("/dashboard", async (req: Request, res: Response) => {
   const parse = dashboardSchema.safeParse(req.query);
   if (!parse.success) { res.status(400).json({ error: "Parâmetros inválidos" }); return; }
 
   const { periodo } = parse.data;
-  let dateFilter = "";
-  const params: unknown[] = [];
+  const bFilter = blingDateFilter(periodo);
+  const lFilter = lancDateFilter(periodo);
 
-  if (periodo === "mes_atual") {
-    dateFilter = "AND l.data >= DATE_TRUNC('month', CURRENT_DATE) AND l.data < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'";
-  } else if (periodo === "mes_anterior") {
-    dateFilter = "AND l.data >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month' AND l.data < DATE_TRUNC('month', CURRENT_DATE)";
-  } else if (periodo === "3m") {
-    dateFilter = "AND l.data >= CURRENT_DATE - INTERVAL '3 months'";
-  } else if (periodo === "6m") {
-    dateFilter = "AND l.data >= CURRENT_DATE - INTERVAL '6 months'";
-  } else if (periodo === "1a") {
-    dateFilter = "AND l.data >= CURRENT_DATE - INTERVAL '1 year'";
-  }
-  // total = sem filtro
-
-  // Totais
-  const totais = await queryOne<{ receitas: string; despesas: string; saldo: string }>(`
+  // ── Receitas = Bling (vendas) + lançamentos manuais tipo receita ──
+  const blingReceita = await queryOne<{ total: string; pedidos: string; ticket: string }>(`
     SELECT
-      COALESCE(SUM(CASE WHEN l.tipo = 'receita' AND l.status != 'cancelado' THEN l.valor END), 0)::text AS receitas,
-      COALESCE(SUM(CASE WHEN l.tipo = 'despesa' AND l.status != 'cancelado' THEN l.valor END), 0)::text AS despesas,
-      (COALESCE(SUM(CASE WHEN l.tipo = 'receita' AND l.status != 'cancelado' THEN l.valor END), 0)
-       - COALESCE(SUM(CASE WHEN l.tipo = 'despesa' AND l.status != 'cancelado' THEN l.valor END), 0))::text AS saldo
-    FROM financeiro.lancamentos l
-    WHERE l.status != 'cancelado' ${dateFilter}
-  `, params);
-
-  // Totais período anterior (para variação)
-  let dateFilterAnterior = "";
-  if (periodo === "mes_atual") {
-    dateFilterAnterior = "AND l.data >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month' AND l.data < DATE_TRUNC('month', CURRENT_DATE)";
-  } else if (periodo === "mes_anterior") {
-    dateFilterAnterior = "AND l.data >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '2 months' AND l.data < DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month'";
-  } else if (periodo === "3m") {
-    dateFilterAnterior = "AND l.data >= CURRENT_DATE - INTERVAL '6 months' AND l.data < CURRENT_DATE - INTERVAL '3 months'";
-  }
-
-  const totaisAnterior = await queryOne<{ receitas: string; despesas: string }>(`
-    SELECT
-      COALESCE(SUM(CASE WHEN l.tipo = 'receita' AND l.status != 'cancelado' THEN l.valor END), 0)::text AS receitas,
-      COALESCE(SUM(CASE WHEN l.tipo = 'despesa' AND l.status != 'cancelado' THEN l.valor END), 0)::text AS despesas
-    FROM financeiro.lancamentos l
-    WHERE l.status != 'cancelado' ${dateFilterAnterior}
+      COALESCE(SUM(o.valor), 0)::text AS total,
+      COUNT(*)::text AS pedidos,
+      CASE WHEN COUNT(*) > 0 THEN ROUND(SUM(o.valor) / COUNT(*), 2)::text ELSE '0' END AS ticket
+    FROM sync.bling_orders o
+    WHERE 1=1 ${bFilter}
   `, []);
 
-  const receitaAtual = parseFloat(totais?.receitas || "0");
-  const receitaAnterior = parseFloat(totaisAnterior?.receitas || "0");
-  const despesaAtual = parseFloat(totais?.despesas || "0");
-  const despesaAnterior = parseFloat(totaisAnterior?.despesas || "0");
+  const outrasReceitas = await queryOne<{ total: string }>(`
+    SELECT COALESCE(SUM(l.valor), 0)::text AS total
+    FROM financeiro.lancamentos l
+    WHERE l.tipo = 'receita' AND l.status != 'cancelado' ${lFilter}
+  `, []);
 
-  const variacaoReceita = receitaAnterior > 0 ? Math.round(((receitaAtual - receitaAnterior) / receitaAnterior) * 100) : 0;
-  const variacaoDespesa = despesaAnterior > 0 ? Math.round(((despesaAtual - despesaAnterior) / despesaAnterior) * 100) : 0;
+  // ── Despesas = lançamentos ──
+  const despesas = await queryOne<{ total: string }>(`
+    SELECT COALESCE(SUM(l.valor), 0)::text AS total
+    FROM financeiro.lancamentos l
+    WHERE l.tipo = 'despesa' AND l.status != 'cancelado' ${lFilter}
+  `, []);
 
-  // Receitas por categoria
-  const receitasPorCategoria = await query(`
+  const receitaBling = parseFloat(blingReceita?.total || "0");
+  const receitaOutras = parseFloat(outrasReceitas?.total || "0");
+  const receitaTotal = receitaBling + receitaOutras;
+  const despesaTotal = parseFloat(despesas?.total || "0");
+  const saldo = receitaTotal - despesaTotal;
+  const totalPedidos = parseInt(blingReceita?.pedidos || "0", 10);
+  const ticketMedio = parseFloat(blingReceita?.ticket || "0");
+
+  // ── Variação período anterior ──
+  let bFilterAnt = "";
+  let lFilterAnt = "";
+  if (periodo === "mes_atual") {
+    bFilterAnt = "AND o.criado_bling >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month' AND o.criado_bling < DATE_TRUNC('month', CURRENT_DATE)";
+    lFilterAnt = "AND l.data >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month' AND l.data < DATE_TRUNC('month', CURRENT_DATE)";
+  } else if (periodo === "mes_anterior") {
+    bFilterAnt = "AND o.criado_bling >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '2 months' AND o.criado_bling < DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month'";
+    lFilterAnt = "AND l.data >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '2 months' AND l.data < DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month'";
+  } else if (periodo === "3m") {
+    bFilterAnt = "AND o.criado_bling >= CURRENT_DATE - INTERVAL '6 months' AND o.criado_bling < CURRENT_DATE - INTERVAL '3 months'";
+    lFilterAnt = "AND l.data >= CURRENT_DATE - INTERVAL '6 months' AND l.data < CURRENT_DATE - INTERVAL '3 months'";
+  }
+
+  const blingAnt = await queryOne<{ total: string }>(`
+    SELECT COALESCE(SUM(o.valor), 0)::text AS total FROM sync.bling_orders o WHERE 1=1 ${bFilterAnt}
+  `, []);
+  const outrasAnt = await queryOne<{ total: string }>(`
+    SELECT COALESCE(SUM(l.valor), 0)::text AS total FROM financeiro.lancamentos l WHERE l.tipo = 'receita' AND l.status != 'cancelado' ${lFilterAnt}
+  `, []);
+  const despAnt = await queryOne<{ total: string }>(`
+    SELECT COALESCE(SUM(l.valor), 0)::text AS total FROM financeiro.lancamentos l WHERE l.tipo = 'despesa' AND l.status != 'cancelado' ${lFilterAnt}
+  `, []);
+
+  const receitaAnterior = parseFloat(blingAnt?.total || "0") + parseFloat(outrasAnt?.total || "0");
+  const despesaAnterior = parseFloat(despAnt?.total || "0");
+  const variacaoReceita = receitaAnterior > 0 ? Math.round(((receitaTotal - receitaAnterior) / receitaAnterior) * 100) : 0;
+  const variacaoDespesa = despesaAnterior > 0 ? Math.round(((despesaTotal - despesaAnterior) / despesaAnterior) * 100) : 0;
+
+  // ── Receitas por categoria (Bling = "Vendas Bling", + categorias manuais) ──
+  const receitasManuais = await query(`
     SELECT c.nome as categoria, c.cor, SUM(l.valor)::text as valor
     FROM financeiro.lancamentos l
     JOIN financeiro.categorias c ON c.id = l.categoria_id
-    WHERE l.tipo = 'receita' AND l.status != 'cancelado' ${dateFilter}
+    WHERE l.tipo = 'receita' AND l.status != 'cancelado' ${lFilter}
     GROUP BY c.nome, c.cor ORDER BY SUM(l.valor) DESC
-  `, params);
+  `, []);
 
-  // Despesas por categoria
+  const receitasPorCategoria = [
+    ...(receitaBling > 0 ? [{ categoria: "Vendas (Bling)", cor: "#10B981", valor: receitaBling.toFixed(2) }] : []),
+    ...receitasManuais,
+  ];
+
+  // ── Despesas por categoria ──
   const despesasPorCategoria = await query(`
     SELECT c.nome as categoria, c.cor, SUM(l.valor)::text as valor
     FROM financeiro.lancamentos l
     JOIN financeiro.categorias c ON c.id = l.categoria_id
-    WHERE l.tipo = 'despesa' AND l.status != 'cancelado' ${dateFilter}
+    WHERE l.tipo = 'despesa' AND l.status != 'cancelado' ${lFilter}
     GROUP BY c.nome, c.cor ORDER BY SUM(l.valor) DESC
-  `, params);
-
-  // Resumo mensal (últimos 12 meses)
-  const resumoMensal = await query(`
-    SELECT
-      TO_CHAR(DATE_TRUNC('month', l.data), 'YYYY-MM') as mes,
-      TO_CHAR(DATE_TRUNC('month', l.data), 'Mon/YY') as mes_label,
-      COALESCE(SUM(CASE WHEN l.tipo = 'receita' THEN l.valor END), 0)::text AS receitas,
-      COALESCE(SUM(CASE WHEN l.tipo = 'despesa' THEN l.valor END), 0)::text AS despesas,
-      (COALESCE(SUM(CASE WHEN l.tipo = 'receita' THEN l.valor END), 0)
-       - COALESCE(SUM(CASE WHEN l.tipo = 'despesa' THEN l.valor END), 0))::text AS saldo
-    FROM financeiro.lancamentos l
-    WHERE l.status != 'cancelado' AND l.data >= CURRENT_DATE - INTERVAL '12 months'
-    GROUP BY DATE_TRUNC('month', l.data)
-    ORDER BY DATE_TRUNC('month', l.data)
   `, []);
 
-  // Total vendas (qtd)
-  const vendasInfo = await queryOne<{ total_vendas: string; ticket_medio: string }>(`
+  // ── Resumo mensal (combina Bling + lançamentos) ──
+  const resumoMensal = await query(`
+    WITH bling_mensal AS (
+      SELECT
+        DATE_TRUNC('month', o.criado_bling) as mes,
+        COALESCE(SUM(o.valor), 0) AS receitas
+      FROM sync.bling_orders o
+      WHERE o.criado_bling >= CURRENT_DATE - INTERVAL '12 months'
+      GROUP BY DATE_TRUNC('month', o.criado_bling)
+    ),
+    lanc_mensal AS (
+      SELECT
+        DATE_TRUNC('month', l.data) as mes,
+        COALESCE(SUM(CASE WHEN l.tipo = 'receita' THEN l.valor END), 0) AS outras_receitas,
+        COALESCE(SUM(CASE WHEN l.tipo = 'despesa' THEN l.valor END), 0) AS despesas
+      FROM financeiro.lancamentos l
+      WHERE l.status != 'cancelado' AND l.data >= CURRENT_DATE - INTERVAL '12 months'
+      GROUP BY DATE_TRUNC('month', l.data)
+    ),
+    meses AS (
+      SELECT mes FROM bling_mensal UNION SELECT mes FROM lanc_mensal
+    )
     SELECT
-      COALESCE(SUM(l.qtd_vendas), 0)::text AS total_vendas,
-      CASE WHEN SUM(l.qtd_vendas) > 0
-        THEN ROUND(SUM(l.valor) / SUM(l.qtd_vendas), 2)::text
-        ELSE '0'
-      END AS ticket_medio
-    FROM financeiro.lancamentos l
-    WHERE l.tipo = 'receita' AND l.status != 'cancelado' AND l.qtd_vendas > 0 ${dateFilter}
-  `, params);
+      TO_CHAR(m.mes, 'YYYY-MM') as mes,
+      TO_CHAR(m.mes, 'Mon/YY') as mes_label,
+      (COALESCE(b.receitas, 0) + COALESCE(lm.outras_receitas, 0))::text AS receitas,
+      COALESCE(lm.despesas, 0)::text AS despesas,
+      (COALESCE(b.receitas, 0) + COALESCE(lm.outras_receitas, 0) - COALESCE(lm.despesas, 0))::text AS saldo
+    FROM meses m
+    LEFT JOIN bling_mensal b ON b.mes = m.mes
+    LEFT JOIN lanc_mensal lm ON lm.mes = m.mes
+    ORDER BY m.mes
+  `, []);
 
-  // Despesas fixas totais
+  // ── Despesas fixas + ponto de equilíbrio ──
   const despFixas = await queryOne<{ total: string }>(`
     SELECT COALESCE(SUM(valor), 0)::text AS total FROM financeiro.despesas_fixas WHERE ativo = true
   `, []);
-
-  // Ponto de equilíbrio
-  const ticketMedio = parseFloat(vendasInfo?.ticket_medio || "0");
   const despFixasTotal = parseFloat(despFixas?.total || "0");
   const pontoEquilibrio = ticketMedio > 0 ? Math.ceil(despFixasTotal / ticketMedio) : 0;
 
   res.json({
-    receitas: parseFloat(totais?.receitas || "0"),
-    despesas: parseFloat(totais?.despesas || "0"),
-    saldo: parseFloat(totais?.saldo || "0"),
+    receitas: receitaTotal,
+    despesas: despesaTotal,
+    saldo,
     variacao_receita: variacaoReceita,
     variacao_despesa: variacaoDespesa,
-    total_vendas: parseInt(vendasInfo?.total_vendas || "0", 10),
+    total_vendas: totalPedidos,
     ticket_medio: ticketMedio,
     despesas_fixas_mensal: despFixasTotal,
     ponto_equilibrio: pontoEquilibrio,
     receitas_por_categoria: receitasPorCategoria,
     despesas_por_categoria: despesasPorCategoria,
     resumo_mensal: resumoMensal,
+    fonte_receitas: "bling",
   });
 });
 
