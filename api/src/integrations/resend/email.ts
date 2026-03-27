@@ -1,0 +1,182 @@
+import { Resend } from "resend";
+import { queryOne, query } from "../../db";
+import { logger } from "../../utils/logger";
+
+// ── Client (inicializa só se tiver API key) ─────────────────────
+
+function getClient(): Resend | null {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey || apiKey === "PREENCHER") {
+    return null;
+  }
+  return new Resend(apiKey);
+}
+
+// ── Verificar se o Resend está configurado ──────────────────────
+
+export function isResendConfigured(): boolean {
+  const key = process.env.RESEND_API_KEY;
+  return !!key && key !== "PREENCHER";
+}
+
+// ── Enviar email individual ─────────────────────────────────────
+
+interface SendEmailParams {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+  replyTo?: string;
+  tags?: Array<{ name: string; value: string }>;
+}
+
+export async function sendEmail(params: SendEmailParams): Promise<{ id: string } | null> {
+  const client = getClient();
+  if (!client) {
+    logger.warn("Resend não configurado — email não enviado", { to: params.to, subject: params.subject });
+    return null;
+  }
+
+  const from = process.env.EMAIL_FROM || "noreply@papelariabibelo.com.br";
+  const replyTo = params.replyTo || process.env.EMAIL_REPLY_TO || "contato@papelariabibelo.com.br";
+
+  const { data, error } = await client.emails.send({
+    from,
+    to: params.to,
+    subject: params.subject,
+    html: params.html,
+    text: params.text,
+    reply_to: replyTo,
+    tags: params.tags,
+  });
+
+  if (error) {
+    logger.error("Erro ao enviar email via Resend", { error: error.message, to: params.to });
+    throw new Error(error.message);
+  }
+
+  logger.info("Email enviado via Resend", { id: data?.id, to: params.to, subject: params.subject });
+  return data ? { id: data.id } : null;
+}
+
+// ── Enviar campanha para segmento ───────────────────────────────
+
+export async function sendCampaignEmails(campaignId: string): Promise<{ sent: number; failed: number }> {
+  const client = getClient();
+  if (!client) {
+    throw new Error("Resend não configurado. Adicione RESEND_API_KEY no .env");
+  }
+
+  // Busca campanha com template
+  const campaign = await queryOne<{
+    id: string; nome: string; canal: string;
+    template_id: string | null; segment_id: string | null;
+  }>(
+    "SELECT id, nome, canal, template_id, segment_id FROM marketing.campaigns WHERE id = $1",
+    [campaignId]
+  );
+
+  if (!campaign) throw new Error("Campanha não encontrada");
+  if (campaign.canal !== "email") throw new Error("Campanha não é de email");
+  if (!campaign.template_id) throw new Error("Campanha sem template");
+
+  // Busca template
+  const template = await queryOne<{
+    assunto: string; html: string; texto: string;
+  }>(
+    "SELECT assunto, html, texto FROM marketing.templates WHERE id = $1 AND ativo = true",
+    [campaign.template_id]
+  );
+
+  if (!template) throw new Error("Template não encontrado ou inativo");
+
+  // Busca envios pendentes
+  const sends = await query<{
+    id: string; customer_id: string; email: string; nome: string;
+  }>(
+    `SELECT cs.id, cs.customer_id, c.email, c.nome
+     FROM marketing.campaign_sends cs
+     JOIN crm.customers c ON c.id = cs.customer_id
+     WHERE cs.campaign_id = $1 AND cs.status = 'pendente' AND c.email IS NOT NULL`,
+    [campaignId]
+  );
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const send of sends) {
+    try {
+      // Substitui variáveis no template
+      const html = (template.html || "")
+        .replace(/\{\{nome\}\}/g, send.nome || "Cliente")
+        .replace(/\{\{email\}\}/g, send.email);
+
+      const subject = (template.assunto || campaign.nome)
+        .replace(/\{\{nome\}\}/g, send.nome || "Cliente");
+
+      const result = await sendEmail({
+        to: send.email,
+        subject,
+        html,
+        text: template.texto?.replace(/\{\{nome\}\}/g, send.nome || "Cliente"),
+        tags: [
+          { name: "campaign_id", value: campaignId },
+          { name: "customer_id", value: send.customer_id },
+        ],
+      });
+
+      await query(
+        `UPDATE marketing.campaign_sends
+         SET status = 'enviado', message_id = $2, enviado_em = NOW()
+         WHERE id = $1`,
+        [send.id, result?.id || null]
+      );
+
+      sent++;
+
+      // Pequeno delay para não estourar rate limit do Resend
+      await new Promise((r) => setTimeout(r, 100));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro";
+      logger.error("Falha ao enviar email de campanha", {
+        sendId: send.id, email: send.email, error: msg,
+      });
+
+      await query(
+        "UPDATE marketing.campaign_sends SET status = 'erro' WHERE id = $1",
+        [send.id]
+      );
+
+      failed++;
+    }
+  }
+
+  // Atualiza totais da campanha
+  await query(
+    `UPDATE marketing.campaigns
+     SET total_envios = total_envios + $2,
+         status = CASE WHEN $3 = 0 THEN 'concluida' ELSE status END,
+         atualizado_em = NOW()
+     WHERE id = $1`,
+    [campaignId, sent, sends.length - sent - failed]
+  );
+
+  logger.info("Campanha de email processada", { campaignId, sent, failed });
+  return { sent, failed };
+}
+
+// ── Status da integração ────────────────────────────────────────
+
+export async function getResendStatus(): Promise<{
+  configured: boolean;
+  from: string;
+  reply_to: string;
+  plan_limit: string;
+}> {
+  return {
+    configured: isResendConfigured(),
+    from: process.env.EMAIL_FROM || "noreply@papelariabibelo.com.br",
+    reply_to: process.env.EMAIL_REPLY_TO || "contato@papelariabibelo.com.br",
+    plan_limit: "3.000 emails/mes (gratis)",
+  };
+}
