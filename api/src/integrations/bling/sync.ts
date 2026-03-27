@@ -713,6 +713,132 @@ export async function syncNFe(): Promise<number> {
   }
 }
 
+// ── Sync Contas a Pagar ─────────────────────────────────────────
+
+export async function syncContasPagar(): Promise<number> {
+  const token = await getValidToken();
+  let page = 1;
+  let total = 0;
+
+  try {
+    // Cache de contatos para evitar requests repetidos
+    const contatoCache = new Map<string, { nome: string; doc: string }>();
+
+    while (true) {
+      const data = await rateLimitedGet<{ data: Array<Record<string, unknown>> }>(
+        `${BLING_API}/contas/pagar?pagina=${page}&limite=100`,
+        token
+      );
+      if (!data.data || data.data.length === 0) break;
+
+      for (const conta of data.data) {
+        const contatoId = (conta.contato as { id?: number })?.id;
+        const formaPagId = (conta.formaPagamento as { id?: number })?.id;
+
+        // Busca detalhe para pegar numero_documento e historico
+        let detalhe: Record<string, unknown> = {};
+        try {
+          const det = await rateLimitedGet<{ data: Record<string, unknown> }>(
+            `${BLING_API}/contas/pagar/${conta.id}`,
+            token
+          );
+          detalhe = det.data || {};
+        } catch {
+          // ignora erro de detalhe
+        }
+
+        // Busca data de pagamento via bordero
+        let dataPagamento: string | null = null;
+        let valorPago = 0;
+        const borderos = detalhe.borderos as number[] | undefined;
+        if (borderos && borderos.length > 0 && conta.situacao === 2) {
+          try {
+            const bord = await rateLimitedGet<{ data: { data?: string; pagamentos?: Array<{ valorPago?: number }> } }>(
+              `${BLING_API}/borderos/${borderos[0]}`,
+              token
+            );
+            dataPagamento = bord.data?.data || null;
+            valorPago = bord.data?.pagamentos?.[0]?.valorPago || (conta.valor as number) || 0;
+          } catch {
+            // ignora
+          }
+        }
+
+        // Busca nome do contato (com cache)
+        let contatoNome = "";
+        let contatoDoc = "";
+        if (contatoId) {
+          const cached = contatoCache.get(String(contatoId));
+          if (cached) {
+            contatoNome = cached.nome;
+            contatoDoc = cached.doc;
+          } else {
+            try {
+              const ct = await rateLimitedGet<{ data: { nome?: string; numeroDocumento?: string } }>(
+                `${BLING_API}/contatos/${contatoId}`,
+                token
+              );
+              contatoNome = ct.data?.nome || "";
+              contatoDoc = ct.data?.numeroDocumento || "";
+              contatoCache.set(String(contatoId), { nome: contatoNome, doc: contatoDoc });
+            } catch {
+              // ignora
+            }
+          }
+        }
+
+        // Busca nome da forma de pagamento
+        let formaDesc = "";
+        if (formaPagId) {
+          const fp = await queryOne<{ descricao: string }>(
+            "SELECT descricao FROM sync.bling_formas_pagamento WHERE bling_id = $1",
+            [String(formaPagId)]
+          );
+          formaDesc = fp?.descricao || "";
+        }
+
+        await query(
+          `INSERT INTO sync.bling_contas_pagar
+           (bling_id, situacao, vencimento, valor, saldo, data_emissao, numero_documento, historico,
+            contato_bling_id, contato_nome, contato_doc, forma_pagamento, data_pagamento, valor_pago, dados_raw, sincronizado_em)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, NOW())
+           ON CONFLICT (bling_id) DO UPDATE SET
+             situacao=$2, valor=$4, saldo=$5, contato_nome=$10, contato_doc=$11,
+             forma_pagamento=$12, data_pagamento=$13, valor_pago=$14, dados_raw=$15, sincronizado_em=NOW()`,
+          [
+            String(conta.id),
+            conta.situacao || 1,
+            conta.vencimento || null,
+            conta.valor || 0,
+            detalhe.saldo || 0,
+            detalhe.dataEmissao || null,
+            detalhe.numeroDocumento || null,
+            detalhe.historico || null,
+            contatoId ? String(contatoId) : null,
+            contatoNome,
+            contatoDoc,
+            formaDesc,
+            dataPagamento,
+            valorPago,
+            JSON.stringify({ ...conta, detalhe }),
+          ]
+        );
+        total++;
+      }
+      page++;
+    }
+
+    await logSync("bling", "contas_pagar", "ok", total);
+    logger.info("Bling syncContasPagar concluído", { total });
+    return total;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    await logSync("bling", "contas_pagar", "erro", total, message);
+    logger.error("Bling syncContasPagar falhou", { error: message });
+    throw err;
+  }
+}
+
 // ── Helper: log de sync ────────────────────────────────────────
 
 async function logSync(

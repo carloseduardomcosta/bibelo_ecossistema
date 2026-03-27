@@ -12,6 +12,7 @@ import {
   CalendarClock,
   Calculator,
   FileText,
+  Banknote,
   Megaphone,
   RefreshCw,
   LogOut,
@@ -63,6 +64,7 @@ const navGroups: NavGroup[] = [
       { to: '/despesas-fixas', label: 'Despesas Fixas', icon: CalendarClock },
       { to: '/simulador', label: 'Simulador', icon: Calculator },
       { to: '/nf-entrada', label: 'NF Entrada', icon: FileText },
+      { to: '/contas-pagar', label: 'Contas a Pagar', icon: Banknote },
     ],
   },
   {

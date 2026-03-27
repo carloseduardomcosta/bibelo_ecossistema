@@ -289,6 +289,76 @@ analyticsRouter.get("/insights", async (req: Request, res: Response) => {
   });
 });
 
+// ── GET /api/analytics/contas-pagar — contas a pagar ────────────
+
+analyticsRouter.get("/contas-pagar", async (req: Request, res: Response) => {
+  const status = req.query.status as string | undefined; // 'pendente', 'pago', 'todos'
+
+  let where = "";
+  if (status === "pendente") where = "WHERE situacao = 1";
+  else if (status === "pago") where = "WHERE situacao = 2";
+
+  const resumo = await queryOne<{
+    total: string; pendentes: string; pagas: string;
+    valor_pendente: string; valor_pago: string;
+    vencidas: string; valor_vencido: string;
+  }>(`
+    SELECT
+      COUNT(*)::text AS total,
+      COUNT(*) FILTER (WHERE situacao = 1)::text AS pendentes,
+      COUNT(*) FILTER (WHERE situacao = 2)::text AS pagas,
+      COALESCE(SUM(valor) FILTER (WHERE situacao = 1), 0)::text AS valor_pendente,
+      COALESCE(SUM(valor_pago) FILTER (WHERE situacao = 2), 0)::text AS valor_pago,
+      COUNT(*) FILTER (WHERE situacao = 1 AND vencimento < CURRENT_DATE)::text AS vencidas,
+      COALESCE(SUM(valor) FILTER (WHERE situacao = 1 AND vencimento < CURRENT_DATE), 0)::text AS valor_vencido
+    FROM sync.bling_contas_pagar
+  `);
+
+  const contas = await query<{
+    bling_id: string; situacao: number; vencimento: string; valor: number;
+    numero_documento: string; historico: string; contato_nome: string;
+    forma_pagamento: string; data_pagamento: string; valor_pago: number;
+  }>(`
+    SELECT bling_id, situacao, vencimento, valor, numero_documento, historico,
+           contato_nome, forma_pagamento, data_pagamento, valor_pago
+    FROM sync.bling_contas_pagar
+    ${where}
+    ORDER BY CASE WHEN situacao = 1 AND vencimento < CURRENT_DATE THEN 0
+                  WHEN situacao = 1 THEN 1
+                  ELSE 2 END,
+             vencimento ASC
+    LIMIT 100
+  `);
+
+  const porFornecedor = await query<{ fornecedor: string; total: string; valor: string }>(`
+    SELECT COALESCE(NULLIF(contato_nome, ''), 'Nao informado') AS fornecedor,
+           COUNT(*)::text AS total,
+           COALESCE(SUM(valor), 0)::text AS valor
+    FROM sync.bling_contas_pagar
+    GROUP BY contato_nome
+    ORDER BY SUM(valor) DESC
+    LIMIT 10
+  `);
+
+  res.json({
+    resumo: {
+      total: parseInt(resumo?.total || "0", 10),
+      pendentes: parseInt(resumo?.pendentes || "0", 10),
+      pagas: parseInt(resumo?.pagas || "0", 10),
+      valor_pendente: parseFloat(resumo?.valor_pendente || "0"),
+      valor_pago: parseFloat(resumo?.valor_pago || "0"),
+      vencidas: parseInt(resumo?.vencidas || "0", 10),
+      valor_vencido: parseFloat(resumo?.valor_vencido || "0"),
+    },
+    contas,
+    por_fornecedor: porFornecedor.map((r) => ({
+      fornecedor: r.fornecedor,
+      total: parseInt(r.total, 10),
+      valor: parseFloat(r.valor),
+    })),
+  });
+});
+
 // ── GET /api/analytics/pagamentos — formas de pagamento ─────────
 
 analyticsRouter.get("/pagamentos", async (_req: Request, res: Response) => {
