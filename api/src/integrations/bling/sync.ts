@@ -839,6 +839,124 @@ export async function syncContasPagar(): Promise<number> {
   }
 }
 
+// ── Sync NF de Entrada (compra) do Bling com itens ──────────────
+
+export async function syncNfEntrada(): Promise<number> {
+  const token = await getValidToken();
+  let page = 1;
+  let total = 0;
+
+  try {
+    while (true) {
+      const data = await rateLimitedGet<{ data: Array<Record<string, unknown>> }>(
+        `${BLING_API}/nfe?pagina=${page}&limite=100&tipo=0`,
+        token
+      );
+      if (!data.data || data.data.length === 0) break;
+
+      for (const nfe of data.data) {
+        const contato = nfe.contato as Record<string, unknown> | undefined;
+        const endereco = contato?.endereco as Record<string, unknown> | undefined;
+        const chave = nfe.chaveAcesso as string;
+
+        if (!chave) continue;
+
+        // Verifica se ja existe
+        const existing = await queryOne<{ id: string }>(
+          "SELECT id FROM financeiro.notas_entrada WHERE chave_acesso = $1",
+          [chave]
+        );
+
+        if (existing) {
+          total++;
+          continue; // Ja sincronizada
+        }
+
+        // Busca detalhe com itens
+        let itens: Array<Record<string, unknown>> = [];
+        let valorNota = 0;
+        try {
+          const detail = await rateLimitedGet<{ data: Record<string, unknown> }>(
+            `${BLING_API}/nfe/${nfe.id}`,
+            token
+          );
+          itens = (detail.data?.itens as Array<Record<string, unknown>>) || [];
+          valorNota = (detail.data?.valorNota as number) || 0;
+        } catch {
+          // Se nao conseguir detalhe, insere sem itens
+        }
+
+        const valorProdutos = itens.reduce((s, i) => s + ((i.valorTotal as number) || 0), 0);
+        const numero = (nfe.numero as string || "").replace(/^0+/, "");
+
+        // Insere NF
+        const inserted = await queryOne<{ id: string }>(
+          `INSERT INTO financeiro.notas_entrada
+           (numero, chave_acesso, fornecedor_cnpj, fornecedor_nome, fornecedor_uf,
+            valor_produtos, valor_total, data_emissao, status, observacoes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pendente', $9)
+           ON CONFLICT (chave_acesso) DO NOTHING
+           RETURNING id`,
+          [
+            numero,
+            chave,
+            contato?.numeroDocumento || null,
+            contato?.nome || null,
+            endereco?.uf || null,
+            valorProdutos || valorNota,
+            valorNota || valorProdutos,
+            nfe.dataEmissao ? (nfe.dataEmissao as string).split(" ")[0] : null,
+            `Sync automatico do Bling - NF ${numero}`,
+          ]
+        );
+
+        if (inserted && itens.length > 0) {
+          // Insere itens
+          for (let idx = 0; idx < itens.length; idx++) {
+            const item = itens[idx];
+            const impostos = item.impostos as Record<string, unknown> | undefined;
+
+            await query(
+              `INSERT INTO financeiro.notas_entrada_itens
+               (nota_id, numero_item, codigo_produto, descricao, ncm, cfop, unidade,
+                quantidade, valor_unitario, valor_total, icms_valor, ipi_valor, pis_valor, cofins_valor)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+              [
+                inserted.id,
+                idx + 1,
+                item.codigo || item.gtin || null,
+                item.descricao || "Sem descricao",
+                item.classificacaoFiscal || null,
+                item.cfop || null,
+                item.unidade || "UN",
+                item.quantidade || 0,
+                item.valor || 0,
+                item.valorTotal || 0,
+                (impostos?.icms as Record<string, unknown>)?.valor || 0,
+                (impostos?.ipi as Record<string, unknown>)?.valor || 0,
+                (impostos?.pis as Record<string, unknown>)?.valor || 0,
+                (impostos?.cofins as Record<string, unknown>)?.valor || 0,
+              ]
+            );
+          }
+        }
+
+        total++;
+      }
+      page++;
+    }
+
+    await logSync("bling", "nf_entrada", "ok", total);
+    logger.info("Bling syncNfEntrada concluído", { total });
+    return total;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    await logSync("bling", "nf_entrada", "erro", total, message);
+    logger.error("Bling syncNfEntrada falhou", { error: message });
+    throw err;
+  }
+}
+
 // ── Helper: log de sync ────────────────────────────────────────
 
 async function logSync(

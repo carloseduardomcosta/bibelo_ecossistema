@@ -3,7 +3,7 @@ import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { getAuthUrl, exchangeCode } from "../integrations/bling/auth";
-import { syncCustomers, syncOrders, syncProducts, syncStock, incrementalSync } from "../integrations/bling/sync";
+import { syncCustomers, syncOrders, syncProducts, syncStock, syncNfEntrada, incrementalSync } from "../integrations/bling/sync";
 
 export const syncRouter = Router();
 
@@ -66,7 +66,8 @@ syncRouter.post("/bling", authMiddleware, async (req: Request, res: Response) =>
       const orders = await syncOrders();
       const products = await syncProducts();
       const stock = await syncStock();
-      logger.info("Sync completo finalizado", { customers, orders, products, stock });
+      const nfEntrada = await syncNfEntrada();
+      logger.info("Sync completo finalizado", { customers, orders, products, stock, nfEntrada });
     } else {
       const result = await incrementalSync();
       logger.info("Sync incremental finalizado", { ...result });
