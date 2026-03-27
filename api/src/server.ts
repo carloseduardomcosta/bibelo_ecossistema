@@ -11,6 +11,8 @@ import { healthRouter } from "./routes/health";
 import { authRouter }   from "./routes/auth";
 import { customersRouter } from "./routes/customers";
 import { analyticsRouter } from "./routes/analytics";
+import { campaignsRouter }  from "./routes/campaigns";
+import { templatesRouter }  from "./routes/templates";
 import { nuvemshopWebhookRouter } from "./integrations/nuvemshop/webhook";
 import { registerScheduledJobs } from "./queues/sync.queue";
 
@@ -50,6 +52,8 @@ app.use("/",        healthRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/customers", customersRouter);
 app.use("/api/analytics", analyticsRouter);
+app.use("/api/campaigns", campaignsRouter);
+app.use("/api/templates", templatesRouter);
 app.use("/api/webhooks/nuvemshop", nuvemshopWebhookRouter);
 
 // ── 404

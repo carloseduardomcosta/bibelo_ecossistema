@@ -38,9 +38,11 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   ├── server.ts            ← entrada principal da API
 │   │   ├── routes/
 │   │   │   ├── health.ts        ← GET /health
-│   │   │   ├── auth.ts          ← POST /login, GET /me, POST /logout
+│   │   │   ├── auth.ts          ← POST /google, GET /me, POST /logout
 │   │   │   ├── customers.ts     ← CRUD + timeline (5 endpoints)
-│   │   │   └── analytics.ts     ← overview, revenue, segments
+│   │   │   ├── analytics.ts     ← overview, revenue, segments
+│   │   │   ├── campaigns.ts     ← CRUD + disparo (5 endpoints)
+│   │   │   └── templates.ts     ← CRUD + soft delete (5 endpoints)
 │   │   ├── services/
 │   │   │   └── customer.service.ts ← upsert, score, timeline, segments
 │   │   ├── integrations/
@@ -168,9 +170,16 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `GET  /api/analytics/overview` — KPIs gerais
 - `GET  /api/analytics/revenue` — receita por mês
 - `GET  /api/analytics/segments` — clientes por segmento
-- `GET  /api/campaigns` — listar campanhas
+- `GET  /api/campaigns` — listar campanhas (paginada, filtro status/canal)
+- `GET  /api/campaigns/:id` — detalhes + sends por status
 - `POST /api/campaigns` — criar campanha
-- `POST /api/campaigns/:id/send` — disparar campanha
+- `PUT  /api/campaigns/:id` — atualizar campanha
+- `POST /api/campaigns/:id/send` — disparar campanha (cria sends, muda status)
+- `GET  /api/templates` — listar templates (filtro por canal)
+- `GET  /api/templates/:id` — detalhes do template
+- `POST /api/templates` — criar template
+- `PUT  /api/templates/:id` — atualizar template
+- `DELETE /api/templates/:id` — soft delete
 - `GET  /api/sync/status` — status das sincronizações
 - `POST /api/sync/bling` — sync manual do Bling
 - `POST /api/auth/bling` — inicia OAuth2 Bling
@@ -290,7 +299,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 2. ~~**Frontend: Dashboard**~~ ✅ — KPIs reais, gráfico receita mensal, gráfico segmentos (Recharts)
 3. ~~**Frontend: Lista de Clientes**~~ ✅ — Tabela paginada, busca, filtro segmento, link perfil
 4. ~~**Frontend: Perfil do Cliente**~~ ✅ — Dados, score, timeline interações/pedidos
-5. **Rotas de Campanhas** — `api/src/routes/campaigns.ts` — CRUD + disparo (tabelas marketing.* existem)
+5. ~~**Rotas de Campanhas**~~ ✅ — CRUD + disparo + templates (api/src/routes/campaigns.ts + templates.ts)
 6. **Rotas de Sync** — `api/src/routes/sync.ts` — GET status, POST sync manual Bling, POST OAuth redirect
 
 ### P1 — Integrações reais (dependem de credenciais)
@@ -328,6 +337,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - a049d41 docs: documenta infraestrutura completa — firewall, Nginx, SSL, Docker, DNS
 - c4f5d83 feat: frontend login Google OAuth, layout sidebar, rotas protegidas
 - cf61c7a feat: dashboard com KPIs reais, gráfico receita mensal e segmentos
+- 48cf9d3 feat: lista de clientes paginada + perfil completo com score e timeline
 
 
 ## Protocolo de atualização deste arquivo
