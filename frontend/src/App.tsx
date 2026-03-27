@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import Clientes from './pages/Clientes';
 import ClientePerfil from './pages/ClientePerfil';
 import Sync from './pages/Sync';
+import Campanhas from './pages/Campanhas';
 import Produtos from './pages/Produtos';
 import Estoque from './pages/Estoque';
 import Lucratividade from './pages/Lucratividade';
@@ -35,7 +36,7 @@ export default function App() {
               <Route path="/produtos/:id" element={<Placeholder titulo="Detalhe Produto" />} />
               <Route path="/estoque" element={<Estoque />} />
               <Route path="/lucratividade" element={<Lucratividade />} />
-              <Route path="/campanhas" element={<Placeholder titulo="Campanhas" />} />
+              <Route path="/campanhas" element={<Campanhas />} />
               <Route path="/sync" element={<Sync />} />
             </Route>
           </Routes>

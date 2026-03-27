@@ -156,6 +156,35 @@ productsRouter.get("/stock-overview", async (_req: Request, res: Response) => {
   });
 });
 
+// ── GET /api/products/stock-alerts — produtos críticos ───────────
+
+productsRouter.get("/stock-alerts", async (_req: Request, res: Response) => {
+  const rows = await query<{
+    id: string; nome: string; sku: string; categoria: string;
+    preco_venda: number; preco_custo: number; saldo: string;
+  }>(`
+    SELECT p.id, p.nome, p.sku, COALESCE(p.categoria, 'Sem categoria') AS categoria,
+           p.preco_venda, p.preco_custo,
+           COALESCE(s.saldo, 0)::text AS saldo
+    FROM sync.bling_products p
+    LEFT JOIN (SELECT product_id, SUM(saldo_fisico) AS saldo FROM sync.bling_stock GROUP BY product_id) s
+      ON s.product_id = p.id
+    WHERE p.ativo = true AND COALESCE(s.saldo, 0) <= 5
+    ORDER BY COALESCE(s.saldo, 0) ASC, p.preco_venda DESC
+    LIMIT 100
+  `);
+
+  const semEstoque = rows.filter((r) => parseFloat(r.saldo) === 0);
+  const estoqueBaixo = rows.filter((r) => parseFloat(r.saldo) > 0);
+
+  res.json({
+    sem_estoque: semEstoque.map((r) => ({ ...r, saldo: parseFloat(r.saldo) })),
+    estoque_baixo: estoqueBaixo.map((r) => ({ ...r, saldo: parseFloat(r.saldo) })),
+    valor_perdido: semEstoque.reduce((s, r) => s + r.preco_venda, 0),
+    custo_reposicao: semEstoque.reduce((s, r) => s + r.preco_custo, 0),
+  });
+});
+
 // ── GET /api/products/:id — detalhe do produto ──────────────────
 
 productsRouter.get("/:id", async (req: Request, res: Response) => {
