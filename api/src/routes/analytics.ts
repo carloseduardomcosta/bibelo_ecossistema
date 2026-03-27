@@ -142,15 +142,12 @@ analyticsRouter.get("/segments", async (_req: Request, res: Response) => {
 // ── GET /api/analytics/insights — oportunidades e alertas ───────
 
 analyticsRouter.get("/insights", async (_req: Request, res: Response) => {
-  // Clientes em risco de churn (score baixo, compras antigas)
-  const clientesRisco = await query<{ id: string; nome: string; score: number; ultima_compra: string }>(`
-    SELECT c.id, c.nome, cs.score, cs.risco_churn,
-           (SELECT MAX(o.criado_bling) FROM sync.bling_orders o
-            JOIN sync.bling_customers bc ON bc.customer_id = c.id
-            WHERE o.customer_id = c.id)::text AS ultima_compra
+  // Clientes em risco de churn (score baixo, segmento inativo)
+  const clientesRisco = await query<{ id: string; nome: string; score: number }>(`
+    SELECT c.id, c.nome, cs.score
     FROM crm.customers c
     JOIN crm.customer_scores cs ON cs.customer_id = c.id
-    WHERE cs.segmento = 'inativo' OR cs.risco_churn > 0.6
+    WHERE cs.segmento = 'inativo' OR cs.risco_churn IN ('alto', 'medio')
     ORDER BY cs.score ASC
     LIMIT 10
   `);
