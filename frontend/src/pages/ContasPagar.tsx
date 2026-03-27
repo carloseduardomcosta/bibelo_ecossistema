@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Receipt, AlertTriangle, CheckCircle, Clock, DollarSign } from 'lucide-react';
+import { Receipt, AlertTriangle, CheckCircle, Clock, DollarSign, Check, Trash2 } from 'lucide-react';
 import api from '../lib/api';
 
 interface Resumo {
@@ -34,17 +34,29 @@ const SITUACAO: Record<number, { label: string; color: string }> = {
   5: { label: 'Cancelado', color: 'bg-red-500/20 text-red-400' },
 };
 
+const PERIODOS = [
+  { value: '30d', label: '30 dias' },
+  { value: '3m', label: '3 meses' },
+  { value: '6m', label: '6 meses' },
+  { value: '1a', label: '1 ano' },
+];
+
 export default function ContasPagar() {
   const [resumo, setResumo] = useState<Resumo | null>(null);
   const [contas, setContas] = useState<Conta[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [filtro, setFiltro] = useState('todos');
+  const [periodo, setPeriodo] = useState('3m');
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  useEffect(() => {
+  const fetchData = () => {
     setLoading(true);
-    const params = filtro !== 'todos' ? `?status=${filtro}` : '';
-    api.get(`/analytics/contas-pagar${params}`)
+    const p = new URLSearchParams();
+    if (filtro !== 'todos') p.set('status', filtro);
+    p.set('periodo', periodo);
+    api.get(`/analytics/contas-pagar?${p.toString()}`)
       .then(({ data }) => {
         setResumo(data.resumo);
         setContas(data.contas);
@@ -52,13 +64,61 @@ export default function ContasPagar() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [filtro]);
+  };
+
+  useEffect(() => { fetchData(); }, [filtro, periodo]);
+
+  const handlePagar = async (blingId: string) => {
+    if (!confirm('Confirma pagamento desta conta? Será registrado no Bling.')) return;
+    setActionLoading(blingId);
+    setMessage(null);
+    try {
+      await api.post(`/contas-pagar/${blingId}/pagar`, {
+        data_pagamento: new Date().toISOString().split('T')[0],
+      });
+      setMessage({ text: 'Pagamento registrado com sucesso no Bling!', type: 'success' });
+      fetchData();
+    } catch {
+      setMessage({ text: 'Erro ao registrar pagamento.', type: 'error' });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDeletar = async (blingId: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta conta? Sera removida do Bling.')) return;
+    setActionLoading(blingId);
+    setMessage(null);
+    try {
+      await api.delete(`/contas-pagar/${blingId}`);
+      setMessage({ text: 'Conta removida.', type: 'success' });
+      fetchData();
+    } catch {
+      setMessage({ text: 'Erro ao excluir conta.', type: 'error' });
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-2xl font-bold text-bibelo-text">Contas a Pagar</h1>
-        <div className="flex gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1">
+        <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1">
+            {PERIODOS.map((p) => (
+              <button
+                key={p.value}
+                onClick={() => setPeriodo(p.value)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  periodo === p.value ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1">
           {[
             { value: 'todos', label: 'Todos' },
             { value: 'pendente', label: 'Pendentes' },
@@ -74,6 +134,7 @@ export default function ContasPagar() {
               {f.label}
             </button>
           ))}
+          </div>
         </div>
       </div>
 
@@ -100,6 +161,17 @@ export default function ContasPagar() {
         ))}
       </div>
 
+      {/* Mensagem */}
+      {message && (
+        <div className={`mb-6 px-4 py-3 rounded-lg text-sm flex items-center gap-2 ${
+          message.type === 'success' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+            : 'bg-red-500/10 border border-red-500/20 text-red-400'
+        }`}>
+          {message.type === 'success' ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
+          {message.text}
+        </div>
+      )}
+
       {/* Alerta vencidas */}
       {resumo && resumo.vencidas > 0 && (
         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-6 flex items-center gap-3">
@@ -123,6 +195,7 @@ export default function ContasPagar() {
                   <th className="px-4 py-3 font-medium text-right">Valor</th>
                   <th className="px-4 py-3 font-medium hidden md:table-cell">Pagamento</th>
                   <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium text-right">Acoes</th>
                 </tr>
               </thead>
               <tbody>
@@ -172,6 +245,28 @@ export default function ContasPagar() {
                           ) : (
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${sit.color}`}>{sit.label}</span>
                           )}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {c.situacao === 1 && (
+                              <button
+                                onClick={() => handlePagar(c.bling_id)}
+                                disabled={actionLoading === c.bling_id}
+                                title="Marcar como pago"
+                                className="p-1.5 rounded-lg text-emerald-400 hover:bg-emerald-400/10 disabled:opacity-50 transition-colors"
+                              >
+                                <Check size={15} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeletar(c.bling_id)}
+                              disabled={actionLoading === c.bling_id}
+                              title="Excluir"
+                              className="p-1.5 rounded-lg text-bibelo-muted hover:text-red-400 hover:bg-red-400/10 disabled:opacity-50 transition-colors"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
