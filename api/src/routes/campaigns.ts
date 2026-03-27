@@ -94,25 +94,43 @@ campaignsRouter.get("/resend-status", async (_req: Request, res: Response) => {
 campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
   const dias = Math.min(Number(req.query.dias) || 30, 90);
   const limite = Math.min(Number(req.query.limite) || 8, 20);
+  const linkBase = (req.query.link_base as string) || "https://www.papelariabibelo.com.br/novidades/";
 
-  // Buscar itens de NFs recentes + cruzar com preço de venda do catálogo
+  // Buscar itens de NFs recentes + cruzar com catálogo (preço + imagem)
   const produtos = await query<{
-    descricao: string; valor_unitario: string; preco_venda: string | null; categoria: string | null;
+    descricao: string; valor_unitario: string;
+    preco_venda: string | null; categoria: string | null;
+    imagem_url: string | null; bling_id: string | null;
   }>(`
-    SELECT DISTINCT ON (LOWER(ni.descricao))
-      ni.descricao,
-      ni.valor_unitario::text,
-      p.preco_venda::text,
-      p.categoria
-    FROM financeiro.notas_entrada_itens ni
-    JOIN financeiro.notas_entrada ne ON ne.id = ni.nota_id
-    LEFT JOIN sync.bling_products p ON (
-      LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 20)) || '%'
-      OR p.sku = ni.codigo_produto
+    WITH itens_nf AS (
+      SELECT DISTINCT ON (LOWER(ni.descricao))
+        ni.descricao,
+        ni.valor_unitario,
+        ni.codigo_produto,
+        ne.data_emissao
+      FROM financeiro.notas_entrada_itens ni
+      JOIN financeiro.notas_entrada ne ON ne.id = ni.nota_id
+      WHERE ne.status != 'cancelada'
+        AND ne.data_emissao >= CURRENT_DATE - INTERVAL '${dias} days'
+      ORDER BY LOWER(ni.descricao), ne.data_emissao DESC
     )
-    WHERE ne.status != 'cancelada'
-      AND ne.data_emissao >= CURRENT_DATE - INTERVAL '${dias} days'
-    ORDER BY LOWER(ni.descricao), ne.data_emissao DESC
+    SELECT
+      i.descricao,
+      i.valor_unitario::text,
+      bp.preco_venda::text,
+      bp.categoria,
+      bp.dados_raw->>'imagemURL' as imagem_url,
+      bp.bling_id
+    FROM itens_nf i
+    LEFT JOIN LATERAL (
+      SELECT p.preco_venda, p.categoria, p.dados_raw, p.bling_id
+      FROM sync.bling_products p
+      WHERE LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(i.descricao FROM 1 FOR 20)) || '%'
+        OR p.sku = i.codigo_produto
+      ORDER BY CASE WHEN p.dados_raw->>'imagemURL' != '' THEN 0 ELSE 1 END
+      LIMIT 1
+    ) bp ON true
+    ORDER BY i.data_emissao DESC
     LIMIT $1
   `, [limite]);
 
@@ -121,16 +139,21 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
     return;
   }
 
-  // Gerar HTML dos produtos
+  // Gerar HTML dos produtos com imagem e link
   const produtosHtml = produtos.map((p) => {
     const preco = p.preco_venda ? parseFloat(p.preco_venda) : null;
     const precoFormatado = preco ? `R$ ${preco.toFixed(2).replace(".", ",")}` : "";
-    // Limpar nome do produto (tirar códigos etc)
     const nome = p.descricao.split(" C/")[0].split(" CART.")[0].trim();
-    return `<div style="background:#FFF0F5;border-radius:8px;padding:12px 15px;margin:8px 0;display:flex;justify-content:space-between;align-items:center"><div><p style="margin:0;color:#E91E8C;font-weight:bold;font-size:13px">${nome}</p>${p.categoria ? `<p style="margin:2px 0 0;color:#999;font-size:11px">${p.categoria}</p>` : ""}</div>${precoFormatado ? `<p style="margin:0;color:#333;font-weight:bold;font-size:14px">${precoFormatado}</p>` : ""}</div>`;
+    const hasImg = p.imagem_url && p.imagem_url.startsWith("http");
+    const imgHtml = hasImg
+      ? `<img src="${p.imagem_url}" alt="${nome}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid #eee" />`
+      : `<div style="width:70px;height:70px;background:#FFF0F5;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:28px;border:1px solid #eee">🎀</div>`;
+    const link = linkBase;
+
+    return `<a href="${link}" style="text-decoration:none;display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #f0e0f0;border-radius:10px;padding:10px;margin:8px 0">${imgHtml}<div style="flex:1;min-width:0"><p style="margin:0;color:#E91E8C;font-weight:bold;font-size:13px;line-height:1.3">${nome}</p>${p.categoria ? `<p style="margin:3px 0 0;color:#999;font-size:11px">${p.categoria}</p>` : ""}</div>${precoFormatado ? `<div style="text-align:right;white-space:nowrap"><p style="margin:0;color:#333;font-weight:bold;font-size:15px">${precoFormatado}</p><p style="margin:2px 0 0;color:#E91E8C;font-size:10px;font-weight:bold">VER →</p></div>` : ""}</a>`;
   }).join("");
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#FFF0F5;font-family:Arial,Helvetica,sans-serif"><div style="max-width:600px;margin:0 auto;background:#ffffff"><div style="background:linear-gradient(135deg,#E91E8C,#FF69B4);padding:25px 20px;text-align:center"><img src="https://crm.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" style="width:80px;height:80px;border-radius:50%;border:3px solid #fff" /><h1 style="color:#fff;font-size:20px;margin:10px 0 0">Chegou Novidade! 🆕</h1><p style="color:#FFE4E1;font-size:13px;margin:5px 0 0">Produtos fresquinhos acabaram de chegar</p></div><div style="padding:25px"><p style="color:#333;font-size:15px;line-height:1.6">Oi, {{nome}}! 👋</p><p style="color:#333;font-size:15px;line-height:1.6">Produtos novos acabaram de chegar na Bibelô e separamos os destaques para você:</p><div style="margin:15px 0">${produtosHtml}</div><a href="https://papelariabibelo.com.br" style="display:block;background:#E91E8C;color:#fff;padding:14px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;text-align:center;margin:20px 0">Ver Tudo na Loja</a></div><div style="background:#F8F8F8;padding:20px 25px;border-top:1px solid #eee"><p style="color:#999;font-size:11px;text-align:center;margin:0;line-height:1.5">Papelaria Bibelô — CNPJ 63.961.764/0001-63<br>contato@papelariabibelo.com.br<br>papelariabibelo.com.br<br><br>Você recebeu este email porque é cliente da Papelaria Bibelô.<br>Se não deseja mais receber nossos emails, responda com "DESCADASTRAR".</p></div></div></body></html>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#FFF0F5;font-family:Arial,Helvetica,sans-serif"><div style="max-width:600px;margin:0 auto;background:#ffffff"><div style="background:linear-gradient(135deg,#E91E8C,#FF69B4);padding:25px 20px;text-align:center"><img src="https://crm.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" style="width:80px;height:80px;border-radius:50%;border:3px solid #fff" /><h1 style="color:#fff;font-size:20px;margin:10px 0 0">Chegou Novidade! 🆕</h1><p style="color:#FFE4E1;font-size:13px;margin:5px 0 0">Produtos fresquinhos acabaram de chegar</p></div><div style="padding:25px"><p style="color:#333;font-size:15px;line-height:1.6">Oi, {{nome}}! 👋</p><p style="color:#333;font-size:15px;line-height:1.6">Produtos novos acabaram de chegar na Bibelô e separamos os destaques para você:</p><div style="margin:15px 0">${produtosHtml}</div><a href="${linkBase}" style="display:block;background:#E91E8C;color:#fff;padding:14px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;text-align:center;margin:20px 0">Ver Todas as Novidades</a></div><div style="background:#F8F8F8;padding:20px 25px;border-top:1px solid #eee"><p style="color:#999;font-size:11px;text-align:center;margin:0;line-height:1.5">Papelaria Bibelô — CNPJ 63.961.764/0001-63<br>contato@papelariabibelo.com.br<br>papelariabibelo.com.br<br><br>Você recebeu este email porque é cliente da Papelaria Bibelô.<br>Se não deseja mais receber nossos emails, responda com "DESCADASTRAR".</p></div></div></body></html>`;
 
   res.json({
     html,
