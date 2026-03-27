@@ -4,6 +4,7 @@ import {
   ChevronLeft, ChevronRight, Bell, BellOff, Plus, X, Check,
 } from 'lucide-react';
 import api from '../lib/api';
+import { useToast } from '../components/Toast';
 
 interface DespesaFixa {
   id: string;
@@ -44,6 +45,7 @@ function getMesLabel(mesRef: string) {
 }
 
 export default function DespesasFixas() {
+  const { success: showSuccess, error: showError } = useToast();
   const [alertas, setAlertas] = useState<DespesaFixa[]>([]);
   const [resumo, setResumo] = useState<Resumo>({ atrasados: 0, vence_em_breve: 0, pagos: 0, pendentes: 0, total: 0 });
   const [_mesRef, setMesRef] = useState('');
@@ -102,7 +104,8 @@ export default function DespesasFixas() {
     try {
       await api.post(`/financeiro/despesas-fixas/${id}/pagar`, { mes_referencia: mesNavegacao });
       fetchAlertas();
-    } catch {}
+      showSuccess('Pagamento registrado');
+    } catch { showError('Erro ao registrar pagamento'); }
     finally { setPagando(null); }
   };
 
@@ -111,7 +114,8 @@ export default function DespesasFixas() {
     try {
       await api.post(`/financeiro/despesas-fixas/${id}/desfazer-pagamento`, { mes_referencia: mesNavegacao });
       fetchAlertas();
-    } catch {}
+      showSuccess('Pagamento desfeito');
+    } catch { showError('Erro ao desfazer pagamento'); }
     finally { setPagando(null); }
   };
 

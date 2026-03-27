@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import GlobalSearch from './GlobalSearch';
 import {
   LayoutDashboard,
   Users,
@@ -227,19 +228,21 @@ export default function Layout() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar mobile */}
-        <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-bibelo-card border-b border-bibelo-border">
+        {/* Top bar */}
+        <header className="flex items-center gap-3 px-4 py-3 bg-bibelo-card border-b border-bibelo-border">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="text-bibelo-muted hover:text-bibelo-text"
+            className="lg:hidden text-bibelo-muted hover:text-bibelo-text"
           >
             <Menu size={24} />
           </button>
-          <span className="text-lg font-bold text-bibelo-text">BibeloCRM</span>
+          <span className="lg:hidden text-lg font-bold text-bibelo-text">BibeloCRM</span>
+          <div className="flex-1" />
+          <GlobalSearch />
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-6 overflow-y-auto">
           <Outlet />
         </main>
       </div>

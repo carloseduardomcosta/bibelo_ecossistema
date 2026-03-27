@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, ChevronLeft, ChevronRight, Package, ArrowUpDown } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Package, ArrowUpDown, Download } from 'lucide-react';
 import api from '../lib/api';
+import { exportCsv } from '../lib/export';
 
 interface Product {
   id: string;
@@ -111,7 +112,15 @@ export default function Produtos() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-2xl font-bold text-bibelo-text">Produtos</h1>
-        <div className="text-sm text-bibelo-muted">{pagination.total} produto{pagination.total !== 1 ? 's' : ''}</div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-bibelo-muted">{pagination.total} produto{pagination.total !== 1 ? 's' : ''}</span>
+          <button
+            onClick={() => exportCsv(produtos.map((p: any) => ({ nome: p.nome, sku: p.sku, categoria: p.categoria, preco_custo: p.preco_custo, preco_venda: p.preco_venda, estoque: p.saldo_total })), 'produtos')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-bibelo-card border border-bibelo-border rounded-lg text-xs text-bibelo-muted hover:text-bibelo-text transition-colors"
+          >
+            <Download size={14} /> CSV
+          </button>
+        </div>
       </div>
 
       {/* Filters */}

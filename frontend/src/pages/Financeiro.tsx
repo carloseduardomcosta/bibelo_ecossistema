@@ -2,13 +2,15 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   DollarSign, Wallet, ShoppingCart, Target,
   ChevronLeft, ChevronRight, Search, Plus, ArrowUpRight, ArrowDownRight,
-  Receipt, X, Pencil, Trash2, ArrowDown, ArrowUp, Minus,
+  Receipt, X, Pencil, Trash2, ArrowDown, ArrowUp, Minus, Download,
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 import api from '../lib/api';
+import { useToast } from '../components/Toast';
+import { exportCsv } from '../lib/export';
 
 interface DashboardData {
   receitas: number;
@@ -85,6 +87,7 @@ function VariacaoBadge({ valor }: { valor: number }) {
 }
 
 export default function Financeiro() {
+  const { success, error: showError } = useToast();
   const [tab, setTab] = useState<'dashboard' | 'lancamentos'>('dashboard');
   const [periodo, setPeriodo] = useState('total');
   const [dash, setDash] = useState<DashboardData | null>(null);
@@ -176,7 +179,8 @@ export default function Financeiro() {
       setShowModal(false);
       resetForm();
       fetchLancamentos(pagination.page);
-    } catch {}
+      success(editingId ? 'Lançamento atualizado' : 'Lançamento criado');
+    } catch { showError('Erro ao salvar lançamento'); }
     finally { setSaving(false); }
   };
 
@@ -202,7 +206,8 @@ export default function Financeiro() {
     try {
       await api.delete(`/financeiro/lancamentos/${id}`);
       fetchLancamentos(pagination.page);
-    } catch {}
+      success('Lançamento excluído');
+    } catch { showError('Erro ao excluir'); }
     finally { setDeleting(null); }
   };
 
@@ -446,6 +451,12 @@ export default function Financeiro() {
               onChange={(e) => setMesFiltro(e.target.value)}
               className="bg-bibelo-card border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text focus:outline-none focus:border-bibelo-primary"
             />
+            <button
+              onClick={() => exportCsv(lancamentos.map((l: any) => ({ data: l.data?.split('T')[0], descricao: l.descricao, tipo: l.tipo, valor: l.valor, categoria: l.categoria_nome, status: l.status, observacoes: l.observacoes })), 'lancamentos')}
+              className="flex items-center gap-1.5 px-3 py-2 bg-bibelo-card border border-bibelo-border rounded-lg text-xs text-bibelo-muted hover:text-bibelo-text transition-colors"
+            >
+              <Download size={14} /> CSV
+            </button>
             <button
               onClick={handleOpenNew}
               className="flex items-center gap-2 px-4 py-2 bg-bibelo-primary text-white rounded-lg text-sm font-medium hover:bg-bibelo-primary/80 transition-colors"

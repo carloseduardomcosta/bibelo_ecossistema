@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Users, Download } from 'lucide-react';
 import api from '../lib/api';
+import { exportCsv } from '../lib/export';
 
 interface Customer {
   id: string;
@@ -81,8 +82,15 @@ export default function Clientes() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-2xl font-bold text-bibelo-text">Clientes</h1>
-        <div className="text-sm text-bibelo-muted">
-          {pagination.total} cliente{pagination.total !== 1 ? 's' : ''}
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-bibelo-muted">{pagination.total} cliente{pagination.total !== 1 ? 's' : ''}</span>
+          <button
+            onClick={() => exportCsv(clientes.map((c: any) => ({ nome: c.nome, email: c.email, telefone: c.telefone, segmento: c.segmento, canal: c.canal_origem })), 'clientes')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-bibelo-card border border-bibelo-border rounded-lg text-xs text-bibelo-muted hover:text-bibelo-text transition-colors"
+            title="Exportar CSV"
+          >
+            <Download size={14} /> CSV
+          </button>
         </div>
       </div>
 

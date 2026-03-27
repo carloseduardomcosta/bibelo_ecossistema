@@ -20,6 +20,7 @@ import NfEntrada from './pages/NfEntrada';
 import Vendas from './pages/Vendas';
 import ContasPagar from './pages/ContasPagar';
 import ProdutoPerfil from './pages/ProdutoPerfil';
+import { ToastProvider } from './components/Toast';
 
 const GOOGLE_CLIENT_ID = '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
 
@@ -28,6 +29,7 @@ export default function App() {
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <BrowserRouter>
         <AuthProvider>
+          <ToastProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route
@@ -55,6 +57,7 @@ export default function App() {
               <Route path="/sync" element={<Sync />} />
             </Route>
           </Routes>
+          </ToastProvider>
         </AuthProvider>
       </BrowserRouter>
     </GoogleOAuthProvider>
