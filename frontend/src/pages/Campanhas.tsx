@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Megaphone, Plus, Send, Mail, MessageCircle, ChevronLeft, ChevronRight,
-  X, Eye, Trash2, FileText, Users, Pencil, Play,
+  X, Eye, Trash2, FileText, Users, Pencil, Play, Sparkles,
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
@@ -314,7 +314,22 @@ export default function Campanhas() {
       ) : (
         /* ── TEMPLATES ── */
         <>
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end gap-2 mb-4">
+            <button
+              onClick={async () => {
+                try {
+                  const { data } = await api.get('/campaigns/gerar-novidades?dias=30&limite=8');
+                  if (data.produtos === 0) { showError('Nenhum produto novo nos últimos 30 dias'); return; }
+                  resetTplForm();
+                  setTplForm(f => ({ ...f, nome: 'Novidades — ' + new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }), categoria: 'Novidades', assunto: data.assunto, html: data.html }));
+                  setShowTplModal(true);
+                  success(`Template gerado com ${data.produtos} produtos!`);
+                } catch { showError('Erro ao gerar template'); }
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-400/10 text-emerald-400 border border-emerald-400/20 rounded-lg text-sm font-medium hover:bg-emerald-400/20 transition-colors"
+            >
+              <Sparkles size={16} /> Gerar com Novidades
+            </button>
             <button onClick={() => { resetTplForm(); setShowTplModal(true); }} className="flex items-center gap-2 px-4 py-2 bg-bibelo-primary text-white rounded-lg text-sm font-medium hover:bg-bibelo-primary/80 transition-colors">
               <Plus size={16} /> Novo Template
             </button>

@@ -89,6 +89,57 @@ campaignsRouter.get("/resend-status", async (_req: Request, res: Response) => {
   res.json(status);
 });
 
+// ── GET /api/campaigns/gerar-novidades — template dinâmico com produtos novos ──
+
+campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
+  const dias = Math.min(Number(req.query.dias) || 30, 90);
+  const limite = Math.min(Number(req.query.limite) || 8, 20);
+
+  // Buscar itens de NFs recentes + cruzar com preço de venda do catálogo
+  const produtos = await query<{
+    descricao: string; valor_unitario: string; preco_venda: string | null; categoria: string | null;
+  }>(`
+    SELECT DISTINCT ON (LOWER(ni.descricao))
+      ni.descricao,
+      ni.valor_unitario::text,
+      p.preco_venda::text,
+      p.categoria
+    FROM financeiro.notas_entrada_itens ni
+    JOIN financeiro.notas_entrada ne ON ne.id = ni.nota_id
+    LEFT JOIN sync.bling_products p ON (
+      LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 20)) || '%'
+      OR p.sku = ni.codigo_produto
+    )
+    WHERE ne.status != 'cancelada'
+      AND ne.data_emissao >= CURRENT_DATE - INTERVAL '${dias} days'
+    ORDER BY LOWER(ni.descricao), ne.data_emissao DESC
+    LIMIT $1
+  `, [limite]);
+
+  if (produtos.length === 0) {
+    res.json({ html: "", produtos: 0, message: "Nenhum produto novo encontrado no período" });
+    return;
+  }
+
+  // Gerar HTML dos produtos
+  const produtosHtml = produtos.map((p) => {
+    const preco = p.preco_venda ? parseFloat(p.preco_venda) : null;
+    const precoFormatado = preco ? `R$ ${preco.toFixed(2).replace(".", ",")}` : "";
+    // Limpar nome do produto (tirar códigos etc)
+    const nome = p.descricao.split(" C/")[0].split(" CART.")[0].trim();
+    return `<div style="background:#FFF0F5;border-radius:8px;padding:12px 15px;margin:8px 0;display:flex;justify-content:space-between;align-items:center"><div><p style="margin:0;color:#E91E8C;font-weight:bold;font-size:13px">${nome}</p>${p.categoria ? `<p style="margin:2px 0 0;color:#999;font-size:11px">${p.categoria}</p>` : ""}</div>${precoFormatado ? `<p style="margin:0;color:#333;font-weight:bold;font-size:14px">${precoFormatado}</p>` : ""}</div>`;
+  }).join("");
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#FFF0F5;font-family:Arial,Helvetica,sans-serif"><div style="max-width:600px;margin:0 auto;background:#ffffff"><div style="background:linear-gradient(135deg,#E91E8C,#FF69B4);padding:25px 20px;text-align:center"><img src="https://crm.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" style="width:80px;height:80px;border-radius:50%;border:3px solid #fff" /><h1 style="color:#fff;font-size:20px;margin:10px 0 0">Chegou Novidade! 🆕</h1><p style="color:#FFE4E1;font-size:13px;margin:5px 0 0">Produtos fresquinhos acabaram de chegar</p></div><div style="padding:25px"><p style="color:#333;font-size:15px;line-height:1.6">Oi, {{nome}}! 👋</p><p style="color:#333;font-size:15px;line-height:1.6">Produtos novos acabaram de chegar na Bibelô e separamos os destaques para você:</p><div style="margin:15px 0">${produtosHtml}</div><a href="https://papelariabibelo.com.br" style="display:block;background:#E91E8C;color:#fff;padding:14px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;text-align:center;margin:20px 0">Ver Tudo na Loja</a></div><div style="background:#F8F8F8;padding:20px 25px;border-top:1px solid #eee"><p style="color:#999;font-size:11px;text-align:center;margin:0;line-height:1.5">Papelaria Bibelô — CNPJ 63.961.764/0001-63<br>contato@papelariabibelo.com.br<br>papelariabibelo.com.br<br><br>Você recebeu este email porque é cliente da Papelaria Bibelô.<br>Se não deseja mais receber nossos emails, responda com "DESCADASTRAR".</p></div></div></body></html>`;
+
+  res.json({
+    html,
+    assunto: `🆕 Novidades acabaram de chegar na Bibelô!`,
+    produtos: produtos.length,
+    message: `Template gerado com ${produtos.length} produtos dos últimos ${dias} dias`,
+  });
+});
+
 // ── POST /api/campaigns/test-email — enviar email de teste ──────
 
 const testEmailSchema = z.object({
