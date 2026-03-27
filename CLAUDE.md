@@ -46,7 +46,9 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── sync.ts          ← status, sync manual, OAuth Bling
 │   │   │   ├── products.ts     ← CRUD produtos, estoque, lucratividade
 │   │   │   ├── financeiro.ts   ← módulo financeiro completo (20+ endpoints)
-│   │   │   └── nf-entrada.ts  ← upload XML NF-e, parse, contabilização
+│   │   │   ├── nf-entrada.ts  ← upload XML NF-e, parse, contabilização
+│   │   │   ├── contas-pagar.ts ← contas a pagar Bling + pagamento
+│   │   │   └── search.ts      ← busca global (clientes, produtos, NFs, lançamentos)
 │   │   ├── services/
 │   │   │   └── customer.service.ts ← upsert, score, timeline, segments
 │   │   ├── integrations/
@@ -55,7 +57,8 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   │   └── sync.ts      ← syncCustomers, syncOrders, incremental
 │   │   │   ├── nuvemshop/
 │   │   │   │   └── webhook.ts   ← HMAC + processamento de eventos
-│   │   │   ├── resend/          ← (pendente)
+│   │   │   ├── resend/
+│   │   │   │   └── email.ts    ← sendEmail, sendCampaignEmails, tracking
 │   │   │   └── whatsapp/        ← (pendente)
 │   │   ├── queues/
 │   │   │   └── sync.queue.ts    ← BullMQ: sync 30min + scores 2h
@@ -88,14 +91,20 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── DespesasFixas.tsx ← controle vencimentos + pagamentos mensais
 │   │   │   ├── SimuladorCustos.tsx ← simulador marketplace + kits embalagem
 │   │   │   ├── NfEntrada.tsx    ← upload XML NF-e, lista, detalhe, contabilizar
+│   │   │   ├── ProdutoPerfil.tsx ← detalhe produto + estoque + vendas
+│   │   │   ├── Vendas.tsx       ← formas pagamento + NF-e emitidas
+│   │   │   ├── ContasPagar.tsx  ← contas a pagar Bling
 │   │   │   └── Sync.tsx         ← painel Bling/NuvemShop + logs
 │   │   ├── components/
-│   │   │   ├── Layout.tsx       ← sidebar responsiva + Outlet
-│   │   │   └── ProtectedRoute.tsx ← redirect se não autenticado
+│   │   │   ├── Layout.tsx       ← sidebar grupos + header com busca global
+│   │   │   ├── ProtectedRoute.tsx ← redirect se não autenticado
+│   │   │   ├── Toast.tsx        ← ToastProvider + useToast (sucesso/erro/warning)
+│   │   │   └── GlobalSearch.tsx ← busca global Ctrl+K (clientes, produtos, NFs)
 │   │   ├── hooks/               ← useCustomers, useCampaigns etc
 │   │   └── lib/
 │   │       ├── api.ts           ← Axios + JWT interceptor
-│   │       └── auth.tsx         ← AuthContext + useAuth + Google login
+│   │       ├── auth.tsx         ← AuthContext + useAuth + Google login
+│   │       └── export.ts        ← exportCsv() utilitário reutilizável
 │   ├── tailwind.config.js       ← tema BibelôCRM
 │   ├── postcss.config.js
 │   ├── Dockerfile
@@ -247,6 +256,14 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `POST /api/financeiro/nf-entrada/:id/contabilizar` — gera lançamento no financeiro
 - `DELETE /api/financeiro/nf-entrada/:id` — cancelar NF (e lançamento se contabilizada)
 - `GET  /api/financeiro/nf-entrada/resumo/geral` — KPIs (total, pendentes, contabilizadas, valores)
+
+### Busca Global (Bearer JWT obrigatório)
+- `GET  /api/search?q=texto` — busca em clientes, produtos, lançamentos e NFs
+
+### Campanhas — Resend (Bearer JWT obrigatório)
+- `GET  /api/campaigns/resend-status` — status da integração Resend
+- `POST /api/campaigns/test-email` — enviar email de teste
+- `POST /api/campaigns/:id/send` — disparo real via Resend (email) em background
 
 ### Webhooks (validação HMAC)
 - `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop
@@ -445,6 +462,15 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - 7d99f36 feat: filtro de período no Dashboard (7d, 15d, 30d, 3m, 6m, 1a)
 - 3d955a6 feat: estoque com alertas de reposição + página campanhas funcional
 - 9c5e980 feat: página Segmentos + fix upsert clientes por bling_id
+- 9640bed feat: módulo financeiro completo — fluxo de caixa, despesas fixas, simulador
+- 455f6f8 feat: módulo NF de entrada — upload XML, parse, contabilização
+- 6a08d46 refactor: Bling como fonte da verdade para receitas
+- 8e54e61 feat: dashboard com fluxo de caixa e dados dinâmicos por período
+- c4bc1c0 feat: página Vendas — formas de pagamento + NF-e emitidas do Bling
+- b5eafe1 feat: Contas a Pagar do Bling
+- c7bd130 feat: integração Resend ativa — disparo real de campanhas
+- 35f677a fix: auditoria completa — acentos pt-BR, filtros de período, ProdutoPerfil
+- 8eb833c feat: UX — toasts, busca global (Ctrl+K), export CSV
 
 
 ## Protocolo de atualização deste arquivo
@@ -474,7 +500,7 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Bling OAuth2 | ✅ configurado | credenciais no .env, callback funcional |
 | Bling Sync | ✅ código pronto | sync manual + incremental 30min via BullMQ |
 | NuvemShop Webhooks | 🔧 código pronto | aguardando configuração no painel NS |
-| Resend E-mail | ⏳ pendente | aguardando API key |
+| Resend E-mail | ✅ produção | domínio verificado, disparo de campanhas ativo |
 | Evolution WhatsApp | ⏳ pendente | aguardando configuração |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
 
@@ -493,4 +519,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 27 de Março de 2026 — Módulo Financeiro*
+*Última atualização: 27 de Março de 2026 — Financeiro + Resend + UX*
