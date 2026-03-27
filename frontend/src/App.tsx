@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Clientes from './pages/Clientes';
 import ClientePerfil from './pages/ClientePerfil';
+import Sync from './pages/Sync';
 
 const GOOGLE_CLIENT_ID = '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
 
@@ -28,7 +29,7 @@ export default function App() {
               <Route path="/clientes" element={<Clientes />} />
               <Route path="/clientes/:id" element={<ClientePerfil />} />
               <Route path="/campanhas" element={<Placeholder titulo="Campanhas" />} />
-              <Route path="/sync" element={<Placeholder titulo="Sync" />} />
+              <Route path="/sync" element={<Sync />} />
             </Route>
           </Routes>
         </AuthProvider>
