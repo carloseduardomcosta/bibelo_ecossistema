@@ -528,6 +528,191 @@ export async function incrementalSync(): Promise<{ customers: number; orders: nu
   return { customers, orders, products, stock };
 }
 
+// ── Sync Formas de Pagamento ────────────────────────────────────
+
+export async function syncFormasPagamento(): Promise<number> {
+  const token = await getValidToken();
+  let total = 0;
+
+  try {
+    let page = 1;
+    while (true) {
+      const data = await rateLimitedGet<{ data: Array<Record<string, unknown>> }>(
+        `${BLING_API}/formas-pagamentos?pagina=${page}&limite=100`,
+        token
+      );
+      if (!data.data || data.data.length === 0) break;
+
+      for (const fp of data.data) {
+        await query(
+          `INSERT INTO sync.bling_formas_pagamento (bling_id, descricao, tipo_pagamento, situacao, sincronizado_em)
+           VALUES ($1, $2, $3, $4, NOW())
+           ON CONFLICT (bling_id) DO UPDATE SET descricao = $2, tipo_pagamento = $3, situacao = $4, sincronizado_em = NOW()`,
+          [String(fp.id), fp.descricao || "Desconhecido", fp.tipoPagamento || 0, fp.situacao || 1]
+        );
+        total++;
+      }
+      page++;
+    }
+
+    await logSync("bling", "formas_pagamento", "ok", total);
+    logger.info("Bling syncFormasPagamento concluído", { total });
+    return total;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    await logSync("bling", "formas_pagamento", "erro", total, message);
+    logger.error("Bling syncFormasPagamento falhou", { error: message });
+    throw err;
+  }
+}
+
+// ── Sync Parcelas dos pedidos (formas de pagamento por venda) ──
+
+export async function syncOrderParcelas(): Promise<number> {
+  const token = await getValidToken();
+  let total = 0;
+
+  try {
+    // Busca pedidos que ainda não têm parcelas sincronizadas
+    const orders = await query<{ bling_id: string }>(
+      `SELECT o.bling_id FROM sync.bling_orders o
+       LEFT JOIN sync.bling_order_parcelas p ON p.order_bling_id = o.bling_id
+       WHERE p.id IS NULL
+       LIMIT 200`
+    );
+
+    for (const order of orders) {
+      try {
+        const data = await rateLimitedGet<{ data: Record<string, unknown> }>(
+          `${BLING_API}/pedidos/vendas/${order.bling_id}`,
+          token
+        );
+
+        const parcelas = data.data?.parcelas as Array<Record<string, unknown>> | undefined;
+        if (parcelas && parcelas.length > 0) {
+          for (const parcela of parcelas) {
+            const fp = parcela.formaPagamento as { id?: number } | undefined;
+
+            // Busca nome da forma de pagamento
+            let formaDesc = "Desconhecido";
+            if (fp?.id) {
+              const fpRow = await queryOne<{ descricao: string }>(
+                "SELECT descricao FROM sync.bling_formas_pagamento WHERE bling_id = $1",
+                [String(fp.id)]
+              );
+              formaDesc = fpRow?.descricao || "Desconhecido";
+            }
+
+            await query(
+              `INSERT INTO sync.bling_order_parcelas
+               (order_bling_id, parcela_bling_id, data_vencimento, valor, forma_pagamento_id, forma_descricao, sincronizado_em)
+               VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+              [
+                order.bling_id,
+                parcela.id ? String(parcela.id) : null,
+                parcela.dataVencimento || null,
+                parcela.valor || 0,
+                fp?.id ? String(fp.id) : null,
+                formaDesc,
+              ]
+            );
+            total++;
+          }
+        }
+      } catch (detailErr: unknown) {
+        const msg = detailErr instanceof Error ? detailErr.message : "Erro";
+        if (!msg.includes("429")) {
+          logger.warn("Erro ao buscar parcelas do pedido", { orderId: order.bling_id, error: msg });
+        }
+      }
+    }
+
+    await logSync("bling", "parcelas", "ok", total);
+    logger.info("Bling syncOrderParcelas concluído", { total });
+    return total;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    await logSync("bling", "parcelas", "erro", total, message);
+    logger.error("Bling syncOrderParcelas falhou", { error: message });
+    throw err;
+  }
+}
+
+// ── Sync NF-e emitidas ──────────────────────────────────────────
+
+export async function syncNFe(): Promise<number> {
+  const token = await getValidToken();
+  let page = 1;
+  let total = 0;
+
+  try {
+    while (true) {
+      const data = await rateLimitedGet<{ data: Array<Record<string, unknown>> }>(
+        `${BLING_API}/nfe?pagina=${page}&limite=100`,
+        token
+      );
+      if (!data.data || data.data.length === 0) break;
+
+      for (const nfe of data.data) {
+        const contato = nfe.contato as Record<string, unknown> | undefined;
+
+        await query(
+          `INSERT INTO sync.bling_nfe
+           (bling_id, tipo, situacao, numero, data_emissao, chave_acesso, contato_nome, contato_doc, dados_raw, sincronizado_em)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+           ON CONFLICT (bling_id) DO UPDATE SET
+             situacao = $3, contato_nome = $7, contato_doc = $8, dados_raw = $9, sincronizado_em = NOW()`,
+          [
+            String(nfe.id),
+            nfe.tipo || 1,
+            nfe.situacao || 0,
+            nfe.numero || null,
+            nfe.dataEmissao || null,
+            nfe.chaveAcesso || null,
+            contato?.nome || null,
+            contato?.numeroDocumento || null,
+            JSON.stringify(nfe),
+          ]
+        );
+        total++;
+      }
+      page++;
+    }
+
+    // Busca valor total de cada NF-e via detalhe (apenas as que não têm valor)
+    const nfeSemValor = await query<{ bling_id: string }>(
+      "SELECT bling_id FROM sync.bling_nfe WHERE valor_total = 0 OR valor_total IS NULL LIMIT 50"
+    );
+
+    for (const nf of nfeSemValor) {
+      try {
+        const detail = await rateLimitedGet<{ data: Record<string, unknown> }>(
+          `${BLING_API}/nfe/${nf.bling_id}`,
+          token
+        );
+        const valor = detail.data?.valorNota || detail.data?.total || 0;
+        const natureza = (detail.data?.naturezaOperacao as Record<string, unknown>)?.descricao || null;
+
+        await query(
+          "UPDATE sync.bling_nfe SET valor_total = $2, natureza_op = $3 WHERE bling_id = $1",
+          [nf.bling_id, valor, natureza]
+        );
+      } catch {
+        // ignora erros de detalhe
+      }
+    }
+
+    await logSync("bling", "nfe", "ok", total);
+    logger.info("Bling syncNFe concluído", { total });
+    return total;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    await logSync("bling", "nfe", "erro", total, message);
+    logger.error("Bling syncNFe falhou", { error: message });
+    throw err;
+  }
+}
+
 // ── Helper: log de sync ────────────────────────────────────────
 
 async function logSync(

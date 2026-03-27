@@ -17,6 +17,7 @@ import Financeiro from './pages/Financeiro';
 import DespesasFixas from './pages/DespesasFixas';
 import SimuladorCustos from './pages/SimuladorCustos';
 import NfEntrada from './pages/NfEntrada';
+import Vendas from './pages/Vendas';
 
 const GOOGLE_CLIENT_ID = '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
 
@@ -40,6 +41,7 @@ export default function App() {
               <Route path="/produtos" element={<Produtos />} />
               <Route path="/produtos/:id" element={<Placeholder titulo="Detalhe Produto" />} />
               <Route path="/estoque" element={<Estoque />} />
+              <Route path="/vendas" element={<Vendas />} />
               <Route path="/lucratividade" element={<Lucratividade />} />
               <Route path="/segmentos" element={<Segmentos />} />
               <Route path="/campanhas" element={<Campanhas />} />

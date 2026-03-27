@@ -288,3 +288,99 @@ analyticsRouter.get("/insights", async (req: Request, res: Response) => {
     })),
   });
 });
+
+// ── GET /api/analytics/pagamentos — formas de pagamento ─────────
+
+analyticsRouter.get("/pagamentos", async (_req: Request, res: Response) => {
+  const porForma = await query<{ forma: string; total_pedidos: string; valor_total: string }>(`
+    SELECT
+      COALESCE(p.forma_descricao, 'Nao informado') AS forma,
+      COUNT(DISTINCT p.order_bling_id)::text AS total_pedidos,
+      COALESCE(SUM(p.valor), 0)::text AS valor_total
+    FROM sync.bling_order_parcelas p
+    GROUP BY p.forma_descricao
+    ORDER BY SUM(p.valor) DESC
+  `);
+
+  const porMes = await query<{ mes: string; forma: string; valor: string }>(`
+    SELECT
+      TO_CHAR(p.data_vencimento, 'YYYY-MM') AS mes,
+      COALESCE(p.forma_descricao, 'Outros') AS forma,
+      SUM(p.valor)::text AS valor
+    FROM sync.bling_order_parcelas p
+    WHERE p.data_vencimento IS NOT NULL
+    GROUP BY TO_CHAR(p.data_vencimento, 'YYYY-MM'), p.forma_descricao
+    ORDER BY mes ASC
+  `);
+
+  const totalGeral = porForma.reduce((s, r) => s + parseFloat(r.valor_total), 0);
+
+  res.json({
+    por_forma: porForma.map((r) => ({
+      forma: r.forma,
+      total_pedidos: parseInt(r.total_pedidos, 10),
+      valor_total: parseFloat(r.valor_total),
+      percentual: totalGeral > 0 ? Math.round(parseFloat(r.valor_total) / totalGeral * 1000) / 10 : 0,
+    })),
+    por_mes: porMes.map((r) => ({
+      mes: r.mes,
+      forma: r.forma,
+      valor: parseFloat(r.valor),
+    })),
+    total_geral: totalGeral,
+  });
+});
+
+// ── GET /api/analytics/nfe — NF-e emitidas ──────────────────────
+
+analyticsRouter.get("/nfe", async (_req: Request, res: Response) => {
+  const resumo = await queryOne<{
+    total: string; autorizadas: string; canceladas: string;
+    valor_total: string; valor_autorizadas: string;
+  }>(`
+    SELECT
+      COUNT(*)::text AS total,
+      COUNT(*) FILTER (WHERE situacao IN (4, 6))::text AS autorizadas,
+      COUNT(*) FILTER (WHERE situacao = 3)::text AS canceladas,
+      COALESCE(SUM(valor_total), 0)::text AS valor_total,
+      COALESCE(SUM(valor_total) FILTER (WHERE situacao IN (4, 6)), 0)::text AS valor_autorizadas
+    FROM sync.bling_nfe
+  `);
+
+  const porMes = await query<{ mes: string; quantidade: string; valor: string }>(`
+    SELECT
+      TO_CHAR(data_emissao, 'YYYY-MM') AS mes,
+      COUNT(*)::text AS quantidade,
+      COALESCE(SUM(valor_total), 0)::text AS valor
+    FROM sync.bling_nfe
+    WHERE data_emissao IS NOT NULL AND situacao IN (4, 6)
+    GROUP BY TO_CHAR(data_emissao, 'YYYY-MM')
+    ORDER BY mes ASC
+  `);
+
+  const ultimas = await query<{
+    numero: string; data_emissao: string; valor_total: number;
+    contato_nome: string; situacao: number;
+  }>(`
+    SELECT numero, data_emissao, valor_total, contato_nome, situacao
+    FROM sync.bling_nfe
+    ORDER BY data_emissao DESC
+    LIMIT 20
+  `);
+
+  res.json({
+    resumo: {
+      total: parseInt(resumo?.total || "0", 10),
+      autorizadas: parseInt(resumo?.autorizadas || "0", 10),
+      canceladas: parseInt(resumo?.canceladas || "0", 10),
+      valor_total: parseFloat(resumo?.valor_total || "0"),
+      valor_autorizadas: parseFloat(resumo?.valor_autorizadas || "0"),
+    },
+    por_mes: porMes.map((r) => ({
+      mes: r.mes,
+      quantidade: parseInt(r.quantidade, 10),
+      valor: parseFloat(r.valor),
+    })),
+    ultimas,
+  });
+});

@@ -7,6 +7,7 @@ import {
   Package,
   Warehouse,
   TrendingUp,
+  ShoppingBag,
   Wallet,
   CalendarClock,
   Calculator,
@@ -52,6 +53,7 @@ const navGroups: NavGroup[] = [
       { to: '/produtos', label: 'Catalogo', icon: Package },
       { to: '/estoque', label: 'Estoque', icon: Warehouse },
       { to: '/lucratividade', label: 'Lucratividade', icon: TrendingUp },
+      { to: '/vendas', label: 'Vendas', icon: ShoppingBag },
     ],
   },
   {
