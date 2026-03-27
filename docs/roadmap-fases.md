@@ -29,6 +29,22 @@ Foco: gestao de clientes, produtos, estoque, financeiro e inteligencia de dados.
 - [ ] Pagina detalhe do produto (vendas, estoque deposito, historico)
 - [ ] Exportar relatorios (CSV/PDF)
 - [ ] Ajustes finos de UX (filtros, ordenacao, responsividade)
+- [ ] Conversor de imagens de produtos (WEBP → PNG/JPEG)
+
+### Conversor de Imagens (detalhe)
+
+**Problema:** As imagens dos produtos no Bling estao em WEBP. Marketplaces como Shopee NAO aceitam WEBP. O site oficial tem tamanhos inconsistentes. O Bling NAO permite atualizar imagens via API (confirmado pelo suporte).
+
+**Solucao:** Ferramenta dentro do BibeloCRM que:
+1. Puxa as imagens WEBP dos produtos do Bling (ja temos as URLs no sync)
+2. Converte para PNG ou JPEG com qualidade otimizada
+3. Padroniza tamanho (ex: 1000x1000px, fundo branco)
+4. Disponibiliza download individual ou em lote (ZIP)
+5. Organiza por categoria para facilitar upload manual nos marketplaces
+
+**Limitacao:** Upload de volta para o Bling precisa ser manual (limitacao da API deles). A ferramenta so converte e disponibiliza o download.
+
+**Formato recomendado:** PNG para fundo transparente, JPEG para fotos (menor tamanho). Oferecer os dois.
 
 ### Decisoes tecnicas
 - **NuvemShop webhooks**: DEPRIORITIZADO — dados ja vem via sync Bling (mesmos pedidos). Webhook so daria tempo real vs 30min delay. Nao justifica agora.
