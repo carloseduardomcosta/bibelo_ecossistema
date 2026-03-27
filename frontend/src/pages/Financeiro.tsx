@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   DollarSign, TrendingDown, TrendingUp, Wallet, ShoppingCart, Target,
   ChevronLeft, ChevronRight, Search, Plus, ArrowUpRight, ArrowDownRight,
-  Receipt, X,
+  Receipt, X, Pencil, Trash2,
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -29,14 +29,17 @@ interface Lancamento {
   id: string;
   data: string;
   descricao: string;
+  categoria_id: string;
   tipo: string;
   valor: string;
   status: string;
   observacoes: string;
   qtd_vendas: number | null;
+  forma_pagamento: string | null;
   categoria_nome: string;
   categoria_cor: string;
   categoria_icone: string;
+  referencia_tipo: string | null;
 }
 
 interface Categoria {
@@ -97,8 +100,9 @@ export default function Financeiro() {
   const [loadingLanc, setLoadingLanc] = useState(false);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
 
-  // Modal novo lançamento
+  // Modal novo/editar lançamento
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     data: new Date().toISOString().split('T')[0],
     descricao: '',
@@ -111,6 +115,7 @@ export default function Financeiro() {
     forma_pagamento: '',
   });
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   // Load dashboard
   useEffect(() => {
@@ -147,20 +152,63 @@ export default function Financeiro() {
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); setSearch(searchInput); };
 
+  const resetForm = () => {
+    setFormData({ data: new Date().toISOString().split('T')[0], descricao: '', categoria_id: '', tipo: 'despesa', valor: '', status: 'realizado', observacoes: '', qtd_vendas: '', forma_pagamento: '' });
+    setEditingId(null);
+  };
+
   const handleSave = async () => {
     if (!formData.descricao || !formData.categoria_id || !formData.valor) return;
     setSaving(true);
     try {
-      await api.post('/financeiro/lancamentos', {
+      const payload = {
         ...formData,
         valor: parseFloat(formData.valor),
         qtd_vendas: formData.qtd_vendas ? parseInt(formData.qtd_vendas) : undefined,
-      });
+        observacoes: formData.observacoes || undefined,
+        forma_pagamento: formData.forma_pagamento || undefined,
+      };
+      if (editingId) {
+        await api.put(`/financeiro/lancamentos/${editingId}`, payload);
+      } else {
+        await api.post('/financeiro/lancamentos', payload);
+      }
       setShowModal(false);
-      setFormData({ data: new Date().toISOString().split('T')[0], descricao: '', categoria_id: '', tipo: 'despesa', valor: '', status: 'realizado', observacoes: '', qtd_vendas: '', forma_pagamento: '' });
-      fetchLancamentos(1);
+      resetForm();
+      fetchLancamentos(pagination.page);
     } catch {}
     finally { setSaving(false); }
+  };
+
+  const handleEdit = (l: Lancamento) => {
+    const dataStr = l.data.includes('T') ? l.data.split('T')[0] : l.data;
+    setEditingId(l.id);
+    setFormData({
+      data: dataStr,
+      descricao: l.descricao,
+      categoria_id: l.categoria_id,
+      tipo: l.tipo as 'receita' | 'despesa',
+      valor: parseFloat(l.valor).toString(),
+      status: l.status,
+      observacoes: l.observacoes || '',
+      qtd_vendas: l.qtd_vendas ? l.qtd_vendas.toString() : '',
+      forma_pagamento: l.forma_pagamento || '',
+    });
+    setShowModal(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id);
+    try {
+      await api.delete(`/financeiro/lancamentos/${id}`);
+      fetchLancamentos(pagination.page);
+    } catch {}
+    finally { setDeleting(null); }
+  };
+
+  const handleOpenNew = () => {
+    resetForm();
+    setShowModal(true);
   };
 
   const filteredCategorias = categorias.filter(c => c.tipo === formData.tipo);
@@ -319,7 +367,7 @@ export default function Financeiro() {
               className="bg-bibelo-card border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text focus:outline-none focus:border-bibelo-primary"
             />
             <button
-              onClick={() => setShowModal(true)}
+              onClick={handleOpenNew}
               className="flex items-center gap-2 px-4 py-2 bg-bibelo-primary text-white rounded-lg text-sm font-medium hover:bg-bibelo-primary/80 transition-colors"
             >
               <Plus size={16} />
@@ -340,20 +388,21 @@ export default function Financeiro() {
                     <th className="px-4 py-3 font-medium text-right">Valor</th>
                     <th className="px-4 py-3 font-medium hidden md:table-cell">Status</th>
                     <th className="px-4 py-3 font-medium hidden lg:table-cell">Vendas</th>
+                    <th className="px-4 py-3 font-medium text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loadingLanc ? (
                     Array.from({ length: 8 }).map((_, i) => (
                       <tr key={i} className="border-b border-bibelo-border/50">
-                        {Array.from({ length: 7 }).map((_, j) => (
+                        {Array.from({ length: 8 }).map((_, j) => (
                           <td key={j} className="px-4 py-3"><div className="h-4 bg-bibelo-border rounded animate-pulse w-16" /></td>
                         ))}
                       </tr>
                     ))
                   ) : lancamentos.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center text-bibelo-muted">
+                      <td colSpan={8} className="px-4 py-12 text-center text-bibelo-muted">
                         <Receipt size={32} className="mx-auto mb-2 opacity-50" />
                         <p>Nenhum lançamento encontrado</p>
                       </td>
@@ -394,6 +443,29 @@ export default function Financeiro() {
                         <td className="px-4 py-3 hidden lg:table-cell text-bibelo-muted">
                           {l.qtd_vendas ? `${l.qtd_vendas}x` : '-'}
                         </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {l.status !== 'cancelado' && (
+                              <>
+                                <button
+                                  onClick={() => handleEdit(l)}
+                                  className="p-1.5 rounded-lg text-bibelo-muted hover:text-bibelo-primary hover:bg-bibelo-primary/10 transition-colors"
+                                  title="Editar"
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(l.id)}
+                                  disabled={deleting === l.id}
+                                  className="p-1.5 rounded-lg text-bibelo-muted hover:text-red-400 hover:bg-red-400/10 transition-colors disabled:opacity-50"
+                                  title="Excluir"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -424,11 +496,11 @@ export default function Financeiro() {
 
       {/* Modal Novo Lançamento */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => { setShowModal(false); resetForm(); }}>
           <div className="bg-bibelo-card border border-bibelo-border rounded-xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-bibelo-text">Novo Lançamento</h2>
-              <button onClick={() => setShowModal(false)} className="text-bibelo-muted hover:text-bibelo-text"><X size={20} /></button>
+              <h2 className="text-lg font-bold text-bibelo-text">{editingId ? 'Editar Lançamento' : 'Novo Lançamento'}</h2>
+              <button onClick={() => { setShowModal(false); resetForm(); }} className="text-bibelo-muted hover:text-bibelo-text"><X size={20} /></button>
             </div>
 
             <div className="space-y-4">
@@ -503,7 +575,7 @@ export default function Financeiro() {
                 disabled={saving || !formData.descricao || !formData.categoria_id || !formData.valor}
                 className="w-full py-2.5 bg-bibelo-primary text-white rounded-lg text-sm font-medium hover:bg-bibelo-primary/80 disabled:opacity-50 transition-colors"
               >
-                {saving ? 'Salvando...' : 'Salvar Lançamento'}
+                {saving ? 'Salvando...' : editingId ? 'Salvar Alterações' : 'Salvar Lançamento'}
               </button>
             </div>
           </div>
