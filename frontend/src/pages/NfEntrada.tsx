@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
-  Upload, FileText, ChevronLeft, ChevronRight, Search,
+  FileText, ChevronLeft, ChevronRight, Search,
   CheckCircle2, Clock, XCircle, X, Eye, BookCheck, Trash2,
-  AlertTriangle, Package,
+  Package, RefreshCw,
 } from 'lucide-react';
 import api from '../lib/api';
+import { useToast } from '../components/Toast';
 
 interface Nota {
   id: string;
@@ -97,6 +98,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function NfEntrada() {
+  const { success: showSuccess, error: showError } = useToast();
   const [notas, setNotas] = useState<Nota[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 20, total: 0, pages: 0 });
   const [resumo, setResumo] = useState<Resumo | null>(null);
@@ -104,12 +106,6 @@ export default function NfEntrada() {
   const [search, setSearch] = useState('');
   const [statusFiltro, setStatusFiltro] = useState('');
   const [loading, setLoading] = useState(true);
-
-  // Upload
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Detalhe
   const [detalhe, setDetalhe] = useState<NotaDetalhe | null>(null);
@@ -143,52 +139,6 @@ export default function NfEntrada() {
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); setSearch(searchInput); };
 
-  // Upload
-  const handleUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setUploadError('');
-    setUploading(true);
-
-    let successCount = 0;
-    let errorMsg = '';
-
-    for (const file of Array.from(files)) {
-      if (!file.name.toLowerCase().endsWith('.xml')) {
-        errorMsg = 'Apenas arquivos XML são permitidos';
-        continue;
-      }
-
-      const formData = new FormData();
-      formData.append('xml', file);
-
-      try {
-        await api.post('/financeiro/nf-entrada', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        successCount++;
-      } catch (err: any) {
-        errorMsg = err.response?.data?.error || 'Erro ao enviar arquivo';
-      }
-    }
-
-    setUploading(false);
-
-    if (successCount > 0) {
-      fetchNotas(1);
-      fetchResumo();
-    }
-    if (errorMsg) setUploadError(errorMsg);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    handleUpload(e.dataTransfer.files);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setDragOver(true); };
-  const handleDragLeave = () => setDragOver(false);
-
   // Detalhe
   const openDetalhe = async (id: string) => {
     setLoadingDetalhe(true);
@@ -209,7 +159,8 @@ export default function NfEntrada() {
       if (detalhe?.id === id) {
         setDetalhe(d => d ? { ...d, status: 'contabilizada' } : null);
       }
-    } catch {}
+      showSuccess('NF contabilizada no financeiro');
+    } catch { showError('Erro ao contabilizar'); }
     finally { setActionLoading(null); }
   };
 
@@ -223,7 +174,8 @@ export default function NfEntrada() {
       if (detalhe?.id === id) {
         setDetalhe(d => d ? { ...d, status: 'cancelada' } : null);
       }
-    } catch {}
+      showSuccess('NF cancelada');
+    } catch { showError('Erro ao cancelar'); }
     finally { setActionLoading(null); }
   };
 
@@ -233,7 +185,11 @@ export default function NfEntrada() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-bibelo-text">NF de Entrada</h1>
-          <p className="text-sm text-bibelo-muted mt-1">Notas fiscais de compra com fornecedores</p>
+          <p className="text-sm text-bibelo-muted mt-1">Sincronizado automaticamente do Bling</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-bibelo-muted">
+          <RefreshCw size={14} />
+          Atualiza a cada sync com o Bling
         </div>
       </div>
 
@@ -255,48 +211,6 @@ export default function NfEntrada() {
           <p className="text-xs text-bibelo-muted mb-1">Valor Total</p>
           <p className="text-xl font-bold text-bibelo-text">{fmt(resumo?.valor_total || '0')}</p>
         </div>
-      </div>
-
-      {/* Drag & Drop Upload */}
-      <div
-        className={`border-2 border-dashed rounded-xl p-8 mb-6 text-center transition-colors cursor-pointer ${
-          dragOver
-            ? 'border-bibelo-primary bg-bibelo-primary/5'
-            : 'border-bibelo-border hover:border-bibelo-primary/50'
-        }`}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xml"
-          multiple
-          className="hidden"
-          onChange={(e) => handleUpload(e.target.files)}
-        />
-        {uploading ? (
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-8 h-8 border-2 border-bibelo-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm text-bibelo-muted">Processando XML...</p>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-2">
-            <Upload size={32} className="text-bibelo-muted" />
-            <p className="text-sm text-bibelo-text font-medium">
-              Arraste o XML da NF-e aqui ou clique para selecionar
-            </p>
-            <p className="text-xs text-bibelo-muted">Aceita arquivos .xml de NF-e (até 5MB)</p>
-          </div>
-        )}
-        {uploadError && (
-          <div className="flex items-center justify-center gap-2 mt-3 text-sm text-red-400">
-            <AlertTriangle size={14} />
-            {uploadError}
-          </div>
-        )}
       </div>
 
       {/* Filtros */}
@@ -353,7 +267,7 @@ export default function NfEntrada() {
                   <td colSpan={8} className="px-4 py-12 text-center text-bibelo-muted">
                     <FileText size={32} className="mx-auto mb-2 opacity-50" />
                     <p>Nenhuma nota fiscal encontrada</p>
-                    <p className="text-xs mt-1">Arraste um XML acima para começar</p>
+                    <p className="text-xs mt-1">As NFs aparecem automaticamente ao dar entrada no Bling</p>
                   </td>
                 </tr>
               ) : (
