@@ -197,6 +197,36 @@ async function fetchCategoryMap(token: string): Promise<Map<number, string>> {
   return map;
 }
 
+// ── Atualiza categorias dos produtos via filtro idCategoria ─────
+
+export async function syncProductCategories(token: string, categoryMap: Map<number, string>): Promise<number> {
+  let updated = 0;
+  for (const [catId, catName] of categoryMap) {
+    let page = 1;
+    while (true) {
+      const data = await rateLimitedGet<{ data: Array<{ id: number }> }>(
+        `${BLING_API}/produtos?pagina=${page}&limite=100&idCategoria=${catId}`,
+        token
+      );
+      if (!data.data || data.data.length === 0) break;
+
+      const blingIds = data.data.map((p) => String(p.id));
+      if (blingIds.length > 0) {
+        const placeholders = blingIds.map((_, i) => `$${i + 2}`).join(", ");
+        await query(
+          `UPDATE sync.bling_products SET categoria = $1 WHERE bling_id IN (${placeholders})`,
+          [catName, ...blingIds]
+        );
+        updated += blingIds.length;
+      }
+
+      page++;
+    }
+  }
+  logger.info("Bling categorias dos produtos atualizadas", { updated });
+  return updated;
+}
+
 // ── Sync Products ───────────────────────────────────────────────
 
 export async function syncProducts(): Promise<number> {
@@ -258,6 +288,9 @@ export async function syncProducts(): Promise<number> {
 
       page++;
     }
+
+    // Atualiza categorias via filtro idCategoria
+    await syncProductCategories(token, categoryMap);
 
     await logSync("bling", "products", "ok", total);
     logger.info("Bling syncProducts concluído", { total });

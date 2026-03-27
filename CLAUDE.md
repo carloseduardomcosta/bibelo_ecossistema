@@ -80,6 +80,8 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── Produtos.tsx     ← lista produtos + custo/venda/margem/estoque
 │   │   │   ├── Estoque.tsx      ← KPIs estoque, gráfico por categoria
 │   │   │   ├── Lucratividade.tsx ← KPIs lucro, top produtos, receita/categoria
+│   │   │   ├── Segmentos.tsx    ← cards segmentos + lista clientes por segmento
+│   │   │   ├── Campanhas.tsx    ← lista + criar campanhas email/whatsapp
 │   │   │   └── Sync.tsx         ← painel Bling/NuvemShop + logs
 │   │   ├── components/
 │   │   │   ├── Layout.tsx       ← sidebar responsiva + Outlet
@@ -104,6 +106,8 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 ├── .env.example                 ← template sem secrets
 ├── docs/
 │   ├── infraestrutura-seguranca.md ← firewall, Nginx, SSL, Docker, DNS
+│   ├── bling-api-openapi.json      ← OpenAPI 3.0 spec completo (1MB, 160 endpoints)
+│   ├── bling-api-referencia.md     ← resumo endpoints, auth, webhooks, rate limits
 │   └── bibelo-dns-import.txt       ← registros DNS para Cloudflare
 └── CLAUDE.md                    ← este arquivo
 ```
@@ -268,10 +272,15 @@ notificação WhatsApp (sucesso ou falha)
 ## Integrações externas
 
 ### Bling ERP v3
-- OAuth2 — tokens salvos em `sync.sync_state`
-- Sync incremental a cada 30min via BullMQ
-- Rate limit: 60 req/min — usar delay automático
-- Dados: contatos, pedidos, financeiro
+- **Documentação completa**: `docs/bling-api-openapi.json` (OpenAPI 3.0 spec, 1MB) + `docs/bling-api-referencia.md` (resumo markdown)
+- OAuth2 — tokens salvos em `sync.sync_state` (campo TEXT)
+- Sync incremental a cada 30min via BullMQ (contatos, pedidos com itens, produtos com categorias, estoque)
+- **Rate limit: 3 req/s** (não 60/min) — delay 350ms entre requests, retry em 429
+- `/produtos` na lista NÃO traz categoria — usar `/produtos?idCategoria={id}` por categoria
+- `/pedidos/vendas` na lista NÃO traz itens — buscar detalhe `/pedidos/vendas/{id}`
+- `/estoques/saldos` EXIGE `idsProdutos[]` — enviar em lotes de 50
+- Webhook HMAC: `X-Bling-Signature-256: sha256=<hash>` com client_secret
+- Dados: contatos, pedidos (com itens), produtos, estoque, categorias, financeiro
 
 ### NuvemShop
 - Webhooks com validação HMAC SHA256
@@ -353,6 +362,11 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - 96fa2f8 feat: rotas CRUD campanhas + templates com disparo e soft delete
 - 074e41c feat: rotas sync status, sync manual Bling e OAuth callback
 - eddcf14 feat: página Sync com painel Bling/NuvemShop, botões sync e logs
+- 6ed9dbe feat: módulo ERP — produtos, estoque e lucratividade com sync Bling
+- 1df46c4 feat: dashboard CEO com insights, comparativos e alertas
+- 7d99f36 feat: filtro de período no Dashboard (7d, 15d, 30d, 3m, 6m, 1a)
+- 3d955a6 feat: estoque com alertas de reposição + página campanhas funcional
+- 9c5e980 feat: página Segmentos + fix upsert clientes por bling_id
 
 
 ## Protocolo de atualização deste arquivo
