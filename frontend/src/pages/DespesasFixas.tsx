@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   AlertTriangle, CheckCircle2, Clock, CalendarClock, DollarSign,
-  ChevronLeft, ChevronRight, Bell, BellOff, Plus, X, Check,
+  ChevronLeft, ChevronRight, Bell, BellOff, Plus, X, Check, Pencil, Trash2,
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
@@ -59,6 +59,14 @@ export default function DespesasFixas() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
+    descricao: '',
+    categoria_id: '',
+    valor: '',
+    dia_vencimento: '',
+    observacoes: '',
+  });
+  const [editModal, setEditModal] = useState<string | null>(null);
+  const [editData, setEditData] = useState({
     descricao: '',
     categoria_id: '',
     valor: '',
@@ -148,6 +156,55 @@ export default function DespesasFixas() {
       fetchAlertas();
     } catch {}
     finally { setSaving(false); }
+  };
+
+  const openEdit = (df: DespesaFixa) => {
+    setEditData({
+      descricao: df.descricao,
+      categoria_id: '', // será preenchido pelo select
+      valor: String(parseFloat(df.valor)),
+      dia_vencimento: String(df.dia_vencimento),
+      observacoes: '',
+    });
+    // buscar dados completos da despesa para pegar categoria_id
+    api.get('/financeiro/despesas-fixas').then(({ data }) => {
+      const found = data.data.find((d: any) => d.id === df.id);
+      if (found) {
+        setEditData(prev => ({
+          ...prev,
+          categoria_id: found.categoria_id,
+          observacoes: found.observacoes || '',
+        }));
+      }
+    }).catch(() => {});
+    setEditModal(df.id);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editModal) return;
+    setSaving(true);
+    try {
+      await api.put(`/financeiro/despesas-fixas/${editModal}`, {
+        descricao: editData.descricao,
+        categoria_id: editData.categoria_id,
+        valor: parseFloat(editData.valor),
+        dia_vencimento: parseInt(editData.dia_vencimento),
+        observacoes: editData.observacoes || undefined,
+      });
+      setEditModal(null);
+      fetchAlertas();
+      showSuccess('Despesa fixa atualizada');
+    } catch { showError('Erro ao atualizar'); }
+    finally { setSaving(false); }
+  };
+
+  const handleDesativar = async (id: string) => {
+    if (!confirm('Desativar esta despesa fixa?')) return;
+    try {
+      await api.put(`/financeiro/despesas-fixas/${id}`, { ativo: false });
+      fetchAlertas();
+      showSuccess('Despesa fixa desativada');
+    } catch { showError('Erro ao desativar'); }
   };
 
   return (
@@ -299,8 +356,22 @@ export default function DespesasFixas() {
                   </p>
                 </div>
 
-                {/* Ação */}
-                <div className="shrink-0">
+                {/* Ações */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => openEdit(df)}
+                    className="p-1.5 text-bibelo-muted hover:text-bibelo-primary border border-bibelo-border rounded-lg hover:border-bibelo-primary/30 transition-colors"
+                    title="Editar"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    onClick={() => handleDesativar(df.id)}
+                    className="p-1.5 text-bibelo-muted hover:text-red-400 border border-bibelo-border rounded-lg hover:border-red-400/30 transition-colors"
+                    title="Desativar"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                   {isPago ? (
                     <button
                       onClick={() => handleDesfazer(df.id)}
@@ -325,6 +396,62 @@ export default function DespesasFixas() {
           })
         )}
       </div>
+
+      {/* Modal Editar Despesa Fixa */}
+      {editModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setEditModal(null)}>
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-bibelo-text">Editar Despesa Fixa</h2>
+              <button onClick={() => setEditModal(null)} className="text-bibelo-muted hover:text-bibelo-text"><X size={20} /></button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-bibelo-muted mb-1">Descrição</label>
+                <input type="text" value={editData.descricao} onChange={(e) => setEditData(f => ({ ...f, descricao: e.target.value }))}
+                  className="w-full px-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text focus:outline-none focus:border-bibelo-primary" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-bibelo-muted mb-1">Valor (R$)</label>
+                  <input type="number" step="0.01" value={editData.valor} onChange={(e) => setEditData(f => ({ ...f, valor: e.target.value }))}
+                    className="w-full px-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text focus:outline-none focus:border-bibelo-primary" />
+                </div>
+                <div>
+                  <label className="block text-xs text-bibelo-muted mb-1">Dia Vencimento</label>
+                  <input type="number" min="1" max="31" value={editData.dia_vencimento} onChange={(e) => setEditData(f => ({ ...f, dia_vencimento: e.target.value }))}
+                    className="w-full px-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text focus:outline-none focus:border-bibelo-primary" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-bibelo-muted mb-1">Categoria</label>
+                <select value={editData.categoria_id} onChange={(e) => setEditData(f => ({ ...f, categoria_id: e.target.value }))}
+                  className="w-full px-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text focus:outline-none focus:border-bibelo-primary">
+                  <option value="">Selecione...</option>
+                  {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs text-bibelo-muted mb-1">Observações</label>
+                <input type="text" placeholder="Opcional" value={editData.observacoes} onChange={(e) => setEditData(f => ({ ...f, observacoes: e.target.value }))}
+                  className="w-full px-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text focus:outline-none focus:border-bibelo-primary" />
+              </div>
+
+              <button
+                onClick={handleSaveEdit}
+                disabled={saving || !editData.descricao || !editData.categoria_id || !editData.valor || !editData.dia_vencimento}
+                className="w-full py-2.5 bg-bibelo-primary text-white rounded-lg text-sm font-medium hover:bg-bibelo-primary/80 disabled:opacity-50 transition-colors"
+              >
+                {saving ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Nova Despesa Fixa */}
       {showModal && (
