@@ -158,6 +158,33 @@ analyticsRouter.get("/segments", async (_req: Request, res: Response) => {
   });
 });
 
+// ── GET /api/analytics/segments-detail — segmentos com métricas ──
+
+analyticsRouter.get("/segments-detail", async (_req: Request, res: Response) => {
+  const rows = await query<{
+    segmento: string; total: string; ltv_medio: string; ticket_medio: string; score_medio: string;
+  }>(`
+    SELECT segmento,
+           COUNT(*)::text AS total,
+           ROUND(AVG(ltv), 2)::text AS ltv_medio,
+           ROUND(AVG(ticket_medio), 2)::text AS ticket_medio,
+           ROUND(AVG(score))::text AS score_medio
+    FROM crm.customer_scores
+    GROUP BY segmento
+    ORDER BY AVG(score) DESC
+  `);
+
+  res.json({
+    data: rows.map((r) => ({
+      segmento: r.segmento,
+      total: parseInt(r.total, 10),
+      ltv_medio: parseFloat(r.ltv_medio),
+      ticket_medio: parseFloat(r.ticket_medio),
+      score_medio: parseInt(r.score_medio, 10),
+    })),
+  });
+});
+
 // ── GET /api/analytics/insights — oportunidades e alertas ───────
 
 analyticsRouter.get("/insights", async (req: Request, res: Response) => {

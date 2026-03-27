@@ -7,6 +7,7 @@ import {
   Package,
   Warehouse,
   TrendingUp,
+  Target,
   RefreshCw,
   LogOut,
   Menu,
@@ -20,6 +21,7 @@ const navItems = [
   { to: '/produtos', label: 'Produtos', icon: Package },
   { to: '/estoque', label: 'Estoque', icon: Warehouse },
   { to: '/lucratividade', label: 'Lucratividade', icon: TrendingUp },
+  { to: '/segmentos', label: 'Segmentos', icon: Target },
   { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
   { to: '/sync', label: 'Sync', icon: RefreshCw },
 ];

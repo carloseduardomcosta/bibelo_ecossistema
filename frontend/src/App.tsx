@@ -9,6 +9,7 @@ import Clientes from './pages/Clientes';
 import ClientePerfil from './pages/ClientePerfil';
 import Sync from './pages/Sync';
 import Campanhas from './pages/Campanhas';
+import Segmentos from './pages/Segmentos';
 import Produtos from './pages/Produtos';
 import Estoque from './pages/Estoque';
 import Lucratividade from './pages/Lucratividade';
@@ -36,6 +37,7 @@ export default function App() {
               <Route path="/produtos/:id" element={<Placeholder titulo="Detalhe Produto" />} />
               <Route path="/estoque" element={<Estoque />} />
               <Route path="/lucratividade" element={<Lucratividade />} />
+              <Route path="/segmentos" element={<Segmentos />} />
               <Route path="/campanhas" element={<Campanhas />} />
               <Route path="/sync" element={<Sync />} />
             </Route>

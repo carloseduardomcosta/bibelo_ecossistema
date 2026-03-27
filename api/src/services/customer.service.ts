@@ -51,38 +51,57 @@ export interface CustomerScore {
   calculado_em: string;
 }
 
-// ── Upsert por email ───────────────────────────────────────────
+// ── Upsert por email ou bling_id ────────────────────────────────
 
 export async function upsertCustomer(dados: CustomerData): Promise<Customer> {
-  if (dados.email) {
-    const existing = await queryOne<Customer>(
+  // Busca existente por bling_id, nuvemshop_id ou email
+  let existing: Customer | null = null;
+
+  if (dados.bling_id) {
+    existing = await queryOne<Customer>(
+      "SELECT * FROM crm.customers WHERE bling_id = $1",
+      [dados.bling_id]
+    );
+  }
+
+  if (!existing && dados.nuvemshop_id) {
+    existing = await queryOne<Customer>(
+      "SELECT * FROM crm.customers WHERE nuvemshop_id = $1",
+      [dados.nuvemshop_id]
+    );
+  }
+
+  if (!existing && dados.email) {
+    existing = await queryOne<Customer>(
       "SELECT * FROM crm.customers WHERE email = $1",
       [dados.email]
     );
+  }
 
-    if (existing) {
-      const fields: string[] = [];
-      const values: unknown[] = [];
-      let idx = 1;
+  if (existing) {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
 
-      for (const [key, value] of Object.entries(dados)) {
-        if (key === "email" || value === undefined) continue;
-        fields.push(`${key} = $${idx}`);
-        values.push(value);
-        idx++;
-      }
-
-      if (fields.length > 0) {
-        values.push(existing.id);
-        const updated = await queryOne<Customer>(
-          `UPDATE crm.customers SET ${fields.join(", ")} WHERE id = $${idx} RETURNING *`,
-          values
-        );
-        logger.info("Cliente atualizado via upsert", { id: existing.id, email: dados.email });
-        return updated!;
-      }
-      return existing;
+    for (const [key, value] of Object.entries(dados)) {
+      if (value === undefined) continue;
+      // Não sobrescreve campos que já têm valor com null/vazio
+      const existingVal = existing[key as keyof Customer];
+      if (existingVal && !value) continue;
+      fields.push(`${key} = $${idx}`);
+      values.push(value);
+      idx++;
     }
+
+    if (fields.length > 0) {
+      values.push(existing.id);
+      const updated = await queryOne<Customer>(
+        `UPDATE crm.customers SET ${fields.join(", ")} WHERE id = $${idx} RETURNING *`,
+        values
+      );
+      return updated!;
+    }
+    return existing;
   }
 
   const cols = Object.keys(dados).filter((k) => dados[k as keyof CustomerData] !== undefined);
@@ -94,7 +113,7 @@ export async function upsertCustomer(dados: CustomerData): Promise<Customer> {
     vals
   );
 
-  logger.info("Cliente criado via upsert", { id: created!.id, email: dados.email });
+  logger.info("Cliente criado via upsert", { id: created!.id, nome: dados.nome });
   return created!;
 }
 
