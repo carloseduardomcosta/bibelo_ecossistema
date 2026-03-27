@@ -14,7 +14,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
-RUN mkdir -p logs && chown -R bibelo:bibelo /app
+RUN mkdir -p logs uploads/nf && chown -R bibelo:bibelo /app
 USER bibelo
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \

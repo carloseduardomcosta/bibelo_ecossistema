@@ -15,6 +15,7 @@ import {
   Wallet,
   CalendarClock,
   Calculator,
+  FileText,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -28,6 +29,7 @@ const navItems = [
   { to: '/financeiro', label: 'Financeiro', icon: Wallet },
   { to: '/despesas-fixas', label: 'Despesas Fixas', icon: CalendarClock },
   { to: '/simulador', label: 'Simulador', icon: Calculator },
+  { to: '/nf-entrada', label: 'NF Entrada', icon: FileText },
   { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
   { to: '/sync', label: 'Sync', icon: RefreshCw },
 ];

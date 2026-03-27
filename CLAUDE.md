@@ -45,7 +45,8 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── templates.ts     ← CRUD + soft delete (5 endpoints)
 │   │   │   ├── sync.ts          ← status, sync manual, OAuth Bling
 │   │   │   ├── products.ts     ← CRUD produtos, estoque, lucratividade
-│   │   │   └── financeiro.ts   ← módulo financeiro completo (20+ endpoints)
+│   │   │   ├── financeiro.ts   ← módulo financeiro completo (20+ endpoints)
+│   │   │   └── nf-entrada.ts  ← upload XML NF-e, parse, contabilização
 │   │   ├── services/
 │   │   │   └── customer.service.ts ← upsert, score, timeline, segments
 │   │   ├── integrations/
@@ -86,6 +87,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── Financeiro.tsx   ← dashboard financeiro + lançamentos
 │   │   │   ├── DespesasFixas.tsx ← controle vencimentos + pagamentos mensais
 │   │   │   ├── SimuladorCustos.tsx ← simulador marketplace + kits embalagem
+│   │   │   ├── NfEntrada.tsx    ← upload XML NF-e, lista, detalhe, contabilizar
 │   │   │   └── Sync.tsx         ← painel Bling/NuvemShop + logs
 │   │   ├── components/
 │   │   │   ├── Layout.tsx       ← sidebar responsiva + Outlet
@@ -150,6 +152,8 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 - `kits_embalagem` — kits pré-configurados (Pequeno, Médio, Grande)
 - `kit_itens` — itens de cada kit com quantidade
 - `canais_venda` — taxas por marketplace (NuvemShop, ML, Shopee, etc.)
+- `notas_entrada` — NFs de compra (número, chave, fornecedor, valores, XML, status)
+- `notas_entrada_itens` — itens da NF (produto, qtd, valor, NCM, CFOP, impostos)
 
 ### schema: public
 - `users` — usuários do CRM (admin, editor, viewer)
@@ -235,6 +239,14 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `GET  /api/financeiro/canais` — canais de venda com taxas
 - `PUT  /api/financeiro/canais/:id` — atualizar taxas
 - `POST /api/financeiro/simular` — simulador de custos por marketplace
+
+### NF de Entrada (Bearer JWT obrigatório)
+- `POST /api/financeiro/nf-entrada` — upload XML NF-e (multipart/form-data), parse automático
+- `GET  /api/financeiro/nf-entrada` — lista paginada (filtros: status, search, mes)
+- `GET  /api/financeiro/nf-entrada/:id` — detalhe com itens
+- `POST /api/financeiro/nf-entrada/:id/contabilizar` — gera lançamento no financeiro
+- `DELETE /api/financeiro/nf-entrada/:id` — cancelar NF (e lançamento se contabilizada)
+- `GET  /api/financeiro/nf-entrada/resumo/geral` — KPIs (total, pendentes, contabilizadas, valores)
 
 ### Webhooks (validação HMAC)
 - `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop
