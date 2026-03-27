@@ -12,6 +12,9 @@ import {
   LogOut,
   Menu,
   X,
+  Wallet,
+  CalendarClock,
+  Calculator,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -22,6 +25,9 @@ const navItems = [
   { to: '/estoque', label: 'Estoque', icon: Warehouse },
   { to: '/lucratividade', label: 'Lucratividade', icon: TrendingUp },
   { to: '/segmentos', label: 'Segmentos', icon: Target },
+  { to: '/financeiro', label: 'Financeiro', icon: Wallet },
+  { to: '/despesas-fixas', label: 'Despesas Fixas', icon: CalendarClock },
+  { to: '/simulador', label: 'Simulador', icon: Calculator },
   { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
   { to: '/sync', label: 'Sync', icon: RefreshCw },
 ];

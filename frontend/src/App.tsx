@@ -13,6 +13,9 @@ import Segmentos from './pages/Segmentos';
 import Produtos from './pages/Produtos';
 import Estoque from './pages/Estoque';
 import Lucratividade from './pages/Lucratividade';
+import Financeiro from './pages/Financeiro';
+import DespesasFixas from './pages/DespesasFixas';
+import SimuladorCustos from './pages/SimuladorCustos';
 
 const GOOGLE_CLIENT_ID = '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
 
@@ -39,6 +42,9 @@ export default function App() {
               <Route path="/lucratividade" element={<Lucratividade />} />
               <Route path="/segmentos" element={<Segmentos />} />
               <Route path="/campanhas" element={<Campanhas />} />
+              <Route path="/financeiro" element={<Financeiro />} />
+              <Route path="/despesas-fixas" element={<DespesasFixas />} />
+              <Route path="/simulador" element={<SimuladorCustos />} />
               <Route path="/sync" element={<Sync />} />
             </Route>
           </Routes>

@@ -44,7 +44,8 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── campaigns.ts     ← CRUD + disparo (5 endpoints)
 │   │   │   ├── templates.ts     ← CRUD + soft delete (5 endpoints)
 │   │   │   ├── sync.ts          ← status, sync manual, OAuth Bling
-│   │   │   └── products.ts     ← CRUD produtos, estoque, lucratividade
+│   │   │   ├── products.ts     ← CRUD produtos, estoque, lucratividade
+│   │   │   └── financeiro.ts   ← módulo financeiro completo (20+ endpoints)
 │   │   ├── services/
 │   │   │   └── customer.service.ts ← upsert, score, timeline, segments
 │   │   ├── integrations/
@@ -82,6 +83,9 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── Lucratividade.tsx ← KPIs lucro, top produtos, receita/categoria
 │   │   │   ├── Segmentos.tsx    ← cards segmentos + lista clientes por segmento
 │   │   │   ├── Campanhas.tsx    ← lista + criar campanhas email/whatsapp
+│   │   │   ├── Financeiro.tsx   ← dashboard financeiro + lançamentos
+│   │   │   ├── DespesasFixas.tsx ← controle vencimentos + pagamentos mensais
+│   │   │   ├── SimuladorCustos.tsx ← simulador marketplace + kits embalagem
 │   │   │   └── Sync.tsx         ← painel Bling/NuvemShop + logs
 │   │   ├── components/
 │   │   │   ├── Layout.tsx       ← sidebar responsiva + Outlet
@@ -136,6 +140,16 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 - `nuvemshop_orders` — pedidos via webhook NuvemShop
 - `sync_logs` — log de todas as sincronizações
 - `sync_state` — controle de última sync por fonte
+
+### schema: financeiro
+- `categorias` — categorias de receita e despesa (23 padrão)
+- `lancamentos` — receitas e despesas com data, valor, status, categoria
+- `despesas_fixas` — despesas recorrentes com dia de vencimento
+- `despesas_fixas_pagamentos` — controle pago/pendente por mês
+- `custos_embalagem` — itens de embalagem com custo unitário
+- `kits_embalagem` — kits pré-configurados (Pequeno, Médio, Grande)
+- `kit_itens` — itens de cada kit com quantidade
+- `canais_venda` — taxas por marketplace (NuvemShop, ML, Shopee, etc.)
 
 ### schema: public
 - `users` — usuários do CRM (admin, editor, viewer)
@@ -199,6 +213,28 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `GET  /api/products/stock-overview` — resumo estoque + por categoria
 - `GET  /api/products/analytics/profitability` — receita vs custo, top produtos, por categoria
 - `GET  /api/products/:id` — detalhe + estoque por depósito + vendas
+
+### Financeiro (Bearer JWT obrigatório)
+- `GET  /api/financeiro/dashboard` — KPIs, resumo mensal, categorias (param: periodo)
+- `GET  /api/financeiro/lancamentos` — lista paginada (filtros: tipo, status, categoria_id, mes, search)
+- `GET  /api/financeiro/lancamentos/:id` — detalhe
+- `POST /api/financeiro/lancamentos` — criar lançamento
+- `PUT  /api/financeiro/lancamentos/:id` — atualizar
+- `DELETE /api/financeiro/lancamentos/:id` — cancelar (soft delete)
+- `GET  /api/financeiro/categorias` — listar categorias com total de lançamentos
+- `POST /api/financeiro/categorias` — criar categoria
+- `GET  /api/financeiro/despesas-fixas` — listar despesas fixas ativas
+- `POST /api/financeiro/despesas-fixas` — criar despesa fixa
+- `PUT  /api/financeiro/despesas-fixas/:id` — atualizar
+- `GET  /api/financeiro/despesas-fixas/alertas` — status do mês (atrasado, vence_em_breve, pago, pendente)
+- `GET  /api/financeiro/despesas-fixas/pagamentos` — pagamentos por mês
+- `POST /api/financeiro/despesas-fixas/:id/pagar` — marcar como pago
+- `POST /api/financeiro/despesas-fixas/:id/desfazer-pagamento` — desfazer pagamento
+- `GET  /api/financeiro/embalagens` — itens + kits com custo total
+- `PUT  /api/financeiro/embalagens/:id` — atualizar custo
+- `GET  /api/financeiro/canais` — canais de venda com taxas
+- `PUT  /api/financeiro/canais/:id` — atualizar taxas
+- `POST /api/financeiro/simular` — simulador de custos por marketplace
 
 ### Webhooks (validação HMAC)
 - `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop
@@ -385,12 +421,13 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 
 | Integração | Status | Observações |
 |-----------|--------|-------------|
-| PostgreSQL | ✅ produção | 17 tabelas, 3 schemas |
+| PostgreSQL | ✅ produção | 25 tabelas, 4 schemas (crm, marketing, sync, financeiro) |
 | Redis | ✅ produção | cache + filas BullMQ |
 | Nginx + SSL | ✅ produção | crm.papelariabibelo.com.br |
 | API Node.js | ✅ produção | /health respondendo |
 | Google OAuth2 | ✅ produção | login exclusivo via Google Sign-In |
-| Frontend React | 🔧 dashboard + clientes | login, dashboard KPIs, lista/perfil clientes |
+| Módulo Financeiro | ✅ produção | fluxo de caixa, despesas fixas, simulador, embalagens |
+| Frontend React | 🔧 dashboard + clientes + financeiro | login, dashboard, clientes, financeiro, simulador |
 | GitHub Actions | ✅ configurado | deploy automático no push |
 | Bling OAuth2 | ✅ configurado | credenciais no .env, callback funcional |
 | Bling Sync | ✅ código pronto | sync manual + incremental 30min via BullMQ |
@@ -414,4 +451,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 27 de Março de 2026*
+*Última atualização: 27 de Março de 2026 — Módulo Financeiro*
