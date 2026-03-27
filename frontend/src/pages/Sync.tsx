@@ -81,12 +81,13 @@ export default function Sync() {
     setSyncing(true);
     setMessage(null);
     try {
-      const { data } = await api.post(`/sync/bling?tipo=${tipo}`);
+      await api.post(`/sync/bling?tipo=${tipo}`);
       setMessage({
-        text: `Sync ${tipo} finalizado: ${data.customers ?? 0} clientes, ${data.orders ?? 0} pedidos`,
+        text: `Sync ${tipo} iniciado em background. Atualize a pagina em alguns minutos para ver os resultados.`,
         type: 'success',
       });
-      fetchStatus();
+      // Atualiza status após 5s para mostrar progresso
+      setTimeout(fetchStatus, 5000);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detalhes?: string } } })?.response?.data?.detalhes || 'Erro na sincronizacao';
       setMessage({ text: msg, type: 'error' });

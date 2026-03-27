@@ -57,30 +57,23 @@ syncRouter.post("/bling", authMiddleware, async (req: Request, res: Response) =>
 
   logger.info("Sync Bling manual iniciado", { tipo, user: req.user?.email });
 
+  // Responde imediatamente e roda sync em background (evita timeout HTTP)
+  res.json({ message: `Sync ${tipo} iniciado em background. Acompanhe pelos logs.` });
+
   try {
     if (tipo === "full") {
       const customers = await syncCustomers();
       const orders = await syncOrders();
       const products = await syncProducts();
       const stock = await syncStock();
-      res.json({
-        message: "Sync completo finalizado",
-        customers,
-        orders,
-        products,
-        stock,
-      });
+      logger.info("Sync completo finalizado", { customers, orders, products, stock });
     } else {
       const result = await incrementalSync();
-      res.json({
-        message: "Sync incremental finalizado",
-        ...result,
-      });
+      logger.info("Sync incremental finalizado", { ...result });
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro na sincronização";
     logger.error("Sync Bling manual falhou", { error: message });
-    res.status(500).json({ error: "Falha na sincronização com o Bling", detalhes: message });
   }
 });
 
