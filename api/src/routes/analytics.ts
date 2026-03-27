@@ -5,33 +5,50 @@ import { authMiddleware } from "../middleware/auth";
 export const analyticsRouter = Router();
 analyticsRouter.use(authMiddleware);
 
+// ── Helper: converte periodo em intervalo SQL ───────────────────
+
+function periodoToInterval(periodo?: string): { intervalo: string; dias: number } {
+  switch (periodo) {
+    case "7d":  return { intervalo: "7 days", dias: 7 };
+    case "15d": return { intervalo: "15 days", dias: 15 };
+    case "30d": return { intervalo: "30 days", dias: 30 };
+    case "3m":  return { intervalo: "3 months", dias: 90 };
+    case "6m":  return { intervalo: "6 months", dias: 180 };
+    case "1a":  return { intervalo: "12 months", dias: 365 };
+    default:    return { intervalo: "1 month", dias: 30 };
+  }
+}
+
 // ── GET /api/analytics/overview — KPIs com comparativo ──────────
 
-analyticsRouter.get("/overview", async (_req: Request, res: Response) => {
-  // Mês atual e anterior
-  const mesAtual = await queryOne<{ pedidos: string; receita: string; ticket: string }>(`
+analyticsRouter.get("/overview", async (req: Request, res: Response) => {
+  const { intervalo, dias } = periodoToInterval(req.query.periodo as string);
+
+  // Período atual
+  const atual = await queryOne<{ pedidos: string; receita: string; ticket: string }>(`
     SELECT COUNT(*)::text AS pedidos,
            COALESCE(SUM(valor), 0)::text AS receita,
            COALESCE(AVG(valor) FILTER (WHERE valor > 0), 0)::text AS ticket
     FROM sync.bling_orders
-    WHERE criado_bling >= date_trunc('month', CURRENT_DATE)
+    WHERE criado_bling >= NOW() - INTERVAL '${intervalo}'
   `);
 
-  const mesAnterior = await queryOne<{ pedidos: string; receita: string; ticket: string }>(`
+  // Período anterior (mesma duração, antes do atual)
+  const anterior = await queryOne<{ pedidos: string; receita: string; ticket: string }>(`
     SELECT COUNT(*)::text AS pedidos,
            COALESCE(SUM(valor), 0)::text AS receita,
            COALESCE(AVG(valor) FILTER (WHERE valor > 0), 0)::text AS ticket
     FROM sync.bling_orders
-    WHERE criado_bling >= date_trunc('month', CURRENT_DATE) - INTERVAL '1 month'
-      AND criado_bling < date_trunc('month', CURRENT_DATE)
+    WHERE criado_bling >= NOW() - INTERVAL '${dias * 2} days'
+      AND criado_bling < NOW() - INTERVAL '${intervalo}'
   `);
 
-  const totalClientes = await queryOne<{ total: string; novos_mes: string; novos_anterior: string }>(`
+  const totalClientes = await queryOne<{ total: string; novos: string; novos_anterior: string }>(`
     SELECT COUNT(*)::text AS total,
-           COUNT(*) FILTER (WHERE criado_em >= date_trunc('month', CURRENT_DATE))::text AS novos_mes,
+           COUNT(*) FILTER (WHERE criado_em >= NOW() - INTERVAL '${intervalo}')::text AS novos,
            COUNT(*) FILTER (
-             WHERE criado_em >= date_trunc('month', CURRENT_DATE) - INTERVAL '1 month'
-               AND criado_em < date_trunc('month', CURRENT_DATE)
+             WHERE criado_em >= NOW() - INTERVAL '${dias * 2} days'
+               AND criado_em < NOW() - INTERVAL '${intervalo}'
            )::text AS novos_anterior
     FROM crm.customers WHERE ativo = true
   `);
@@ -58,18 +75,18 @@ analyticsRouter.get("/overview", async (_req: Request, res: Response) => {
     FROM crm.customer_scores GROUP BY segmento ORDER BY total DESC
   `);
 
-  const recAtual = parseFloat(mesAtual?.receita || "0");
-  const recAnterior = parseFloat(mesAnterior?.receita || "0");
-  const pedAtual = parseInt(mesAtual?.pedidos || "0", 10);
-  const pedAnterior = parseInt(mesAnterior?.pedidos || "0", 10);
-  const ticketAtual = parseFloat(mesAtual?.ticket || "0");
-  const ticketAnterior = parseFloat(mesAnterior?.ticket || "0");
-  const novosAtual = parseInt(totalClientes?.novos_mes || "0", 10);
+  const recAtual = parseFloat(atual?.receita || "0");
+  const recAnterior = parseFloat(anterior?.receita || "0");
+  const pedAtual = parseInt(atual?.pedidos || "0", 10);
+  const pedAnterior = parseInt(anterior?.pedidos || "0", 10);
+  const ticketAtual = parseFloat(atual?.ticket || "0");
+  const ticketAnterior = parseFloat(anterior?.ticket || "0");
+  const novosAtual = parseInt(totalClientes?.novos || "0", 10);
   const novosAnterior = parseInt(totalClientes?.novos_anterior || "0", 10);
 
-  function variacao(atual: number, anterior: number): number {
-    if (anterior === 0) return atual > 0 ? 100 : 0;
-    return Math.round(((atual - anterior) / anterior) * 1000) / 10;
+  function variacao(a: number, b: number): number {
+    if (b === 0) return a > 0 ? 100 : 0;
+    return Math.round(((a - b) / b) * 1000) / 10;
   }
 
   res.json({
@@ -99,16 +116,18 @@ analyticsRouter.get("/overview", async (_req: Request, res: Response) => {
   });
 });
 
-// ── GET /api/analytics/revenue — receita mensal (12 meses) ──────
+// ── GET /api/analytics/revenue — receita por período ────────────
 
-analyticsRouter.get("/revenue", async (_req: Request, res: Response) => {
+analyticsRouter.get("/revenue", async (req: Request, res: Response) => {
+  const { intervalo } = periodoToInterval(req.query.periodo as string);
+
   const rows = await query<{ mes: string; receita: string; pedidos: string }>(`
     SELECT
       TO_CHAR(date_trunc('month', criado_bling), 'YYYY-MM') AS mes,
       SUM(valor)::text AS receita,
       COUNT(*)::text AS pedidos
     FROM sync.bling_orders
-    WHERE criado_bling >= NOW() - INTERVAL '12 months' AND criado_bling IS NOT NULL
+    WHERE criado_bling >= NOW() - INTERVAL '${intervalo}' AND criado_bling IS NOT NULL
     GROUP BY date_trunc('month', criado_bling)
     ORDER BY mes ASC
   `);
@@ -141,8 +160,10 @@ analyticsRouter.get("/segments", async (_req: Request, res: Response) => {
 
 // ── GET /api/analytics/insights — oportunidades e alertas ───────
 
-analyticsRouter.get("/insights", async (_req: Request, res: Response) => {
-  // Clientes em risco de churn (score baixo, segmento inativo)
+analyticsRouter.get("/insights", async (req: Request, res: Response) => {
+  const { intervalo } = periodoToInterval(req.query.periodo as string);
+
+  // Clientes em risco de churn
   const clientesRisco = await query<{ id: string; nome: string; score: number }>(`
     SELECT c.id, c.nome, cs.score
     FROM crm.customers c
@@ -152,19 +173,20 @@ analyticsRouter.get("/insights", async (_req: Request, res: Response) => {
     LIMIT 10
   `);
 
-  // Top clientes por valor
+  // Top clientes por valor no período
   const topClientes = await query<{ id: string; nome: string; total_pedidos: string; valor_total: string }>(`
     SELECT c.id, c.nome,
            COUNT(o.id)::text AS total_pedidos,
            COALESCE(SUM(o.valor), 0)::text AS valor_total
     FROM crm.customers c
     JOIN sync.bling_orders o ON o.customer_id = c.id
+    WHERE o.criado_bling >= NOW() - INTERVAL '${intervalo}'
     GROUP BY c.id, c.nome
     ORDER BY SUM(o.valor) DESC
     LIMIT 10
   `);
 
-  // Produtos sem estoque que tem vendas (oportunidade perdida)
+  // Produtos sem estoque de maior valor
   const oportunidadesPerdidas = await query<{ nome: string; sku: string; preco_venda: number }>(`
     SELECT p.nome, p.sku, p.preco_venda
     FROM sync.bling_products p

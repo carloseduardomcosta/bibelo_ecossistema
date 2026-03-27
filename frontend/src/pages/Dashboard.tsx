@@ -60,18 +60,30 @@ function VariacaoBadge({ valor }: { valor: number }) {
   );
 }
 
+const PERIODOS = [
+  { value: '7d', label: '7 dias' },
+  { value: '15d', label: '15 dias' },
+  { value: '30d', label: '30 dias' },
+  { value: '3m', label: '3 meses' },
+  { value: '6m', label: '6 meses' },
+  { value: '1a', label: '1 ano' },
+];
+
 export default function Dashboard() {
   const { user } = useAuth();
+  const [periodo, setPeriodo] = useState('30d');
   const [ov, setOv] = useState<Overview | null>(null);
   const [revenue, setRevenue] = useState<RevenuePoint[]>([]);
   const [insights, setInsights] = useState<Insights | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
+    const p = `periodo=${periodo}`;
     Promise.all([
-      api.get('/analytics/overview'),
-      api.get('/analytics/revenue'),
-      api.get('/analytics/insights'),
+      api.get(`/analytics/overview?${p}`),
+      api.get(`/analytics/revenue?${p}`),
+      api.get(`/analytics/insights?${p}`),
     ])
       .then(([ovRes, revRes, insRes]) => {
         setOv(ovRes.data);
@@ -80,7 +92,7 @@ export default function Dashboard() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [periodo]);
 
   if (loading) {
     return (
@@ -97,10 +109,29 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-bibelo-text mb-1">
-        Ola, {user?.nome?.split(' ')[0]}!
-      </h1>
-      <p className="text-sm text-bibelo-muted mb-6">Visao geral do seu negocio</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-bibelo-text">
+            Ola, {user?.nome?.split(' ')[0]}!
+          </h1>
+          <p className="text-sm text-bibelo-muted mt-0.5">Visao geral do seu negocio</p>
+        </div>
+        <div className="flex gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1">
+          {PERIODOS.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => setPeriodo(p.value)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                periodo === p.value
+                  ? 'bg-bibelo-primary text-white'
+                  : 'text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* KPIs Principais */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
