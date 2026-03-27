@@ -151,9 +151,141 @@ export async function syncOrders(): Promise<number> {
   }
 }
 
+// ── Sync Products ───────────────────────────────────────────────
+
+export async function syncProducts(): Promise<number> {
+  const token = await getValidToken();
+  let page = 1;
+  let total = 0;
+
+  try {
+    while (true) {
+      const data = await rateLimitedGet<{ data: Array<Record<string, unknown>> }>(
+        `${BLING_API}/produtos?pagina=${page}&limite=100`,
+        token
+      );
+
+      if (!data.data || data.data.length === 0) break;
+
+      for (const prod of data.data) {
+        const categoria = prod.categoria as Record<string, unknown> | undefined;
+        const midia = prod.midia as Record<string, unknown> | undefined;
+        const imagensExternas = (midia?.imagens as Record<string, unknown>)?.externas as Array<Record<string, unknown>> | undefined;
+        const imagens = (imagensExternas || []).map((img, i) => ({ url: img.link, ordem: i }));
+
+        await query(
+          `INSERT INTO sync.bling_products
+           (bling_id, nome, sku, preco_custo, preco_venda, categoria, imagens, ativo, tipo, unidade, peso_bruto, gtin, dados_raw, sincronizado_em)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+           ON CONFLICT (bling_id) DO UPDATE SET
+             nome = $2, sku = $3, preco_custo = $4, preco_venda = $5, categoria = $6,
+             imagens = $7, ativo = $8, tipo = $9, unidade = $10, peso_bruto = $11,
+             gtin = $12, dados_raw = $13, sincronizado_em = NOW()`,
+          [
+            String(prod.id),
+            prod.nome || "Sem nome",
+            prod.codigo || null,
+            prod.precoCusto || 0,
+            prod.preco || 0,
+            categoria?.descricao || null,
+            JSON.stringify(imagens),
+            prod.situacao === "A" || prod.situacao === "Ativo",
+            prod.tipo || "P",
+            prod.unidade || "UN",
+            prod.pesoBruto || null,
+            prod.gtin || null,
+            JSON.stringify(prod),
+          ]
+        );
+
+        total++;
+      }
+
+      page++;
+    }
+
+    await logSync("bling", "products", "ok", total);
+    logger.info("Bling syncProducts concluído", { total });
+    return total;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido";
+    await logSync("bling", "products", "erro", total, message);
+    logger.error("Bling syncProducts falhou", { error: message });
+    throw err;
+  }
+}
+
+// ── Sync Stock ──────────────────────────────────────────────────
+
+export async function syncStock(): Promise<number> {
+  const token = await getValidToken();
+  let page = 1;
+  let total = 0;
+
+  try {
+    while (true) {
+      const data = await rateLimitedGet<{ data: Array<Record<string, unknown>> }>(
+        `${BLING_API}/estoques/saldos?pagina=${page}&limite=100`,
+        token
+      );
+
+      if (!data.data || data.data.length === 0) break;
+
+      for (const entry of data.data) {
+        const produto = entry.produto as Record<string, unknown> | undefined;
+        if (!produto?.id) continue;
+
+        const blingProductId = String(produto.id);
+
+        // Busca o UUID interno do produto
+        const existing = await queryOne<{ id: string }>(
+          "SELECT id FROM sync.bling_products WHERE bling_id = $1",
+          [blingProductId]
+        );
+
+        if (!existing) continue;
+
+        const depositos = entry.depositos as Array<Record<string, unknown>> | undefined;
+        if (!depositos) continue;
+
+        for (const dep of depositos) {
+          await query(
+            `INSERT INTO sync.bling_stock
+             (product_id, bling_product_id, deposito_id, deposito_nome, saldo_fisico, saldo_virtual, sincronizado_em)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW())
+             ON CONFLICT (bling_product_id, deposito_id) DO UPDATE SET
+               product_id = $1, deposito_nome = $4, saldo_fisico = $5, saldo_virtual = $6, sincronizado_em = NOW()`,
+            [
+              existing.id,
+              blingProductId,
+              String(dep.id || "default"),
+              dep.nome || dep.descricao || "Principal",
+              dep.saldoFisico || 0,
+              dep.saldoVirtual || 0,
+            ]
+          );
+
+          total++;
+        }
+      }
+
+      page++;
+    }
+
+    await logSync("bling", "stock", "ok", total);
+    logger.info("Bling syncStock concluído", { total });
+    return total;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido";
+    await logSync("bling", "stock", "erro", total, message);
+    logger.error("Bling syncStock falhou", { error: message });
+    throw err;
+  }
+}
+
 // ── Incremental Sync ───────────────────────────────────────────
 
-export async function incrementalSync(): Promise<{ customers: number; orders: number }> {
+export async function incrementalSync(): Promise<{ customers: number; orders: number; products: number; stock: number }> {
   logger.info("Bling incrementalSync iniciado");
 
   const state = await queryOne<{ ultima_sync: string }>(
@@ -258,16 +390,34 @@ export async function incrementalSync(): Promise<{ customers: number; orders: nu
     logger.error("Bling incrementalSync pedidos falhou", { error: message });
   }
 
+  // Sync produtos e estoque
+  let products = 0;
+  let stock = 0;
+
+  try {
+    products = await syncProducts();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    logger.error("Bling incrementalSync produtos falhou", { error: message });
+  }
+
+  try {
+    stock = await syncStock();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    logger.error("Bling incrementalSync estoque falhou", { error: message });
+  }
+
   // Atualiza timestamp de última sync
   await query(
     "UPDATE sync.sync_state SET ultima_sync = NOW(), total_sincronizados = total_sincronizados + $1 WHERE fonte = 'bling'",
-    [customers + orders]
+    [customers + orders + products + stock]
   );
 
-  await logSync("bling", "incremental", "ok", customers + orders);
-  logger.info("Bling incrementalSync concluído", { customers, orders });
+  await logSync("bling", "incremental", "ok", customers + orders + products + stock);
+  logger.info("Bling incrementalSync concluído", { customers, orders, products, stock });
 
-  return { customers, orders };
+  return { customers, orders, products, stock };
 }
 
 // ── Helper: log de sync ────────────────────────────────────────

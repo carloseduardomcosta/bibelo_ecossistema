@@ -3,7 +3,7 @@ import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { getAuthUrl, exchangeCode } from "../integrations/bling/auth";
-import { syncCustomers, syncOrders, incrementalSync } from "../integrations/bling/sync";
+import { syncCustomers, syncOrders, syncProducts, syncStock, incrementalSync } from "../integrations/bling/sync";
 
 export const syncRouter = Router();
 
@@ -61,10 +61,14 @@ syncRouter.post("/bling", authMiddleware, async (req: Request, res: Response) =>
     if (tipo === "full") {
       const customers = await syncCustomers();
       const orders = await syncOrders();
+      const products = await syncProducts();
+      const stock = await syncStock();
       res.json({
         message: "Sync completo finalizado",
         customers,
         orders,
+        products,
+        stock,
       });
     } else {
       const result = await incrementalSync();

@@ -8,6 +8,9 @@ import Dashboard from './pages/Dashboard';
 import Clientes from './pages/Clientes';
 import ClientePerfil from './pages/ClientePerfil';
 import Sync from './pages/Sync';
+import Produtos from './pages/Produtos';
+import Estoque from './pages/Estoque';
+import Lucratividade from './pages/Lucratividade';
 
 const GOOGLE_CLIENT_ID = '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
 
@@ -28,6 +31,10 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/clientes" element={<Clientes />} />
               <Route path="/clientes/:id" element={<ClientePerfil />} />
+              <Route path="/produtos" element={<Produtos />} />
+              <Route path="/produtos/:id" element={<Placeholder titulo="Detalhe Produto" />} />
+              <Route path="/estoque" element={<Estoque />} />
+              <Route path="/lucratividade" element={<Lucratividade />} />
               <Route path="/campanhas" element={<Placeholder titulo="Campanhas" />} />
               <Route path="/sync" element={<Sync />} />
             </Route>

@@ -26,12 +26,10 @@ export const logger = winston.createLogger({
   ],
 });
 
-// Console apenas fora de produção
-if (process.env.NODE_ENV !== "production") {
-  logger.add(new winston.transports.Console({
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple()
-    ),
-  }));
-}
+// Console sempre (para docker logs)
+logger.add(new winston.transports.Console({
+  format: winston.format.combine(
+    winston.format.colorize(),
+    winston.format.simple()
+  ),
+}));

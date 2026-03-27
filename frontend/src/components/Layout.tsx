@@ -4,6 +4,9 @@ import {
   LayoutDashboard,
   Users,
   Megaphone,
+  Package,
+  Warehouse,
+  TrendingUp,
   RefreshCw,
   LogOut,
   Menu,
@@ -14,6 +17,9 @@ import { useState } from 'react';
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/clientes', label: 'Clientes', icon: Users },
+  { to: '/produtos', label: 'Produtos', icon: Package },
+  { to: '/estoque', label: 'Estoque', icon: Warehouse },
+  { to: '/lucratividade', label: 'Lucratividade', icon: TrendingUp },
   { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
   { to: '/sync', label: 'Sync', icon: RefreshCw },
 ];

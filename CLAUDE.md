@@ -43,7 +43,8 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── analytics.ts     ← overview, revenue, segments
 │   │   │   ├── campaigns.ts     ← CRUD + disparo (5 endpoints)
 │   │   │   ├── templates.ts     ← CRUD + soft delete (5 endpoints)
-│   │   │   └── sync.ts          ← status, sync manual, OAuth Bling
+│   │   │   ├── sync.ts          ← status, sync manual, OAuth Bling
+│   │   │   └── products.ts     ← CRUD produtos, estoque, lucratividade
 │   │   ├── services/
 │   │   │   └── customer.service.ts ← upsert, score, timeline, segments
 │   │   ├── integrations/
@@ -75,7 +76,11 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── Login.tsx        ← login Google Sign-In
 │   │   │   ├── Dashboard.tsx    ← KPIs + gráficos receita/segmentos
 │   │   │   ├── Clientes.tsx     ← tabela paginada + busca + filtros
-│   │   │   └── ClientePerfil.tsx ← perfil completo + score + timeline
+│   │   │   ├── ClientePerfil.tsx ← perfil completo + score + timeline
+│   │   │   ├── Produtos.tsx     ← lista produtos + custo/venda/margem/estoque
+│   │   │   ├── Estoque.tsx      ← KPIs estoque, gráfico por categoria
+│   │   │   ├── Lucratividade.tsx ← KPIs lucro, top produtos, receita/categoria
+│   │   │   └── Sync.tsx         ← painel Bling/NuvemShop + logs
 │   │   ├── components/
 │   │   │   ├── Layout.tsx       ← sidebar responsiva + Outlet
 │   │   │   └── ProtectedRoute.tsx ← redirect se não autenticado
@@ -185,6 +190,11 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `POST /api/sync/bling` — sync manual (?tipo=full|incremental)
 - `GET  /api/auth/bling` — retorna URL de autorização OAuth Bling
 - `GET  /api/auth/bling/callback` — callback OAuth, salva tokens, redireciona frontend
+- `GET  /api/products` — lista paginada (busca, categoria, ativo)
+- `GET  /api/products/categories` — categorias distintas
+- `GET  /api/products/stock-overview` — resumo estoque + por categoria
+- `GET  /api/products/analytics/profitability` — receita vs custo, top produtos, por categoria
+- `GET  /api/products/:id` — detalhe + estoque por depósito + vendas
 
 ### Webhooks (validação HMAC)
 - `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop
@@ -341,6 +351,8 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - cf61c7a feat: dashboard com KPIs reais, gráfico receita mensal e segmentos
 - 48cf9d3 feat: lista de clientes paginada + perfil completo com score e timeline
 - 96fa2f8 feat: rotas CRUD campanhas + templates com disparo e soft delete
+- 074e41c feat: rotas sync status, sync manual Bling e OAuth callback
+- eddcf14 feat: página Sync com painel Bling/NuvemShop, botões sync e logs
 
 
 ## Protocolo de atualização deste arquivo
