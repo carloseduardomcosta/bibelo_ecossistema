@@ -241,6 +241,31 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 
 ---
 
+## Idioma
+
+Toda comunicação com o dono do projeto (Carlos) **DEVE ser em português brasileiro (pt-BR)**. Isso inclui: perguntas, explicações, commits, mensagens de erro no frontend, nomes de variáveis no frontend (labels, placeholders), e comentários no código.
+
+---
+
+## Concorrência entre Agents
+
+Este projeto pode ter **múltiplos agents Claude trabalhando simultaneamente**.
+
+### Regras obrigatórias:
+1. **Antes de fazer `docker compose build` ou `docker compose up`**, verificar se outro agent está fazendo o mesmo — conflitos de container travam o deploy
+2. **Antes de editar um arquivo**, verificar se ele foi modificado recentemente por outro agent (o sistema avisa via `<system-reminder>`)
+3. **Nunca sobrescrever** mudanças de outro agent — integrar as mudanças
+4. **Se houver conflito de build** (erros TS em arquivos que você não criou), apenas corrija o erro mínimo (unused imports etc) sem alterar a lógica do outro agent
+5. **Protocolo STOP**: Se o dono pedir STOP, o agent deve parar imediatamente e só retomar quando autorizado. Apenas 1 agent trabalha por vez até concluir.
+
+### Como identificar outro agent:
+- Arquivos novos que você não criou aparecendo no projeto
+- `<system-reminder>` dizendo que um arquivo foi modificado
+- Erros de TS em páginas que você não escreveu (ex: `Financeiro.tsx`)
+- Conflitos de container no docker compose
+
+---
+
 ## Regras de desenvolvimento
 
 ### Sempre

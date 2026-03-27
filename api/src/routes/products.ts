@@ -103,18 +103,26 @@ productsRouter.get("/stock-overview", async (_req: Request, res: Response) => {
   const totals = await queryOne<{
     total_produtos: string;
     total_ativos: string;
+    com_estoque: string;
     sem_estoque: string;
     estoque_baixo: string;
+    unidades_totais: string;
     valor_estoque_custo: string;
     valor_estoque_venda: string;
+    valor_custo_com_estoque: string;
+    valor_venda_com_estoque: string;
   }>(`
     SELECT
       COUNT(*)::text AS total_produtos,
       COUNT(*) FILTER (WHERE p.ativo)::text AS total_ativos,
+      COUNT(*) FILTER (WHERE p.ativo AND COALESCE(s.saldo, 0) > 0)::text AS com_estoque,
       COUNT(*) FILTER (WHERE p.ativo AND COALESCE(s.saldo, 0) = 0)::text AS sem_estoque,
       COUNT(*) FILTER (WHERE p.ativo AND COALESCE(s.saldo, 0) > 0 AND COALESCE(s.saldo, 0) <= 5)::text AS estoque_baixo,
+      COALESCE(SUM(COALESCE(s.saldo, 0)), 0)::text AS unidades_totais,
       COALESCE(SUM(p.preco_custo * COALESCE(s.saldo, 0)), 0)::text AS valor_estoque_custo,
-      COALESCE(SUM(p.preco_venda * COALESCE(s.saldo, 0)), 0)::text AS valor_estoque_venda
+      COALESCE(SUM(p.preco_venda * COALESCE(s.saldo, 0)), 0)::text AS valor_estoque_venda,
+      COALESCE(SUM(p.preco_custo * COALESCE(s.saldo, 0)) FILTER (WHERE COALESCE(s.saldo, 0) > 0), 0)::text AS valor_custo_com_estoque,
+      COALESCE(SUM(p.preco_venda * COALESCE(s.saldo, 0)) FILTER (WHERE COALESCE(s.saldo, 0) > 0), 0)::text AS valor_venda_com_estoque
     FROM sync.bling_products p
     LEFT JOIN (
       SELECT product_id, SUM(saldo_fisico) AS saldo
@@ -141,13 +149,20 @@ productsRouter.get("/stock-overview", async (_req: Request, res: Response) => {
     ORDER BY SUM(s.saldo) DESC NULLS LAST
   `);
 
+  const valorVenda = parseFloat(totals?.valor_venda_com_estoque || "0");
+  const valorCusto = parseFloat(totals?.valor_custo_com_estoque || "0");
+
   res.json({
     total_produtos: parseInt(totals?.total_produtos || "0", 10),
     total_ativos: parseInt(totals?.total_ativos || "0", 10),
+    com_estoque: parseInt(totals?.com_estoque || "0", 10),
     sem_estoque: parseInt(totals?.sem_estoque || "0", 10),
     estoque_baixo: parseInt(totals?.estoque_baixo || "0", 10),
-    valor_estoque_custo: parseFloat(totals?.valor_estoque_custo || "0"),
-    valor_estoque_venda: parseFloat(totals?.valor_estoque_venda || "0"),
+    unidades_totais: parseFloat(totals?.unidades_totais || "0"),
+    valor_estoque_custo: valorCusto,
+    valor_estoque_venda: valorVenda,
+    lucro_potencial: valorVenda - valorCusto,
+    margem_potencial: valorVenda > 0 ? Math.round((valorVenda - valorCusto) / valorVenda * 1000) / 10 : 0,
     por_categoria: porCategoria.map((r) => ({
       categoria: r.categoria,
       qtd_produtos: parseInt(r.qtd_produtos, 10),
