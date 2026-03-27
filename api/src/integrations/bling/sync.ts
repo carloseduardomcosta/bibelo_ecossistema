@@ -4,31 +4,38 @@ import { logger } from "../../utils/logger";
 import { getValidToken, BLING_API } from "./auth";
 import { upsertCustomer, calculateScore } from "../../services/customer.service";
 
-// ── Rate limit: max 60 req/min ─────────────────────────────────
+// ── Rate limit: max 3 req/s (Bling v3) ─────────────────────────
 
-let requestCount = 0;
-let windowStart = Date.now();
+let lastRequestTime = 0;
 
 async function rateLimitedGet<T>(url: string, token: string): Promise<T> {
+  // Garante intervalo mínimo de 350ms entre requests (≈2.8 req/s, margem segura)
   const now = Date.now();
-  if (now - windowStart > 60_000) {
-    requestCount = 0;
-    windowStart = now;
+  const elapsed = now - lastRequestTime;
+  if (elapsed < 350) {
+    await new Promise((resolve) => setTimeout(resolve, 350 - elapsed));
   }
+  lastRequestTime = Date.now();
 
-  if (requestCount >= 58) {
-    const waitMs = 60_000 - (now - windowStart) + 1000;
-    logger.info("Bling rate limit: aguardando", { waitMs });
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
-    requestCount = 0;
-    windowStart = Date.now();
+  try {
+    const { data } = await axios.get<T>(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
+  } catch (err: unknown) {
+    const axiosErr = err as { response?: { status?: number } };
+    if (axiosErr.response?.status === 429) {
+      // Rate limited — espera 10s e retenta
+      logger.warn("Bling rate limit 429: aguardando 10s");
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+      lastRequestTime = Date.now();
+      const { data } = await axios.get<T>(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return data;
+    }
+    throw err;
   }
-
-  requestCount++;
-  const { data } = await axios.get<T>(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  return data;
 }
 
 // ── Sync Customers ─────────────────────────────────────────────
@@ -102,6 +109,25 @@ export async function syncOrders(): Promise<number> {
       if (!data.data || data.data.length === 0) break;
 
       for (const pedido of data.data) {
+        // Busca detalhe do pedido para obter itens
+        let itens: unknown[] = [];
+        let valorTotal = pedido.totalProdutos || pedido.total || 0;
+        try {
+          const detail = await rateLimitedGet<{ data: Record<string, unknown> }>(
+            `${BLING_API}/pedidos/vendas/${pedido.id}`,
+            token
+          );
+          if (detail.data?.itens) {
+            itens = detail.data.itens as unknown[];
+          }
+          if (detail.data?.total) {
+            valorTotal = detail.data.total;
+          }
+        } catch (detailErr: unknown) {
+          const msg = detailErr instanceof Error ? detailErr.message : "Erro";
+          logger.warn("Bling: erro ao buscar detalhe do pedido", { pedidoId: pedido.id, error: msg });
+        }
+
         const contato = pedido.contato as Record<string, unknown> | undefined;
         let customerId: string | null = null;
 
@@ -122,10 +148,10 @@ export async function syncOrders(): Promise<number> {
             String(pedido.id),
             customerId,
             pedido.numero || null,
-            pedido.totalProdutos || pedido.total || 0,
+            valorTotal,
             (pedido.situacao as Record<string, unknown>)?.valor || "desconhecido",
             pedido.loja ? "online" : "fisico",
-            JSON.stringify(pedido.itens || []),
+            JSON.stringify(itens),
             pedido.data || null,
           ]
         );
@@ -151,6 +177,26 @@ export async function syncOrders(): Promise<number> {
   }
 }
 
+// ── Fetch category map from Bling ──────────────────────────────
+
+async function fetchCategoryMap(token: string): Promise<Map<number, string>> {
+  const map = new Map<number, string>();
+  let page = 1;
+  while (true) {
+    const data = await rateLimitedGet<{ data: Array<{ id: number; descricao: string }> }>(
+      `${BLING_API}/categorias/produtos?pagina=${page}&limite=100`,
+      token
+    );
+    if (!data.data || data.data.length === 0) break;
+    for (const cat of data.data) {
+      map.set(cat.id, cat.descricao);
+    }
+    page++;
+  }
+  logger.info("Bling categorias carregadas", { total: map.size });
+  return map;
+}
+
 // ── Sync Products ───────────────────────────────────────────────
 
 export async function syncProducts(): Promise<number> {
@@ -159,6 +205,9 @@ export async function syncProducts(): Promise<number> {
   let total = 0;
 
   try {
+    // Carrega mapa de categorias primeiro
+    const categoryMap = await fetchCategoryMap(token);
+
     while (true) {
       const data = await rateLimitedGet<{ data: Array<Record<string, unknown>> }>(
         `${BLING_API}/produtos?pagina=${page}&limite=100`,
@@ -168,10 +217,16 @@ export async function syncProducts(): Promise<number> {
       if (!data.data || data.data.length === 0) break;
 
       for (const prod of data.data) {
-        const categoria = prod.categoria as Record<string, unknown> | undefined;
+        const categoriaObj = prod.categoria as { id?: number } | undefined;
+        const categoriaName = categoriaObj?.id ? categoryMap.get(categoriaObj.id) || null : null;
+
         const midia = prod.midia as Record<string, unknown> | undefined;
+        const imagensInternas = (midia?.imagens as Record<string, unknown>)?.internas as Array<Record<string, unknown>> | undefined;
         const imagensExternas = (midia?.imagens as Record<string, unknown>)?.externas as Array<Record<string, unknown>> | undefined;
-        const imagens = (imagensExternas || []).map((img, i) => ({ url: img.link, ordem: i }));
+        const imagens = [
+          ...(imagensInternas || []).map((img, i) => ({ url: img.link || img.linkMiniatura, ordem: i })),
+          ...(imagensExternas || []).map((img, i) => ({ url: img.link, ordem: 100 + i })),
+        ].filter((img) => img.url);
 
         await query(
           `INSERT INTO sync.bling_products
@@ -187,7 +242,7 @@ export async function syncProducts(): Promise<number> {
             prod.codigo || null,
             prod.precoCusto || 0,
             prod.preco || 0,
-            categoria?.descricao || null,
+            categoriaName,
             JSON.stringify(imagens),
             prod.situacao === "A" || prod.situacao === "Ativo",
             prod.tipo || "P",
