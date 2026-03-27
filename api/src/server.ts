@@ -35,9 +35,9 @@ app.use(rateLimit({
 }));
 
 // ── Rate limit no login
-app.use("/api/auth/login", rateLimit({
+app.use("/api/auth/google", rateLimit({
   windowMs: 15 * 60 * 1000,
-  max:      10,
+  max:      20,
   message: { error: "Muitas tentativas de login" },
 }));
 

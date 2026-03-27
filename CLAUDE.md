@@ -65,11 +65,21 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   └── tsconfig.json
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx
-│   │   ├── pages/               ← Dashboard, Clientes, Campanhas etc
-│   │   ├── components/          ← componentes reutilizáveis
+│   │   ├── App.tsx              ← rotas + GoogleOAuthProvider
+│   │   ├── main.tsx             ← entry point + CSS import
+│   │   ├── index.css            ← Tailwind directives
+│   │   ├── pages/
+│   │   │   ├── Login.tsx        ← login Google Sign-In
+│   │   │   └── Dashboard.tsx    ← KPIs placeholder
+│   │   ├── components/
+│   │   │   ├── Layout.tsx       ← sidebar responsiva + Outlet
+│   │   │   └── ProtectedRoute.tsx ← redirect se não autenticado
 │   │   ├── hooks/               ← useCustomers, useCampaigns etc
-│   │   └── lib/                 ← api.ts (axios), auth.ts
+│   │   └── lib/
+│   │       ├── api.ts           ← Axios + JWT interceptor
+│   │       └── auth.tsx         ← AuthContext + useAuth + Google login
+│   ├── tailwind.config.js       ← tema BibelôCRM
+│   ├── postcss.config.js
 │   ├── Dockerfile
 │   └── vite.config.ts
 ├── db/
@@ -134,6 +144,7 @@ BLING_CLIENT_ID   + BLING_CLIENT_SECRET
 NUVEMSHOP_WEBHOOK_SECRET
 RESEND_API_KEY
 EVOLUTION_API_KEY
+GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 ```
 
 ---
@@ -142,7 +153,7 @@ EVOLUTION_API_KEY
 
 ### Públicas (sem auth)
 - `GET  /health` — status da API e banco
-- `POST /api/auth/login` — retorna accessToken + refreshToken
+- `POST /api/auth/google` — recebe credential Google, retorna accessToken + refreshToken
 
 ### Protegidas (Bearer JWT obrigatório)
 - `GET  /api/auth/me`
@@ -273,7 +284,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 ## Backlog priorizado
 
 ### P0 — Próximos (sem isso o CRM não funciona)
-1. **Frontend: Login + Layout** — Tela login, AuthContext, layout sidebar, proteção de rotas
+1. ~~**Frontend: Login + Layout**~~ ✅ — Google Sign-In, AuthContext, sidebar responsiva, proteção de rotas
 2. **Frontend: Dashboard** — KPIs do /api/analytics/overview + gráfico receita mensal (Recharts)
 3. **Frontend: Lista de Clientes** — Tabela paginada, busca, filtro segmento, link perfil
 4. **Frontend: Perfil do Cliente** — Dados, score, timeline interações/pedidos
@@ -312,6 +323,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - e72f147 package-lock frontend + Dockerfile server.js
 - 5f352ce fix: copia server.js no Dockerfile do frontend
 - e605b5b feat: customers, analytics, Bling sync, NuvemShop webhooks, BullMQ queues
+- a049d41 docs: documenta infraestrutura completa — firewall, Nginx, SSL, Docker, DNS
 
 
 ## Protocolo de atualização deste arquivo
@@ -334,7 +346,8 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Redis | ✅ produção | cache + filas BullMQ |
 | Nginx + SSL | ✅ produção | crm.papelariabibelo.com.br |
 | API Node.js | ✅ produção | /health respondendo |
-| Frontend React | 🔧 splash screen | precisa de login + dashboard + clientes |
+| Google OAuth2 | ✅ produção | login exclusivo via Google Sign-In |
+| Frontend React | 🔧 login + layout | sidebar, dashboard placeholder, falta KPIs reais |
 | GitHub Actions | ✅ configurado | deploy automático no push |
 | Bling OAuth2 | 🔧 código pronto | aguardando credenciais reais |
 | Bling Sync | 🔧 código pronto | aguardando OAuth2 funcional |
@@ -358,4 +371,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 26 de Março de 2026*
+*Última atualização: 27 de Março de 2026*
