@@ -19,6 +19,7 @@ import { financeiroRouter } from "./routes/financeiro";
 import { nfEntradaRouter }  from "./routes/nf-entrada";
 import { contasPagarRouter } from "./routes/contas-pagar";
 import { searchRouter }     from "./routes/search";
+import { dealsRouter }      from "./routes/deals";
 import { nuvemshopWebhookRouter } from "./integrations/nuvemshop/webhook";
 import { registerScheduledJobs } from "./queues/sync.queue";
 
@@ -57,6 +58,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/",        healthRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/search", searchRouter);
+app.use("/api/deals", dealsRouter);
 app.use("/api/customers", customersRouter);
 app.use("/api/analytics", analyticsRouter);
 app.use("/api/campaigns", campaignsRouter);

@@ -14,6 +14,7 @@ import {
   Calculator,
   FileText,
   Banknote,
+  Kanban,
   Megaphone,
   RefreshCw,
   LogOut,
@@ -47,6 +48,7 @@ const navGroups: NavGroup[] = [
     items: [
       { to: '/clientes', label: 'Clientes', icon: Users },
       { to: '/segmentos', label: 'Segmentos', icon: Target },
+      { to: '/pipeline', label: 'Pipeline', icon: Kanban },
     ],
   },
   {
