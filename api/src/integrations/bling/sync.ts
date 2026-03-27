@@ -910,34 +910,71 @@ export async function syncNfEntrada(): Promise<number> {
           ]
         );
 
-        if (inserted && itens.length > 0) {
+        if (inserted) {
           // Insere itens
-          for (let idx = 0; idx < itens.length; idx++) {
-            const item = itens[idx];
-            const impostos = item.impostos as Record<string, unknown> | undefined;
+          if (itens.length > 0) {
+            for (let idx = 0; idx < itens.length; idx++) {
+              const item = itens[idx];
+              const impostos = item.impostos as Record<string, unknown> | undefined;
 
-            await query(
-              `INSERT INTO financeiro.notas_entrada_itens
-               (nota_id, numero_item, codigo_produto, descricao, ncm, cfop, unidade,
-                quantidade, valor_unitario, valor_total, icms_valor, ipi_valor, pis_valor, cofins_valor)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-              [
-                inserted.id,
-                idx + 1,
-                item.codigo || item.gtin || null,
-                item.descricao || "Sem descricao",
-                item.classificacaoFiscal || null,
-                item.cfop || null,
-                item.unidade || "UN",
-                item.quantidade || 0,
-                item.valor || 0,
-                item.valorTotal || 0,
-                (impostos?.icms as Record<string, unknown>)?.valor || 0,
-                (impostos?.ipi as Record<string, unknown>)?.valor || 0,
-                (impostos?.pis as Record<string, unknown>)?.valor || 0,
-                (impostos?.cofins as Record<string, unknown>)?.valor || 0,
-              ]
+              await query(
+                `INSERT INTO financeiro.notas_entrada_itens
+                 (nota_id, numero_item, codigo_produto, descricao, ncm, cfop, unidade,
+                  quantidade, valor_unitario, valor_total, icms_valor, ipi_valor, pis_valor, cofins_valor)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+                [
+                  inserted.id,
+                  idx + 1,
+                  item.codigo || item.gtin || null,
+                  item.descricao || "Sem descricao",
+                  item.classificacaoFiscal || null,
+                  item.cfop || null,
+                  item.unidade || "UN",
+                  item.quantidade || 0,
+                  item.valor || 0,
+                  item.valorTotal || 0,
+                  (impostos?.icms as Record<string, unknown>)?.valor || 0,
+                  (impostos?.ipi as Record<string, unknown>)?.valor || 0,
+                  (impostos?.pis as Record<string, unknown>)?.valor || 0,
+                  (impostos?.cofins as Record<string, unknown>)?.valor || 0,
+                ]
+              );
+            }
+          }
+
+          // Contabiliza automaticamente como despesa
+          const valorTotal = valorNota || valorProdutos;
+          if (valorTotal > 0) {
+            const categoria = await queryOne<{ id: string }>(
+              "SELECT id FROM financeiro.categorias WHERE nome = 'Fornecedores' AND tipo = 'despesa' LIMIT 1"
             );
+
+            if (categoria) {
+              const descricao = `NF ${numero} — ${contato?.nome || "Fornecedor"}`;
+              const dataEmissao = nfe.dataEmissao ? (nfe.dataEmissao as string).split(" ")[0] : new Date().toISOString().split("T")[0];
+
+              const lancamento = await queryOne<{ id: string }>(`
+                INSERT INTO financeiro.lancamentos (
+                  data, descricao, categoria_id, tipo, valor, status, observacoes,
+                  referencia_id, referencia_tipo
+                ) VALUES ($1, $2, $3, 'despesa', $4, 'realizado', $5, $6, 'nf_entrada')
+                RETURNING id
+              `, [
+                dataEmissao,
+                descricao,
+                categoria.id,
+                valorTotal,
+                `Sync automatico Bling - NF ${numero}`,
+                inserted.id,
+              ]);
+
+              if (lancamento) {
+                await query(
+                  "UPDATE financeiro.notas_entrada SET status = 'contabilizada', lancamento_id = $1 WHERE id = $2",
+                  [lancamento.id, inserted.id]
+                );
+              }
+            }
           }
         }
 
