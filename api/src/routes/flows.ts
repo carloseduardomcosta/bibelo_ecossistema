@@ -7,6 +7,23 @@ import { logger } from "../utils/logger";
 export const flowsRouter = Router();
 flowsRouter.use(authMiddleware);
 
+// ── GET /api/flows/stats/overview — resumo geral (ANTES de /:id) ──
+
+flowsRouter.get("/stats/overview", async (_req: Request, res: Response) => {
+  const stats = await queryOne<Record<string, unknown>>(
+    `SELECT
+       (SELECT COUNT(*) FROM marketing.flows WHERE ativo = true) AS fluxos_ativos,
+       (SELECT COUNT(*) FROM marketing.flow_executions WHERE status = 'ativo') AS execucoes_ativas,
+       (SELECT COUNT(*) FROM marketing.flow_executions WHERE status = 'concluido' AND concluido_em > NOW() - INTERVAL '7 days') AS concluidas_7d,
+       (SELECT COUNT(*) FROM marketing.flow_executions WHERE status = 'erro' AND concluido_em > NOW() - INTERVAL '7 days') AS erros_7d,
+       (SELECT COUNT(*) FROM marketing.pedidos_pendentes WHERE convertido = false AND notificado = false) AS carrinhos_pendentes,
+       (SELECT COUNT(*) FROM marketing.pedidos_pendentes WHERE notificado = true AND convertido = false) AS carrinhos_notificados,
+       (SELECT COUNT(*) FROM marketing.pedidos_pendentes WHERE convertido = true) AS carrinhos_convertidos`
+  );
+
+  res.json(stats);
+});
+
 // ── GET /api/flows — listar fluxos ────────────────────────────
 
 flowsRouter.get("/", async (_req: Request, res: Response) => {
@@ -181,19 +198,3 @@ flowsRouter.get("/:id/executions/:execId", async (req: Request, res: Response) =
   res.json({ ...execution, steps });
 });
 
-// ── GET /api/flows/stats/overview — resumo geral ──────────────
-
-flowsRouter.get("/stats/overview", async (_req: Request, res: Response) => {
-  const stats = await queryOne<Record<string, unknown>>(
-    `SELECT
-       (SELECT COUNT(*) FROM marketing.flows WHERE ativo = true) AS fluxos_ativos,
-       (SELECT COUNT(*) FROM marketing.flow_executions WHERE status = 'ativo') AS execucoes_ativas,
-       (SELECT COUNT(*) FROM marketing.flow_executions WHERE status = 'concluido' AND concluido_em > NOW() - INTERVAL '7 days') AS concluidas_7d,
-       (SELECT COUNT(*) FROM marketing.flow_executions WHERE status = 'erro' AND concluido_em > NOW() - INTERVAL '7 days') AS erros_7d,
-       (SELECT COUNT(*) FROM marketing.pedidos_pendentes WHERE convertido = false AND notificado = false) AS carrinhos_pendentes,
-       (SELECT COUNT(*) FROM marketing.pedidos_pendentes WHERE notificado = true AND convertido = false) AS carrinhos_notificados,
-       (SELECT COUNT(*) FROM marketing.pedidos_pendentes WHERE convertido = true) AS carrinhos_convertidos`
-  );
-
-  res.json(stats);
-});

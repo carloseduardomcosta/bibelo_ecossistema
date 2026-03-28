@@ -18,6 +18,7 @@ import {
   BarChart3,
   Kanban,
   Megaphone,
+  Sparkles,
   RefreshCw,
   LogOut,
   Menu,
@@ -80,6 +81,7 @@ const navGroups: NavGroup[] = [
   {
     label: 'Marketing',
     items: [
+      { to: '/marketing', label: 'Automações', icon: Sparkles },
       { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
     ],
   },

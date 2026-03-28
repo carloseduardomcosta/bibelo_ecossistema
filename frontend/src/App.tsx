@@ -22,6 +22,7 @@ import ContasPagar from './pages/ContasPagar';
 import ProdutoPerfil from './pages/ProdutoPerfil';
 import Pipeline from './pages/Pipeline';
 import Relatorios from './pages/Relatorios';
+import MarketingPage from './pages/Marketing';
 import { ToastProvider } from './components/Toast';
 
 const GOOGLE_CLIENT_ID = '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
@@ -53,6 +54,7 @@ export default function App() {
               <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/segmentos" element={<Segmentos />} />
               <Route path="/campanhas" element={<Campanhas />} />
+              <Route path="/marketing" element={<MarketingPage />} />
               <Route path="/financeiro" element={<Financeiro />} />
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/despesas-fixas" element={<DespesasFixas />} />

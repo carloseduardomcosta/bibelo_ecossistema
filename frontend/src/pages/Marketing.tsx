@@ -1,0 +1,680 @@
+import { useEffect, useState, useCallback } from 'react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, PieChart, Pie, Cell,
+} from 'recharts';
+import {
+  Zap, Users, MousePointerClick, ShoppingCart,
+  Eye, UserPlus, CheckCircle2, AlertCircle,
+  Play, ToggleLeft, ToggleRight, ChevronRight,
+  Send, Target, TrendingUp, ArrowUpRight,
+} from 'lucide-react';
+import api from '../lib/api';
+
+// ── Interfaces ────────────────────────────────────────────────
+
+interface FlowStats {
+  fluxos_ativos: number;
+  execucoes_ativas: number;
+  concluidas_7d: number;
+  erros_7d: number;
+  carrinhos_pendentes: number;
+  carrinhos_notificados: number;
+  carrinhos_convertidos: number;
+}
+
+interface Flow {
+  id: string;
+  nome: string;
+  gatilho: string;
+  ativo: boolean;
+  total_ativos: number;
+  total_conversoes: number;
+  execucoes_ativas: string;
+  execucoes_concluidas: string;
+  execucoes_erro: string;
+  steps: Array<{ tipo: string; template?: string; delay_horas: number }>;
+  criado_em: string;
+}
+
+interface LeadStats {
+  total_leads: number;
+  leads_7d: number;
+  leads_30d: number;
+  convertidos: number;
+  taxa_conversao: number;
+  popups: PopupConfig[];
+}
+
+interface PopupConfig {
+  id: string;
+  titulo: string;
+  tipo: string;
+  ativo: boolean;
+  exibicoes: number;
+  capturas: number;
+  taxa: number;
+}
+
+interface Lead {
+  id: string;
+  email: string;
+  nome: string | null;
+  telefone: string | null;
+  cupom: string | null;
+  popup_id: string | null;
+  fonte: string;
+  convertido: boolean;
+  criado_em: string;
+}
+
+interface Execution {
+  id: string;
+  nome: string;
+  customer_nome: string;
+  customer_email: string;
+  status: string;
+  step_atual: number;
+  iniciado_em: string;
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+
+function fmtDateShort(d: string) {
+  return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+}
+
+function timeAgo(d: string) {
+  const diff = Date.now() - new Date(d).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `${min}min atrás`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h atrás`;
+  const days = Math.floor(h / 24);
+  return `${days}d atrás`;
+}
+
+const GATILHO_LABELS: Record<string, string> = {
+  'order.abandoned': '🛒 Carrinho abandonado',
+  'order.paid': '💳 Pós-compra',
+  'order.first': '🎉 Primeira compra',
+  'order.delivered': '📦 Produto entregue',
+  'customer.created': '👋 Novo cadastro',
+  'customer.inactive': '💌 Reativação',
+  'lead.captured': '🎯 Lead capturado',
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  ativo: 'bg-emerald-400/10 text-emerald-400',
+  concluido: 'bg-blue-400/10 text-blue-400',
+  erro: 'bg-red-400/10 text-red-400',
+};
+
+const STEP_ICONS: Record<string, string> = {
+  email: '📧',
+  whatsapp: '💬',
+  wait: '⏳',
+  condicao: '🔀',
+};
+
+const PIE_COLORS = ['#34D399', '#60A5FA', '#F87171', '#FBBF24', '#A78BFA'];
+
+// ── Component ─────────────────────────────────────────────────
+
+export default function Marketing() {
+  const [tab, setTab] = useState<'overview' | 'fluxos' | 'leads'>('overview');
+  const [flowStats, setFlowStats] = useState<FlowStats | null>(null);
+  const [flows, setFlows] = useState<Flow[]>([]);
+  const [leadStats, setLeadStats] = useState<LeadStats | null>(null);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [executions, setExecutions] = useState<Execution[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedFlow, setSelectedFlow] = useState<string | null>(null);
+
+  const fetchAll = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [statsRes, flowsRes, leadsStatsRes, leadsRes] = await Promise.all([
+        api.get('/flows/stats/overview'),
+        api.get('/flows'),
+        api.get('/leads/stats'),
+        api.get('/leads?page=1'),
+      ]);
+      setFlowStats(statsRes.data);
+      setFlows(flowsRes.data);
+      setLeadStats(leadsStatsRes.data);
+      setLeads(leadsRes.data.leads);
+    } catch {
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Auto-refresh a cada 30s
+  useEffect(() => {
+    const interval = setInterval(fetchAll, 30000);
+    return () => clearInterval(interval);
+  }, [fetchAll]);
+
+  const fetchFlowDetail = async (flowId: string) => {
+    try {
+      const { data } = await api.get(`/flows/${flowId}`);
+      setExecutions(data.executions || []);
+      setSelectedFlow(flowId);
+    } catch {}
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-bibelo-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-bibelo-text">Marketing</h1>
+          <p className="text-sm text-bibelo-muted mt-1">Automações, leads e campanhas do ecossistema Bibelô</p>
+        </div>
+        <div className="flex items-center gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1">
+          {(['overview', 'fluxos', 'leads'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                tab === t ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text'
+              }`}
+            >
+              {t === 'overview' ? 'Visão Geral' : t === 'fluxos' ? 'Fluxos' : 'Leads'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === 'overview' && <OverviewTab flowStats={flowStats} flows={flows} leadStats={leadStats} leads={leads} onFlowClick={fetchFlowDetail} />}
+      {tab === 'fluxos' && <FluxosTab flows={flows} executions={executions} selectedFlow={selectedFlow} onFlowClick={fetchFlowDetail} onRefresh={fetchAll} />}
+      {tab === 'leads' && <LeadsTab leadStats={leadStats} leads={leads} />}
+    </div>
+  );
+}
+
+// ── Overview Tab ──────────────────────────────────────────────
+
+function OverviewTab({ flowStats, flows, leadStats, leads, onFlowClick }: {
+  flowStats: FlowStats | null;
+  flows: Flow[];
+  leadStats: LeadStats | null;
+  leads: Lead[];
+  onFlowClick: (id: string) => void;
+}) {
+  const totalConversoes = flows.reduce((acc, f) => acc + (f.total_conversoes || 0), 0);
+  const totalExecAtivas = flows.reduce((acc, f) => acc + parseInt(f.execucoes_ativas || '0', 10), 0);
+
+  const kpis = [
+    { label: 'Fluxos Ativos', value: flowStats?.fluxos_ativos || 0, icon: Zap, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+    { label: 'Execuções Ativas', value: totalExecAtivas, icon: Play, color: 'text-blue-400', bg: 'bg-blue-400/10' },
+    { label: 'Emails Enviados', value: totalConversoes, icon: Send, color: 'text-violet-400', bg: 'bg-violet-400/10' },
+    { label: 'Leads Capturados', value: leadStats?.total_leads || 0, icon: UserPlus, color: 'text-pink-400', bg: 'bg-pink-400/10' },
+    { label: 'Leads (7 dias)', value: leadStats?.leads_7d || 0, icon: TrendingUp, color: 'text-amber-400', bg: 'bg-amber-400/10' },
+    { label: 'Taxa Conversão', value: `${leadStats?.taxa_conversao || 0}%`, icon: Target, color: 'text-cyan-400', bg: 'bg-cyan-400/10' },
+  ];
+
+  // Dados para gráfico de fluxos
+  const flowChartData = flows.map((f) => ({
+    nome: f.nome.length > 18 ? f.nome.substring(0, 18) + '...' : f.nome,
+    concluidas: parseInt(f.execucoes_concluidas || '0', 10),
+    ativas: parseInt(f.execucoes_ativas || '0', 10),
+    erros: parseInt(f.execucoes_erro || '0', 10),
+  }));
+
+  // Dados para gráfico de carrinhos
+  const carrinhoData = [
+    { name: 'Pendentes', value: flowStats?.carrinhos_pendentes || 0 },
+    { name: 'Notificados', value: flowStats?.carrinhos_notificados || 0 },
+    { name: 'Convertidos', value: flowStats?.carrinhos_convertidos || 0 },
+  ].filter((d) => d.value > 0);
+
+  return (
+    <div className="space-y-6">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {kpis.map((kpi) => (
+          <div key={kpi.label} className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className={`w-8 h-8 rounded-lg ${kpi.bg} flex items-center justify-center`}>
+                <kpi.icon size={16} className={kpi.color} />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-bibelo-text">{kpi.value}</p>
+            <p className="text-xs text-bibelo-muted mt-1">{kpi.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Gráfico de fluxos */}
+        <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-bibelo-text mb-4">Execuções por Fluxo</h3>
+          {flowChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={flowChartData} layout="vertical" margin={{ left: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                <XAxis type="number" tick={{ fill: '#999', fontSize: 11 }} />
+                <YAxis type="category" dataKey="nome" width={130} tick={{ fill: '#999', fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #333', borderRadius: 8, fontSize: 12 }} />
+                <Bar dataKey="concluidas" name="Concluídas" fill="#34D399" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="ativas" name="Ativas" fill="#60A5FA" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="erros" name="Erros" fill="#F87171" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-40 text-bibelo-muted text-sm">Aguardando execuções</div>
+          )}
+        </div>
+
+        {/* Carrinhos abandonados */}
+        <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-bibelo-text mb-4">Carrinhos Abandonados</h3>
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="text-center">
+              <p className="text-2xl font-bold text-amber-400">{flowStats?.carrinhos_pendentes || 0}</p>
+              <p className="text-xs text-bibelo-muted">Pendentes</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-blue-400">{flowStats?.carrinhos_notificados || 0}</p>
+              <p className="text-xs text-bibelo-muted">Notificados</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-emerald-400">{flowStats?.carrinhos_convertidos || 0}</p>
+              <p className="text-xs text-bibelo-muted">Recuperados</p>
+            </div>
+          </div>
+          {carrinhoData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={180}>
+              <PieChart>
+                <Pie data={carrinhoData} cx="50%" cy="50%" outerRadius={70} innerRadius={40} dataKey="value" label={({ name, value }) => `${name}: ${value}`}>
+                  {carrinhoData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #333', borderRadius: 8, fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-40 text-bibelo-muted text-sm">Nenhum carrinho detectado ainda</div>
+          )}
+        </div>
+      </div>
+
+      {/* Popup Performance + Leads Recentes */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Popup */}
+        <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-bibelo-text mb-4">Popup de Captura</h3>
+          {leadStats?.popups?.map((p) => (
+            <div key={p.id} className="flex items-center gap-4 p-3 rounded-lg bg-bibelo-bg mb-2">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${p.ativo ? 'bg-emerald-400/10' : 'bg-bibelo-border'}`}>
+                <MousePointerClick size={18} className={p.ativo ? 'text-emerald-400' : 'text-bibelo-muted'} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-bibelo-text truncate">{p.titulo}</p>
+                <p className="text-xs text-bibelo-muted">
+                  {p.tipo === 'timer' ? 'Timer' : 'Exit intent'} · {p.ativo ? 'Ativo' : 'Inativo'}
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="text-bibelo-muted"><Eye size={12} className="inline mr-1" />{p.exibicoes}</span>
+                  <span className="text-bibelo-muted"><UserPlus size={12} className="inline mr-1" />{p.capturas}</span>
+                  <span className={`font-semibold ${(p.taxa || 0) > 10 ? 'text-emerald-400' : 'text-bibelo-muted'}`}>
+                    {p.taxa || 0}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Leads recentes */}
+        <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-bibelo-text mb-4">Leads Recentes</h3>
+          <div className="space-y-2">
+            {leads.length === 0 ? (
+              <p className="text-sm text-bibelo-muted text-center py-8">Nenhum lead capturado ainda</p>
+            ) : (
+              leads.slice(0, 8).map((l) => (
+                <div key={l.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-bibelo-bg transition-colors">
+                  <div className="w-8 h-8 rounded-full bg-pink-400/10 flex items-center justify-center text-sm font-bold text-pink-400">
+                    {(l.nome || l.email).charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-bibelo-text truncate">{l.nome || l.email}</p>
+                    <p className="text-xs text-bibelo-muted truncate">
+                      {l.email}{l.telefone ? ` · ${l.telefone}` : ''}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    {l.cupom && (
+                      <span className="text-[10px] px-2 py-0.5 bg-pink-400/10 text-pink-400 rounded-full font-medium">
+                        {l.cupom}
+                      </span>
+                    )}
+                    <p className="text-[10px] text-bibelo-muted mt-1">{timeAgo(l.criado_em)}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Fluxos ativos (resumo) */}
+      <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+        <h3 className="text-sm font-semibold text-bibelo-text mb-4">Fluxos Automáticos</h3>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {flows.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => onFlowClick(f.id)}
+              className="text-left p-4 rounded-xl border border-bibelo-border hover:border-bibelo-primary/50 transition-all bg-bibelo-bg group"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-lg">{GATILHO_LABELS[f.gatilho]?.split(' ')[0] || '⚡'}</span>
+                <span className={`w-2 h-2 rounded-full ${f.ativo ? 'bg-emerald-400' : 'bg-bibelo-muted/30'}`} />
+              </div>
+              <p className="text-sm font-medium text-bibelo-text mb-1 group-hover:text-bibelo-primary transition-colors">{f.nome}</p>
+              <p className="text-xs text-bibelo-muted mb-3">{GATILHO_LABELS[f.gatilho]?.split(' ').slice(1).join(' ') || f.gatilho}</p>
+              <div className="flex items-center gap-1">
+                {(typeof f.steps === 'string' ? JSON.parse(f.steps) : f.steps || []).map((s: { tipo: string }, i: number) => (
+                  <span key={i} className="text-xs" title={s.tipo}>{STEP_ICONS[s.tipo] || '❓'}</span>
+                ))}
+              </div>
+              <div className="flex items-center gap-3 mt-3 pt-3 border-t border-bibelo-border">
+                <span className="text-xs text-bibelo-muted"><CheckCircle2 size={11} className="inline mr-1 text-emerald-400" />{f.execucoes_concluidas || 0}</span>
+                <span className="text-xs text-bibelo-muted"><Play size={11} className="inline mr-1 text-blue-400" />{f.execucoes_ativas || 0}</span>
+                {parseInt(f.execucoes_erro || '0', 10) > 0 && (
+                  <span className="text-xs text-red-400"><AlertCircle size={11} className="inline mr-1" />{f.execucoes_erro}</span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Fluxos Tab ────────────────────────────────────────────────
+
+function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: {
+  flows: Flow[];
+  executions: Execution[];
+  selectedFlow: string | null;
+  onFlowClick: (id: string) => void;
+  onRefresh: () => void;
+}) {
+  const selected = flows.find((f) => f.id === selectedFlow);
+
+  const toggleFlow = async (flowId: string) => {
+    try {
+      await api.post(`/flows/${flowId}/toggle`);
+      onRefresh();
+    } catch {}
+  };
+
+  return (
+    <div className="grid lg:grid-cols-3 gap-6">
+      {/* Lista de fluxos */}
+      <div className="lg:col-span-1 space-y-2">
+        <h3 className="text-sm font-semibold text-bibelo-text mb-3">Todos os Fluxos</h3>
+        {flows.map((f) => (
+          <div
+            key={f.id}
+            className={`p-4 rounded-xl border transition-all cursor-pointer ${
+              selectedFlow === f.id
+                ? 'border-bibelo-primary bg-bibelo-primary/5'
+                : 'border-bibelo-border bg-bibelo-card hover:border-bibelo-primary/30'
+            }`}
+          >
+            <div className="flex items-center gap-3" onClick={() => onFlowClick(f.id)}>
+              <span className="text-xl">{GATILHO_LABELS[f.gatilho]?.split(' ')[0] || '⚡'}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-bibelo-text truncate">{f.nome}</p>
+                <p className="text-xs text-bibelo-muted">{f.gatilho}</p>
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleFlow(f.id); }}
+                className="shrink-0"
+                title={f.ativo ? 'Desativar' : 'Ativar'}
+              >
+                {f.ativo ? (
+                  <ToggleRight size={24} className="text-emerald-400" />
+                ) : (
+                  <ToggleLeft size={24} className="text-bibelo-muted" />
+                )}
+              </button>
+            </div>
+            <div className="flex items-center gap-2 mt-3">
+              {(typeof f.steps === 'string' ? JSON.parse(f.steps) : f.steps || []).map((s: { tipo: string; template?: string; delay_horas: number }, i: number) => (
+                <div key={i} className="flex items-center gap-1">
+                  {i > 0 && <ChevronRight size={10} className="text-bibelo-muted/40" />}
+                  <span className="text-xs px-2 py-0.5 bg-bibelo-bg rounded-md text-bibelo-muted" title={s.template || s.tipo}>
+                    {STEP_ICONS[s.tipo]}{s.delay_horas > 0 ? ` ${s.delay_horas}h` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Detalhe do fluxo */}
+      <div className="lg:col-span-2">
+        {selected ? (
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-2xl">{GATILHO_LABELS[selected.gatilho]?.split(' ')[0] || '⚡'}</span>
+              <div>
+                <h3 className="text-lg font-semibold text-bibelo-text">{selected.nome}</h3>
+                <p className="text-sm text-bibelo-muted">{GATILHO_LABELS[selected.gatilho] || selected.gatilho}</p>
+              </div>
+              <span className={`ml-auto text-xs px-3 py-1 rounded-full font-medium ${selected.ativo ? 'bg-emerald-400/10 text-emerald-400' : 'bg-bibelo-border text-bibelo-muted'}`}>
+                {selected.ativo ? 'Ativo' : 'Inativo'}
+              </span>
+            </div>
+
+            {/* Steps visuais */}
+            <div className="flex items-center gap-2 mb-6 p-4 bg-bibelo-bg rounded-xl overflow-x-auto">
+              {(typeof selected.steps === 'string' ? JSON.parse(selected.steps) : selected.steps || []).map((s: { tipo: string; template?: string; delay_horas: number }, i: number) => (
+                <div key={i} className="flex items-center gap-2">
+                  {i > 0 && <div className="w-8 h-px bg-bibelo-border" />}
+                  <div className="flex flex-col items-center gap-1 min-w-[80px]">
+                    <div className="w-10 h-10 rounded-xl bg-bibelo-card border border-bibelo-border flex items-center justify-center text-lg">
+                      {STEP_ICONS[s.tipo]}
+                    </div>
+                    <span className="text-[10px] text-bibelo-muted text-center">{s.template || s.tipo}</span>
+                    {s.delay_horas > 0 && <span className="text-[10px] text-bibelo-muted/60">{s.delay_horas}h delay</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="text-center p-3 bg-bibelo-bg rounded-xl">
+                <p className="text-xl font-bold text-emerald-400">{selected.execucoes_concluidas || 0}</p>
+                <p className="text-xs text-bibelo-muted">Concluídas</p>
+              </div>
+              <div className="text-center p-3 bg-bibelo-bg rounded-xl">
+                <p className="text-xl font-bold text-blue-400">{selected.execucoes_ativas || 0}</p>
+                <p className="text-xs text-bibelo-muted">Em andamento</p>
+              </div>
+              <div className="text-center p-3 bg-bibelo-bg rounded-xl">
+                <p className="text-xl font-bold text-red-400">{selected.execucoes_erro || 0}</p>
+                <p className="text-xs text-bibelo-muted">Erros</p>
+              </div>
+            </div>
+
+            {/* Execuções recentes */}
+            <h4 className="text-sm font-semibold text-bibelo-text mb-3">Execuções Recentes</h4>
+            {executions.length === 0 ? (
+              <p className="text-sm text-bibelo-muted text-center py-6">Nenhuma execução ainda</p>
+            ) : (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {executions.map((e) => (
+                  <div key={e.id} className="flex items-center gap-3 p-3 rounded-lg bg-bibelo-bg">
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${
+                      e.status === 'ativo' ? 'bg-emerald-400 animate-pulse' :
+                      e.status === 'concluido' ? 'bg-blue-400' : 'bg-red-400'
+                    }`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-bibelo-text truncate">{e.customer_nome || e.customer_email}</p>
+                      <p className="text-xs text-bibelo-muted">{e.customer_email}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[e.status] || ''}`}>
+                        {e.status}
+                      </span>
+                      <p className="text-[10px] text-bibelo-muted mt-1">{timeAgo(e.iniciado_em)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-12 text-center">
+            <Zap size={40} className="mx-auto mb-3 text-bibelo-muted/30" />
+            <p className="text-sm text-bibelo-muted">Selecione um fluxo para ver detalhes e execuções</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Leads Tab ─────────────────────────────────────────────────
+
+function LeadsTab({ leadStats, leads }: {
+  leadStats: LeadStats | null;
+  leads: Lead[];
+}) {
+  const kpis = [
+    { label: 'Total de Leads', value: leadStats?.total_leads || 0, icon: Users, color: 'text-pink-400', bg: 'bg-pink-400/10' },
+    { label: 'Últimos 7 dias', value: leadStats?.leads_7d || 0, icon: ArrowUpRight, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+    { label: 'Últimos 30 dias', value: leadStats?.leads_30d || 0, icon: TrendingUp, color: 'text-blue-400', bg: 'bg-blue-400/10' },
+    { label: 'Convertidos', value: leadStats?.convertidos || 0, icon: ShoppingCart, color: 'text-amber-400', bg: 'bg-amber-400/10' },
+    { label: 'Taxa Conversão', value: `${leadStats?.taxa_conversao || 0}%`, icon: Target, color: 'text-cyan-400', bg: 'bg-cyan-400/10' },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {kpis.map((kpi) => (
+          <div key={kpi.label} className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
+            <div className={`w-8 h-8 rounded-lg ${kpi.bg} flex items-center justify-center mb-2`}>
+              <kpi.icon size={16} className={kpi.color} />
+            </div>
+            <p className="text-2xl font-bold text-bibelo-text">{kpi.value}</p>
+            <p className="text-xs text-bibelo-muted mt-1">{kpi.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Popups performance */}
+      <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+        <h3 className="text-sm font-semibold text-bibelo-text mb-4">Performance dos Popups</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-bibelo-border">
+                <th className="text-left text-xs font-semibold text-bibelo-muted py-2 px-3">Popup</th>
+                <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3">Tipo</th>
+                <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3">Status</th>
+                <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3">Exibições</th>
+                <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3">Capturas</th>
+                <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3">Taxa</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leadStats?.popups?.map((p) => (
+                <tr key={p.id} className="border-b border-bibelo-border/50 hover:bg-bibelo-bg transition-colors">
+                  <td className="py-3 px-3 text-sm font-medium text-bibelo-text">{p.titulo}</td>
+                  <td className="py-3 px-3 text-center text-xs text-bibelo-muted">{p.tipo === 'timer' ? '⏱ Timer' : '🚪 Exit'}</td>
+                  <td className="py-3 px-3 text-center">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${p.ativo ? 'bg-emerald-400/10 text-emerald-400' : 'bg-bibelo-border text-bibelo-muted'}`}>
+                      {p.ativo ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-3 text-center text-sm text-bibelo-text">{p.exibicoes}</td>
+                  <td className="py-3 px-3 text-center text-sm font-semibold text-pink-400">{p.capturas}</td>
+                  <td className="py-3 px-3 text-center text-sm font-semibold text-emerald-400">{p.taxa || 0}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Lista de leads */}
+      <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+        <h3 className="text-sm font-semibold text-bibelo-text mb-4">Leads Capturados</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-bibelo-border">
+                <th className="text-left text-xs font-semibold text-bibelo-muted py-2 px-3">Nome</th>
+                <th className="text-left text-xs font-semibold text-bibelo-muted py-2 px-3">Email</th>
+                <th className="text-left text-xs font-semibold text-bibelo-muted py-2 px-3">WhatsApp</th>
+                <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3">Cupom</th>
+                <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3">Fonte</th>
+                <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3">Status</th>
+                <th className="text-right text-xs font-semibold text-bibelo-muted py-2 px-3">Data</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leads.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-sm text-bibelo-muted">Nenhum lead capturado ainda</td>
+                </tr>
+              ) : (
+                leads.map((l) => (
+                  <tr key={l.id} className="border-b border-bibelo-border/50 hover:bg-bibelo-bg transition-colors">
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-pink-400/10 flex items-center justify-center text-xs font-bold text-pink-400">
+                          {(l.nome || l.email).charAt(0).toUpperCase()}
+                        </div>
+                        <span className="text-sm font-medium text-bibelo-text">{l.nome || '—'}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-sm text-bibelo-muted">{l.email}</td>
+                    <td className="py-3 px-3 text-sm text-bibelo-muted">{l.telefone || '—'}</td>
+                    <td className="py-3 px-3 text-center">
+                      {l.cupom && (
+                        <span className="text-[10px] px-2 py-0.5 bg-pink-400/10 text-pink-400 rounded-full font-bold">{l.cupom}</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-3 text-center text-xs text-bibelo-muted">{l.fonte}</td>
+                    <td className="py-3 px-3 text-center">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${l.convertido ? 'bg-emerald-400/10 text-emerald-400' : 'bg-amber-400/10 text-amber-400'}`}>
+                        {l.convertido ? 'Convertido' : 'Pendente'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-right text-xs text-bibelo-muted">{fmtDateShort(l.criado_em)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
