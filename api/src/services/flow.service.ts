@@ -737,8 +737,7 @@ export async function registerPendingOrder(
   itens: unknown,
   recoveryUrl?: string | null
 ): Promise<void> {
-  // TESTE: 5 minutos para validação. Voltar para 2 horas após teste.
-  const delayHoras = 5 / 60; // 5 minutos
+  const delayHoras = 2; // 2 horas para considerar abandono
   const expiraEm = new Date(Date.now() + delayHoras * 3600 * 1000);
 
   await query(
