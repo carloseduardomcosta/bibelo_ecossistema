@@ -503,7 +503,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - 06856ba feat: template novidades com fotos dos produtos e link por item
 - b2e228a feat: relatórios financeiros, sync contas a pagar, webhook Bling, NF atualiza custo produto
 - a489fb4 fix: ajusta mapeamento de eventos do Bling webhook (order.*, stock.*)
-- (pendente) feat: integração NuvemShop completa — OAuth2, sync, webhooks, frontend
+- c710ff3 feat: integração NuvemShop completa — OAuth2, sync, webhooks, frontend
 
 
 ## Protocolo de atualização deste arquivo
@@ -534,9 +534,9 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Bling Sync | ✅ produção | sync manual + incremental 30min + contas a pagar via BullMQ |
 | Bling Webhooks | ✅ produção | webhook.papelariabibelo.com.br — pedidos, estoque, produtos, NFs, fornecedores |
 | Relatórios Financeiros | ✅ produção | DRE, Fluxo Projetado, Comparativo Mensal |
-| NuvemShop OAuth2 | ✅ código pronto | app_id 26424, token nunca expira, auto-registro webhooks |
-| NuvemShop Sync | ✅ código pronto | clientes, pedidos, produtos — sync manual + webhooks real-time |
-| NuvemShop Webhooks | ✅ código pronto | webhook.papelariabibelo.com.br — order/*, customer/* |
+| NuvemShop OAuth2 | ✅ produção | app_id 26424, store_id 7290881, token salvo, nunca expira |
+| NuvemShop Sync | ✅ produção | clientes, pedidos, produtos — sync manual + webhooks real-time |
+| NuvemShop Webhooks | ✅ produção | 8 webhooks registrados — order/*, customer/*, product/* |
 | Resend E-mail | ✅ produção | domínio verificado, disparo de campanhas ativo |
 | Evolution WhatsApp | ⏳ pendente | aguardando configuração |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
