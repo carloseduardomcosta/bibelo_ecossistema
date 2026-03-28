@@ -24,6 +24,8 @@ interface SyncLog {
 interface SyncStatus {
   integracoes: SyncState[];
   bling_conectado: boolean;
+  nuvemshop_conectado: boolean;
+  nuvemshop_store_id: number | null;
   logs_recentes: SyncLog[];
 }
 
@@ -53,9 +55,10 @@ export default function Sync() {
     fetchStatus();
   }, [fetchStatus]);
 
-  // Detecta retorno do OAuth Bling
+  // Detecta retorno do OAuth Bling / NuvemShop
   useEffect(() => {
     const bling = searchParams.get('bling');
+    const nuvemshop = searchParams.get('nuvemshop');
     if (bling === 'connected') {
       setMessage({ text: 'Bling conectado com sucesso!', type: 'success' });
       searchParams.delete('bling');
@@ -64,6 +67,16 @@ export default function Sync() {
     } else if (bling === 'error') {
       setMessage({ text: 'Erro ao conectar com o Bling. Tente novamente.', type: 'error' });
       searchParams.delete('bling');
+      setSearchParams(searchParams, { replace: true });
+    }
+    if (nuvemshop === 'connected') {
+      setMessage({ text: 'NuvemShop conectada com sucesso! Webhooks registrados.', type: 'success' });
+      searchParams.delete('nuvemshop');
+      setSearchParams(searchParams, { replace: true });
+      fetchStatus();
+    } else if (nuvemshop === 'error') {
+      setMessage({ text: 'Erro ao conectar com a NuvemShop. Tente novamente.', type: 'error' });
+      searchParams.delete('nuvemshop');
       setSearchParams(searchParams, { replace: true });
     }
   }, [searchParams, setSearchParams, fetchStatus]);
@@ -93,6 +106,34 @@ export default function Sync() {
       setMessage({ text: msg, type: 'error' });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const [syncingNs, setSyncingNs] = useState(false);
+
+  const handleConnectNuvemShop = async () => {
+    try {
+      const { data } = await api.get('/auth/nuvemshop');
+      window.location.href = data.url;
+    } catch {
+      setMessage({ text: 'Erro ao gerar URL de autorizacao NuvemShop.', type: 'error' });
+    }
+  };
+
+  const handleSyncNuvemShop = async () => {
+    setSyncingNs(true);
+    setMessage(null);
+    try {
+      await api.post('/sync/nuvemshop');
+      setMessage({
+        text: 'Sync NuvemShop iniciado em background. Atualize a pagina em alguns minutos.',
+        type: 'success',
+      });
+      setTimeout(fetchStatus, 5000);
+    } catch {
+      setMessage({ text: 'Erro na sincronizacao NuvemShop.', type: 'error' });
+    } finally {
+      setSyncingNs(false);
     }
   };
 
@@ -196,31 +237,61 @@ export default function Sync() {
               </div>
               <div>
                 <h2 className="text-sm font-medium text-bibelo-text">NuvemShop</h2>
-                <p className="text-xs text-bibelo-muted">Webhooks de pedidos</p>
+                <p className="text-xs text-bibelo-muted">Pedidos + Clientes + Produtos</p>
               </div>
             </div>
-            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400">
-              Ativo
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                status?.nuvemshop_conectado
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : 'bg-amber-500/20 text-amber-400'
+              }`}
+            >
+              {loading ? '...' : status?.nuvemshop_conectado ? 'Conectada' : 'Desconectada'}
             </span>
           </div>
 
+          {status?.nuvemshop_store_id && (
+            <div className="flex items-center gap-2 text-xs text-bibelo-muted mb-2">
+              <Database size={12} />
+              Loja ID: {status.nuvemshop_store_id}
+            </div>
+          )}
+
           {nuvemshopState?.ultima_sync && (
-            <div className="flex items-center gap-2 text-xs text-bibelo-muted mb-3">
+            <div className="flex items-center gap-2 text-xs text-bibelo-muted mb-2">
               <Clock size={12} />
-              Ultimo evento: {formatDate(nuvemshopState.ultima_sync)}
+              Ultima sync: {formatDate(nuvemshopState.ultima_sync)}
             </div>
           )}
 
           {nuvemshopState && (
-            <div className="flex items-center gap-2 text-xs text-bibelo-muted">
+            <div className="flex items-center gap-2 text-xs text-bibelo-muted mb-4">
               <Database size={12} />
-              {nuvemshopState.total_sincronizados} eventos processados
+              {nuvemshopState.total_sincronizados} registros sincronizados
             </div>
           )}
 
-          {!nuvemshopState?.ultima_sync && !loading && (
-            <p className="text-xs text-bibelo-muted">Aguardando primeiro evento webhook</p>
-          )}
+          <div className="flex gap-2">
+            {status?.nuvemshop_conectado ? (
+              <button
+                onClick={handleSyncNuvemShop}
+                disabled={syncingNs}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+              >
+                <RefreshCw size={13} className={syncingNs ? 'animate-spin' : ''} />
+                {syncingNs ? 'Sincronizando...' : 'Sync Completo'}
+              </button>
+            ) : (
+              <button
+                onClick={handleConnectNuvemShop}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
+              >
+                <ExternalLink size={13} />
+                Conectar NuvemShop
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

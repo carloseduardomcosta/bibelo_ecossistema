@@ -56,7 +56,9 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   │   ├── auth.ts      ← OAuth2 completo
 │   │   │   │   └── sync.ts      ← syncCustomers, syncOrders, incremental
 │   │   │   ├── nuvemshop/
-│   │   │   │   └── webhook.ts   ← HMAC + processamento de eventos
+│   │   │   │   ├── auth.ts      ← OAuth2 + token + rate-limited requests
+│   │   │   │   ├── sync.ts      ← syncNsCustomers, syncNsOrders, syncNsProducts, registerWebhooks
+│   │   │   │   └── webhook.ts   ← HMAC + fetch full object + processamento
 │   │   │   ├── resend/
 │   │   │   │   └── email.ts    ← sendEmail, sendCampaignEmails, tracking
 │   │   │   └── whatsapp/        ← (pendente)
@@ -223,6 +225,9 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `POST /api/sync/bling` — sync manual (?tipo=full|incremental)
 - `GET  /api/auth/bling` — retorna URL de autorização OAuth Bling
 - `GET  /api/auth/bling/callback` — callback OAuth, salva tokens, redireciona frontend
+- `GET  /api/auth/nuvemshop` — retorna URL de autorização OAuth NuvemShop
+- `GET  /api/auth/nuvemshop/callback` — callback OAuth, salva token, registra webhooks
+- `POST /api/sync/nuvemshop` — sync manual (clientes, pedidos, produtos)
 - `GET  /api/products` — lista paginada (busca, categoria, ativo)
 - `GET  /api/products/categories` — categorias distintas
 - `GET  /api/products/stock-overview` — resumo estoque + por categoria
@@ -393,9 +398,14 @@ notificação WhatsApp (sucesso ou falha)
 - Formato: `body.event` = `order.created`, `stock.updated`, etc. — dados em `body.data`
 
 ### NuvemShop
-- Webhooks com validação HMAC SHA256
-- Eventos: orders/created, orders/paid, orders/cancelled, customers/created
-- Endpoint: POST /api/webhooks/nuvemshop
+- OAuth2: token nunca expira, sem refresh — app_id `26424`
+- API Base: `https://api.nuvemshop.com.br/v1/{store_id}/`
+- Header auth: `Authentication: bearer` (NÃO `Authorization`)
+- Rate limit: 2 req/s com burst de 40 (leaky bucket)
+- Webhooks auto-registrados via API após OAuth (order/*, customer/*)
+- Webhook URL: `https://webhook.papelariabibelo.com.br/api/webhooks/nuvemshop`
+- Webhook payload: apenas `{store_id, event, id}` — busca objeto completo via API
+- HMAC: `x-linkedstore-hmac-sha256` com `client_secret`
 
 ### Resend (e-mail)
 - SDK oficial — `import { Resend } from 'resend'`
@@ -493,6 +503,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - 06856ba feat: template novidades com fotos dos produtos e link por item
 - b2e228a feat: relatórios financeiros, sync contas a pagar, webhook Bling, NF atualiza custo produto
 - a489fb4 fix: ajusta mapeamento de eventos do Bling webhook (order.*, stock.*)
+- (pendente) feat: integração NuvemShop completa — OAuth2, sync, webhooks, frontend
 
 
 ## Protocolo de atualização deste arquivo
@@ -523,7 +534,9 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Bling Sync | ✅ produção | sync manual + incremental 30min + contas a pagar via BullMQ |
 | Bling Webhooks | ✅ produção | webhook.papelariabibelo.com.br — pedidos, estoque, produtos, NFs, fornecedores |
 | Relatórios Financeiros | ✅ produção | DRE, Fluxo Projetado, Comparativo Mensal |
-| NuvemShop Webhooks | 🔧 código pronto | aguardando configuração no painel NS |
+| NuvemShop OAuth2 | ✅ código pronto | app_id 26424, token nunca expira, auto-registro webhooks |
+| NuvemShop Sync | ✅ código pronto | clientes, pedidos, produtos — sync manual + webhooks real-time |
+| NuvemShop Webhooks | ✅ código pronto | webhook.papelariabibelo.com.br — order/*, customer/* |
 | Resend E-mail | ✅ produção | domínio verificado, disparo de campanhas ativo |
 | Evolution WhatsApp | ⏳ pendente | aguardando configuração |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
@@ -543,4 +556,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 28 de Março de 2026 — Relatórios Financeiros, Sync Contas Pagar, Bling Webhooks real-time (validado com venda), NF→Custo Produto*
+*Última atualização: 28 de Março de 2026 — NuvemShop integração completa, Relatórios Financeiros, Bling Webhooks*

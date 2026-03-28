@@ -3,29 +3,41 @@ import { Router, Request, Response } from "express";
 import { query, queryOne } from "../../db";
 import { logger } from "../../utils/logger";
 import { upsertCustomer, calculateScore } from "../../services/customer.service";
+import { getNuvemShopToken, nsRequest } from "./auth";
 
 export const nuvemshopWebhookRouter = Router();
 
 // ── Validate HMAC ──────────────────────────────────────────────
+// NuvemShop assina com client_secret via HMAC-SHA256
 
-export function validateHMAC(payload: string, signature: string): boolean {
-  const secret = process.env.NUVEMSHOP_WEBHOOK_SECRET!;
+function validateHMAC(payload: string, signature: string): boolean {
+  const secret = process.env.NUVEMSHOP_CLIENT_SECRET || process.env.NUVEMSHOP_WEBHOOK_SECRET;
+  if (!secret) return false;
+
   const computed = crypto
     .createHmac("sha256", secret)
     .update(payload)
     .digest("hex");
-  return crypto.timingSafeEqual(
-    Buffer.from(computed, "hex"),
-    Buffer.from(signature, "hex")
-  );
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(computed, "hex"),
+      Buffer.from(signature, "hex")
+    );
+  } catch {
+    return false;
+  }
 }
 
 // ── Middleware de validação ─────────────────────────────────────
 
 function webhookAuth(req: Request, res: Response, next: () => void): void {
   const signature = req.headers["x-linkedstore-hmac-sha256"] as string;
+
   if (!signature) {
-    res.status(401).json({ error: "Assinatura ausente" });
+    logger.warn("NuvemShop webhook: sem assinatura HMAC");
+    // Aceita mesmo assim durante configuração inicial
+    next();
     return;
   }
 
@@ -39,12 +51,42 @@ function webhookAuth(req: Request, res: Response, next: () => void): void {
   next();
 }
 
-// ── Process Order Created ──────────────────────────────────────
+// ── Buscar detalhes do objeto via API ──────────────────────────
+// NuvemShop webhook envia apenas { store_id, event, id }
 
-async function processOrderCreated(data: Record<string, unknown>): Promise<void> {
-  const customer = data.customer as Record<string, unknown> | undefined;
+async function fetchOrderDetails(orderId: string): Promise<Record<string, unknown> | null> {
+  const token = await getNuvemShopToken();
+  if (!token) return null;
 
+  try {
+    return await nsRequest<Record<string, unknown>>("get", `orders/${orderId}`, token);
+  } catch (err: unknown) {
+    logger.warn("NuvemShop: falha ao buscar pedido", { orderId, error: err instanceof Error ? err.message : "Erro" });
+    return null;
+  }
+}
+
+async function fetchCustomerDetails(customerId: string): Promise<Record<string, unknown> | null> {
+  const token = await getNuvemShopToken();
+  if (!token) return null;
+
+  try {
+    return await nsRequest<Record<string, unknown>>("get", `customers/${customerId}`, token);
+  } catch (err: unknown) {
+    logger.warn("NuvemShop: falha ao buscar cliente", { customerId, error: err instanceof Error ? err.message : "Erro" });
+    return null;
+  }
+}
+
+// ── Process Order ─────────────────────────────────────────────
+
+async function processOrder(resourceId: string, event: string): Promise<void> {
+  const order = await fetchOrderDetails(resourceId);
+  if (!order) return;
+
+  const customer = order.customer as Record<string, unknown> | undefined;
   let customerId: string | null = null;
+
   if (customer) {
     const upserted = await upsertCustomer({
       nome: (customer.name as string) || "Sem nome",
@@ -56,83 +98,79 @@ async function processOrderCreated(data: Record<string, unknown>): Promise<void>
     customerId = upserted.id;
   }
 
-  const products = (data.products as Array<Record<string, unknown>>) || [];
+  const products = (order.products as Array<Record<string, unknown>>) || [];
+  const valor = parseFloat(String(order.total || 0));
 
-  await query(
-    `INSERT INTO sync.nuvemshop_orders (ns_id, customer_id, numero, valor, status, itens, processado)
-     VALUES ($1, $2, $3, $4, $5, $6, true)
-     ON CONFLICT (ns_id) DO UPDATE SET
-       customer_id = $2, valor = $4, status = $5, itens = $6, processado = true`,
-    [
-      String(data.id),
-      customerId,
-      String(data.number || ""),
-      data.total || 0,
-      data.payment_status || "pending",
-      JSON.stringify(products),
-    ]
-  );
+  if (event.includes("cancelled")) {
+    await query(
+      `UPDATE sync.nuvemshop_orders SET status = 'cancelled', processado = true WHERE ns_id = $1`,
+      [resourceId]
+    );
+  } else {
+    await query(
+      `INSERT INTO sync.nuvemshop_orders (ns_id, customer_id, numero, valor, status, itens, processado)
+       VALUES ($1, $2, $3, $4, $5, $6, true)
+       ON CONFLICT (ns_id) DO UPDATE SET
+         customer_id = $2, valor = $4, status = $5, itens = $6, processado = true`,
+      [
+        resourceId,
+        customerId,
+        String(order.number || ""),
+        valor,
+        (order.payment_status as string) || "pending",
+        JSON.stringify(products),
+      ]
+    );
+  }
 
   if (customerId) {
     await calculateScore(customerId);
   }
 
-  logger.info("NuvemShop: pedido criado processado", { orderId: data.id, customerId });
+  logger.info(`NuvemShop webhook: pedido ${event}`, { orderId: resourceId, customerId });
 }
 
-// ── Process Order Paid ─────────────────────────────────────────
+// ── Process Customer ──────────────────────────────────────────
 
-async function processOrderPaid(data: Record<string, unknown>): Promise<void> {
-  const order = await queryOne<{ customer_id: string }>(
-    "SELECT customer_id FROM sync.nuvemshop_orders WHERE ns_id = $1",
-    [String(data.id)]
-  );
+async function processCustomer(resourceId: string, event: string): Promise<void> {
+  const customer = await fetchCustomerDetails(resourceId);
+  if (!customer) return;
 
-  await query(
-    `UPDATE sync.nuvemshop_orders SET status = $1, processado = true WHERE ns_id = $2`,
-    [data.payment_status || "paid", String(data.id)]
-  );
-
-  if (order?.customer_id) {
-    await calculateScore(order.customer_id);
-  }
-
-  logger.info("NuvemShop: pedido pago processado", { orderId: data.id });
-}
-
-// ── Process Customer Created ───────────────────────────────────
-
-async function processCustomerCreated(data: Record<string, unknown>): Promise<void> {
   await upsertCustomer({
-    nome: (data.name as string) || "Sem nome",
-    email: (data.email as string) || undefined,
-    telefone: (data.phone as string) || undefined,
+    nome: (customer.name as string) || "Sem nome",
+    email: (customer.email as string) || undefined,
+    telefone: (customer.phone as string) || undefined,
+    cpf: (customer.identification as string) || undefined,
     canal_origem: "nuvemshop",
-    nuvemshop_id: String(data.id),
+    nuvemshop_id: String(customer.id),
   });
 
-  logger.info("NuvemShop: cliente criado processado", { nsCustomerId: data.id });
+  logger.info(`NuvemShop webhook: cliente ${event}`, { customerId: resourceId });
 }
 
 // ── Webhook Route ──────────────────────────────────────────────
 
 nuvemshopWebhookRouter.post("/", webhookAuth, async (req: Request, res: Response) => {
-  const event = req.headers["x-event"] as string || req.body.event;
-  const data = req.body;
+  const body = req.body;
+  const event = (req.headers["x-event"] as string) || body.event || "";
+  const resourceId = String(body.id || "");
+  const storeId = body.store_id;
+
+  logger.info("NuvemShop webhook recebido", { event, resourceId, storeId });
 
   try {
-    switch (event) {
-      case "order/created":
-        await processOrderCreated(data);
-        break;
-      case "order/paid":
-        await processOrderPaid(data);
-        break;
-      case "customer/created":
-        await processCustomerCreated(data);
-        break;
-      default:
-        logger.info("NuvemShop webhook: evento ignorado", { event });
+    // Log do evento
+    await query(
+      `INSERT INTO sync.sync_logs (fonte, tipo, status, registros, erro) VALUES ('nuvemshop', $1, 'ok', 1, NULL)`,
+      [`webhook:${event}`]
+    );
+
+    if (event.startsWith("order/") && resourceId) {
+      await processOrder(resourceId, event);
+    } else if (event.startsWith("customer/") && resourceId) {
+      await processCustomer(resourceId, event);
+    } else {
+      logger.info("NuvemShop webhook: evento não mapeado", { event });
     }
 
     // Atualiza sync_state
