@@ -142,7 +142,7 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
     }
 
     document.getElementById('bibelo-popup-close').onclick = closePopup;
-    overlay.onclick = function(e) { if (e.target === overlay) closePopup(); };
+    // Não fecha ao clicar fora — só pelo X ou preenchendo
 
     // Submit
     document.getElementById('bibelo-popup-form').onsubmit = function(e) {
