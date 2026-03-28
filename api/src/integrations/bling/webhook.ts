@@ -82,8 +82,9 @@ async function processContato(data: Record<string, unknown>, evento: string): Pr
 // ── Processar evento de pedido ───────────────────────────────
 
 async function processPedido(data: Record<string, unknown>, evento: string): Promise<void> {
-  const pedido = data.pedido as Record<string, unknown> | undefined;
-  if (!pedido) return;
+  // Webhook pode enviar pedido em data.pedido, data, ou diretamente no root
+  const pedido = (data.pedido || data) as Record<string, unknown>;
+  if (!pedido || !pedido.id) return;
 
   const contato = pedido.contato as Record<string, unknown> | undefined;
   let customerId: string | null = null;
@@ -123,7 +124,7 @@ async function processPedido(data: Record<string, unknown>, evento: string): Pro
 // ── Processar evento de estoque ──────────────────────────────
 
 async function processEstoque(data: Record<string, unknown>): Promise<void> {
-  const estoque = data.estoque as Record<string, unknown> | undefined;
+  const estoque = (data.estoque || data) as Record<string, unknown>;
   if (!estoque) return;
 
   const produtoId = estoque.produto as Record<string, unknown> | undefined;
@@ -173,15 +174,20 @@ blingWebhookRouter.post("/", blingWebhookAuth, async (req: Request, res: Respons
       [`webhook:${evento}`]
     );
 
+    // Log payload para debug (temporário)
+    logger.info("Bling webhook recebido", { evento, payload: JSON.stringify(body).slice(0, 1000) });
+
     // Mapeia eventos do Bling para handlers
-    if (evento.startsWith("contatos.")) {
+    // Bling v3 envia: order.created, order.updated, stock.updated, product.created, etc.
+    const ev = evento.toLowerCase();
+    if (ev.startsWith("contato") || ev.startsWith("supplier") || ev.startsWith("fornecedor")) {
       await processContato(body.data || body, evento);
-    } else if (evento.startsWith("pedidos.vendas.")) {
+    } else if (ev.startsWith("order") || ev.startsWith("pedido")) {
       await processPedido(body.data || body, evento);
-    } else if (evento.startsWith("estoques.")) {
+    } else if (ev.startsWith("stock") || ev.startsWith("estoque")) {
       await processEstoque(body.data || body);
     } else {
-      logger.info("Bling webhook: evento não mapeado", { evento });
+      logger.info("Bling webhook: evento não mapeado", { evento, body: JSON.stringify(body).slice(0, 500) });
     }
 
     // Atualiza sync_state
