@@ -21,6 +21,8 @@ import { contasPagarRouter } from "./routes/contas-pagar";
 import { searchRouter }     from "./routes/search";
 import { dealsRouter }      from "./routes/deals";
 import { flowsRouter }      from "./routes/flows";
+import { leadsRouter }      from "./routes/leads";
+import { leadsScriptRouter } from "./routes/leads-script";
 import { nuvemshopWebhookRouter } from "./integrations/nuvemshop/webhook";
 import { blingWebhookRouter }     from "./integrations/bling/webhook";
 import { registerScheduledJobs } from "./queues/sync.queue";
@@ -33,7 +35,11 @@ const PORT = Number(process.env.API_PORT) || 4000;
 app.set("trust proxy", 1);
 app.use(helmet());
 app.use(cors({
-  origin:      process.env.APP_URL || "http://localhost:3000",
+  origin: [
+    process.env.APP_URL || "http://localhost:3000",
+    "https://www.papelariabibelo.com.br",
+    "https://papelariabibelo.com.br",
+  ],
   credentials: true,
 }));
 
@@ -73,6 +79,8 @@ app.use("/api/contas-pagar", contasPagarRouter);
 app.use("/api/financeiro/nf-entrada", nfEntradaRouter);
 app.use("/api/sync", syncRouter);
 app.use("/api",      syncRouter);  // /api/auth/bling e /api/auth/bling/callback
+app.use("/api/leads", leadsRouter);
+app.use("/api/leads", leadsScriptRouter);
 app.use("/api/webhooks/nuvemshop", nuvemshopWebhookRouter);
 app.use("/api/webhooks/bling", blingWebhookRouter);
 
