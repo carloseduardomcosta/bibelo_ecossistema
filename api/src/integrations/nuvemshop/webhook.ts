@@ -3,6 +3,7 @@ import { Router, Request, Response } from "express";
 import { query, queryOne } from "../../db";
 import { logger } from "../../utils/logger";
 import { upsertCustomer, calculateScore } from "../../services/customer.service";
+import { triggerFlow, registerPendingOrder, markOrderConverted } from "../../services/flow.service";
 import { getNuvemShopToken, nsRequest } from "./auth";
 
 export const nuvemshopWebhookRouter = Router();
@@ -125,6 +126,38 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
 
   if (customerId) {
     await calculateScore(customerId);
+
+    // ── Motor de fluxos: disparar automações ──
+    const paymentStatus = (order.payment_status as string) || "pending";
+
+    if (event === "order/paid" || paymentStatus === "paid") {
+      // Pedido pago → cancelar pedido pendente + disparar pós-compra
+      await markOrderConverted(resourceId);
+      await triggerFlow("order.paid", customerId, {
+        ns_order_id: resourceId,
+        valor,
+        itens: products.map((p) => ({ name: p.name, quantity: p.quantity })),
+      });
+
+      // Primeiro pedido? Disparar boas-vindas
+      const scoreData = await queryOne<{ total_pedidos: string }>(
+        "SELECT total_pedidos::text FROM crm.customer_scores WHERE customer_id = $1",
+        [customerId]
+      );
+      if (scoreData && parseInt(scoreData.total_pedidos, 10) <= 1) {
+        await triggerFlow("order.first", customerId, { ns_order_id: resourceId, valor });
+      }
+    } else if (event === "order/created" && paymentStatus !== "paid") {
+      // Pedido criado mas não pago → registrar como pendente para detecção de abandono
+      const customerEmail = customer ? (customer.email as string) : null;
+      await registerPendingOrder(
+        resourceId,
+        customerId,
+        customerEmail,
+        valor,
+        products.map((p) => ({ name: p.name, quantity: p.quantity, price: p.price }))
+      );
+    }
   }
 
   logger.info(`NuvemShop webhook: pedido ${event}`, { orderId: resourceId, customerId });
@@ -136,7 +169,7 @@ async function processCustomer(resourceId: string, event: string): Promise<void>
   const customer = await fetchCustomerDetails(resourceId);
   if (!customer) return;
 
-  await upsertCustomer({
+  const upserted = await upsertCustomer({
     nome: (customer.name as string) || "Sem nome",
     email: (customer.email as string) || undefined,
     telefone: (customer.phone as string) || undefined,
@@ -144,6 +177,15 @@ async function processCustomer(resourceId: string, event: string): Promise<void>
     canal_origem: "nuvemshop",
     nuvemshop_id: String(customer.id),
   });
+
+  // Novo cliente → disparar fluxo de boas-vindas (se customer/created)
+  if (event === "customer/created" && upserted.email) {
+    await triggerFlow("customer.created", upserted.id, {
+      nome: upserted.nome,
+      email: upserted.email,
+      canal: "nuvemshop",
+    });
+  }
 
   logger.info(`NuvemShop webhook: cliente ${event}`, { customerId: resourceId });
 }

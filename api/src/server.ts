@@ -20,9 +20,11 @@ import { nfEntradaRouter }  from "./routes/nf-entrada";
 import { contasPagarRouter } from "./routes/contas-pagar";
 import { searchRouter }     from "./routes/search";
 import { dealsRouter }      from "./routes/deals";
+import { flowsRouter }      from "./routes/flows";
 import { nuvemshopWebhookRouter } from "./integrations/nuvemshop/webhook";
 import { blingWebhookRouter }     from "./integrations/bling/webhook";
 import { registerScheduledJobs } from "./queues/sync.queue";
+import { registerFlowJobs }      from "./queues/flow.queue";
 
 const app  = express();
 const PORT = Number(process.env.API_PORT) || 4000;
@@ -60,6 +62,7 @@ app.use("/",        healthRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/search", searchRouter);
 app.use("/api/deals", dealsRouter);
+app.use("/api/flows", flowsRouter);
 app.use("/api/customers", customersRouter);
 app.use("/api/analytics", analyticsRouter);
 app.use("/api/campaigns", campaignsRouter);
@@ -88,6 +91,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 async function start(): Promise<void> {
   await dbConnect();
   await registerScheduledJobs();
+  await registerFlowJobs();
   app.listen(PORT, "0.0.0.0", () => {
     logger.info(`BibelôCRM API rodando na porta ${PORT}`);
     logger.info(`Ambiente: ${process.env.NODE_ENV}`);

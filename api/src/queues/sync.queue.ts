@@ -2,7 +2,8 @@ import { Queue, Worker } from "bullmq";
 import { logger } from "../utils/logger";
 import { incrementalSync } from "../integrations/bling/sync";
 import { calculateScore } from "../services/customer.service";
-import { query } from "../db";
+import { triggerFlow } from "../services/flow.service";
+import { query, queryOne } from "../db";
 
 // ── Redis connection ───────────────────────────────────────────
 
@@ -48,11 +49,35 @@ export const syncWorker = new Worker(
           );
 
           let processed = 0;
+          let reactivationTriggered = 0;
+
           for (const c of customers) {
+            // Busca risco anterior antes de recalcular
+            const before = await queryOne<{ risco_churn: string }>(
+              "SELECT risco_churn FROM crm.customer_scores WHERE customer_id = $1",
+              [c.id]
+            );
+            const riscoAntes = before?.risco_churn || "baixo";
+
             await calculateScore(c.id);
+
+            // Se risco mudou para 'alto', disparar fluxo de reativação
+            const after = await queryOne<{ risco_churn: string }>(
+              "SELECT risco_churn FROM crm.customer_scores WHERE customer_id = $1",
+              [c.id]
+            );
+
+            if (after?.risco_churn === "alto" && riscoAntes !== "alto") {
+              await triggerFlow("customer.inactive", c.id, {
+                risco_anterior: riscoAntes,
+                risco_atual: "alto",
+              });
+              reactivationTriggered++;
+            }
+
             processed++;
           }
-          result = { processed };
+          result = { processed, reactivationTriggered };
           break;
         }
 

@@ -48,9 +48,11 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── financeiro.ts   ← módulo financeiro completo (20+ endpoints)
 │   │   │   ├── nf-entrada.ts  ← upload XML NF-e, parse, contabilização
 │   │   │   ├── contas-pagar.ts ← contas a pagar Bling + pagamento
-│   │   │   └── search.ts      ← busca global (clientes, produtos, NFs, lançamentos)
+│   │   │   ├── search.ts      ← busca global (clientes, produtos, NFs, lançamentos)
+│   │   │   └── flows.ts       ← CRUD fluxos automáticos + stats + execuções
 │   │   ├── services/
-│   │   │   └── customer.service.ts ← upsert, score, timeline, segments
+│   │   │   ├── customer.service.ts ← upsert, score, timeline, segments
+│   │   │   └── flow.service.ts    ← motor de fluxos: trigger, execute, advance, carrinho abandonado
 │   │   ├── integrations/
 │   │   │   ├── bling/
 │   │   │   │   ├── auth.ts      ← OAuth2 completo
@@ -64,7 +66,8 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   └── whatsapp/        ← (pendente)
 │   │   │   (bling/webhook.ts    ← webhook handler Bling: contatos, pedidos, estoque)
 │   │   ├── queues/
-│   │   │   └── sync.queue.ts    ← BullMQ: sync 30min + scores 2h
+│   │   │   ├── sync.queue.ts    ← BullMQ: sync 30min + scores 2h + reativação churn
+│   │   │   └── flow.queue.ts    ← BullMQ: process steps (1min) + check abandoned (5min)
 │   │   ├── middleware/
 │   │   │   └── auth.ts          ← JWT authMiddleware + requireAdmin
 │   │   ├── db/
@@ -147,7 +150,9 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 - `campaigns` — campanhas com métricas (abertura, clique, conversão)
 - `campaign_sends` — registro individual de cada envio
 - `flows` — fluxos automáticos com steps em JSON
-- `flow_executions` — execução por cliente
+- `flow_executions` — execução por cliente (metadata JSONB, proximo_step_em)
+- `flow_step_executions` — rastreamento granular de cada step executado
+- `pedidos_pendentes` — pedidos NuvemShop aguardando pagamento (detecção carrinho abandonado)
 
 ### schema: sync
 - `bling_orders` — pedidos vindos do Bling
@@ -277,8 +282,17 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `GET  /api/financeiro/fluxo-projetado` — fluxo de caixa: 6m realizado + 3m projetado
 - `GET  /api/financeiro/comparativo` — comparativo mês a mês (param: meses=2..12)
 
+### Fluxos Automáticos (Bearer JWT obrigatório)
+- `GET  /api/flows` — listar fluxos com contagem de execuções
+- `GET  /api/flows/stats/overview` — KPIs: fluxos ativos, execuções, carrinhos
+- `GET  /api/flows/:id` — detalhes + 50 execuções recentes
+- `POST /api/flows` — criar fluxo (gatilho, steps, ativo)
+- `PUT  /api/flows/:id` — atualizar fluxo
+- `POST /api/flows/:id/toggle` — ativar/desativar
+- `GET  /api/flows/:id/executions/:execId` — detalhe execução + steps
+
 ### Webhooks (validação HMAC)
-- `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop
+- `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop + dispara fluxos automáticos
 - `POST /api/webhooks/bling` — recebe eventos do Bling (contatos, pedidos, estoque)
 
 ---
@@ -446,7 +460,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 ### P1 — Integrações reais (dependem de credenciais)
 7. **Resend email** — `api/src/integrations/resend/` — envio com templates, tracking abertura/clique
 8. **Evolution WhatsApp** — `api/src/integrations/whatsapp/` — envio via Evolution API interna
-9. **Motor de Fluxos** — `api/src/services/flow.service.ts` — executor flows automáticos
+9. ~~**Motor de Fluxos**~~ ✅ — `api/src/services/flow.service.ts` — executor flows automáticos + carrinho abandonado
 10. **Bling OAuth redirect** — rota callback real que salva tokens
 
 ### P2 — Frontend completo
@@ -504,6 +518,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - b2e228a feat: relatórios financeiros, sync contas a pagar, webhook Bling, NF atualiza custo produto
 - a489fb4 fix: ajusta mapeamento de eventos do Bling webhook (order.*, stock.*)
 - c710ff3 feat: integração NuvemShop completa — OAuth2, sync, webhooks, frontend
+- 31464ea docs: NuvemShop em produção — store 7290881 conectada, 8 webhooks ativos
 
 
 ## Protocolo de atualização deste arquivo
@@ -538,6 +553,8 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | NuvemShop Sync | ✅ produção | clientes, pedidos, produtos — sync manual + webhooks real-time |
 | NuvemShop Webhooks | ✅ produção | 8 webhooks registrados — order/*, customer/*, product/* |
 | Resend E-mail | ✅ produção | domínio verificado, disparo de campanhas ativo |
+| Motor de Fluxos | ✅ produção | 5 fluxos ativos, BullMQ process-steps 1min, check-abandoned 5min |
+| Carrinho Abandonado | ✅ produção | detecta order/created sem paid após 2h, dispara fluxo automático |
 | Evolution WhatsApp | ⏳ pendente | aguardando configuração |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
 
@@ -556,4 +573,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 28 de Março de 2026 — NuvemShop integração completa, Relatórios Financeiros, Bling Webhooks*
+*Última atualização: 28 de Março de 2026 — Motor de Fluxos Automáticos em produção, NuvemShop integração completa*
