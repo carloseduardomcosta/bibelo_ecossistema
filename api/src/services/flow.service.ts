@@ -1,6 +1,7 @@
 import { query, queryOne } from "../db";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../integrations/resend/email";
+import { getNuvemShopToken, nsRequest } from "../integrations/nuvemshop/auth";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -272,26 +273,32 @@ async function executeEmailStep(
   );
 
   if (!template) {
-    // Envia email genérico com o nome do template como assunto
+    // Usa templates built-in ricos (com fotos, recovery_url, etc.)
+    const html = buildFlowEmail(customer.nome, step.template || "", metadata);
+    const subject = getFlowSubject(step.template || "", customer.nome);
+
     const result = await sendEmail({
       to: customer.email,
-      subject: step.template || "Papelaria Bibelô",
-      html: buildGenericEmail(customer.nome, step.template || "", metadata),
+      subject,
+      html,
       tags: [
         { name: "flow", value: "true" },
+        { name: "template_type", value: step.template || "generico" },
         { name: "customer_id", value: customer.id },
       ],
     });
 
-    return { sent: true, messageId: result?.id, templateUsed: "genérico" };
+    return { sent: true, messageId: result?.id, templateUsed: "built-in" };
   }
 
-  // Substitui variáveis no template
+  // Usa template do banco (marketing.templates)
+  const recoveryUrl = (metadata.recovery_url as string) || "";
   const html = (template.html || "")
     .replace(/\{\{nome\}\}/g, customer.nome || "Cliente")
     .replace(/\{\{email\}\}/g, customer.email)
-    .replace(/\{\{valor\}\}/g, String(metadata.valor || ""))
-    .replace(/\{\{itens\}\}/g, formatItens(metadata.itens));
+    .replace(/\{\{valor\}\}/g, formatBRL(metadata.valor))
+    .replace(/\{\{itens\}\}/g, formatItens(metadata.itens))
+    .replace(/\{\{recovery_url\}\}/g, recoveryUrl);
 
   const subject = (template.assunto || step.template || "")
     .replace(/\{\{nome\}\}/g, customer.nome || "Cliente");
@@ -341,48 +348,10 @@ async function executeWhatsAppStep(
 
 // ── Helpers ────────────────────────────────────────────────────
 
-function buildGenericEmail(nome: string, templateName: string, metadata: Record<string, unknown>): string {
-  const valor = metadata.valor ? `R$ ${Number(metadata.valor).toFixed(2).replace(".", ",")}` : "";
-
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; padding: 20px 0;">
-        <h1 style="color: #E91E63; font-size: 24px;">Papelaria Bibelô 🎀</h1>
-      </div>
-      <div style="padding: 20px; background: #fff; border-radius: 8px;">
-        <p>Olá, <strong>${nome || "Cliente"}</strong>!</p>
-        <p>${getGenericMessage(templateName, valor)}</p>
-        <p style="margin-top: 20px;">
-          <a href="https://papelariabibelo.com.br" style="background: #E91E63; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-            Visitar a loja
-          </a>
-        </p>
-      </div>
-      <div style="text-align: center; padding: 20px; color: #999; font-size: 12px;">
-        Papelaria Bibelô — Teresina, PI
-      </div>
-    </div>
-  `;
-}
-
-function getGenericMessage(templateName: string, valor: string): string {
-  const lower = templateName.toLowerCase();
-  if (lower.includes("boas-vindas") || lower.includes("welcome")) {
-    return "Bem-vinda à Papelaria Bibelô! Estamos muito felizes em ter você conosco. Confira nossas novidades e promoções especiais.";
-  }
-  if (lower.includes("agradecimento") || lower.includes("obrigad")) {
-    return `Obrigada pela sua compra${valor ? ` de ${valor}` : ""}! Seu pedido está sendo preparado com muito carinho. 💕`;
-  }
-  if (lower.includes("carrinho") || lower.includes("abandon")) {
-    return `Você deixou alguns itens esperando${valor ? ` (${valor})` : ""}! Eles ainda estão disponíveis — finalize sua compra antes que acabem.`;
-  }
-  if (lower.includes("reativação") || lower.includes("saudade")) {
-    return "Faz tempo que não nos visita! Temos muitas novidades esperando por você. Venha conferir!";
-  }
-  if (lower.includes("última chance")) {
-    return `Os itens no seu carrinho${valor ? ` (${valor})` : ""} estão quase esgotando! Não perca a chance de garantir os seus.`;
-  }
-  return "Temos novidades especiais para você na Papelaria Bibelô! Venha conferir.";
+function formatBRL(value: unknown): string {
+  const num = Number(value);
+  if (isNaN(num)) return "";
+  return `R$ ${num.toFixed(2).replace(".", ",")}`;
 }
 
 function formatItens(itens: unknown): string {
@@ -390,6 +359,233 @@ function formatItens(itens: unknown): string {
   return itens
     .map((item: Record<string, unknown>) => `${item.name || item.nome || "Produto"} (${item.quantity || item.qtd || 1}x)`)
     .join(", ");
+}
+
+// ── Email base wrapper ─────────────────────────────────────────
+
+function emailWrapper(content: string): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:'Segoe UI',Arial,sans-serif;">
+<div style="max-width:600px;margin:0 auto;background:#fff;">
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#E91E63,#F06292);padding:30px 20px;text-align:center;">
+    <h1 style="color:#fff;margin:0;font-size:28px;font-weight:700;">Papelaria Bibelô</h1>
+    <p style="color:rgba(255,255,255,0.9);margin:5px 0 0;font-size:14px;">Encantando momentos com papelaria</p>
+  </div>
+  <!-- Content -->
+  <div style="padding:30px 25px;">
+    ${content}
+  </div>
+  <!-- Footer -->
+  <div style="background:#f9f9f9;padding:20px;text-align:center;border-top:1px solid #eee;">
+    <p style="color:#999;font-size:12px;margin:0;">Papelaria Bibelô — Teresina, PI</p>
+    <p style="color:#bbb;font-size:11px;margin:5px 0 0;">
+      <a href="https://www.papelariabibelo.com.br" style="color:#E91E63;text-decoration:none;">papelariabibelo.com.br</a>
+    </p>
+  </div>
+</div>
+</body>
+</html>`;
+}
+
+// ── Botão CTA ──────────────────────────────────────────────────
+
+function ctaButton(text: string, url: string): string {
+  return `<div style="text-align:center;margin:25px 0;">
+    <a href="${url}" style="background:#E91E63;color:#fff;padding:14px 32px;text-decoration:none;border-radius:8px;font-size:16px;font-weight:600;display:inline-block;">
+      ${text}
+    </a>
+  </div>`;
+}
+
+// ── Template: Carrinho Abandonado ──────────────────────────────
+
+function buildAbandonedCartEmail(nome: string, metadata: Record<string, unknown>): string {
+  const valor = formatBRL(metadata.valor);
+  const recoveryUrl = (metadata.recovery_url as string) || "https://www.papelariabibelo.com.br";
+  const itens = Array.isArray(metadata.itens) ? metadata.itens : [];
+
+  let productsHtml = "";
+  if (itens.length > 0) {
+    const rows = itens.map((item: Record<string, unknown>) => {
+      const imgUrl = (item.image_url as string) || "";
+      const imgTag = imgUrl
+        ? `<img src="${imgUrl}" alt="${item.name}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid #eee;" />`
+        : `<div style="width:70px;height:70px;background:#f0f0f0;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;">📦</div>`;
+      const price = item.price ? formatBRL(item.price) : "";
+      const qty = item.quantity || item.qtd || 1;
+
+      return `<tr>
+        <td style="padding:10px 0;border-bottom:1px solid #f0f0f0;vertical-align:top;width:80px;">${imgTag}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top;">
+          <p style="margin:0 0 4px;font-weight:600;color:#333;">${item.name || "Produto"}</p>
+          <p style="margin:0;color:#888;font-size:13px;">Qtd: ${qty}${price ? ` · ${price}` : ""}</p>
+        </td>
+      </tr>`;
+    }).join("");
+
+    productsHtml = `
+    <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+      ${rows}
+    </table>
+    ${valor ? `<p style="text-align:right;font-size:18px;font-weight:700;color:#333;margin:10px 0;">Total: ${valor}</p>` : ""}`;
+  }
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! 👋</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Notamos que você deixou alguns itens especiais no seu carrinho.
+      Eles ainda estão esperando por você!
+    </p>
+    ${productsHtml}
+    ${ctaButton("Finalizar minha compra", recoveryUrl)}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      O link acima leva direto para o seu carrinho com todos os itens selecionados.
+    </p>
+  `);
+}
+
+// ── Template: Última Chance ────────────────────────────────────
+
+function buildLastChanceEmail(nome: string, metadata: Record<string, unknown>): string {
+  const valor = formatBRL(metadata.valor);
+  const recoveryUrl = (metadata.recovery_url as string) || "https://www.papelariabibelo.com.br";
+  const itens = Array.isArray(metadata.itens) ? metadata.itens : [];
+  const nomesProdutos = itens.map((i: Record<string, unknown>) => i.name || "produto").join(", ");
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>!</p>
+    <div style="background:#FFF3E0;border-left:4px solid #FF9800;padding:15px 20px;border-radius:4px;margin:20px 0;">
+      <p style="margin:0;color:#E65100;font-weight:600;font-size:15px;">⏰ Seus itens estão quase esgotando!</p>
+    </div>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      ${nomesProdutos ? `Os produtos <strong>${nomesProdutos}</strong> continuam` : "Seus itens continuam"}
+      no seu carrinho${valor ? ` (${valor})` : ""}, mas o estoque está acabando.
+    </p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Não queremos que você perca! Finalize sua compra agora:
+    </p>
+    ${ctaButton("Garantir meus produtos", recoveryUrl)}
+  `);
+}
+
+// ── Template: Pós-compra Agradecimento ────────────────────────
+
+function buildThankYouEmail(nome: string, metadata: Record<string, unknown>): string {
+  const valor = formatBRL(metadata.valor);
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! 💕</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Muito obrigada pela sua compra${valor ? ` de <strong>${valor}</strong>` : ""}!
+      Seu pedido já está sendo preparado com todo carinho.
+    </p>
+    <div style="background:#E8F5E9;border-radius:8px;padding:20px;text-align:center;margin:20px 0;">
+      <p style="font-size:40px;margin:0;">📦✨</p>
+      <p style="color:#2E7D32;font-weight:600;margin:10px 0 0;">Pedido confirmado!</p>
+    </div>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Qualquer dúvida, estamos à disposição pelo WhatsApp ou e-mail.
+      Esperamos que você adore os produtos!
+    </p>
+    ${ctaButton("Ver mais produtos", "https://www.papelariabibelo.com.br")}
+  `);
+}
+
+// ── Template: Boas-vindas ──────────────────────────────────────
+
+function buildWelcomeEmail(nome: string): string {
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! 🎀</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Seja muito bem-vinda à <strong>Papelaria Bibelô</strong>!
+      Estamos felizes em ter você com a gente.
+    </p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Na nossa loja você encontra tudo em papelaria, organização e presentes
+      que encantam. Dá uma olhada nas novidades:
+    </p>
+    ${ctaButton("Conhecer a loja", "https://www.papelariabibelo.com.br")}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      Nos siga no Instagram: <a href="https://instagram.com/papelariabibelo" style="color:#E91E63;">@papelariabibelo</a>
+    </p>
+  `);
+}
+
+// ── Template: Reativação de Inativo ────────────────────────────
+
+function buildReactivationEmail(nome: string): string {
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! 👋</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Faz um tempinho que você não aparece por aqui e sentimos sua falta!
+    </p>
+    <div style="background:#FCE4EC;border-radius:8px;padding:20px;text-align:center;margin:20px 0;">
+      <p style="font-size:40px;margin:0;">💌</p>
+      <p style="color:#C2185B;font-weight:600;margin:10px 0 0;">Temos novidades para você!</p>
+    </div>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Adicionamos muitos produtos novos na loja. Vem conferir o que preparamos
+      especialmente para quem ama papelaria!
+    </p>
+    ${ctaButton("Ver novidades", "https://www.papelariabibelo.com.br")}
+  `);
+}
+
+// ── Build email por template name ──────────────────────────────
+
+function buildFlowEmail(nome: string, templateName: string, metadata: Record<string, unknown>): string {
+  const lower = (templateName || "").toLowerCase();
+
+  if (lower.includes("carrinho abandonado") || lower.includes("recuperação")) {
+    return buildAbandonedCartEmail(nome, metadata);
+  }
+  if (lower.includes("última chance") || lower.includes("ultima chance")) {
+    return buildLastChanceEmail(nome, metadata);
+  }
+  if (lower.includes("agradecimento") || lower.includes("obrigad") || lower.includes("pós-compra")) {
+    return buildThankYouEmail(nome, metadata);
+  }
+  if (lower.includes("boas-vindas") || lower.includes("welcome") || lower.includes("bem-vind")) {
+    return buildWelcomeEmail(nome);
+  }
+  if (lower.includes("reativação") || lower.includes("saudade") || lower.includes("inativ")) {
+    return buildReactivationEmail(nome);
+  }
+
+  // Fallback genérico
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>!</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Temos novidades especiais para você na Papelaria Bibelô! Venha conferir.
+    </p>
+    ${ctaButton("Visitar a loja", "https://www.papelariabibelo.com.br")}
+  `);
+}
+
+// ── Subject por template name ──────────────────────────────────
+
+function getFlowSubject(templateName: string, nome: string): string {
+  const lower = (templateName || "").toLowerCase();
+
+  if (lower.includes("carrinho") || lower.includes("recuperação")) {
+    return `${nome || "Oi"}, seus itens estão esperando! 🛒`;
+  }
+  if (lower.includes("última chance") || lower.includes("ultima chance")) {
+    return `⏰ Última chance para garantir seus produtos, ${nome || "Cliente"}!`;
+  }
+  if (lower.includes("agradecimento") || lower.includes("pós-compra")) {
+    return `Obrigada pela compra, ${nome || "Cliente"}! 💕`;
+  }
+  if (lower.includes("boas-vindas")) {
+    return `Bem-vinda à Papelaria Bibelô, ${nome || "Cliente"}! 🎀`;
+  }
+  if (lower.includes("reativação") || lower.includes("inativ")) {
+    return `Sentimos sua falta, ${nome || "Cliente"}! 💌`;
+  }
+  return `Novidades da Papelaria Bibelô para você!`;
 }
 
 // ── Processar steps prontos (chamado pelo worker) ──────────────
@@ -418,9 +614,10 @@ export async function processReadySteps(): Promise<number> {
 export async function checkAbandonedCarts(): Promise<number> {
   // Busca pedidos pendentes que expiraram e não foram convertidos/notificados
   const abandoned = await query<{
-    id: string; ns_order_id: string; customer_id: string; email: string; valor: number; itens: unknown;
+    id: string; ns_order_id: string; customer_id: string; email: string;
+    valor: number; itens: unknown; recovery_url: string | null; checkout_id: string | null;
   }>(
-    `SELECT id, ns_order_id, customer_id, email, valor, itens
+    `SELECT id, ns_order_id, customer_id, email, valor, itens, recovery_url, checkout_id
      FROM marketing.pedidos_pendentes
      WHERE convertido = false AND notificado = false AND expira_em <= NOW()
      LIMIT 20`
@@ -431,11 +628,26 @@ export async function checkAbandonedCarts(): Promise<number> {
   for (const cart of abandoned) {
     if (!cart.customer_id) continue;
 
+    // Tenta buscar recovery_url da NuvemShop se ainda não temos
+    let recoveryUrl = cart.recovery_url;
+    if (!recoveryUrl) {
+      recoveryUrl = await fetchRecoveryUrl(cart.ns_order_id);
+      if (recoveryUrl) {
+        await query(
+          "UPDATE marketing.pedidos_pendentes SET recovery_url = $2 WHERE id = $1",
+          [cart.id, recoveryUrl]
+        );
+      }
+    }
+
+    const itens = typeof cart.itens === "string" ? JSON.parse(cart.itens) : cart.itens;
+
     const executionIds = await triggerFlow("order.abandoned", cart.customer_id, {
       ns_order_id: cart.ns_order_id,
       valor: cart.valor,
-      itens: cart.itens,
+      itens,
       email: cart.email,
+      recovery_url: recoveryUrl || `https://www.papelariabibelo.com.br`,
     });
 
     if (executionIds.length > 0) {
@@ -451,6 +663,41 @@ export async function checkAbandonedCarts(): Promise<number> {
 
   logger.info("Carrinhos abandonados verificados", { total: abandoned.length, triggered });
   return triggered;
+}
+
+// ── Buscar recovery_url da NuvemShop ──────────────────────────
+
+async function fetchRecoveryUrl(nsOrderId: string): Promise<string | null> {
+  try {
+    const token = await getNuvemShopToken();
+    if (!token) return null;
+
+    // Tenta buscar checkouts abandonados recentes
+    const checkouts = await nsRequest<Array<Record<string, unknown>>>(
+      "get",
+      `checkouts?status=abandoned&per_page=50`,
+      token
+    );
+
+    if (!Array.isArray(checkouts)) return null;
+
+    // Busca checkout que corresponde ao pedido
+    for (const checkout of checkouts) {
+      const orderId = checkout.order_id ? String(checkout.order_id) : null;
+      if (orderId === nsOrderId) {
+        return (checkout.recovery_url as string) || (checkout.checkout_url as string) || null;
+      }
+    }
+
+    // Se não encontrou por order_id, retorna o mais recente com email compatível
+    return null;
+  } catch (err: unknown) {
+    logger.warn("Falha ao buscar recovery_url da NuvemShop", {
+      nsOrderId,
+      error: err instanceof Error ? err.message : "Erro",
+    });
+    return null;
+  }
 }
 
 // ── Registrar pedido pendente (chamado pelo webhook) ───────────
