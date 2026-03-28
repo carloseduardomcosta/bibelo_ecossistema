@@ -21,6 +21,7 @@ import { contasPagarRouter } from "./routes/contas-pagar";
 import { searchRouter }     from "./routes/search";
 import { dealsRouter }      from "./routes/deals";
 import { nuvemshopWebhookRouter } from "./integrations/nuvemshop/webhook";
+import { blingWebhookRouter }     from "./integrations/bling/webhook";
 import { registerScheduledJobs } from "./queues/sync.queue";
 
 const app  = express();
@@ -70,6 +71,7 @@ app.use("/api/financeiro/nf-entrada", nfEntradaRouter);
 app.use("/api/sync", syncRouter);
 app.use("/api",      syncRouter);  // /api/auth/bling e /api/auth/bling/callback
 app.use("/api/webhooks/nuvemshop", nuvemshopWebhookRouter);
+app.use("/api/webhooks/bling", blingWebhookRouter);
 
 // ── 404
 app.use((_req, res) => {

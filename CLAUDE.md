@@ -60,6 +60,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── resend/
 │   │   │   │   └── email.ts    ← sendEmail, sendCampaignEmails, tracking
 │   │   │   └── whatsapp/        ← (pendente)
+│   │   │   (bling/webhook.ts    ← webhook handler Bling: contatos, pedidos, estoque)
 │   │   ├── queues/
 │   │   │   └── sync.queue.ts    ← BullMQ: sync 30min + scores 2h
 │   │   ├── middleware/
@@ -94,6 +95,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── ProdutoPerfil.tsx ← detalhe produto + estoque + vendas
 │   │   │   ├── Vendas.tsx       ← formas pagamento + NF-e emitidas
 │   │   │   ├── ContasPagar.tsx  ← contas a pagar Bling
+│   │   │   ├── Relatorios.tsx   ← DRE, Fluxo Projetado, Comparativo Mensal
 │   │   │   └── Sync.tsx         ← painel Bling/NuvemShop + logs
 │   │   ├── components/
 │   │   │   ├── Layout.tsx       ← sidebar grupos + header com busca global
@@ -265,8 +267,14 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `POST /api/campaigns/test-email` — enviar email de teste
 - `POST /api/campaigns/:id/send` — disparo real via Resend (email) em background
 
+### Relatórios Financeiros (Bearer JWT obrigatório)
+- `GET  /api/financeiro/dre` — DRE simplificado (param: periodo ou mes)
+- `GET  /api/financeiro/fluxo-projetado` — fluxo de caixa: 6m realizado + 3m projetado
+- `GET  /api/financeiro/comparativo` — comparativo mês a mês (param: meses=2..12)
+
 ### Webhooks (validação HMAC)
 - `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop
+- `POST /api/webhooks/bling` — recebe eventos do Bling (contatos, pedidos, estoque)
 
 ---
 
@@ -476,6 +484,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - d691ceb feat: 5 templates de email com branding Papelaria Bibelô
 - f3ddbf6 feat: template dinâmico de novidades — produtos das NFs no email
 - 06856ba feat: template novidades com fotos dos produtos e link por item
+- (pendente) feat: relatórios financeiros (DRE, fluxo projetado, comparativo), sync contas a pagar, webhook Bling, NF atualiza custo produto
 
 
 ## Protocolo de atualização deste arquivo
@@ -503,7 +512,9 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Frontend React | 🔧 dashboard + clientes + financeiro | login, dashboard, clientes, financeiro, simulador |
 | GitHub Actions | ✅ configurado | deploy automático no push |
 | Bling OAuth2 | ✅ configurado | credenciais no .env, callback funcional |
-| Bling Sync | ✅ código pronto | sync manual + incremental 30min via BullMQ |
+| Bling Sync | ✅ produção | sync manual + incremental 30min + contas a pagar via BullMQ |
+| Bling Webhooks | ✅ código pronto | endpoint /api/webhooks/bling — contatos, pedidos, estoque |
+| Relatórios Financeiros | ✅ produção | DRE, Fluxo Projetado, Comparativo Mensal |
 | NuvemShop Webhooks | 🔧 código pronto | aguardando configuração no painel NS |
 | Resend E-mail | ✅ produção | domínio verificado, disparo de campanhas ativo |
 | Evolution WhatsApp | ⏳ pendente | aguardando configuração |
@@ -524,4 +535,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 27 de Março de 2026 — Pipeline, Campanhas, Templates, UX*
+*Última atualização: 28 de Março de 2026 — Relatórios Financeiros, Sync Contas Pagar, Bling Webhooks, NF→Custo Produto*

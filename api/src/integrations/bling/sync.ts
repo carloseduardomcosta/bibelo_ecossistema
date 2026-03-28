@@ -428,7 +428,7 @@ export async function syncStock(): Promise<number> {
 
 // ── Incremental Sync ───────────────────────────────────────────
 
-export async function incrementalSync(): Promise<{ customers: number; orders: number; products: number; stock: number }> {
+export async function incrementalSync(): Promise<{ customers: number; orders: number; products: number; stock: number; contasPagar: number }> {
   logger.info("Bling incrementalSync iniciado");
 
   const state = await queryOne<{ ultima_sync: string }>(
@@ -551,16 +551,35 @@ export async function incrementalSync(): Promise<{ customers: number; orders: nu
     logger.error("Bling incrementalSync estoque falhou", { error: message });
   }
 
+  // Sync contas a pagar
+  let contasPagar = 0;
+  try {
+    contasPagar = await syncContasPagar();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    logger.error("Bling incrementalSync contas a pagar falhou", { error: message });
+  }
+
+  const totalSync = customers + orders + products + stock + contasPagar;
+
   // Atualiza timestamp de última sync
   await query(
     "UPDATE sync.sync_state SET ultima_sync = NOW(), total_sincronizados = total_sincronizados + $1 WHERE fonte = 'bling'",
-    [customers + orders + products + stock]
+    [totalSync]
   );
 
-  await logSync("bling", "incremental", "ok", customers + orders + products + stock);
-  logger.info("Bling incrementalSync concluído", { customers, orders, products, stock });
+  // Atualiza contador dedicado de produtos
+  if (products + stock > 0) {
+    await query(
+      "UPDATE sync.sync_state SET ultima_sync = NOW(), total_sincronizados = total_sincronizados + $1 WHERE fonte = 'bling_products'",
+      [products + stock]
+    );
+  }
 
-  return { customers, orders, products, stock };
+  await logSync("bling", "incremental", "ok", totalSync);
+  logger.info("Bling incrementalSync concluído", { customers, orders, products, stock, contasPagar });
+
+  return { customers, orders, products, stock, contasPagar };
 }
 
 // ── Sync Formas de Pagamento ────────────────────────────────────
@@ -1008,6 +1027,19 @@ export async function syncNfEntrada(): Promise<number> {
                   "UPDATE financeiro.notas_entrada SET status = 'contabilizada', lancamento_id = $1 WHERE id = $2",
                   [lancamento.id, inserted.id]
                 );
+
+                // Atualiza preco_custo dos produtos vinculados por SKU/GTIN
+                for (const nfItem of itens) {
+                  const codigo = nfItem.codigo || nfItem.gtin;
+                  const custo = nfItem.valor as number;
+                  if (codigo && custo > 0) {
+                    await query(
+                      `UPDATE sync.bling_products SET preco_custo = $1, atualizado_em = NOW()
+                       WHERE (sku = $2 OR gtin = $2) AND ativo = true`,
+                      [custo, String(codigo)]
+                    );
+                  }
+                }
               }
             }
           }

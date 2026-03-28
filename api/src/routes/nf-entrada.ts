@@ -394,12 +394,48 @@ nfEntradaRouter.post("/:id/contabilizar", async (req: Request, res: Response) =>
     UPDATE financeiro.notas_entrada SET status = 'contabilizada', lancamento_id = $1 WHERE id = $2
   `, [lancamento?.id, nota.id]);
 
-  logger.info("NF-e contabilizada", { nota_id: nota.id, lancamento_id: lancamento?.id });
+  // Atualizar preco_custo dos produtos vinculados
+  let produtosAtualizados = 0;
+  try {
+    const itensNf = await query<{
+      codigo_produto: string; valor_unitario: string; quantidade: string;
+    }>(`
+      SELECT codigo_produto, valor_unitario::text, quantidade::text
+      FROM financeiro.notas_entrada_itens
+      WHERE nota_id = $1 AND codigo_produto IS NOT NULL
+    `, [nota.id]);
+
+    for (const item of itensNf) {
+      if (!item.codigo_produto) continue;
+      const custo = parseFloat(item.valor_unitario);
+      if (custo <= 0) continue;
+
+      // Tenta vincular por SKU ou GTIN
+      const updated = await queryOne<{ id: string }>(`
+        UPDATE sync.bling_products
+        SET preco_custo = $1, atualizado_em = NOW()
+        WHERE (sku = $2 OR gtin = $2) AND ativo = true
+        RETURNING id
+      `, [custo, item.codigo_produto]);
+
+      if (updated) produtosAtualizados++;
+    }
+
+    if (produtosAtualizados > 0) {
+      logger.info("Preço de custo atualizado via NF", { nota_id: nota.id, produtos: produtosAtualizados });
+    }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    logger.warn("Falha ao atualizar custo de produtos via NF", { nota_id: nota.id, error: message });
+  }
+
+  logger.info("NF-e contabilizada", { nota_id: nota.id, lancamento_id: lancamento?.id, produtosAtualizados });
 
   res.json({
     message: "NF contabilizada com sucesso",
     lancamento_id: lancamento?.id,
     nota_id: nota.id,
+    produtos_custo_atualizado: produtosAtualizados,
   });
 });
 

@@ -15,6 +15,7 @@ import {
   Calculator,
   FileText,
   Banknote,
+  BarChart3,
   Kanban,
   Megaphone,
   RefreshCw,
@@ -73,6 +74,7 @@ const navGroups: NavGroup[] = [
       { to: '/simulador', label: 'Simulador', icon: Calculator },
       { to: '/nf-entrada', label: 'NF Entrada', icon: FileText },
       { to: '/contas-pagar', label: 'Contas a Pagar', icon: Banknote },
+      { to: '/relatorios', label: 'Relatórios', icon: BarChart3 },
     ],
   },
   {

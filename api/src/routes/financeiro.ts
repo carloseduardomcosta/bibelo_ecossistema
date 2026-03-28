@@ -657,3 +657,298 @@ financeiroRouter.post("/simular", async (req: Request, res: Response) => {
 
   res.json({ data: simulacoes });
 });
+
+// ══════════════════════════════════════════════════════════════
+// DRE — Demonstração do Resultado do Exercício
+// ══════════════════════════════════════════════════════════════
+
+const dreSchema = z.object({
+  mes: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  periodo: z.enum(["mes_atual", "mes_anterior", "3m", "6m", "1a", "total"]).default("mes_atual"),
+});
+
+financeiroRouter.get("/dre", async (req: Request, res: Response) => {
+  const parse = dreSchema.safeParse(req.query);
+  if (!parse.success) { res.status(400).json({ error: "Parâmetros inválidos" }); return; }
+
+  const { mes, periodo } = parse.data;
+
+  // Filtros de data
+  let bFilter = "";
+  let lFilter = "";
+
+  if (mes) {
+    bFilter = `AND o.criado_bling >= '${mes}-01'::date AND o.criado_bling < '${mes}-01'::date + INTERVAL '1 month'`;
+    lFilter = `AND l.data >= '${mes}-01'::date AND l.data < '${mes}-01'::date + INTERVAL '1 month'`;
+  } else {
+    bFilter = blingDateFilter(periodo);
+    lFilter = lancDateFilter(periodo);
+  }
+
+  // Receita Bruta (vendas Bling)
+  const vendas = await queryOne<{ total: string; pedidos: string; ticket: string }>(`
+    SELECT
+      COALESCE(SUM(o.valor), 0)::text AS total,
+      COUNT(*)::text AS pedidos,
+      CASE WHEN COUNT(*) > 0 THEN ROUND(SUM(o.valor) / COUNT(*), 2)::text ELSE '0' END AS ticket
+    FROM sync.bling_orders o WHERE 1=1 ${bFilter}
+  `, []);
+
+  // Outras receitas manuais
+  const outrasReceitas = await queryOne<{ total: string }>(`
+    SELECT COALESCE(SUM(l.valor), 0)::text AS total
+    FROM financeiro.lancamentos l
+    WHERE l.tipo = 'receita' AND l.status != 'cancelado' ${lFilter}
+  `, []);
+
+  // Despesas por categoria
+  const despesasCat = await query<{ categoria: string; cor: string; valor: string }>(`
+    SELECT c.nome as categoria, c.cor, SUM(l.valor)::text as valor
+    FROM financeiro.lancamentos l
+    JOIN financeiro.categorias c ON c.id = l.categoria_id
+    WHERE l.tipo = 'despesa' AND l.status != 'cancelado' ${lFilter}
+    GROUP BY c.nome, c.cor ORDER BY SUM(l.valor) DESC
+  `, []);
+
+  // Custo de produtos (NFs de entrada contabilizadas)
+  const custoNfs = await queryOne<{ total: string }>(`
+    SELECT COALESCE(SUM(l.valor), 0)::text AS total
+    FROM financeiro.lancamentos l
+    WHERE l.tipo = 'despesa' AND l.status != 'cancelado' AND l.referencia_tipo = 'nf_entrada' ${lFilter}
+  `, []);
+
+  // Despesas fixas do período
+  const despFixas = await queryOne<{ total: string }>(`
+    SELECT COALESCE(SUM(valor), 0)::text AS total FROM financeiro.despesas_fixas WHERE ativo = true
+  `, []);
+
+  const receitaBruta = parseFloat(vendas?.total || "0");
+  const receitaOutras = parseFloat(outrasReceitas?.total || "0");
+  const receitaTotal = receitaBruta + receitaOutras;
+  const cmv = parseFloat(custoNfs?.total || "0"); // Custo de Mercadoria Vendida
+  const lucroBruto = receitaTotal - cmv;
+
+  // Separa despesas operacionais (excluindo CMV que já está em custoNfs)
+  const despesasOp = despesasCat
+    .filter((d: any) => d.categoria !== "Fornecedores")
+    .reduce((sum: number, d: any) => sum + parseFloat(d.valor), 0);
+
+  const despesasFixasMensal = parseFloat(despFixas?.total || "0");
+  const lucroOperacional = lucroBruto - despesasOp;
+  const lucroLiquido = lucroOperacional;
+  const margemBruta = receitaTotal > 0 ? (lucroBruto / receitaTotal) * 100 : 0;
+  const margemLiquida = receitaTotal > 0 ? (lucroLiquido / receitaTotal) * 100 : 0;
+
+  res.json({
+    receita_bruta: receitaBruta,
+    outras_receitas: receitaOutras,
+    receita_total: receitaTotal,
+    cmv,
+    lucro_bruto: lucroBruto,
+    margem_bruta: Math.round(margemBruta * 10) / 10,
+    despesas_operacionais: despesasOp,
+    despesas_por_categoria: despesasCat,
+    despesas_fixas_mensal: despesasFixasMensal,
+    lucro_operacional: lucroOperacional,
+    lucro_liquido: lucroLiquido,
+    margem_liquida: Math.round(margemLiquida * 10) / 10,
+    total_pedidos: parseInt(vendas?.pedidos || "0", 10),
+    ticket_medio: parseFloat(vendas?.ticket || "0"),
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+// FLUXO DE CAIXA PROJETADO
+// ══════════════════════════════════════════════════════════════
+
+financeiroRouter.get("/fluxo-projetado", async (_req: Request, res: Response) => {
+  // Histórico: últimos 6 meses de receitas e despesas
+  const historico = await query<{ mes: string; receitas: string; despesas: string }>(`
+    WITH bling_mensal AS (
+      SELECT DATE_TRUNC('month', o.criado_bling) as mes, COALESCE(SUM(o.valor), 0) AS receitas
+      FROM sync.bling_orders o
+      WHERE o.criado_bling >= CURRENT_DATE - INTERVAL '6 months'
+      GROUP BY DATE_TRUNC('month', o.criado_bling)
+    ),
+    lanc_mensal AS (
+      SELECT DATE_TRUNC('month', l.data) as mes,
+        COALESCE(SUM(CASE WHEN l.tipo = 'receita' THEN l.valor END), 0) AS outras_receitas,
+        COALESCE(SUM(CASE WHEN l.tipo = 'despesa' THEN l.valor END), 0) AS despesas
+      FROM financeiro.lancamentos l
+      WHERE l.status != 'cancelado' AND l.data >= CURRENT_DATE - INTERVAL '6 months'
+      GROUP BY DATE_TRUNC('month', l.data)
+    ),
+    meses AS (SELECT mes FROM bling_mensal UNION SELECT mes FROM lanc_mensal)
+    SELECT
+      TO_CHAR(m.mes, 'YYYY-MM') as mes,
+      (COALESCE(b.receitas, 0) + COALESCE(lm.outras_receitas, 0))::text AS receitas,
+      COALESCE(lm.despesas, 0)::text AS despesas
+    FROM meses m
+    LEFT JOIN bling_mensal b ON b.mes = m.mes
+    LEFT JOIN lanc_mensal lm ON lm.mes = m.mes
+    ORDER BY m.mes
+  `, []);
+
+  // Despesas fixas mensais (base para projeção)
+  const despFixas = await queryOne<{ total: string }>(`
+    SELECT COALESCE(SUM(valor), 0)::text AS total FROM financeiro.despesas_fixas WHERE ativo = true
+  `, []);
+  const despesasFixas = parseFloat(despFixas?.total || "0");
+
+  // Calcula médias dos últimos 3 meses para projeção
+  const ultimos3 = historico.slice(-3);
+  const mediaReceitas = ultimos3.length > 0
+    ? ultimos3.reduce((s, h) => s + parseFloat(h.receitas), 0) / ultimos3.length
+    : 0;
+  const mediaDespesasVar = ultimos3.length > 0
+    ? ultimos3.reduce((s, h) => s + Math.max(0, parseFloat(h.despesas) - despesasFixas), 0) / ultimos3.length
+    : 0;
+
+  // Projeção: próximos 3 meses
+  const projecao: { mes: string; mes_label: string; receitas: number; despesas: number; saldo: number; tipo: string }[] = [];
+  const hoje = new Date();
+
+  // Histórico formatado
+  for (const h of historico) {
+    const d = new Date(h.mes + "-01");
+    const label = d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+    const rec = parseFloat(h.receitas);
+    const desp = parseFloat(h.despesas);
+    projecao.push({
+      mes: h.mes,
+      mes_label: label,
+      receitas: Math.round(rec * 100) / 100,
+      despesas: Math.round(desp * 100) / 100,
+      saldo: Math.round((rec - desp) * 100) / 100,
+      tipo: "realizado",
+    });
+  }
+
+  // Projeção
+  for (let i = 1; i <= 3; i++) {
+    const futuro = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
+    const mesStr = `${futuro.getFullYear()}-${String(futuro.getMonth() + 1).padStart(2, "0")}`;
+    const label = futuro.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+    const recProj = Math.round(mediaReceitas * 100) / 100;
+    const despProj = Math.round((despesasFixas + mediaDespesasVar) * 100) / 100;
+    projecao.push({
+      mes: mesStr,
+      mes_label: label,
+      receitas: recProj,
+      despesas: despProj,
+      saldo: Math.round((recProj - despProj) * 100) / 100,
+      tipo: "projetado",
+    });
+  }
+
+  // Saldo acumulado
+  let acumulado = 0;
+  const fluxo = projecao.map((p) => {
+    acumulado += p.saldo;
+    return { ...p, saldo_acumulado: Math.round(acumulado * 100) / 100 };
+  });
+
+  res.json({
+    fluxo,
+    media_receitas_3m: Math.round(mediaReceitas * 100) / 100,
+    media_despesas_3m: Math.round((despesasFixas + mediaDespesasVar) * 100) / 100,
+    despesas_fixas_mensal: despesasFixas,
+    despesas_variaveis_media: Math.round(mediaDespesasVar * 100) / 100,
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+// COMPARATIVO MÊS A MÊS
+// ══════════════════════════════════════════════════════════════
+
+const comparativoSchema = z.object({
+  meses: z.coerce.number().int().min(2).max(12).default(6),
+});
+
+financeiroRouter.get("/comparativo", async (req: Request, res: Response) => {
+  const parse = comparativoSchema.safeParse(req.query);
+  if (!parse.success) { res.status(400).json({ error: "Parâmetros inválidos" }); return; }
+
+  const { meses } = parse.data;
+
+  // Receitas (Bling + manuais) por mês
+  const dados = await query<{
+    mes: string; mes_label: string;
+    vendas_bling: string; outras_receitas: string; receita_total: string;
+    despesas: string; saldo: string; pedidos: string; ticket: string;
+  }>(`
+    WITH periodos AS (
+      SELECT generate_series(
+        DATE_TRUNC('month', CURRENT_DATE) - ($1 - 1) * INTERVAL '1 month',
+        DATE_TRUNC('month', CURRENT_DATE),
+        '1 month'
+      )::date AS mes
+    ),
+    bling_mensal AS (
+      SELECT DATE_TRUNC('month', o.criado_bling)::date as mes,
+        COALESCE(SUM(o.valor), 0) AS vendas,
+        COUNT(*) AS pedidos,
+        CASE WHEN COUNT(*) > 0 THEN ROUND(SUM(o.valor) / COUNT(*), 2) ELSE 0 END AS ticket
+      FROM sync.bling_orders o
+      WHERE o.criado_bling >= DATE_TRUNC('month', CURRENT_DATE) - $1 * INTERVAL '1 month'
+      GROUP BY DATE_TRUNC('month', o.criado_bling)
+    ),
+    lanc_mensal AS (
+      SELECT DATE_TRUNC('month', l.data)::date as mes,
+        COALESCE(SUM(CASE WHEN l.tipo = 'receita' THEN l.valor END), 0) AS outras_receitas,
+        COALESCE(SUM(CASE WHEN l.tipo = 'despesa' THEN l.valor END), 0) AS despesas
+      FROM financeiro.lancamentos l
+      WHERE l.status != 'cancelado' AND l.data >= DATE_TRUNC('month', CURRENT_DATE) - $1 * INTERVAL '1 month'
+      GROUP BY DATE_TRUNC('month', l.data)
+    )
+    SELECT
+      TO_CHAR(p.mes, 'YYYY-MM') as mes,
+      TO_CHAR(p.mes, 'Mon/YY') as mes_label,
+      COALESCE(b.vendas, 0)::text AS vendas_bling,
+      COALESCE(lm.outras_receitas, 0)::text AS outras_receitas,
+      (COALESCE(b.vendas, 0) + COALESCE(lm.outras_receitas, 0))::text AS receita_total,
+      COALESCE(lm.despesas, 0)::text AS despesas,
+      (COALESCE(b.vendas, 0) + COALESCE(lm.outras_receitas, 0) - COALESCE(lm.despesas, 0))::text AS saldo,
+      COALESCE(b.pedidos, 0)::text AS pedidos,
+      COALESCE(b.ticket, 0)::text AS ticket
+    FROM periodos p
+    LEFT JOIN bling_mensal b ON b.mes = p.mes
+    LEFT JOIN lanc_mensal lm ON lm.mes = p.mes
+    ORDER BY p.mes
+  `, [meses]);
+
+  // Despesas por categoria por mês
+  const despCat = await query<{ mes: string; categoria: string; cor: string; valor: string }>(`
+    SELECT
+      TO_CHAR(l.data, 'YYYY-MM') as mes,
+      c.nome as categoria, c.cor,
+      SUM(l.valor)::text as valor
+    FROM financeiro.lancamentos l
+    JOIN financeiro.categorias c ON c.id = l.categoria_id
+    WHERE l.tipo = 'despesa' AND l.status != 'cancelado'
+      AND l.data >= DATE_TRUNC('month', CURRENT_DATE) - $1 * INTERVAL '1 month'
+    GROUP BY TO_CHAR(l.data, 'YYYY-MM'), c.nome, c.cor
+    ORDER BY TO_CHAR(l.data, 'YYYY-MM'), SUM(l.valor) DESC
+  `, [meses]);
+
+  // Calcula variação mês a mês
+  const comparativo = dados.map((d, i) => {
+    const anterior = i > 0 ? dados[i - 1] : null;
+    const recAtual = parseFloat(d.receita_total);
+    const recAnt = anterior ? parseFloat(anterior.receita_total) : 0;
+    const despAtual = parseFloat(d.despesas);
+    const despAnt = anterior ? parseFloat(anterior.despesas) : 0;
+
+    return {
+      ...d,
+      variacao_receita: recAnt > 0 ? Math.round(((recAtual - recAnt) / recAnt) * 100) : null,
+      variacao_despesa: despAnt > 0 ? Math.round(((despAtual - despAnt) / despAnt) * 100) : null,
+      margem: recAtual > 0 ? Math.round(((recAtual - despAtual) / recAtual) * 100) : 0,
+    };
+  });
+
+  res.json({
+    meses: comparativo,
+    despesas_por_categoria: despCat,
+  });
+});
