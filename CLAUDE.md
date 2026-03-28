@@ -385,6 +385,13 @@ notificação WhatsApp (sucesso ou falha)
 - Webhook HMAC: `X-Bling-Signature-256: sha256=<hash>` com client_secret
 - Dados: contatos, pedidos (com itens), produtos, estoque, categorias, financeiro
 
+### Bling Webhooks (real-time)
+- Subdomínio dedicado: `webhook.papelariabibelo.com.br` (DNS-only, sem Cloudflare Access)
+- SSL Let's Encrypt, Nginx só aceita POST em `/api/webhooks/*`
+- Eventos: pedidos, estoque, produtos, NFs, NFC-e, fornecedores
+- HMAC SHA256 com `BLING_CLIENT_SECRET` para validação
+- Formato: `body.event` = `order.created`, `stock.updated`, etc. — dados em `body.data`
+
 ### NuvemShop
 - Webhooks com validação HMAC SHA256
 - Eventos: orders/created, orders/paid, orders/cancelled, customers/created
@@ -485,6 +492,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - f3ddbf6 feat: template dinâmico de novidades — produtos das NFs no email
 - 06856ba feat: template novidades com fotos dos produtos e link por item
 - b2e228a feat: relatórios financeiros, sync contas a pagar, webhook Bling, NF atualiza custo produto
+- a489fb4 fix: ajusta mapeamento de eventos do Bling webhook (order.*, stock.*)
 
 
 ## Protocolo de atualização deste arquivo
@@ -513,7 +521,7 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | GitHub Actions | ✅ configurado | deploy automático no push |
 | Bling OAuth2 | ✅ configurado | credenciais no .env, callback funcional |
 | Bling Sync | ✅ produção | sync manual + incremental 30min + contas a pagar via BullMQ |
-| Bling Webhooks | ✅ código pronto | endpoint /api/webhooks/bling — contatos, pedidos, estoque |
+| Bling Webhooks | ✅ produção | webhook.papelariabibelo.com.br — pedidos, estoque, produtos, NFs, fornecedores |
 | Relatórios Financeiros | ✅ produção | DRE, Fluxo Projetado, Comparativo Mensal |
 | NuvemShop Webhooks | 🔧 código pronto | aguardando configuração no painel NS |
 | Resend E-mail | ✅ produção | domínio verificado, disparo de campanhas ativo |
@@ -535,4 +543,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 28 de Março de 2026 — Relatórios Financeiros, Sync Contas Pagar, Bling Webhooks, NF→Custo Produto*
+*Última atualização: 28 de Março de 2026 — Relatórios Financeiros, Sync Contas Pagar, Bling Webhooks real-time (validado com venda), NF→Custo Produto*
