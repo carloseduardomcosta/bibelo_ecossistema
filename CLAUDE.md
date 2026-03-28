@@ -49,7 +49,9 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── nf-entrada.ts  ← upload XML NF-e, parse, contabilização
 │   │   │   ├── contas-pagar.ts ← contas a pagar Bling + pagamento
 │   │   │   ├── search.ts      ← busca global (clientes, produtos, NFs, lançamentos)
-│   │   │   └── flows.ts       ← CRUD fluxos automáticos + stats + execuções
+│   │   │   ├── flows.ts       ← CRUD fluxos automáticos + stats + execuções
+│   │   │   ├── leads.ts       ← captura leads + stats + config popups (público + protegido)
+│   │   │   └── leads-script.ts ← GET /api/leads/popup.js — script JS servido para NuvemShop
 │   │   ├── services/
 │   │   │   ├── customer.service.ts ← upsert, score, timeline, segments
 │   │   │   └── flow.service.ts    ← motor de fluxos: trigger, execute, advance, carrinho abandonado
@@ -153,6 +155,8 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 - `flow_executions` — execução por cliente (metadata JSONB, proximo_step_em)
 - `flow_step_executions` — rastreamento granular de cada step executado
 - `pedidos_pendentes` — pedidos NuvemShop aguardando pagamento (detecção carrinho abandonado)
+- `leads` — emails capturados via popup (email, nome, telefone, cupom, fonte, convertido)
+- `popup_config` — configuração dos popups de captura (título, tipo, delay, cupom, campos)
 
 ### schema: sync
 - `bling_orders` — pedidos vindos do Bling
@@ -281,6 +285,17 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `GET  /api/financeiro/dre` — DRE simplificado (param: periodo ou mes)
 - `GET  /api/financeiro/fluxo-projetado` — fluxo de caixa: 6m realizado + 3m projetado
 - `GET  /api/financeiro/comparativo` — comparativo mês a mês (param: meses=2..12)
+
+### Caça-Leads (endpoints públicos — sem auth)
+- `GET  /api/leads/config` — retorna popups ativos (config dinâmica)
+- `GET  /api/leads/popup.js` — script JS do popup (servido via webhook.papelariabibelo.com.br)
+- `POST /api/leads/capture` — capturar lead (email, nome, telefone, popup_id)
+- `POST /api/leads/view` — registrar exibição do popup
+
+### Caça-Leads (Bearer JWT obrigatório)
+- `GET  /api/leads` — listar leads capturados (paginado)
+- `GET  /api/leads/stats` — KPIs: total, 7d, 30d, convertidos, taxa, popups
+- `PUT  /api/leads/popups/:id` — atualizar config do popup
 
 ### Fluxos Automáticos (Bearer JWT obrigatório)
 - `GET  /api/flows` — listar fluxos com contagem de execuções
@@ -416,15 +431,18 @@ notificação WhatsApp (sucesso ou falha)
 - API Base: `https://api.nuvemshop.com.br/v1/{store_id}/`
 - Header auth: `Authentication: bearer` (NÃO `Authorization`)
 - Rate limit: 2 req/s com burst de 40 (leaky bucket)
-- Webhooks auto-registrados via API após OAuth (order/*, customer/*)
+- 9 webhooks registrados: order/created, order/updated, order/paid, order/fulfilled, order/cancelled, customer/created, customer/updated, product/created, product/updated
 - Webhook URL: `https://webhook.papelariabibelo.com.br/api/webhooks/nuvemshop`
 - Webhook payload: apenas `{store_id, event, id}` — busca objeto completo via API
 - HMAC: `x-linkedstore-hmac-sha256` com `client_secret`
+- Caça-Leads: `https://webhook.papelariabibelo.com.br/api/leads/popup.js` (script JS público via GTM)
 
 ### Resend (e-mail)
 - SDK oficial — `import { Resend } from 'resend'`
 - Plano grátis: 3.000 e-mails/mês
 - Rastreio de abertura via pixel, clique via redirect
+- Remetente: `Papelaria Bibelô <marketing@papelariabibelo.com.br>`
+- 14 templates no banco (6 automação + 6 campanha + 1 lead + 1 avaliação)
 
 ### Evolution API (WhatsApp)
 - Self-hosted no container `bibelo_whatsapp`
@@ -519,6 +537,17 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - a489fb4 fix: ajusta mapeamento de eventos do Bling webhook (order.*, stock.*)
 - c710ff3 feat: integração NuvemShop completa — OAuth2, sync, webhooks, frontend
 - 31464ea docs: NuvemShop em produção — store 7290881 conectada, 8 webhooks ativos
+- ad07679 feat: motor de fluxos automáticos — carrinho abandonado, pós-compra, boas-vindas, reativação
+- 078a1e8 feat: carrinho abandonado com recovery_url NuvemShop + templates de email ricos
+- 2a0187b fix: normaliza formato de evento NuvemShop (order.created → order/created)
+- 5b19a4c fix: sanitiza tags do Resend (remove acentos/espaços)
+- 34a9b74 fix: recovery_url real do checkout NuvemShop no email de carrinho abandonado
+- 7e10a8e feat: templates de automação com branding Bibelô + recovery_url corrigida
+- 41fa4f5 feat: remetente "Papelaria Bibelô" + 12 templates premium com branding
+- e0408c7 feat: avaliação pós-entrega — webhook order/fulfilled + email 12h após delivered
+- b1be7d1 feat: caça-leads — popup de captura com cupom BIBELO10 para NuvemShop
+- 93a508a feat: popup VIP 10% OFF com captura de WhatsApp + email + nome
+- da4c5d3 fix: CORS cross-origin para popup na NuvemShop + headers de segurança
 
 
 ## Protocolo de atualização deste arquivo
@@ -551,11 +580,15 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Relatórios Financeiros | ✅ produção | DRE, Fluxo Projetado, Comparativo Mensal |
 | NuvemShop OAuth2 | ✅ produção | app_id 26424, store_id 7290881, token salvo, nunca expira |
 | NuvemShop Sync | ✅ produção | clientes, pedidos, produtos — sync manual + webhooks real-time |
-| NuvemShop Webhooks | ✅ produção | 8 webhooks registrados — order/*, customer/*, product/* |
-| Resend E-mail | ✅ produção | domínio verificado, disparo de campanhas ativo |
-| Motor de Fluxos | ✅ produção | 5 fluxos ativos, BullMQ process-steps 1min, check-abandoned 5min |
-| Carrinho Abandonado | ✅ produção | detecta order/created sem paid após 2h, dispara fluxo automático |
+| NuvemShop Webhooks | ✅ produção | 9 webhooks — order/created,updated,paid,fulfilled,cancelled + customer/* + product/* |
+| Resend E-mail | ✅ produção | remetente "Papelaria Bibelô", 14 templates, domínio verificado |
+| Motor de Fluxos | ✅ produção | 7 fluxos ativos, BullMQ process-steps 1min, check-abandoned 5min |
+| Carrinho Abandonado | ✅ produção | detecta order/created sem paid após 2h, recovery_url real do checkout |
+| Avaliação Pós-Entrega | ✅ produção | webhook order/fulfilled → email 12h após entrega (Google + site) |
+| Caça-Leads (Popup) | ✅ produção | popup JS via GTM, captura email+WhatsApp, cupom BIBELO10 (10% OFF) |
 | Evolution WhatsApp | ⏳ pendente | aguardando configuração |
+| Tracking Comportamental | ⏳ roadmap | page views, carrinho, produto visualizado — substituir Edrone |
+| Painel Marketing Frontend | ⏳ roadmap | visão completa de fluxos, leads, execuções, templates no CRM |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
 
 ### Regra obrigatória:
@@ -573,4 +606,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 28 de Março de 2026 — Motor de Fluxos Automáticos em produção, NuvemShop integração completa*
+*Última atualização: 28 de Março de 2026 — Motor de Fluxos (7 fluxos), Caça-Leads (popup 10% OFF), 14 templates, 9 webhooks NuvemShop, avaliação pós-entrega*
