@@ -6,7 +6,12 @@ export const leadsScriptRouter = Router();
 
 leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-  res.setHeader("Cache-Control", "public, max-age=300"); // cache 5min
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.removeHeader("Cross-Origin-Resource-Policy");
+  res.removeHeader("Cross-Origin-Opener-Policy");
+  res.removeHeader("Cross-Origin-Embedder-Policy");
+  res.removeHeader("X-Frame-Options");
+  res.setHeader("Access-Control-Allow-Origin", "*");
 
   const apiBase = process.env.LEADS_API_URL || "https://webhook.papelariabibelo.com.br";
 
