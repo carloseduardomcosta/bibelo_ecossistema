@@ -104,7 +104,8 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
   });
 
   logger.info("Lead capturado", { email, popup_id, cupom, customerId: customer.id });
-  res.json({ ok: true, cupom, mensagem: cupom ? `Use o cupom ${cupom} para 7% OFF!` : "Cadastro realizado!" });
+  const desconto = cupom === "BIBELO10" ? "10%" : "7%";
+  res.json({ ok: true, cupom, mensagem: cupom ? `Use o cupom ${cupom} para ${desconto} OFF!` : "Cadastro realizado!" });
 });
 
 // ── POST /api/leads/view — registrar exibição do popup ────────

@@ -85,6 +85,7 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
 
     var campos = config.campos || ['email'];
     var temNome = campos.indexOf('nome') !== -1;
+    var temTelefone = campos.indexOf('telefone') !== -1;
 
     // Overlay
     var overlay = document.createElement('div');
@@ -104,7 +105,8 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
       '<div style="padding:24px;">' +
         '<form id="bibelo-popup-form">' +
           (temNome ? '<input type="text" name="nome" placeholder="Seu nome" style="width:100%;padding:12px 16px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:10px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" />' : '') +
-          '<input type="email" name="email" placeholder="Seu melhor e-mail" required style="width:100%;padding:12px 16px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:14px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" />' +
+          '<input type="email" name="email" placeholder="Seu melhor e-mail" required style="width:100%;padding:12px 16px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:10px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" />' +
+          (temTelefone ? '<input type="tel" name="telefone" placeholder="WhatsApp (ex: 47 999999999)" style="width:100%;padding:12px 16px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:14px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" />' : '<div style="height:4px;"></div>') +
           '<button type="submit" id="bibelo-popup-btn" style="width:100%;padding:14px;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;font-family:Jost,Arial,sans-serif;box-shadow:0 4px 15px rgba(254,104,196,0.3);transition:transform 0.2s,box-shadow 0.2s;" onmouseover="this.style.transform=\\'translateY(-1px)\\';this.style.boxShadow=\\'0 6px 20px rgba(254,104,196,0.4)\\'" onmouseout="this.style.transform=\\'none\\';this.style.boxShadow=\\'0 4px 15px rgba(254,104,196,0.3)\\'">' +
             'Quero meu cupom! \\uD83C\\uDF89' +
           '</button>' +
@@ -144,6 +146,7 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
       var form = e.target;
       var email = form.email.value.trim();
       var nome = form.nome ? form.nome.value.trim() : '';
+      var telefone = form.telefone ? form.telefone.value.trim() : '';
 
       if (!email) return;
       btn.textContent = 'Enviando...';
@@ -155,6 +158,7 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
         body: JSON.stringify({
           email: email,
           nome: nome || undefined,
+          telefone: telefone || undefined,
           popup_id: config.id,
           visitor_id: visitorId,
           pagina: window.location.href
