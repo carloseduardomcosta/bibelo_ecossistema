@@ -371,7 +371,10 @@ function emailWrapper(content: string): string {
 <div style="max-width:600px;margin:0 auto;background:#fff;">
   <!-- Header -->
   <div style="background:linear-gradient(135deg,#E91E63,#F06292);padding:30px 20px;text-align:center;">
-    <h1 style="color:#fff;margin:0;font-size:28px;font-weight:700;">Papelaria Bibelô</h1>
+    <a href="https://www.papelariabibelo.com.br" target="_blank" style="text-decoration:none;">
+      <img src="https://crm.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" style="width:80px;height:80px;border-radius:50%;border:3px solid #fff;" />
+    </a>
+    <h1 style="color:#fff;margin:10px 0 0;font-size:28px;font-weight:700;">Papelaria Bibelô</h1>
     <p style="color:rgba(255,255,255,0.9);margin:5px 0 0;font-size:14px;">Encantando momentos com papelaria</p>
   </div>
   <!-- Content -->

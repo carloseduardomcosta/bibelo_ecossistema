@@ -103,6 +103,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── Vendas.tsx       ← formas pagamento + NF-e emitidas
 │   │   │   ├── ContasPagar.tsx  ← contas a pagar Bling
 │   │   │   ├── Relatorios.tsx   ← DRE, Fluxo Projetado, Comparativo Mensal
+│   │   │   ├── Marketing.tsx   ← automações, leads, fluxos, KPIs (3 abas)
 │   │   │   └── Sync.tsx         ← painel Bling/NuvemShop + logs
 │   │   ├── components/
 │   │   │   ├── Layout.tsx       ← sidebar grupos + header com busca global
@@ -548,6 +549,8 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - b1be7d1 feat: caça-leads — popup de captura com cupom BIBELO10 para NuvemShop
 - 93a508a feat: popup VIP 10% OFF com captura de WhatsApp + email + nome
 - da4c5d3 fix: CORS cross-origin para popup na NuvemShop + headers de segurança
+- e005d5c fix: popup não fecha ao clicar fora — só pelo X ou preenchendo
+- 526bc6f feat: página Marketing no frontend — automações, leads, fluxos, KPIs
 
 
 ## Protocolo de atualização deste arquivo
@@ -572,7 +575,7 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | API Node.js | ✅ produção | /health respondendo |
 | Google OAuth2 | ✅ produção | login exclusivo via Google Sign-In |
 | Módulo Financeiro | ✅ produção | fluxo de caixa, despesas fixas, simulador, embalagens |
-| Frontend React | 🔧 dashboard + clientes + financeiro | login, dashboard, clientes, financeiro, simulador |
+| Frontend React | 🔧 dashboard + clientes + financeiro + marketing | login, dashboard, clientes, financeiro, simulador, automações/leads/fluxos |
 | GitHub Actions | ✅ configurado | deploy automático no push |
 | Bling OAuth2 | ✅ configurado | credenciais no .env, callback funcional |
 | Bling Sync | ✅ produção | sync manual + incremental 30min + contas a pagar via BullMQ |
@@ -587,8 +590,8 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Avaliação Pós-Entrega | ✅ produção | webhook order/fulfilled → email 12h após entrega (Google + site) |
 | Caça-Leads (Popup) | ✅ produção | popup JS via GTM, captura email+WhatsApp, cupom BIBELO10 (10% OFF) |
 | Evolution WhatsApp | ⏳ pendente | aguardando configuração |
+| Painel Marketing Frontend | ✅ produção | 3 abas: Visão Geral (KPIs, gráficos), Fluxos (detalhe+toggle), Leads (tabela+stats) |
 | Tracking Comportamental | ⏳ roadmap | page views, carrinho, produto visualizado — substituir Edrone |
-| Painel Marketing Frontend | ⏳ roadmap | visão completa de fluxos, leads, execuções, templates no CRM |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
 
 ### Regra obrigatória:
@@ -606,4 +609,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 28 de Março de 2026 — Motor de Fluxos (7 fluxos), Caça-Leads (popup 10% OFF), 14 templates, 9 webhooks NuvemShop, avaliação pós-entrega*
+*Última atualização: 28 de Março de 2026 — Painel Marketing no frontend, Motor de Fluxos (7 fluxos), Caça-Leads (popup 10% OFF), 14 templates, 9 webhooks NuvemShop*
