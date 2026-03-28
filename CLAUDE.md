@@ -484,7 +484,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - d691ceb feat: 5 templates de email com branding Papelaria Bibelô
 - f3ddbf6 feat: template dinâmico de novidades — produtos das NFs no email
 - 06856ba feat: template novidades com fotos dos produtos e link por item
-- (pendente) feat: relatórios financeiros (DRE, fluxo projetado, comparativo), sync contas a pagar, webhook Bling, NF atualiza custo produto
+- b2e228a feat: relatórios financeiros, sync contas a pagar, webhook Bling, NF atualiza custo produto
 
 
 ## Protocolo de atualização deste arquivo
