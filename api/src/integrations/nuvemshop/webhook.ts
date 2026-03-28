@@ -150,6 +150,12 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
     } else if (event === "order/created" && paymentStatus !== "paid") {
       // Pedido criado mas não pago → registrar como pendente para detecção de abandono
       const customerEmail = customer ? (customer.email as string) : null;
+      // Construir recovery_url a partir do id + token do pedido
+      const orderToken = order.token as string || "";
+      const recoveryUrl = orderToken
+        ? `https://www.papelariabibelo.com.br/checkout/v3/proxy/${resourceId}/${orderToken}`
+        : null;
+
       await registerPendingOrder(
         resourceId,
         customerId,
@@ -161,7 +167,8 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
           price: p.price,
           image_url: (p.image as Record<string, unknown>)?.src || p.image_url || null,
           variant_name: p.variant_name || null,
-        }))
+        })),
+        recoveryUrl
       );
     }
   }

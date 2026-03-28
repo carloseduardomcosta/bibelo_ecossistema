@@ -628,10 +628,15 @@ export async function checkAbandonedCarts(): Promise<number> {
   for (const cart of abandoned) {
     if (!cart.customer_id) continue;
 
-    // Tenta buscar recovery_url da NuvemShop se ainda não temos
+    // Tenta buscar recovery_url se ainda não temos
     let recoveryUrl = cart.recovery_url;
     if (!recoveryUrl) {
+      // Tenta API de checkouts abandonados
       recoveryUrl = await fetchRecoveryUrl(cart.ns_order_id);
+      // Fallback: constrói URL a partir do pedido (id + token)
+      if (!recoveryUrl) {
+        recoveryUrl = await buildRecoveryUrlFromOrder(cart.ns_order_id);
+      }
       if (recoveryUrl) {
         await query(
           "UPDATE marketing.pedidos_pendentes SET recovery_url = $2 WHERE id = $1",
@@ -689,10 +694,32 @@ async function fetchRecoveryUrl(nsOrderId: string): Promise<string | null> {
       }
     }
 
-    // Se não encontrou por order_id, retorna o mais recente com email compatível
     return null;
   } catch (err: unknown) {
     logger.warn("Falha ao buscar recovery_url da NuvemShop", {
+      nsOrderId,
+      error: err instanceof Error ? err.message : "Erro",
+    });
+    return null;
+  }
+}
+
+// ── Construir recovery_url a partir do pedido NuvemShop ───────
+
+async function buildRecoveryUrlFromOrder(nsOrderId: string): Promise<string | null> {
+  try {
+    const token = await getNuvemShopToken();
+    if (!token) return null;
+
+    const order = await nsRequest<Record<string, unknown>>("get", `orders/${nsOrderId}`, token);
+    const orderToken = order.token as string;
+
+    if (orderToken) {
+      return `https://www.papelariabibelo.com.br/checkout/v3/proxy/${nsOrderId}/${orderToken}`;
+    }
+    return null;
+  } catch (err: unknown) {
+    logger.warn("Falha ao buscar token do pedido NuvemShop", {
       nsOrderId,
       error: err instanceof Error ? err.message : "Erro",
     });
@@ -707,20 +734,21 @@ export async function registerPendingOrder(
   customerId: string | null,
   email: string | null,
   valor: number,
-  itens: unknown
+  itens: unknown,
+  recoveryUrl?: string | null
 ): Promise<void> {
   // TESTE: 5 minutos para validação. Voltar para 2 horas após teste.
   const delayHoras = 5 / 60; // 5 minutos
   const expiraEm = new Date(Date.now() + delayHoras * 3600 * 1000);
 
   await query(
-    `INSERT INTO marketing.pedidos_pendentes (ns_order_id, customer_id, email, valor, itens, expira_em)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO marketing.pedidos_pendentes (ns_order_id, customer_id, email, valor, itens, expira_em, recovery_url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (ns_order_id) DO UPDATE SET
        customer_id = COALESCE($2, marketing.pedidos_pendentes.customer_id),
        email = COALESCE($3, marketing.pedidos_pendentes.email),
-       valor = $4, itens = $5`,
-    [nsOrderId, customerId, email, valor, JSON.stringify(itens), expiraEm]
+       valor = $4, itens = $5, recovery_url = COALESCE($7, marketing.pedidos_pendentes.recovery_url)`,
+    [nsOrderId, customerId, email, valor, JSON.stringify(itens), expiraEm, recoveryUrl || null]
   );
 }
 
