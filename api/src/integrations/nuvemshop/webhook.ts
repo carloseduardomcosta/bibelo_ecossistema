@@ -200,7 +200,9 @@ async function processCustomer(resourceId: string, event: string): Promise<void>
 
 nuvemshopWebhookRouter.post("/", webhookAuth, async (req: Request, res: Response) => {
   const body = req.body;
-  const event = (req.headers["x-event"] as string) || body.event || "";
+  // NuvemShop envia evento com "/" no header (order/created) ou "." no body (order.created)
+  const rawEvent = (req.headers["x-event"] as string) || body.event || "";
+  const event = rawEvent.replace(".", "/"); // normaliza para formato com barra
   const resourceId = String(body.id || "");
   const storeId = body.store_id;
 
