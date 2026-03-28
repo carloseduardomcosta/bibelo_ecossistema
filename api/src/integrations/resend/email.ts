@@ -37,7 +37,9 @@ export async function sendEmail(params: SendEmailParams): Promise<{ id: string }
     return null;
   }
 
-  const from = process.env.EMAIL_FROM || "noreply@papelariabibelo.com.br";
+  const rawFrom = process.env.EMAIL_FROM || "noreply@papelariabibelo.com.br";
+  // Garante que o from tenha nome display "Papelaria Bibelô"
+  const from = rawFrom.includes("<") ? rawFrom : `Papelaria Bibelô <${rawFrom}>`;
   const replyTo = params.replyTo || process.env.EMAIL_REPLY_TO || "contato@papelariabibelo.com.br";
 
   const { data, error } = await client.emails.send({
