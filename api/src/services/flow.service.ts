@@ -283,7 +283,7 @@ async function executeEmailStep(
       html,
       tags: [
         { name: "flow", value: "true" },
-        { name: "template_type", value: step.template || "generico" },
+        { name: "template_type", value: (step.template || "generico").replace(/[^a-zA-Z0-9_-]/g, "_") },
         { name: "customer_id", value: customer.id },
       ],
     });
@@ -709,7 +709,8 @@ export async function registerPendingOrder(
   valor: number,
   itens: unknown
 ): Promise<void> {
-  const delayHoras = 2; // padrão: considerar abandonado após 2h
+  // TESTE: 5 minutos para validação. Voltar para 2 horas após teste.
+  const delayHoras = 5 / 60; // 5 minutos
   const expiraEm = new Date(Date.now() + delayHoras * 3600 * 1000);
 
   await query(
