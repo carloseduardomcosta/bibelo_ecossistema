@@ -198,6 +198,7 @@ const WEBHOOK_EVENTS = [
   "order/created",
   "order/updated",
   "order/paid",
+  "order/fulfilled",
   "order/cancelled",
   "customer/created",
   "customer/updated",

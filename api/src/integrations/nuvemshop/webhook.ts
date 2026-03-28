@@ -130,6 +130,17 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
     // ── Motor de fluxos: disparar automações ──
     const paymentStatus = (order.payment_status as string) || "pending";
 
+    // Pedido entregue → disparar fluxo de avaliação (12h depois)
+    const shippingStatus = (order.shipping_status as string) || "";
+    if (event === "order/fulfilled" || shippingStatus === "delivered") {
+      await triggerFlow("order.delivered", customerId, {
+        ns_order_id: resourceId,
+        valor,
+        numero: String(order.number || ""),
+        itens: products.map((p) => ({ name: p.name, quantity: p.quantity })),
+      });
+    }
+
     if (event === "order/paid" || paymentStatus === "paid") {
       // Pedido pago → cancelar pedido pendente + disparar pós-compra
       await markOrderConverted(resourceId);
