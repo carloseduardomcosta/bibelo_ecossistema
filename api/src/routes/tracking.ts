@@ -197,3 +197,36 @@ trackingRouter.get("/visitor/:vid", authMiddleware, async (req: Request, res: Re
 
   res.json(events);
 });
+
+// ── GET /api/tracking/funnel — funil do site ──────────────────
+
+trackingRouter.get("/funnel", authMiddleware, async (req: Request, res: Response) => {
+  const dias = parseInt(String(req.query.dias || "7"), 10);
+
+  const funnel = await queryOne<Record<string, unknown>>(
+    `SELECT
+       (SELECT COUNT(DISTINCT visitor_id) FROM crm.tracking_events WHERE criado_em > NOW() - $1::int * INTERVAL '1 day') AS visitantes,
+       (SELECT COUNT(DISTINCT visitor_id) FROM crm.tracking_events WHERE evento = 'product_view' AND criado_em > NOW() - $1::int * INTERVAL '1 day') AS viram_produto,
+       (SELECT COUNT(DISTINCT visitor_id) FROM crm.tracking_events WHERE evento = 'add_to_cart' AND criado_em > NOW() - $1::int * INTERVAL '1 day') AS add_carrinho,
+       (SELECT COUNT(DISTINCT visitor_id) FROM crm.tracking_events WHERE evento = 'checkout_start' AND criado_em > NOW() - $1::int * INTERVAL '1 day') AS checkout,
+       (SELECT COUNT(DISTINCT customer_id) FROM sync.nuvemshop_orders WHERE webhook_em > NOW() - $1::int * INTERVAL '1 day' AND status = 'paid') AS compraram`,
+    [dias]
+  );
+
+  const f = funnel || {};
+  const visitantes = Number(f.visitantes) || 0;
+  const viramProduto = Number(f.viram_produto) || 0;
+  const addCarrinho = Number(f.add_carrinho) || 0;
+  const checkout = Number(f.checkout) || 0;
+  const compraram = Number(f.compraram) || 0;
+
+  const steps = [
+    { etapa: "Visitantes", total: visitantes, taxa: 100 },
+    { etapa: "Viram produto", total: viramProduto, taxa: visitantes > 0 ? Math.round(viramProduto / visitantes * 100) : 0 },
+    { etapa: "Add carrinho", total: addCarrinho, taxa: visitantes > 0 ? Math.round(addCarrinho / visitantes * 100) : 0 },
+    { etapa: "Checkout", total: checkout, taxa: visitantes > 0 ? Math.round(checkout / visitantes * 100) : 0 },
+    { etapa: "Compraram", total: compraram, taxa: visitantes > 0 ? Math.round(compraram / visitantes * 100) : 0 },
+  ];
+
+  res.json({ dias, steps, taxa_conversao_geral: visitantes > 0 ? Math.round(compraram / visitantes * 1000) / 10 : 0 });
+});

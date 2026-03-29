@@ -131,6 +131,7 @@ const GATILHO_LABELS: Record<string, string> = {
   'customer.created': '👋 Novo cadastro',
   'customer.inactive': '💌 Reativação',
   'lead.captured': '🎯 Lead capturado',
+  'product.interested': '👀 Visitou sem comprar',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -159,19 +160,21 @@ export default function Marketing() {
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [trackingEvents, setTrackingEvents] = useState<TrackingEvent[]>([]);
   const [trackingStats, setTrackingStats] = useState<TrackingStats | null>(null);
+  const [funnel, setFunnel] = useState<{ steps: Array<{ etapa: string; total: number; taxa: number }>; taxa_conversao_geral: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
       setLoading(true);
-      const [statsRes, flowsRes, leadsStatsRes, leadsRes, timelineRes, trackStatsRes] = await Promise.all([
+      const [statsRes, flowsRes, leadsStatsRes, leadsRes, timelineRes, trackStatsRes, funnelRes] = await Promise.all([
         api.get('/flows/stats/overview'),
         api.get('/flows'),
         api.get('/leads/stats'),
         api.get('/leads?page=1'),
         api.get('/tracking/timeline?limit=50'),
         api.get('/tracking/stats'),
+        api.get('/tracking/funnel?dias=7'),
       ]);
       setFlowStats(statsRes.data);
       setFlows(flowsRes.data);
@@ -179,6 +182,7 @@ export default function Marketing() {
       setLeads(leadsRes.data.leads);
       setTrackingEvents(timelineRes.data);
       setTrackingStats(trackStatsRes.data);
+      setFunnel(funnelRes.data);
     } catch {
     } finally {
       setLoading(false);
@@ -233,7 +237,7 @@ export default function Marketing() {
       </div>
 
       {tab === 'overview' && <OverviewTab flowStats={flowStats} flows={flows} leadStats={leadStats} leads={leads} onFlowClick={fetchFlowDetail} />}
-      {tab === 'atividade' && <AtividadeTab events={trackingEvents} stats={trackingStats} onRefresh={fetchAll} />}
+      {tab === 'atividade' && <AtividadeTab events={trackingEvents} stats={trackingStats} funnel={funnel} onRefresh={fetchAll} />}
       {tab === 'fluxos' && <FluxosTab flows={flows} executions={executions} selectedFlow={selectedFlow} onFlowClick={fetchFlowDetail} onRefresh={fetchAll} />}
       {tab === 'leads' && <LeadsTab leadStats={leadStats} leads={leads} />}
     </div>
@@ -725,9 +729,10 @@ const EVENTO_CONFIG: Record<string, { icon: typeof Eye; label: string; color: st
   checkout_start: { icon: ShoppingCart, label: 'Iniciou checkout', color: 'text-orange-400', bg: 'bg-orange-400/10' },
 };
 
-function AtividadeTab({ events, stats, onRefresh }: {
+function AtividadeTab({ events, stats, funnel, onRefresh }: {
   events: TrackingEvent[];
   stats: TrackingStats | null;
+  funnel: { steps: Array<{ etapa: string; total: number; taxa: number }>; taxa_conversao_geral: number } | null;
   onRefresh: () => void;
 }) {
   const kpis = [
@@ -760,6 +765,42 @@ function AtividadeTab({ events, stats, onRefresh }: {
             <p className="text-xs text-bibelo-muted mt-1">{kpi.label}</p>
           </div>
         ))}
+      </div>
+
+      {/* Funil do site */}
+      <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-bibelo-text">Funil do Site (7 dias)</h3>
+          {funnel && (
+            <span className="text-xs px-3 py-1 rounded-full bg-bibelo-primary/10 text-bibelo-primary font-semibold">
+              Conversão geral: {funnel.taxa_conversao_geral}%
+            </span>
+          )}
+        </div>
+        {funnel && funnel.steps ? (
+          <div className="flex items-end gap-2 justify-between">
+            {funnel.steps.map((step, i) => {
+              const maxTotal = Math.max(...funnel.steps.map((s) => s.total), 1);
+              const height = Math.max(step.total / maxTotal * 160, 20);
+              const colors = ['bg-blue-400', 'bg-pink-400', 'bg-emerald-400', 'bg-amber-400', 'bg-violet-400'];
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                  <span className="text-lg font-bold text-bibelo-text">{step.total}</span>
+                  <div
+                    className={`w-full rounded-t-lg ${colors[i]} transition-all`}
+                    style={{ height: `${height}px`, opacity: 0.7 + (i === 0 ? 0.3 : 0) }}
+                  />
+                  <div className="text-center">
+                    <p className="text-xs font-medium text-bibelo-text">{step.etapa}</p>
+                    <p className="text-[10px] text-bibelo-muted">{step.taxa}%</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-bibelo-muted text-center py-8">Coletando dados do funil...</p>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">

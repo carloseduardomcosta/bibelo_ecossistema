@@ -762,3 +762,79 @@ export async function markOrderConverted(nsOrderId: string): Promise<void> {
     [nsOrderId]
   );
 }
+
+// ── Detectar "visitou mas não comprou" ────────────────────────
+
+export async function checkProductInterest(): Promise<number> {
+  // Busca clientes identificados que viram o mesmo produto 2+ vezes nas últimas 24h
+  // mas não compraram esse produto
+  const interested = await query<{
+    customer_id: string;
+    resource_id: string;
+    resource_nome: string;
+    resource_preco: number;
+    resource_imagem: string;
+    views: string;
+    pagina: string;
+  }>(
+    `SELECT
+       t.customer_id,
+       t.resource_id,
+       t.resource_nome,
+       t.resource_preco,
+       t.resource_imagem,
+       COUNT(*)::text AS views,
+       MAX(t.pagina) AS pagina
+     FROM crm.tracking_events t
+     WHERE t.evento = 'product_view'
+       AND t.customer_id IS NOT NULL
+       AND t.resource_id IS NOT NULL
+       AND t.criado_em > NOW() - INTERVAL '24 hours'
+       -- Não comprou esse produto (não tem pedido NuvemShop nas últimas 24h)
+       AND NOT EXISTS (
+         SELECT 1 FROM sync.nuvemshop_orders o
+         WHERE o.customer_id = t.customer_id
+           AND o.webhook_em > NOW() - INTERVAL '24 hours'
+       )
+       -- Não disparamos fluxo product.interested para esse cliente nas últimas 48h
+       AND NOT EXISTS (
+         SELECT 1 FROM marketing.flow_executions fe
+         JOIN marketing.flows f ON f.id = fe.flow_id
+         WHERE f.gatilho = 'product.interested'
+           AND fe.customer_id = t.customer_id
+           AND fe.iniciado_em > NOW() - INTERVAL '48 hours'
+       )
+     GROUP BY t.customer_id, t.resource_id, t.resource_nome, t.resource_preco, t.resource_imagem
+     HAVING COUNT(*) >= 2
+     ORDER BY COUNT(*) DESC
+     LIMIT 20`
+  );
+
+  let triggered = 0;
+
+  for (const item of interested) {
+    const productUrl = item.pagina || `https://www.papelariabibelo.com.br`;
+
+    const executionIds = await triggerFlow("product.interested", item.customer_id, {
+      resource_id: item.resource_id,
+      resource_nome: item.resource_nome,
+      resource_preco: item.resource_preco,
+      resource_imagem: item.resource_imagem,
+      recovery_url: productUrl,
+      views: parseInt(item.views, 10),
+      itens: [{
+        name: item.resource_nome,
+        price: item.resource_preco,
+        image_url: item.resource_imagem,
+        quantity: 1,
+      }],
+    });
+
+    if (executionIds.length > 0) triggered++;
+  }
+
+  if (triggered > 0) {
+    logger.info("Produtos interessados detectados", { total: interested.length, triggered });
+  }
+  return triggered;
+}
