@@ -551,6 +551,10 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - da4c5d3 fix: CORS cross-origin para popup na NuvemShop + headers de segurança
 - e005d5c fix: popup não fecha ao clicar fora — só pelo X ou preenchendo
 - 526bc6f feat: página Marketing no frontend — automações, leads, fluxos, KPIs
+- 2239a18 feat: tracking comportamental + exit-intent + aba Atividade no frontend
+- 5006970 feat: adiciona logo clicável nos templates de email
+- 392a607 fix: logo dos emails servida via webhook (sem Cloudflare Access)
+- aabe5fe fix: cor dos templates de email para rosa oficial #fe68c4
 
 
 ## Protocolo de atualização deste arquivo
@@ -609,4 +613,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 28 de Março de 2026 — Painel Marketing no frontend, Motor de Fluxos (7 fluxos), Caça-Leads (popup 10% OFF), 14 templates, 9 webhooks NuvemShop*
+*Última atualização: 29 de Março de 2026 — Logo nos templates de email (webhook.papelariabibelo.com.br/logo.png), cor oficial #fe68c4, tracking comportamental*
