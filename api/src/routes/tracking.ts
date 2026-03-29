@@ -35,7 +35,12 @@ const eventSchema = z.object({
 });
 
 trackingRouter.post("/event", publicLimiter, async (req: Request, res: Response) => {
-  const parsed = eventSchema.safeParse(req.body);
+  // sendBeacon envia como text/plain — parse manual se necessário
+  let body = req.body;
+  if (typeof body === "string") {
+    try { body = JSON.parse(body); } catch { res.status(400).json({ ok: false }); return; }
+  }
+  const parsed = eventSchema.safeParse(body);
   if (!parsed.success) {
     res.status(400).json({ ok: false });
     return;

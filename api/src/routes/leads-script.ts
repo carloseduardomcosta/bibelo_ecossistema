@@ -92,6 +92,9 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
   // ── Renderizar popup ────────────────────────────────────
   function showPopup(config, visitorId) {
     // Registrar exibição
+    // Marca cookie imediatamente ao exibir (evita mostrar 2x)
+    setCookie(COOKIE_NAME, '1', COOKIE_DAYS);
+
     fetch(API + '/view', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

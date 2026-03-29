@@ -63,6 +63,7 @@ app.use("/api/auth/google", rateLimit({
 
 // ── Body parser
 app.use(express.json({ limit: "1mb" }));
+app.use(express.text({ type: "text/plain", limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // ── Rotas
