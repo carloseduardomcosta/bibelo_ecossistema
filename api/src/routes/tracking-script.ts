@@ -132,48 +132,71 @@ trackingScriptRouter.get("/bibelo.js", (_req: Request, res: Response) => {
 
   // ── Detectar dados do produto ───────────────────────────
   function detectProduct() {
-    // NuvemShop injeta meta tags e LD+JSON com dados do produto
     var data = { pagina_tipo: 'product' };
 
-    // Tenta extrair do LD+JSON (mais confiável)
-    var scripts = document.querySelectorAll('script[type="application/ld+json"]');
-    for (var i = 0; i < scripts.length; i++) {
-      try {
-        var json = JSON.parse(scripts[i].textContent || '');
-        if (json['@type'] === 'Product') {
-          data.resource_nome = json.name || undefined;
-          data.resource_imagem = json.image || (json.images && json.images[0]) || undefined;
-          if (json.offers) {
-            var price = json.offers.price || (json.offers[0] && json.offers[0].price);
-            if (price) data.resource_preco = parseFloat(price);
-          }
-          // ID do produto via URL ou SKU
-          data.resource_id = json.sku || json.productID || undefined;
-          break;
-        }
-      } catch(e) {}
-    }
+    // Aguarda o DOM da NuvemShop renderizar (SPA)
+    function extract() {
+      // 1. Título da página (sempre correto) — "PRODUTO - Papelaria Bibelô"
+      var pageTitle = document.title || '';
+      var titleParts = pageTitle.split(/\\s*[-–|]\\s*/);
+      if (titleParts.length > 0 && titleParts[0].trim()) {
+        data.resource_nome = titleParts[0].trim();
+      }
 
-    // Fallback: meta tags Open Graph
-    if (!data.resource_nome) {
+      // 2. Meta tags (NuvemShop renderiza via JS)
       var ogTitle = document.querySelector('meta[property="og:title"]');
-      if (ogTitle) data.resource_nome = ogTitle.getAttribute('content') || undefined;
-    }
-    if (!data.resource_imagem) {
+      if (ogTitle && ogTitle.getAttribute('content')) {
+        data.resource_nome = ogTitle.getAttribute('content');
+      }
+
       var ogImage = document.querySelector('meta[property="og:image"]');
-      if (ogImage) data.resource_imagem = ogImage.getAttribute('content') || undefined;
-    }
-    if (!data.resource_preco) {
+      if (ogImage && ogImage.getAttribute('content')) {
+        data.resource_imagem = ogImage.getAttribute('content');
+      }
+
       var ogPrice = document.querySelector('meta[property="product:price:amount"]');
-      if (ogPrice) data.resource_preco = parseFloat(ogPrice.getAttribute('content') || '0');
-    }
-    if (!data.resource_id) {
-      // NuvemShop: meta tag com product id
-      var metaId = document.querySelector('meta[name="product:id"]') || document.querySelector('[data-product-id]');
-      if (metaId) data.resource_id = metaId.getAttribute('content') || metaId.getAttribute('data-product-id') || undefined;
+      if (ogPrice) {
+        data.resource_preco = parseFloat(ogPrice.getAttribute('content') || '0');
+      }
+
+      // 3. Preço no DOM — NuvemShop usa .js-price-display ou [data-product-price]
+      if (!data.resource_preco) {
+        var priceEl = document.querySelector('[data-product-price], .js-price-display, .product-price, #price_display, .js-product-price');
+        if (priceEl) {
+          var priceText = (priceEl.textContent || '').replace(/[^0-9,.]/g, '').replace('.', '').replace(',', '.');
+          var parsed = parseFloat(priceText);
+          if (parsed > 0) data.resource_preco = parsed;
+        }
+      }
+
+      // 4. Imagem principal do produto
+      if (!data.resource_imagem) {
+        var imgEl = document.querySelector('.js-product-slide-img, .product-image img, [data-zoom-url], .js-product-image-modal img, .swiper-slide img');
+        if (imgEl) {
+          data.resource_imagem = imgEl.getAttribute('data-zoom-url') || imgEl.getAttribute('src') || imgEl.getAttribute('data-src') || undefined;
+        }
+      }
+
+      // 5. ID do produto via NuvemShop data attributes
+      var prodIdEl = document.querySelector('[data-product-id], [data-product]');
+      if (prodIdEl) {
+        data.resource_id = prodIdEl.getAttribute('data-product-id') || prodIdEl.getAttribute('data-product') || undefined;
+      }
+      // Fallback: extrair slug da URL como ID
+      if (!data.resource_id) {
+        var slug = window.location.pathname.split('/').filter(Boolean).pop();
+        data.resource_id = slug || undefined;
+      }
+
+      track('product_view', data);
     }
 
-    track('product_view', data);
+    // NuvemShop renderiza via JS — esperar conteúdo carregar
+    if (document.querySelector('meta[property="og:title"]')) {
+      extract();
+    } else {
+      setTimeout(extract, 1500);
+    }
   }
 
   // ── Detectar dados da categoria ─────────────────────────
@@ -215,20 +238,23 @@ trackingScriptRouter.get("/bibelo.js", (_req: Request, res: Response) => {
           target.getAttribute('data-action') === 'add-to-cart';
 
         if (isCartButton && (target.tagName === 'BUTTON' || target.tagName === 'A' || target.tagName === 'INPUT')) {
-          // Buscar dados do produto na página
+          // Buscar dados do produto na página (DOM real)
           var productData = { pagina_tipo: 'product' };
-          var scripts = document.querySelectorAll('script[type="application/ld+json"]');
-          for (var j = 0; j < scripts.length; j++) {
-            try {
-              var json = JSON.parse(scripts[j].textContent || '');
-              if (json['@type'] === 'Product') {
-                productData.resource_nome = json.name;
-                productData.resource_preco = json.offers ? parseFloat(json.offers.price || (json.offers[0] && json.offers[0].price) || 0) : undefined;
-                productData.resource_id = json.sku || json.productID;
-                productData.resource_imagem = json.image || undefined;
-                break;
-              }
-            } catch(ex) {}
+          var ogT = document.querySelector('meta[property="og:title"]');
+          if (ogT) productData.resource_nome = ogT.getAttribute('content');
+          if (!productData.resource_nome) {
+            var tParts = (document.title || '').split(/\\s*[-\\u2013|]\\s*/);
+            if (tParts[0]) productData.resource_nome = tParts[0].trim();
+          }
+          var ogI = document.querySelector('meta[property="og:image"]');
+          if (ogI) productData.resource_imagem = ogI.getAttribute('content');
+          var ogP = document.querySelector('meta[property="product:price:amount"]');
+          if (ogP) productData.resource_preco = parseFloat(ogP.getAttribute('content') || '0');
+          var pIdEl = document.querySelector('[data-product-id]');
+          if (pIdEl) productData.resource_id = pIdEl.getAttribute('data-product-id');
+          if (!productData.resource_id) {
+            var s = window.location.pathname.split('/').filter(Boolean).pop();
+            productData.resource_id = s || undefined;
           }
           track('add_to_cart', productData);
           return;
