@@ -7,7 +7,8 @@ import {
   Zap, Users, MousePointerClick, ShoppingCart,
   Eye, UserPlus, CheckCircle2, AlertCircle,
   Play, ToggleLeft, ToggleRight, ChevronRight,
-  Send, Target, TrendingUp, ArrowUpRight,
+  Send, Target, TrendingUp, ArrowUpRight, Activity,
+  Package, Search, Globe,
 } from 'lucide-react';
 import api from '../lib/api';
 
@@ -78,6 +79,33 @@ interface Execution {
   iniciado_em: string;
 }
 
+interface TrackingEvent {
+  id: string;
+  visitor_id: string;
+  evento: string;
+  pagina: string | null;
+  pagina_tipo: string | null;
+  resource_id: string | null;
+  resource_nome: string | null;
+  resource_preco: number | null;
+  resource_imagem: string | null;
+  customer_nome: string | null;
+  customer_email: string | null;
+  criado_em: string;
+}
+
+interface TrackingStats {
+  eventos_24h: number;
+  eventos_7d: number;
+  visitantes_24h: number;
+  visitantes_7d: number;
+  produtos_vistos_24h: number;
+  add_cart_24h: number;
+  clientes_identificados_7d: number;
+  topProdutos: Array<{ resource_nome: string; resource_preco: number; resource_imagem: string; views: number }>;
+  porTipo: Array<{ evento: string; total: number }>;
+}
+
 // ── Helpers ───────────────────────────────────────────────────
 
 function fmtDateShort(d: string) {
@@ -123,28 +151,34 @@ const PIE_COLORS = ['#34D399', '#60A5FA', '#F87171', '#FBBF24', '#A78BFA'];
 // ── Component ─────────────────────────────────────────────────
 
 export default function Marketing() {
-  const [tab, setTab] = useState<'overview' | 'fluxos' | 'leads'>('overview');
+  const [tab, setTab] = useState<'overview' | 'fluxos' | 'leads' | 'atividade'>('overview');
   const [flowStats, setFlowStats] = useState<FlowStats | null>(null);
   const [flows, setFlows] = useState<Flow[]>([]);
   const [leadStats, setLeadStats] = useState<LeadStats | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
+  const [trackingEvents, setTrackingEvents] = useState<TrackingEvent[]>([]);
+  const [trackingStats, setTrackingStats] = useState<TrackingStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
       setLoading(true);
-      const [statsRes, flowsRes, leadsStatsRes, leadsRes] = await Promise.all([
+      const [statsRes, flowsRes, leadsStatsRes, leadsRes, timelineRes, trackStatsRes] = await Promise.all([
         api.get('/flows/stats/overview'),
         api.get('/flows'),
         api.get('/leads/stats'),
         api.get('/leads?page=1'),
+        api.get('/tracking/timeline?limit=50'),
+        api.get('/tracking/stats'),
       ]);
       setFlowStats(statsRes.data);
       setFlows(flowsRes.data);
       setLeadStats(leadsStatsRes.data);
       setLeads(leadsRes.data.leads);
+      setTrackingEvents(timelineRes.data);
+      setTrackingStats(trackStatsRes.data);
     } catch {
     } finally {
       setLoading(false);
@@ -184,7 +218,7 @@ export default function Marketing() {
           <p className="text-sm text-bibelo-muted mt-1">Automações, leads e campanhas do ecossistema Bibelô</p>
         </div>
         <div className="flex items-center gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1">
-          {(['overview', 'fluxos', 'leads'] as const).map((t) => (
+          {(['overview', 'atividade', 'fluxos', 'leads'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -192,13 +226,14 @@ export default function Marketing() {
                 tab === t ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text'
               }`}
             >
-              {t === 'overview' ? 'Visão Geral' : t === 'fluxos' ? 'Fluxos' : 'Leads'}
+              {t === 'overview' ? 'Visão Geral' : t === 'atividade' ? 'Atividade' : t === 'fluxos' ? 'Fluxos' : 'Leads'}
             </button>
           ))}
         </div>
       </div>
 
       {tab === 'overview' && <OverviewTab flowStats={flowStats} flows={flows} leadStats={leadStats} leads={leads} onFlowClick={fetchFlowDetail} />}
+      {tab === 'atividade' && <AtividadeTab events={trackingEvents} stats={trackingStats} onRefresh={fetchAll} />}
       {tab === 'fluxos' && <FluxosTab flows={flows} executions={executions} selectedFlow={selectedFlow} onFlowClick={fetchFlowDetail} onRefresh={fetchAll} />}
       {tab === 'leads' && <LeadsTab leadStats={leadStats} leads={leads} />}
     </div>
@@ -673,6 +708,186 @@ function LeadsTab({ leadStats, leads }: {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Atividade Tab (Timeline real-time) ────────────────────────
+
+const EVENTO_CONFIG: Record<string, { icon: typeof Eye; label: string; color: string; bg: string }> = {
+  page_view: { icon: Globe, label: 'Página visitada', color: 'text-blue-400', bg: 'bg-blue-400/10' },
+  product_view: { icon: Package, label: 'Produto visualizado', color: 'text-pink-400', bg: 'bg-pink-400/10' },
+  category_view: { icon: Eye, label: 'Categoria visitada', color: 'text-violet-400', bg: 'bg-violet-400/10' },
+  add_to_cart: { icon: ShoppingCart, label: 'Adicionou ao carrinho', color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+  search: { icon: Search, label: 'Buscou', color: 'text-amber-400', bg: 'bg-amber-400/10' },
+  checkout_start: { icon: ShoppingCart, label: 'Iniciou checkout', color: 'text-orange-400', bg: 'bg-orange-400/10' },
+};
+
+function AtividadeTab({ events, stats, onRefresh }: {
+  events: TrackingEvent[];
+  stats: TrackingStats | null;
+  onRefresh: () => void;
+}) {
+  const kpis = [
+    { label: 'Eventos (24h)', value: stats?.eventos_24h || 0, icon: Activity, color: 'text-blue-400', bg: 'bg-blue-400/10' },
+    { label: 'Visitantes (24h)', value: stats?.visitantes_24h || 0, icon: Users, color: 'text-pink-400', bg: 'bg-pink-400/10' },
+    { label: 'Produtos Vistos (24h)', value: stats?.produtos_vistos_24h || 0, icon: Package, color: 'text-violet-400', bg: 'bg-violet-400/10' },
+    { label: 'Add Carrinho (24h)', value: stats?.add_cart_24h || 0, icon: ShoppingCart, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+    { label: 'Visitantes (7d)', value: stats?.visitantes_7d || 0, icon: TrendingUp, color: 'text-amber-400', bg: 'bg-amber-400/10' },
+    { label: 'Identificados (7d)', value: stats?.clientes_identificados_7d || 0, icon: UserPlus, color: 'text-cyan-400', bg: 'bg-cyan-400/10' },
+  ];
+
+  // Gráfico eventos por tipo
+  const porTipoData = (stats?.porTipo || []).map((p) => ({
+    name: EVENTO_CONFIG[p.evento]?.label || p.evento,
+    value: Number(p.total),
+  }));
+
+  const PIE_COLORS2 = ['#60A5FA', '#F472B6', '#A78BFA', '#34D399', '#FBBF24', '#FB923C'];
+
+  return (
+    <div className="space-y-6">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {kpis.map((kpi) => (
+          <div key={kpi.label} className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
+            <div className={`w-8 h-8 rounded-lg ${kpi.bg} flex items-center justify-center mb-2`}>
+              <kpi.icon size={16} className={kpi.color} />
+            </div>
+            <p className="text-2xl font-bold text-bibelo-text">{kpi.value}</p>
+            <p className="text-xs text-bibelo-muted mt-1">{kpi.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Timeline */}
+        <div className="lg:col-span-2 bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-bibelo-text">Atividade em Tempo Real</h3>
+            <button onClick={onRefresh} className="text-xs text-bibelo-primary hover:text-bibelo-primary/80 font-medium">Atualizar</button>
+          </div>
+
+          {events.length === 0 ? (
+            <div className="text-center py-12">
+              <Activity size={40} className="mx-auto mb-3 text-bibelo-muted/30" />
+              <p className="text-sm text-bibelo-muted">Nenhuma atividade registrada ainda</p>
+              <p className="text-xs text-bibelo-muted/60 mt-1">O script de tracking precisa ser adicionado ao GTM</p>
+            </div>
+          ) : (
+            <div className="space-y-1 max-h-[600px] overflow-y-auto">
+              {events.map((ev) => {
+                const config = EVENTO_CONFIG[ev.evento] || { icon: Globe, label: ev.evento, color: 'text-bibelo-muted', bg: 'bg-bibelo-border' };
+                const Icon = config.icon;
+                const isIdentified = !!ev.customer_nome;
+
+                return (
+                  <div key={ev.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-bibelo-bg transition-colors">
+                    <div className={`w-9 h-9 rounded-lg ${config.bg} flex items-center justify-center shrink-0 mt-0.5`}>
+                      <Icon size={16} className={config.color} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-bibelo-text">{config.label}</span>
+                        {ev.pagina_tipo && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-bibelo-border rounded text-bibelo-muted">{ev.pagina_tipo}</span>
+                        )}
+                      </div>
+
+                      {/* Produto visualizado / adicionado */}
+                      {ev.resource_nome && (
+                        <div className="flex items-center gap-2 mt-1.5">
+                          {ev.resource_imagem && (
+                            <img src={ev.resource_imagem} alt="" className="w-10 h-10 rounded-lg object-cover border border-bibelo-border" />
+                          )}
+                          <div>
+                            <p className="text-xs font-medium text-bibelo-text">{ev.resource_nome}</p>
+                            {ev.resource_preco && (
+                              <p className="text-xs text-bibelo-primary font-semibold">
+                                R$ {Number(ev.resource_preco).toFixed(2).replace('.', ',')}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Quem */}
+                      <p className="text-xs text-bibelo-muted mt-1">
+                        {isIdentified ? (
+                          <span className="text-bibelo-text font-medium">{ev.customer_nome}</span>
+                        ) : (
+                          <span>Visitante anônimo</span>
+                        )}
+                        <span className="mx-1">·</span>
+                        <span>{timeAgo(ev.criado_em)}</span>
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar: top produtos + eventos por tipo */}
+        <div className="space-y-6">
+          {/* Eventos por tipo */}
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-bibelo-text mb-4">Eventos por Tipo (7d)</h3>
+            {porTipoData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={porTipoData} cx="50%" cy="50%" outerRadius={70} innerRadius={35} dataKey="value" label={({ value }) => `${value}`}>
+                    {porTipoData.map((_, i) => <Cell key={i} fill={PIE_COLORS2[i % PIE_COLORS2.length]} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #333', borderRadius: 8, fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-sm text-bibelo-muted text-center py-8">Sem dados ainda</p>
+            )}
+            <div className="space-y-1 mt-2">
+              {porTipoData.map((p, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS2[i % PIE_COLORS2.length] }} />
+                  <span className="text-bibelo-muted flex-1">{p.name}</span>
+                  <span className="text-bibelo-text font-medium">{p.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Top produtos */}
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-bibelo-text mb-4">Produtos Mais Vistos (7d)</h3>
+            {(stats?.topProdutos || []).length === 0 ? (
+              <p className="text-sm text-bibelo-muted text-center py-8">Sem dados ainda</p>
+            ) : (
+              <div className="space-y-2">
+                {(stats?.topProdutos || []).slice(0, 5).map((p, i) => (
+                  <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-bibelo-bg">
+                    {p.resource_imagem ? (
+                      <img src={p.resource_imagem} alt="" className="w-10 h-10 rounded-lg object-cover border border-bibelo-border" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-bibelo-border flex items-center justify-center">
+                        <Package size={16} className="text-bibelo-muted" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-bibelo-text truncate">{p.resource_nome}</p>
+                      {p.resource_preco && (
+                        <p className="text-xs text-bibelo-muted">R$ {Number(p.resource_preco).toFixed(2).replace('.', ',')}</p>
+                      )}
+                    </div>
+                    <span className="text-sm font-bold text-bibelo-primary">{Number(p.views)}</span>
+                    <span className="text-[10px] text-bibelo-muted">views</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -23,6 +23,8 @@ import { dealsRouter }      from "./routes/deals";
 import { flowsRouter }      from "./routes/flows";
 import { leadsRouter }      from "./routes/leads";
 import { leadsScriptRouter } from "./routes/leads-script";
+import { trackingRouter }    from "./routes/tracking";
+import { trackingScriptRouter } from "./routes/tracking-script";
 import { nuvemshopWebhookRouter } from "./integrations/nuvemshop/webhook";
 import { blingWebhookRouter }     from "./integrations/bling/webhook";
 import { registerScheduledJobs } from "./queues/sync.queue";
@@ -81,6 +83,8 @@ app.use("/api/sync", syncRouter);
 app.use("/api",      syncRouter);  // /api/auth/bling e /api/auth/bling/callback
 app.use("/api/leads", leadsRouter);
 app.use("/api/leads", leadsScriptRouter);
+app.use("/api/tracking", trackingRouter);
+app.use("/api/tracking", trackingScriptRouter);
 app.use("/api/webhooks/nuvemshop", nuvemshopWebhookRouter);
 app.use("/api/webhooks/bling", blingWebhookRouter);
 

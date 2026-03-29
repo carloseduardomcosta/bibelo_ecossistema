@@ -60,16 +60,32 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
     .then(function(data) {
       if (!data.popups || !data.popups.length) return;
 
-      var popup = null;
-      for (var i = 0; i < data.popups.length; i++) {
-        if (data.popups[i].tipo === 'timer' && data.popups[i].delay_segundos >= 0) {
-          popup = data.popups[i];
-          break;
-        }
-      }
-      if (!popup) return;
+      var timerPopup = null;
+      var exitPopup = null;
+      var shown = false;
 
-      setTimeout(function() { showPopup(popup, vid); }, (popup.delay_segundos || 8) * 1000);
+      for (var i = 0; i < data.popups.length; i++) {
+        if (data.popups[i].tipo === 'timer') timerPopup = data.popups[i];
+        if (data.popups[i].tipo === 'exit_intent') exitPopup = data.popups[i];
+      }
+
+      // Timer popup: aparece após X segundos
+      if (timerPopup) {
+        setTimeout(function() {
+          if (!shown) { shown = true; showPopup(timerPopup, vid); }
+        }, (timerPopup.delay_segundos || 8) * 1000);
+      }
+
+      // Exit intent popup: aparece quando mouse sai da janela (desktop only)
+      if (exitPopup && !('ontouchstart' in window)) {
+        document.addEventListener('mouseout', function(e) {
+          if (shown) return;
+          if (e.clientY < 5 && e.relatedTarget === null) {
+            shown = true;
+            showPopup(exitPopup, vid);
+          }
+        });
+      }
     })
     .catch(function() {});
 
