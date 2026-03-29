@@ -51,10 +51,12 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── search.ts      ← busca global (clientes, produtos, NFs, lançamentos)
 │   │   │   ├── flows.ts       ← CRUD fluxos automáticos + stats + execuções
 │   │   │   ├── leads.ts       ← captura leads + stats + config popups (público + protegido)
-│   │   │   └── leads-script.ts ← GET /api/leads/popup.js — script JS servido para NuvemShop
+│   │   │   ├── leads-script.ts ← GET /api/leads/popup.js — script JS popup + exit-intent
+│   │   │   ├── tracking.ts    ← eventos tracking + timeline + stats + funil (público + protegido)
+│   │   │   └── tracking-script.ts ← GET /api/tracking/bibelo.js — script tracking NuvemShop
 │   │   ├── services/
 │   │   │   ├── customer.service.ts ← upsert, score, timeline, segments
-│   │   │   └── flow.service.ts    ← motor de fluxos: trigger, execute, advance, carrinho abandonado
+│   │   │   └── flow.service.ts    ← motor de fluxos: trigger, execute, advance, carrinho abandonado, visitou-não-comprou
 │   │   ├── integrations/
 │   │   │   ├── bling/
 │   │   │   │   ├── auth.ts      ← OAuth2 completo
@@ -69,7 +71,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   (bling/webhook.ts    ← webhook handler Bling: contatos, pedidos, estoque)
 │   │   ├── queues/
 │   │   │   ├── sync.queue.ts    ← BullMQ: sync 30min + scores 2h + reativação churn
-│   │   │   └── flow.queue.ts    ← BullMQ: process steps (1min) + check abandoned (5min)
+│   │   │   └── flow.queue.ts    ← BullMQ: process steps (1min) + check abandoned (5min) + check interest (15min)
 │   │   ├── middleware/
 │   │   │   └── auth.ts          ← JWT authMiddleware + requireAdmin
 │   │   ├── db/
@@ -147,6 +149,8 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 - `interactions` — histórico de contatos e interações
 - `deals` — pipeline de negociações
 - `segments` — segmentos dinâmicos de clientes
+- `tracking_events` — page views, produto visualizado, add to cart, busca, checkout
+- `visitor_customers` — vínculo visitor_id → customer_id (identifica anônimos)
 
 ### schema: marketing
 - `templates` — templates de e-mail e WhatsApp
@@ -286,6 +290,17 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `GET  /api/financeiro/dre` — DRE simplificado (param: periodo ou mes)
 - `GET  /api/financeiro/fluxo-projetado` — fluxo de caixa: 6m realizado + 3m projetado
 - `GET  /api/financeiro/comparativo` — comparativo mês a mês (param: meses=2..12)
+
+### Tracking Comportamental (endpoints públicos — sem auth)
+- `GET  /api/tracking/bibelo.js` — script JS de tracking (servido via webhook.papelariabibelo.com.br)
+- `POST /api/tracking/event` — registrar evento (page_view, product_view, add_to_cart, search, etc.)
+- `POST /api/tracking/identify` — vincular visitor_id a customer (email)
+
+### Tracking Comportamental (Bearer JWT obrigatório)
+- `GET  /api/tracking/timeline` — feed real-time de eventos (paginado)
+- `GET  /api/tracking/stats` — KPIs: eventos, visitantes, produtos vistos, top produtos
+- `GET  /api/tracking/funnel` — funil do site (visitantes → produto → carrinho → checkout → compra)
+- `GET  /api/tracking/visitor/:vid` — histórico de um visitante
 
 ### Caça-Leads (endpoints públicos — sem auth)
 - `GET  /api/leads/config` — retorna popups ativos (config dinâmica)
@@ -552,6 +567,10 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - e005d5c fix: popup não fecha ao clicar fora — só pelo X ou preenchendo
 - 526bc6f feat: página Marketing no frontend — automações, leads, fluxos, KPIs
 - 2239a18 feat: tracking comportamental + exit-intent + aba Atividade no frontend
+- 77dc6c4 fix: tracking aceita sendBeacon (text/plain) + popup não repete
+- 079a97d feat: "visitou mas não comprou" + funil do site no frontend
+- 70a2edf fix: tracking extrai produto do DOM/meta tags em vez de LD+JSON
+- 2239a18 feat: tracking comportamental + exit-intent + aba Atividade no frontend
 - 5006970 feat: adiciona logo clicável nos templates de email
 - 392a607 fix: logo dos emails servida via webhook (sem Cloudflare Access)
 - aabe5fe fix: cor dos templates de email para rosa oficial #fe68c4
@@ -589,13 +608,15 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | NuvemShop Sync | ✅ produção | clientes, pedidos, produtos — sync manual + webhooks real-time |
 | NuvemShop Webhooks | ✅ produção | 9 webhooks — order/created,updated,paid,fulfilled,cancelled + customer/* + product/* |
 | Resend E-mail | ✅ produção | remetente "Papelaria Bibelô", 14 templates, domínio verificado |
-| Motor de Fluxos | ✅ produção | 7 fluxos ativos, BullMQ process-steps 1min, check-abandoned 5min |
+| Motor de Fluxos | ✅ produção | 8 fluxos ativos, BullMQ process-steps 1min, check-abandoned 5min, check-interest 15min |
 | Carrinho Abandonado | ✅ produção | detecta order/created sem paid após 2h, recovery_url real do checkout |
 | Avaliação Pós-Entrega | ✅ produção | webhook order/fulfilled → email 12h após entrega (Google + site) |
 | Caça-Leads (Popup) | ✅ produção | popup JS via GTM, captura email+WhatsApp, cupom BIBELO10 (10% OFF) |
 | Evolution WhatsApp | ⏳ pendente | aguardando configuração |
 | Painel Marketing Frontend | ✅ produção | 3 abas: Visão Geral (KPIs, gráficos), Fluxos (detalhe+toggle), Leads (tabela+stats) |
-| Tracking Comportamental | ⏳ roadmap | page views, carrinho, produto visualizado — substituir Edrone |
+| Tracking Comportamental | ✅ produção | page_view, product_view, add_to_cart, search, checkout — script JS via GTM |
+| Visitou mas não comprou | ✅ produção | detecta 2+ views do mesmo produto em 24h, email 4h depois |
+| Funil do Site | ✅ produção | visitantes → produto → carrinho → checkout → compra (7d) |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
 
 ### Regra obrigatória:
@@ -613,4 +634,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 29 de Março de 2026 — Logo nos templates de email (webhook.papelariabibelo.com.br/logo.png), cor oficial #fe68c4, tracking comportamental*
+*Última atualização: 29 de Março de 2026 — Tracking comportamental completo, funil do site, "visitou mas não comprou", 8 fluxos, 15 templates, popup 10% OFF + exit-intent, 9 webhooks NuvemShop*
