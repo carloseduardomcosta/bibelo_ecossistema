@@ -370,7 +370,7 @@ function emailWrapper(content: string): string {
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:'Segoe UI',Arial,sans-serif;">
 <div style="max-width:600px;margin:0 auto;background:#fff;">
   <!-- Header -->
-  <div style="background:linear-gradient(135deg,#E91E63,#F06292);padding:30px 20px;text-align:center;">
+  <div style="background:linear-gradient(135deg,#fe68c4,#ff8fd3);padding:30px 20px;text-align:center;">
     <a href="https://www.papelariabibelo.com.br" target="_blank" style="text-decoration:none;">
       <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" style="width:80px;height:80px;border-radius:50%;border:3px solid #fff;" />
     </a>
@@ -385,7 +385,7 @@ function emailWrapper(content: string): string {
   <div style="background:#f9f9f9;padding:20px;text-align:center;border-top:1px solid #eee;">
     <p style="color:#999;font-size:12px;margin:0;">Papelaria Bibelô — Teresina, PI</p>
     <p style="color:#bbb;font-size:11px;margin:5px 0 0;">
-      <a href="https://www.papelariabibelo.com.br" style="color:#E91E63;text-decoration:none;">papelariabibelo.com.br</a>
+      <a href="https://www.papelariabibelo.com.br" style="color:#fe68c4;text-decoration:none;">papelariabibelo.com.br</a>
     </p>
   </div>
 </div>
@@ -397,7 +397,7 @@ function emailWrapper(content: string): string {
 
 function ctaButton(text: string, url: string): string {
   return `<div style="text-align:center;margin:25px 0;">
-    <a href="${url}" style="background:#E91E63;color:#fff;padding:14px 32px;text-decoration:none;border-radius:8px;font-size:16px;font-weight:600;display:inline-block;">
+    <a href="${url}" style="background:#fe68c4;color:#fff;padding:14px 32px;text-decoration:none;border-radius:8px;font-size:16px;font-weight:600;display:inline-block;">
       ${text}
     </a>
   </div>`;
@@ -512,7 +512,7 @@ function buildWelcomeEmail(nome: string): string {
     </p>
     ${ctaButton("Conhecer a loja", "https://www.papelariabibelo.com.br")}
     <p style="font-size:13px;color:#999;text-align:center;">
-      Nos siga no Instagram: <a href="https://instagram.com/papelariabibelo" style="color:#E91E63;">@papelariabibelo</a>
+      Nos siga no Instagram: <a href="https://instagram.com/papelariabibelo" style="color:#fe68c4;">@papelariabibelo</a>
     </p>
   `);
 }
