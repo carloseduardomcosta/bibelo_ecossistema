@@ -136,9 +136,9 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
           '</button>' +
         '</form>' +
         '<div id="bibelo-popup-success" style="display:none;text-align:center;padding:10px 0;">' +
-          '<p style="font-size:36px;margin:0 0 12px;">\\uD83C\\uDF89</p>' +
-          '<p style="font-size:18px;font-weight:700;color:#333;margin:0 0 8px;">Cupom: <span style="color:#fe68c4;" id="bibelo-cupom-code"></span></p>' +
-          '<p style="font-size:14px;color:#777;margin:0;" id="bibelo-popup-msg"></p>' +
+          '<p style="font-size:36px;margin:0 0 12px;" id="bibelo-popup-emoji">\\u2709\\uFE0F</p>' +
+          '<p style="font-size:18px;font-weight:700;color:#333;margin:0 0 8px;" id="bibelo-popup-msg"></p>' +
+          '<p style="font-size:13px;color:#999;margin:0;" id="bibelo-popup-submsg">Verifique tamb\\u00E9m a pasta de spam.</p>' +
         '</div>' +
         '<p style="text-align:center;margin:14px 0 0;font-size:11px;color:#bbb;">Papelaria Bibelô · papelariabibelo.com.br</p>' +
       '</div>';
@@ -193,12 +193,18 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
         form.style.display = 'none';
         var success = document.getElementById('bibelo-popup-success');
         success.style.display = 'block';
-        document.getElementById('bibelo-cupom-code').textContent = data.cupom || 'BIBELO7';
-        document.getElementById('bibelo-popup-msg').textContent = data.mensagem || 'Use no checkout!';
+        document.getElementById('bibelo-popup-msg').textContent = data.mensagem || 'Verifique seu e-mail!';
+
+        if (data.verificacao === 'ja_verificado') {
+          document.getElementById('bibelo-popup-emoji').textContent = '\\u2705';
+          document.getElementById('bibelo-popup-submsg').textContent = 'Seu cupom j\\u00E1 foi enviado anteriormente.';
+        } else {
+          document.getElementById('bibelo-popup-submsg').textContent = 'Verifique tamb\\u00E9m a pasta de spam.';
+        }
         setCookie(COOKIE_NAME, '1', COOKIE_DAYS);
 
-        // Fecha sozinho após 5 segundos
-        setTimeout(closePopup, 5000);
+        // Fecha sozinho após 6 segundos
+        setTimeout(closePopup, 6000);
       })
       .catch(function() {
         btn.textContent = 'Tente novamente';

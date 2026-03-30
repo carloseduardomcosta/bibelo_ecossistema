@@ -1,9 +1,11 @@
 import { Router, Request, Response } from "express";
+import crypto from "crypto";
 import { z } from "zod";
 import { query, queryOne } from "../db";
 import { logger } from "../utils/logger";
 import { upsertCustomer } from "../services/customer.service";
 import { triggerFlow } from "../services/flow.service";
+import { sendEmail } from "../integrations/resend/email";
 import { authMiddleware } from "../middleware/auth";
 import rateLimit from "express-rate-limit";
 
@@ -16,6 +18,67 @@ const publicLimiter = rateLimit({
   max: 20,
   message: { error: "Muitas requisições — tente novamente em 1 minuto" },
 });
+
+// ── Token HMAC para verificação de email (sem banco) ─────────
+
+function getSecret(): string {
+  return process.env.JWT_SECRET || "bibelo-verify-fallback";
+}
+
+function gerarTokenVerificacao(email: string): string {
+  return crypto.createHmac("sha256", getSecret())
+    .update("lead-verify:" + email.toLowerCase().trim())
+    .digest("hex");
+}
+
+function gerarLinkVerificacao(email: string): string {
+  const token = gerarTokenVerificacao(email);
+  const base = process.env.WEBHOOK_URL || "https://webhook.papelariabibelo.com.br";
+  return `${base}/api/leads/confirm?email=${encodeURIComponent(email)}&token=${token}`;
+}
+
+async function enviarEmailVerificacao(email: string, cupom: string | null, nome: string | null): Promise<void> {
+  const link = gerarLinkVerificacao(email);
+  const descontoTexto = cupom === "BIBELO10" ? "10% OFF" : "7% OFF";
+  const nomeDisplay = nome || "Cliente";
+
+  await sendEmail({
+    to: email,
+    subject: `Confirme seu e-mail e ganhe ${descontoTexto}!`,
+    html: `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f5f0f2;font-family:'Segoe UI',Arial,sans-serif;">
+  <div style="max-width:500px;margin:0 auto;background:#fff;">
+    <div style="background:linear-gradient(135deg,#fe68c4,#ff8fd3);padding:30px 20px;text-align:center;">
+      <a href="https://www.papelariabibelo.com.br" style="text-decoration:none;">
+        <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" width="60" height="60" style="width:60px;height:60px;border-radius:50%;border:3px solid #fff;" />
+      </a>
+      <h1 style="color:#fff;margin:12px 0 0;font-size:22px;">Falta só um clique!</h1>
+    </div>
+    <div style="padding:30px 25px;text-align:center;">
+      <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 8px;">
+        Oi, <strong>${nomeDisplay}</strong>!
+      </p>
+      <p style="color:#555;font-size:15px;line-height:1.6;margin:0 0 24px;">
+        Confirme seu e-mail para receber seu cupom exclusivo de <strong style="color:#fe68c4;">${descontoTexto}</strong> na Papelaria Bibelô.
+      </p>
+      <a href="${link}" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:16px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
+        Confirmar e-mail e ganhar cupom
+      </a>
+      <p style="color:#999;font-size:12px;margin:20px 0 0;">
+        Se você não se cadastrou na Papelaria Bibelô, ignore este e-mail.
+      </p>
+    </div>
+    <div style="background:#f9f9f9;padding:16px;text-align:center;border-top:1px solid #eee;">
+      <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibelô · papelariabibelo.com.br</p>
+    </div>
+  </div>
+</body>
+</html>`,
+    tags: [{ name: "type", value: "lead_verification" }],
+  });
+}
 
 // ════════════════════════════════════════════════════════════════
 // ENDPOINTS PÚBLICOS (sem auth, usados pelo script JS no site)
@@ -68,14 +131,25 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
   }
 
   // Verifica se lead já existe
-  const existing = await queryOne<{ id: string; customer_id: string | null }>(
-    "SELECT id, customer_id FROM marketing.leads WHERE email = $1",
+  const existing = await queryOne<{ id: string; customer_id: string | null; email_verificado: boolean; cupom: string | null }>(
+    "SELECT id, customer_id, email_verificado, cupom FROM marketing.leads WHERE email = $1",
     [email]
   );
 
-  if (existing) {
-    // Lead já capturado — retorna cupom mesmo assim (boa UX)
-    res.json({ ok: true, cupom, mensagem: "Você já está cadastrada!" });
+  if (existing && existing.email_verificado) {
+    // Já verificado — não entrega cupom de novo
+    res.json({ ok: true, verificacao: "ja_verificado", mensagem: "Você já está cadastrada! Verifique seu e-mail para o cupom." });
+    return;
+  }
+
+  if (existing && !existing.email_verificado) {
+    // Ainda não confirmou — reenvia email de verificação
+    try {
+      await enviarEmailVerificacao(email, existing.cupom || cupom, nome || null);
+    } catch (err) {
+      logger.warn("Falha ao reenviar verificação", { email, error: String(err) });
+    }
+    res.json({ ok: true, verificacao: "pendente", mensagem: "Reenviamos o e-mail de confirmação! Verifique sua caixa de entrada." });
     return;
   }
 
@@ -118,18 +192,15 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
     [customer.id, `Lead: ${nome || email.split("@")[0]}`, `Captado via popup${cupom ? ` — cupom ${cupom}` : ""}. Página: ${pagina || "home"}`]
   );
 
-  // Dispara fluxo de boas-vindas com cupom
-  await triggerFlow("lead.captured", customer.id, {
-    email,
-    nome: nome || customer.nome,
-    cupom: cupom || "",
-    fonte: "popup",
-    popup_id: popup_id || "",
-  });
+  // Envia email de verificação (cupom só após confirmar)
+  try {
+    await enviarEmailVerificacao(email, cupom, nome || null);
+  } catch (err) {
+    logger.warn("Falha ao enviar verificação de lead", { email, error: String(err) });
+  }
 
-  logger.info("Lead capturado", { email, popup_id, cupom, customerId: customer.id });
-  const desconto = cupom === "BIBELO10" ? "10%" : "7%";
-  res.json({ ok: true, cupom, mensagem: cupom ? `Use o cupom ${cupom} para ${desconto} OFF!` : "Cadastro realizado!" });
+  logger.info("Lead capturado — aguardando verificação", { email, popup_id, cupom, customerId: customer.id });
+  res.json({ ok: true, verificacao: "pendente", mensagem: "Verifique seu e-mail para receber o cupom!" });
 });
 
 // ── POST /api/leads/view — registrar exibição do popup ────────
@@ -144,6 +215,119 @@ leadsRouter.post("/view", publicLimiter, async (req: Request, res: Response) => 
   }
   res.json({ ok: true });
 });
+
+// ── GET /api/leads/confirm — confirma email e entrega cupom ───
+
+leadsRouter.get("/confirm", publicLimiter, async (req: Request, res: Response) => {
+  const email = (req.query.email as string || "").toLowerCase().trim();
+  const token = (req.query.token as string || "").trim();
+
+  if (!email || !token) {
+    res.status(400).send(paginaErroVerificacao("Link inválido. Tente se cadastrar novamente."));
+    return;
+  }
+
+  // Verifica HMAC (timing-safe)
+  const esperado = gerarTokenVerificacao(email);
+  const tokenBuf = Buffer.from(token);
+  const esperadoBuf = Buffer.from(esperado);
+  if (tokenBuf.length !== esperadoBuf.length || !crypto.timingSafeEqual(tokenBuf, esperadoBuf)) {
+    res.status(403).send(paginaErroVerificacao("Link inválido ou expirado."));
+    return;
+  }
+
+  // Busca lead
+  const lead = await queryOne<{ id: string; cupom: string | null; customer_id: string | null; email_verificado: boolean; nome: string | null }>(
+    "SELECT id, cupom, customer_id, email_verificado, nome FROM marketing.leads WHERE email = $1",
+    [email]
+  );
+
+  if (!lead) {
+    res.status(404).send(paginaErroVerificacao("Cadastro não encontrado. Tente se cadastrar novamente."));
+    return;
+  }
+
+  // Marca como verificado (idempotente)
+  if (!lead.email_verificado) {
+    await query(
+      "UPDATE marketing.leads SET email_verificado = true, email_verificado_em = NOW() WHERE id = $1",
+      [lead.id]
+    );
+
+    // Agora sim dispara o fluxo de boas-vindas (só para email verificado)
+    if (lead.customer_id) {
+      await triggerFlow("lead.captured", lead.customer_id, {
+        email,
+        nome: lead.nome || email.split("@")[0],
+        cupom: lead.cupom || "",
+        fonte: "popup",
+      });
+    }
+
+    logger.info("Lead verificou email", { email, leadId: lead.id, customerId: lead.customer_id });
+  }
+
+  // Mostra página com o cupom
+  res.send(paginaCupomVerificado(email, lead.cupom));
+});
+
+// ── Páginas HTML de verificação ──────────────────────────────
+
+function paginaCupomVerificado(email: string, cupom: string | null): string {
+  const cupomCode = cupom || "BIBELO7";
+  const desconto = cupom === "BIBELO10" ? "10%" : "7%";
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cupom Ativado - Papelaria Bibelô</title>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;600;700&display=swap" rel="stylesheet"></head>
+<body style="margin:0;padding:0;background:#f5f0f2;font-family:Jost,Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+  <div style="background:#fff;border-radius:20px;padding:0;max-width:440px;width:90%;text-align:center;box-shadow:0 8px 30px rgba(254,104,196,0.15);overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#fe68c4,#ff8fd3);padding:28px 20px;">
+      <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" width="56" height="56" style="width:56px;height:56px;border-radius:50%;border:3px solid #fff;" />
+    </div>
+    <div style="padding:30px 24px 20px;">
+      <div style="font-size:40px;margin:0 0 12px;">🎉</div>
+      <h1 style="color:#333;font-size:22px;margin:0 0 8px;font-weight:700;">E-mail confirmado!</h1>
+      <p style="color:#666;font-size:15px;margin:0 0 20px;line-height:1.5;">
+        Seu cupom de <strong style="color:#fe68c4;">${desconto}</strong> está pronto:
+      </p>
+      <div style="background:#fff7c1;border:2px dashed #fe68c4;border-radius:14px;padding:18px 20px;margin:0 0 20px;">
+        <p style="margin:0 0 4px;color:#999;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Seu cupom</p>
+        <p style="margin:0;color:#fe68c4;font-size:32px;font-weight:700;letter-spacing:2px;">${cupomCode}</p>
+      </div>
+      <p style="color:#777;font-size:13px;margin:0 0 20px;line-height:1.5;">
+        Use no checkout da nossa loja para ganhar <strong>${desconto}</strong> de desconto na sua compra!
+      </p>
+      <a href="https://www.papelariabibelo.com.br" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:14px 36px;border-radius:30px;text-decoration:none;font-weight:700;font-size:15px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
+        Ir para a loja
+      </a>
+    </div>
+    <div style="padding:16px;border-top:1px solid #f0e0f0;">
+      <p style="color:#ccc;font-size:11px;margin:0;">Papelaria Bibelô · papelariabibelo.com.br</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function paginaErroVerificacao(msg: string): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Erro - Papelaria Bibelô</title></head>
+<body style="margin:0;padding:0;background:#f5f0f2;font-family:'Segoe UI',Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+  <div style="background:#fff;border-radius:16px;padding:40px;max-width:440px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
+    <div style="width:64px;height:64px;background:#fff0f0;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px;">!</div>
+    <h1 style="color:#333;font-size:22px;margin:0 0 10px;">Algo deu errado</h1>
+    <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 20px;">${msg}</p>
+    <a href="https://www.papelariabibelo.com.br" style="display:inline-block;background:#fe68c4;color:#fff;padding:12px 30px;border-radius:30px;text-decoration:none;font-weight:600;font-size:14px;">
+      Voltar para a loja
+    </a>
+  </div>
+</body>
+</html>`;
+}
 
 // ════════════════════════════════════════════════════════════════
 // ENDPOINTS PROTEGIDOS (painel CRM)
