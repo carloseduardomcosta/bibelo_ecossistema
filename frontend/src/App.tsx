@@ -18,6 +18,7 @@ import DespesasFixas from './pages/DespesasFixas';
 import SimuladorCustos from './pages/SimuladorCustos';
 import NfEntrada from './pages/NfEntrada';
 import Vendas from './pages/Vendas';
+import Pedidos from './pages/Pedidos';
 import ContasPagar from './pages/ContasPagar';
 import ProdutoPerfil from './pages/ProdutoPerfil';
 import Pipeline from './pages/Pipeline';
@@ -49,6 +50,7 @@ export default function App() {
               <Route path="/produtos/:id" element={<ProdutoPerfil />} />
               <Route path="/estoque" element={<Estoque />} />
               <Route path="/vendas" element={<Vendas />} />
+              <Route path="/pedidos" element={<Pedidos />} />
               <Route path="/contas-pagar" element={<ContasPagar />} />
               <Route path="/lucratividade" element={<Lucratividade />} />
               <Route path="/pipeline" element={<Pipeline />} />
