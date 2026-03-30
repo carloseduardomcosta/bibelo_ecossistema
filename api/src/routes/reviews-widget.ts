@@ -35,6 +35,10 @@ reviewsWidgetRouter.get("/widget.js", (_req: Request, res: Response) => {
   var API = '${apiBase}/api/reviews/data';
   var REVIEW_LINK = 'https://g.page/r/CdahFa43hhIXEAE/review';
 
+  // Só exibe na home page (não em produto, checkout, carrinho, busca)
+  var path = window.location.pathname;
+  if (path !== '/' && path !== '') return;
+
   // Busca reviews
   fetch(API)
     .then(function(r) { return r.json(); })
