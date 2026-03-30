@@ -339,9 +339,11 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `POST /api/flows/:id/toggle` — ativar/desativar
 - `GET  /api/flows/:id/executions/:execId` — detalhe execução + steps
 
-### Página de Links (público — substitui Linktree)
-- `GET  /links` — página HTML com links da Bibelô (servida via Nginx rewrite)
+### Página de Links — menu.papelariabibelo.com.br (público — substitui Linktree)
+- `GET  /` — página HTML com links da Bibelô (servida via Nginx rewrite → /api/links/page)
 - `GET  /api/links/go/:slug` — redirect com tracking de clique + UTM automático
+- `GET  /api/links/formulario` — formulário de cadastro (nome, email, WhatsApp)
+- `POST /api/links/lead` — captura lead do formulário, cria customer + deal, notifica admin por email
 - `GET  /api/links/stats` — stats de cliques por link (últimos 30 dias)
 
 ### Webhooks (validação HMAC)
@@ -635,6 +637,8 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - 6662186 fix: normaliza email lowercase na captura de leads + sanitiza nome contra XSS
 - d4ca1ac docs: atualiza CLAUDE.md — opt-out LGPD, verificação email leads, rotas, integrações
 - 481d9c7 fix: auditoria tracking — IP real, geolocalização, upsert case-insensitive, merge duplicados
+- d0d565c feat: página de links própria (substitui Linktree) + UTM tracking completo
+- 3a28546 feat: novo design página de links — Nunito, banner loja, animações, formulário
 - 012e928 feat: pagina Pedidos — lista completa de compras Bling com filtros e detalhe
 - 7b9fe21 feat: detalhe do pedido com itens, custo NF e lucro por produto
 - e26a4f4 fix: sync Bling busca detalhe dos pedidos (itens + valor real)

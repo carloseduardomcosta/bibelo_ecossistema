@@ -1,6 +1,10 @@
 import { Router, Request, Response } from "express";
-import { query } from "../db";
+import { z } from "zod";
+import { query, queryOne } from "../db";
 import { resolveGeo } from "../utils/geoip";
+import { upsertCustomer } from "../services/customer.service";
+import { sendEmail } from "../integrations/resend/email";
+import { logger } from "../utils/logger";
 import rateLimit from "express-rate-limit";
 
 export const linksRouter = Router();
@@ -52,9 +56,8 @@ const LINKS: LinkItem[] = [
   {
     slug: "formulario",
     titulo: "Preencha o formulário",
-    url: "https://www.papelariabibelo.com.br",
+    url: "/api/links/formulario",
     icone: "📋",
-    utm: { source: "instagram", medium: "bio_link", campaign: "formulario" },
   },
   {
     slug: "email",
@@ -156,7 +159,7 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
   <title>Papelaria Bibelô — Links</title>
   <meta name="description" content="Papelaria Bibelô — Loja online, WhatsApp, Grupo VIP e mais">
   <meta property="og:title" content="Papelaria Bibelô">
-  <meta property="og:description" content="Papelaria fofa em Timbó/SC — Loja online, WhatsApp, Grupo VIP">
+  <meta property="og:description" content="A primeira Papelaria 100% on-line de Timbó e região">
   <meta property="og:image" content="https://menu.papelariabibelo.com.br/logo.png">
   <meta property="og:type" content="website">
   <link rel="icon" href="/logo.png">
@@ -510,7 +513,7 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
       </div>
       <h1 class="nome">Papelaria Bibelô</h1>
       <p class="boas-vindas">Olá! Bem-vindo(a) ao mundo da<br>Papelaria Bibelô</p>
-      <p class="bio">Papelaria fofa em Timbó/SC<br>Entrega para todo o Brasil</p>
+      <p class="bio">A primeira Papelaria 100% on-line<br>de Timbó e região</p>
     </div>
 
     <!-- BANNER LOJA -->
@@ -600,4 +603,233 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
 
 </body>
 </html>`);
+});
+
+// ── GET /api/links/formulario — página do formulário de cadastro ──
+
+linksRouter.get("/formulario", (_req: Request, res: Response) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Content-Security-Policy",
+    "default-src 'self'; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+    "font-src 'self' https://fonts.gstatic.com; " +
+    "img-src 'self' data: https:; " +
+    "script-src 'self' 'unsafe-inline'; " +
+    "connect-src 'self'; " +
+    "frame-ancestors 'none';"
+  );
+
+  res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cadastre-se — Papelaria Bibelô</title>
+  <meta name="description" content="Cadastre-se na Papelaria Bibelô e receba novidades">
+  <link rel="icon" href="/logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    :root{--pink-main:#f43f8e;--pink-light:#fce7f3;--pink-pale:#fff0f6;--pink-glow:rgba(244,63,142,0.35);--yellow-soft:#fff9c4;--text-dark:#2d1b2e;--text-mid:#6b4c6b;--text-soft:#a07090;--white:#fff}
+    body{font-family:'Nunito','Segoe UI',Arial,sans-serif;background:linear-gradient(160deg,#ffe0ef 0%,#fce7f3 40%,#fff0f6 100%);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:0 0 40px}
+    .card{width:100%;max-width:460px;background:var(--white);border-radius:0 0 28px 28px;box-shadow:0 10px 40px rgba(244,63,142,0.15);overflow:hidden;min-height:100vh;display:flex;flex-direction:column}
+    .header{background:linear-gradient(160deg,var(--yellow-soft) 0%,#ffe8f5 60%,var(--pink-light) 100%);padding:36px 28px 28px;text-align:center;border-bottom:3px solid var(--pink-main);position:relative;overflow:hidden}
+    .header::before{content:'';position:absolute;width:140px;height:140px;border-radius:50%;opacity:0.18;background:var(--pink-main);top:-50px;right:-40px}
+    .header::after{content:'';position:absolute;width:90px;height:90px;border-radius:50%;opacity:0.18;background:#f9a8d4;bottom:-30px;left:-20px}
+    .avatar{width:72px;height:72px;border-radius:50%;border:3px solid var(--pink-main);box-shadow:0 4px 15px var(--pink-glow);margin-bottom:12px}
+    .header h1{font-size:20px;font-weight:900;color:var(--text-dark);margin-bottom:4px}
+    .header p{font-size:13px;color:var(--text-soft);font-weight:600}
+    .form-body{padding:28px 24px;flex:1;display:flex;flex-direction:column;gap:18px}
+    .form-intro{font-size:14px;color:var(--text-mid);font-weight:600;line-height:1.5;text-align:center}
+    .field{display:flex;flex-direction:column;gap:5px}
+    .field label{font-size:12px;font-weight:800;color:var(--text-mid);text-transform:uppercase;letter-spacing:0.8px}
+    .field input{padding:14px 16px;border:2px solid #f3d0e8;border-radius:12px;font-size:15px;font-family:'Nunito',sans-serif;font-weight:600;color:var(--text-dark);outline:none;transition:border-color 0.2s}
+    .field input:focus{border-color:var(--pink-main);box-shadow:0 0 0 3px rgba(244,63,142,0.1)}
+    .field input::placeholder{color:#c9a0b8;font-weight:500}
+    .submit-btn{padding:16px;border:none;border-radius:14px;background:linear-gradient(135deg,#f43f8e 0%,#ec4899 50%,#db2777 100%);color:var(--white);font-size:16px;font-weight:900;font-family:'Nunito',sans-serif;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 15px var(--pink-glow);margin-top:4px}
+    .submit-btn:hover{filter:brightness(1.08);transform:translateY(-2px);box-shadow:0 6px 20px var(--pink-glow)}
+    .submit-btn:active{transform:translateY(0)}
+    .submit-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+    .msg{padding:14px 16px;border-radius:12px;font-size:14px;font-weight:700;text-align:center;display:none}
+    .msg.ok{display:block;background:#f0fff6;color:#166534;border:2px solid #bbf7d0}
+    .msg.err{display:block;background:#fff5f5;color:#991b1b;border:2px solid #fecaca}
+    .footer{background:linear-gradient(135deg,var(--yellow-soft),#fff5fb);padding:18px 24px;text-align:center;border-top:2px solid #fce7f3}
+    .footer p{font-size:11px;color:var(--text-soft);font-weight:600}
+    .footer a{color:var(--pink-main);text-decoration:none;font-weight:700}
+    .back-link{display:inline-flex;align-items:center;gap:6px;color:var(--pink-main);font-size:13px;font-weight:700;text-decoration:none;margin-top:4px}
+    .back-link:hover{text-decoration:underline}
+    @media(min-width:461px){body{padding:24px 16px 48px}.card{min-height:auto;border-radius:28px}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <img src="/logo.png" alt="Papelaria Bibelô" class="avatar">
+      <h1>Cadastre-se</h1>
+      <p>Receba novidades e promoções exclusivas</p>
+    </div>
+
+    <form class="form-body" id="leadForm">
+      <p class="form-intro">Preencha seus dados e fique por dentro de tudo que acontece na Papelaria Bibelô!</p>
+
+      <div class="field">
+        <label for="nome">Seu nome</label>
+        <input type="text" id="nome" name="nome" placeholder="Como podemos te chamar?" required maxlength="200">
+      </div>
+
+      <div class="field">
+        <label for="email">Seu e-mail</label>
+        <input type="email" id="email" name="email" placeholder="seuemail@exemplo.com" required maxlength="200">
+      </div>
+
+      <div class="field">
+        <label for="telefone">WhatsApp</label>
+        <input type="tel" id="telefone" name="telefone" placeholder="(47) 9 9999-9999" maxlength="20">
+      </div>
+
+      <div class="msg" id="msg"></div>
+
+      <button type="submit" class="submit-btn" id="submitBtn">Cadastrar</button>
+
+      <a href="/" class="back-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        Voltar ao menu
+      </a>
+    </form>
+
+    <div class="footer">
+      <p>Papelaria Bibelô &middot; <a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener">papelariabibelo.com.br</a></p>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('leadForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var btn = document.getElementById('submitBtn');
+      var msg = document.getElementById('msg');
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+      msg.className = 'msg';
+      msg.style.display = 'none';
+
+      var data = {
+        nome: document.getElementById('nome').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        telefone: document.getElementById('telefone').value.trim(),
+        fonte: 'formulario_menu'
+      };
+
+      fetch('/api/links/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(res) {
+        if (res.ok) {
+          msg.className = 'msg ok';
+          msg.textContent = res.mensagem || 'Cadastro realizado com sucesso!';
+          msg.style.display = 'block';
+          btn.textContent = 'Cadastrado!';
+          document.getElementById('leadForm').reset();
+        } else {
+          msg.className = 'msg err';
+          msg.textContent = res.error || 'Erro ao cadastrar. Tente novamente.';
+          msg.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Cadastrar';
+        }
+      })
+      .catch(function() {
+        msg.className = 'msg err';
+        msg.textContent = 'Erro de conexão. Tente novamente.';
+        msg.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Cadastrar';
+      });
+    });
+  </script>
+</body>
+</html>`);
+});
+
+// ── POST /api/links/lead — receber cadastro do formulário ────
+
+const leadFormSchema = z.object({
+  nome: z.string().min(1).max(200),
+  email: z.string().email().max(200),
+  telefone: z.string().max(20).optional(),
+  fonte: z.string().max(50).optional(),
+});
+
+linksRouter.post("/lead", limiter, async (req: Request, res: Response) => {
+  const parsed = leadFormSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: "Dados inválidos. Verifique nome e email." });
+    return;
+  }
+
+  const { nome, telefone, fonte } = parsed.data;
+  const email = parsed.data.email.toLowerCase().trim();
+  const nomeClean = nome.replace(/[<>"'&]/g, "");
+
+  // Verifica se lead já existe
+  const existing = await queryOne<{ id: string }>(
+    "SELECT id FROM marketing.leads WHERE email = $1",
+    [email]
+  );
+
+  if (existing) {
+    res.json({ ok: true, mensagem: "Você já está cadastrada! Em breve receberá nossas novidades." });
+    return;
+  }
+
+  // Cria/vincula customer no CRM
+  const customer = await upsertCustomer({
+    nome: nomeClean,
+    email,
+    telefone: telefone || undefined,
+    canal_origem: "formulario",
+  });
+
+  // Salva lead
+  await query(
+    `INSERT INTO marketing.leads (email, nome, telefone, fonte, customer_id)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [email, nomeClean, telefone || null, fonte || "formulario_menu", customer.id]
+  );
+
+  // Cria deal no pipeline
+  await query(
+    `INSERT INTO crm.deals (customer_id, titulo, valor, etapa, origem, probabilidade, notas)
+     VALUES ($1, $2, 0, 'prospeccao', 'formulario', 20, $3)`,
+    [customer.id, `Lead: ${nomeClean}`, `Captado via formulário do menu. WhatsApp: ${telefone || "não informado"}`]
+  );
+
+  // Notificação por email para o admin
+  sendEmail({
+    to: "contato@papelariabibelo.com.br",
+    subject: `Novo cadastro: ${nomeClean}`,
+    html: `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f5f0f2;font-family:'Segoe UI',Arial,sans-serif;">
+  <div style="max-width:500px;margin:20px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
+    <div style="background:linear-gradient(135deg,#f43f8e,#ec4899);padding:24px;text-align:center;">
+      <p style="color:#fff;font-size:20px;font-weight:700;margin:0;">Novo cadastro no Menu!</p>
+    </div>
+    <div style="padding:24px;">
+      <p style="font-size:15px;color:#333;margin:0 0 12px;"><strong>Nome:</strong> ${nomeClean}</p>
+      <p style="font-size:15px;color:#333;margin:0 0 12px;"><strong>Email:</strong> ${email}</p>
+      <p style="font-size:15px;color:#333;margin:0 0 12px;"><strong>WhatsApp:</strong> ${(telefone || "Não informado").replace(/[<>"'&]/g, "")}</p>
+      <p style="font-size:13px;color:#999;margin:16px 0 0;">Fonte: formulário do menu (menu.papelariabibelo.com.br)</p>
+    </div>
+  </div>
+</body></html>`,
+    tags: [{ name: "type", value: "lead_notification" }],
+  }).catch(err => {
+    logger.warn("Falha ao notificar novo lead do formulário", { email, error: String(err) });
+  });
+
+  logger.info("Lead captado via formulário do menu", { email, nome: nomeClean, telefone });
+  res.json({ ok: true, mensagem: "Cadastro realizado com sucesso! Você receberá nossas novidades em breve." });
 });
