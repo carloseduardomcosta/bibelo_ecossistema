@@ -43,6 +43,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── analytics.ts     ← overview, revenue, segments
 │   │   │   ├── campaigns.ts     ← CRUD + disparo (5 endpoints)
 │   │   │   ├── templates.ts     ← CRUD + soft delete (5 endpoints)
+│   │   │   ├── orders.ts       ← lista pedidos Bling paginada + stats + detalhe
 │   │   │   ├── sync.ts          ← status, sync manual, OAuth Bling
 │   │   │   ├── products.ts     ← CRUD produtos, estoque, lucratividade
 │   │   │   ├── financeiro.ts   ← módulo financeiro completo (20+ endpoints)
@@ -104,6 +105,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── SimuladorCustos.tsx ← simulador marketplace + kits embalagem
 │   │   │   ├── NfEntrada.tsx    ← upload XML NF-e, lista, detalhe, contabilizar
 │   │   │   ├── ProdutoPerfil.tsx ← detalhe produto + estoque + vendas
+│   │   │   ├── Pedidos.tsx      ← lista pedidos Bling + filtros + detalhe + KPIs
 │   │   │   ├── Vendas.tsx       ← formas pagamento + NF-e emitidas
 │   │   │   ├── ContasPagar.tsx  ← contas a pagar Bling
 │   │   │   ├── Relatorios.tsx   ← DRE, Fluxo Projetado, Comparativo Mensal
@@ -280,6 +282,11 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `POST /api/financeiro/nf-entrada/:id/contabilizar` — gera lançamento no financeiro
 - `DELETE /api/financeiro/nf-entrada/:id` — cancelar NF (e lançamento se contabilizada)
 - `GET  /api/financeiro/nf-entrada/resumo/geral` — KPIs (total, pendentes, contabilizadas, valores)
+
+### Pedidos (Bearer JWT obrigatório)
+- `GET  /api/orders` — lista paginada (search, canal, status, periodo, ordenar)
+- `GET  /api/orders/stats` — KPIs: total, receita, ticket médio, físico/online, variação
+- `GET  /api/orders/:id` — detalhe com itens e parcelas de pagamento
 
 ### Busca Global (Bearer JWT obrigatório)
 - `GET  /api/search?q=texto` — busca em clientes, produtos, lançamentos e NFs
@@ -606,6 +613,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - d11e2d9 feat: verificação de email para leads — cupom só após confirmar (anti-fake)
 - 6662186 fix: normaliza email lowercase na captura de leads + sanitiza nome contra XSS
 - d4ca1ac docs: atualiza CLAUDE.md — opt-out LGPD, verificação email leads, rotas, integrações
+- 012e928 feat: pagina Pedidos — lista completa de compras Bling com filtros e detalhe
 
 
 ## Protocolo de atualização deste arquivo
@@ -676,4 +684,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 30 de Março de 2026 — Auditoria tracking: IP real via X-Forwarded-For, geo 100%, upsert case-insensitive, merge duplicados, geo endpoint filtrado*
+*Última atualização: 30 de Março de 2026 — Página Pedidos (lista Bling + filtros + detalhe), opt-out LGPD, verificação email leads, template novidades redesenhado*
