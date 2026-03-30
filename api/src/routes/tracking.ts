@@ -8,6 +8,23 @@ import { resolveGeo } from "../utils/geoip";
 
 export const trackingRouter = Router();
 
+// ── Filtro de tráfego interno/testes ─────────────────────────
+// Exclui: IPs Docker internos, customers de teste, IPs do admin (via .env)
+const INTERNAL_FILTER = `
+  AND t.ip::text NOT LIKE '172.21.%'
+  AND t.ip::text NOT LIKE '163.116.%'
+  AND t.ip::text NOT LIKE '167.238.%'
+  AND NOT EXISTS (
+    SELECT 1 FROM crm.customers c2
+    WHERE c2.id = t.customer_id
+      AND (c2.canal_origem = 'teste' OR c2.email LIKE '%+teste@%')
+  )
+`;
+
+function getInternalIps(): string[] {
+  return (process.env.INTERNAL_IPS || "").split(",").map(ip => ip.trim()).filter(Boolean);
+}
+
 // ── Rate limit para endpoints públicos ────────────────────────
 
 const publicLimiter = rateLimit({
@@ -145,6 +162,11 @@ trackingRouter.post("/identify", publicLimiter, async (req: Request, res: Respon
 trackingRouter.get("/timeline", authMiddleware, async (req: Request, res: Response) => {
   const limit = Math.min(parseInt(String(req.query.limit || "50"), 10), 200);
   const offset = parseInt(String(req.query.offset || "0"), 10);
+  const ips = getInternalIps();
+
+  const ipFilter = ips.length > 0
+    ? `AND (t.ip IS NULL OR t.ip::text NOT IN (${ips.map((_, i) => `$${i + 3}`).join(",")}))`
+    : "";
 
   const events = await query<Record<string, unknown>>(
     `SELECT t.id, t.visitor_id, t.evento, t.pagina, t.pagina_tipo,
@@ -153,9 +175,10 @@ trackingRouter.get("/timeline", authMiddleware, async (req: Request, res: Respon
             c.nome AS customer_nome, c.email AS customer_email
      FROM crm.tracking_events t
      LEFT JOIN crm.customers c ON c.id = t.customer_id
+     WHERE TRUE ${INTERNAL_FILTER} ${ipFilter}
      ORDER BY t.criado_em DESC
      LIMIT $1 OFFSET $2`,
-    [limit, offset]
+    [limit, offset, ...ips]
   );
 
   res.json(events);
@@ -164,34 +187,44 @@ trackingRouter.get("/timeline", authMiddleware, async (req: Request, res: Respon
 // ── GET /api/tracking/stats — KPIs de tracking ───────────────
 
 trackingRouter.get("/stats", authMiddleware, async (_req: Request, res: Response) => {
+  const ips = getInternalIps();
+  const ipFilter = ips.length > 0
+    ? `AND (t.ip IS NULL OR t.ip::text NOT IN (${ips.map((_, i) => `$${i + 1}`).join(",")}))`
+    : "";
+
   const stats = await queryOne<Record<string, unknown>>(
     `SELECT
-       (SELECT COUNT(*) FROM crm.tracking_events WHERE criado_em > NOW() - INTERVAL '24 hours') AS eventos_24h,
-       (SELECT COUNT(*) FROM crm.tracking_events WHERE criado_em > NOW() - INTERVAL '7 days') AS eventos_7d,
-       (SELECT COUNT(DISTINCT visitor_id) FROM crm.tracking_events WHERE criado_em > NOW() - INTERVAL '24 hours') AS visitantes_24h,
-       (SELECT COUNT(DISTINCT visitor_id) FROM crm.tracking_events WHERE criado_em > NOW() - INTERVAL '7 days') AS visitantes_7d,
-       (SELECT COUNT(*) FROM crm.tracking_events WHERE evento = 'product_view' AND criado_em > NOW() - INTERVAL '24 hours') AS produtos_vistos_24h,
-       (SELECT COUNT(*) FROM crm.tracking_events WHERE evento = 'add_to_cart' AND criado_em > NOW() - INTERVAL '24 hours') AS add_cart_24h,
-       (SELECT COUNT(DISTINCT customer_id) FROM crm.tracking_events WHERE customer_id IS NOT NULL AND criado_em > NOW() - INTERVAL '7 days') AS clientes_identificados_7d`
+       (SELECT COUNT(*) FROM crm.tracking_events t WHERE t.criado_em > NOW() - INTERVAL '24 hours' ${INTERNAL_FILTER} ${ipFilter}) AS eventos_24h,
+       (SELECT COUNT(*) FROM crm.tracking_events t WHERE t.criado_em > NOW() - INTERVAL '7 days' ${INTERNAL_FILTER} ${ipFilter}) AS eventos_7d,
+       (SELECT COUNT(DISTINCT t.visitor_id) FROM crm.tracking_events t WHERE t.criado_em > NOW() - INTERVAL '24 hours' ${INTERNAL_FILTER} ${ipFilter}) AS visitantes_24h,
+       (SELECT COUNT(DISTINCT t.visitor_id) FROM crm.tracking_events t WHERE t.criado_em > NOW() - INTERVAL '7 days' ${INTERNAL_FILTER} ${ipFilter}) AS visitantes_7d,
+       (SELECT COUNT(*) FROM crm.tracking_events t WHERE t.evento = 'product_view' AND t.criado_em > NOW() - INTERVAL '24 hours' ${INTERNAL_FILTER} ${ipFilter}) AS produtos_vistos_24h,
+       (SELECT COUNT(*) FROM crm.tracking_events t WHERE t.evento = 'add_to_cart' AND t.criado_em > NOW() - INTERVAL '24 hours' ${INTERNAL_FILTER} ${ipFilter}) AS add_cart_24h,
+       (SELECT COUNT(DISTINCT t.customer_id) FROM crm.tracking_events t WHERE t.customer_id IS NOT NULL AND t.criado_em > NOW() - INTERVAL '7 days' ${INTERNAL_FILTER} ${ipFilter}) AS clientes_identificados_7d`,
+    [...ips]
   );
 
   // Top produtos visualizados
   const topProdutos = await query<Record<string, unknown>>(
-    `SELECT resource_id, resource_nome, resource_preco, resource_imagem, COUNT(*) AS views
-     FROM crm.tracking_events
-     WHERE evento = 'product_view' AND resource_id IS NOT NULL AND criado_em > NOW() - INTERVAL '7 days'
-     GROUP BY resource_id, resource_nome, resource_preco, resource_imagem
+    `SELECT t.resource_id, t.resource_nome, t.resource_preco, t.resource_imagem, COUNT(*) AS views
+     FROM crm.tracking_events t
+     WHERE t.evento = 'product_view' AND t.resource_id IS NOT NULL AND t.criado_em > NOW() - INTERVAL '7 days'
+       ${INTERNAL_FILTER} ${ipFilter}
+     GROUP BY t.resource_id, t.resource_nome, t.resource_preco, t.resource_imagem
      ORDER BY views DESC
-     LIMIT 10`
+     LIMIT 10`,
+    [...ips]
   );
 
   // Eventos por tipo (últimos 7 dias)
   const porTipo = await query<Record<string, unknown>>(
-    `SELECT evento, COUNT(*) AS total
-     FROM crm.tracking_events
-     WHERE criado_em > NOW() - INTERVAL '7 days'
-     GROUP BY evento
-     ORDER BY total DESC`
+    `SELECT t.evento, COUNT(*) AS total
+     FROM crm.tracking_events t
+     WHERE t.criado_em > NOW() - INTERVAL '7 days'
+       ${INTERNAL_FILTER} ${ipFilter}
+     GROUP BY t.evento
+     ORDER BY total DESC`,
+    [...ips]
   );
 
   res.json({ ...stats, topProdutos, porTipo });
@@ -262,15 +295,19 @@ trackingRouter.get("/geo", authMiddleware, async (req: Request, res: Response) =
 
 trackingRouter.get("/funnel", authMiddleware, async (req: Request, res: Response) => {
   const dias = parseInt(String(req.query.dias || "7"), 10);
+  const ips = getInternalIps();
+  const ipFilter = ips.length > 0
+    ? `AND (t.ip IS NULL OR t.ip::text NOT IN (${ips.map((_, i) => `$${i + 2}`).join(",")}))`
+    : "";
 
   const funnel = await queryOne<Record<string, unknown>>(
     `SELECT
-       (SELECT COUNT(DISTINCT visitor_id) FROM crm.tracking_events WHERE criado_em > NOW() - $1::int * INTERVAL '1 day') AS visitantes,
-       (SELECT COUNT(DISTINCT visitor_id) FROM crm.tracking_events WHERE evento = 'product_view' AND criado_em > NOW() - $1::int * INTERVAL '1 day') AS viram_produto,
-       (SELECT COUNT(DISTINCT visitor_id) FROM crm.tracking_events WHERE evento = 'add_to_cart' AND criado_em > NOW() - $1::int * INTERVAL '1 day') AS add_carrinho,
-       (SELECT COUNT(DISTINCT visitor_id) FROM crm.tracking_events WHERE evento = 'checkout_start' AND criado_em > NOW() - $1::int * INTERVAL '1 day') AS checkout,
+       (SELECT COUNT(DISTINCT t.visitor_id) FROM crm.tracking_events t WHERE t.criado_em > NOW() - $1::int * INTERVAL '1 day' ${INTERNAL_FILTER} ${ipFilter}) AS visitantes,
+       (SELECT COUNT(DISTINCT t.visitor_id) FROM crm.tracking_events t WHERE t.evento = 'product_view' AND t.criado_em > NOW() - $1::int * INTERVAL '1 day' ${INTERNAL_FILTER} ${ipFilter}) AS viram_produto,
+       (SELECT COUNT(DISTINCT t.visitor_id) FROM crm.tracking_events t WHERE t.evento = 'add_to_cart' AND t.criado_em > NOW() - $1::int * INTERVAL '1 day' ${INTERNAL_FILTER} ${ipFilter}) AS add_carrinho,
+       (SELECT COUNT(DISTINCT t.visitor_id) FROM crm.tracking_events t WHERE t.evento = 'checkout_start' AND t.criado_em > NOW() - $1::int * INTERVAL '1 day' ${INTERNAL_FILTER} ${ipFilter}) AS checkout,
        (SELECT COUNT(DISTINCT customer_id) FROM sync.nuvemshop_orders WHERE webhook_em > NOW() - $1::int * INTERVAL '1 day' AND status = 'paid') AS compraram`,
-    [dias]
+    [dias, ...ips]
   );
 
   const f = funnel || {};
