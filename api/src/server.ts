@@ -25,6 +25,7 @@ import { leadsRouter }      from "./routes/leads";
 import { leadsScriptRouter } from "./routes/leads-script";
 import { trackingRouter }    from "./routes/tracking";
 import { trackingScriptRouter } from "./routes/tracking-script";
+import { emailRouter }           from "./routes/email";
 import { nuvemshopWebhookRouter } from "./integrations/nuvemshop/webhook";
 import { blingWebhookRouter }     from "./integrations/bling/webhook";
 import { registerScheduledJobs } from "./queues/sync.queue";
@@ -86,6 +87,7 @@ app.use("/api/leads", leadsRouter);
 app.use("/api/leads", leadsScriptRouter);
 app.use("/api/tracking", trackingRouter);
 app.use("/api/tracking", trackingScriptRouter);
+app.use("/api/email", emailRouter);  // público: descadastro 1-click (LGPD)
 app.use("/api/webhooks/nuvemshop", nuvemshopWebhookRouter);
 app.use("/api/webhooks/bling", blingWebhookRouter);
 

@@ -2,6 +2,7 @@ import { query, queryOne } from "../db";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../integrations/resend/email";
 import { getNuvemShopToken, nsRequest } from "../integrations/nuvemshop/auth";
+import { gerarLinkDescadastro } from "../routes/email";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -123,14 +124,26 @@ export async function executeStep(executionId: string): Promise<boolean> {
   }
 
   // Busca dados do cliente
-  const customer = await queryOne<{ id: string; nome: string; email: string | null; telefone: string | null }>(
-    "SELECT id, nome, email, telefone FROM crm.customers WHERE id = $1",
+  const customer = await queryOne<{ id: string; nome: string; email: string | null; telefone: string | null; email_optout: boolean }>(
+    "SELECT id, nome, email, telefone, email_optout FROM crm.customers WHERE id = $1",
     [execution.customer_id]
   );
 
   if (!customer) {
     await failExecution(executionId, "Cliente não encontrado");
     return false;
+  }
+
+  // LGPD: se o cliente fez opt-out, cancela a execução do fluxo (não envia nada)
+  if (customer.email_optout && currentStep.tipo === "email") {
+    logger.info("Fluxo cancelado: cliente fez opt-out de email", { executionId, email: customer.email });
+    await completeExecution(executionId, execution.flow_id);
+    await query(
+      `UPDATE marketing.flow_step_executions SET status = 'ignorado', resultado = '{"motivo":"email_optout"}'::jsonb
+       WHERE execution_id = $1 AND step_index = $2`,
+      [executionId, execution.step_atual]
+    );
+    return true;
   }
 
   // Marca step como executando
@@ -272,6 +285,7 @@ async function executeEmailStep(
 
   if (!template) {
     // Usa templates built-in ricos (com fotos, recovery_url, etc.)
+    _currentRecipientEmail = customer.email || "";
     const html = buildFlowEmail(customer.nome, step.template || "", metadata);
     const subject = getFlowSubject(step.template || "", customer.nome);
 
@@ -402,9 +416,14 @@ function safeImageUrl(url: string | undefined | null): string {
   return safe;
 }
 
+// ── Email context: email do destinatário para link de descadastro ──
+let _currentRecipientEmail = "";
+
 // ── Email base wrapper ─────────────────────────────────────────
 
-function emailWrapper(content: string): string {
+function emailWrapper(content: string, email?: string): string {
+  const recipientEmail = email || _currentRecipientEmail;
+  const unsubLink = recipientEmail ? gerarLinkDescadastro(recipientEmail) : "#";
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -431,6 +450,7 @@ function emailWrapper(content: string): string {
       <p style="color:#777;font-size:13px;margin:0;font-weight:500;">Papelaria Bibelô</p>
       <p style="color:#aaa;font-size:11px;margin:4px 0 0;">CNPJ 63.961.764/0001-63 · contato@papelariabibelo.com.br · (47) 9 3386-2514</p>
       <p style="margin:8px 0 0;"><a href="https://www.papelariabibelo.com.br" style="color:#fe68c4;text-decoration:none;font-size:12px;font-weight:500;">papelariabibelo.com.br</a> · <a href="https://instagram.com/papelariabibelo" style="color:#fe68c4;text-decoration:none;font-size:12px;">@papelariabibelo</a></p>
+      <p style="margin:10px 0 0;"><a href="${unsubLink}" style="color:#ccc;text-decoration:underline;font-size:10px;">Não quero mais receber emails</a></p>
     </div>
   </div>
 </div>

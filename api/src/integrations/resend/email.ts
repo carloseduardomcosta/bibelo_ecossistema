@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { queryOne, query } from "../../db";
 import { logger } from "../../utils/logger";
+import { gerarLinkDescadastro } from "../../routes/email";
 
 // ── Client (inicializa só se tiver API key) ─────────────────────
 
@@ -106,14 +107,23 @@ export async function sendCampaignEmails(campaignId: string): Promise<{ sent: nu
 
   if (!template) throw new Error("Template não encontrado ou inativo");
 
-  // Busca envios pendentes
+  // Busca envios pendentes — EXCLUI clientes que fizeram opt-out (LGPD)
   const sends = await query<{
     id: string; customer_id: string; email: string; nome: string;
   }>(
     `SELECT cs.id, cs.customer_id, c.email, c.nome
      FROM marketing.campaign_sends cs
      JOIN crm.customers c ON c.id = cs.customer_id
-     WHERE cs.campaign_id = $1 AND cs.status = 'pendente' AND c.email IS NOT NULL`,
+     WHERE cs.campaign_id = $1 AND cs.status = 'pendente' AND c.email IS NOT NULL
+       AND c.email_optout = false`,
+    [campaignId]
+  );
+
+  // Marca opt-out como "ignorado" nos sends
+  await query(
+    `UPDATE marketing.campaign_sends SET status = 'ignorado'
+     WHERE campaign_id = $1 AND status = 'pendente'
+       AND customer_id IN (SELECT id FROM crm.customers WHERE email_optout = true)`,
     [campaignId]
   );
 
@@ -122,10 +132,12 @@ export async function sendCampaignEmails(campaignId: string): Promise<{ sent: nu
 
   for (const send of sends) {
     try {
-      // Substitui variáveis no template
+      // Substitui variáveis no template (inclui link de descadastro LGPD)
+      const unsubLink = gerarLinkDescadastro(send.email);
       const html = (template.html || "")
         .replace(/\{\{nome\}\}/g, send.nome || "Cliente")
-        .replace(/\{\{email\}\}/g, send.email);
+        .replace(/\{\{email\}\}/g, send.email)
+        .replace(/\{\{unsub_link\}\}/g, unsubLink);
 
       const subject = (template.assunto || campaign.nome)
         .replace(/\{\{nome\}\}/g, send.nome || "Cliente");

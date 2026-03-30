@@ -1,0 +1,148 @@
+import { Router, Request, Response } from "express";
+import crypto from "crypto";
+import { query, queryOne } from "../db";
+import { logger } from "../utils/logger";
+import { sendEmail } from "../integrations/resend/email";
+
+export const emailRouter = Router();
+
+// ── Token HMAC para descadastro (sem precisar de auth) ─────
+// Gera: hmac(email) com JWT_SECRET — verificável, sem banco
+
+function getSecret(): string {
+  return process.env.JWT_SECRET || "bibelo-unsub-fallback";
+}
+
+export function gerarTokenDescadastro(email: string): string {
+  return crypto.createHmac("sha256", getSecret()).update(email.toLowerCase().trim()).digest("hex");
+}
+
+export function gerarLinkDescadastro(email: string): string {
+  const token = gerarTokenDescadastro(email);
+  const base = process.env.WEBHOOK_URL || "https://webhook.papelariabibelo.com.br";
+  return `${base}/api/email/unsubscribe?email=${encodeURIComponent(email)}&token=${token}`;
+}
+
+// ── GET /api/email/unsubscribe — descadastro 1-click (público) ──
+
+emailRouter.get("/unsubscribe", async (req: Request, res: Response) => {
+  const email = (req.query.email as string || "").toLowerCase().trim();
+  const token = (req.query.token as string || "").trim();
+
+  if (!email || !token) {
+    res.status(400).send(paginaErro("Link inválido. Entre em contato: contato@papelariabibelo.com.br"));
+    return;
+  }
+
+  // Verifica token HMAC (tamanho + conteúdo)
+  const esperado = gerarTokenDescadastro(email);
+  const tokenBuf = Buffer.from(token);
+  const esperadoBuf = Buffer.from(esperado);
+  if (tokenBuf.length !== esperadoBuf.length || !crypto.timingSafeEqual(tokenBuf, esperadoBuf)) {
+    res.status(403).send(paginaErro("Link inválido ou expirado."));
+    return;
+  }
+
+  // Busca cliente
+  const cliente = await queryOne<{ id: string; nome: string; email_optout: boolean }>(
+    "SELECT id, nome, email_optout FROM crm.customers WHERE LOWER(email) = $1",
+    [email]
+  );
+
+  if (!cliente) {
+    // Mesmo sem cliente, não revelar — mostra sucesso
+    res.send(paginaSucesso(email));
+    return;
+  }
+
+  if (cliente.email_optout) {
+    // Já descadastrado
+    res.send(paginaSucesso(email));
+    return;
+  }
+
+  // Marca opt-out
+  await query(
+    "UPDATE crm.customers SET email_optout = true, email_optout_em = NOW() WHERE id = $1",
+    [cliente.id]
+  );
+
+  // Registra interação na timeline
+  await query(
+    `INSERT INTO crm.interactions (customer_id, tipo, descricao, criado_em)
+     VALUES ($1, 'email_optout', 'Cliente solicitou descadastro de emails', NOW())`,
+    [cliente.id]
+  );
+
+  logger.info("Cliente descadastrou do email", { email, customerId: cliente.id, nome: cliente.nome });
+
+  // Notifica o Carlos
+  try {
+    await sendEmail({
+      to: "carloseduardocostatj@gmail.com",
+      subject: `[Descadastro] ${cliente.nome || email} saiu da lista de emails`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px;">
+          <h2 style="color:#ff4444;margin:0 0 15px;">Descadastro de Email</h2>
+          <p><strong>Cliente:</strong> ${cliente.nome || "—"}</p>
+          <p><strong>Email:</strong> ${email}</p>
+          <p><strong>Data:</strong> ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p>
+          <hr style="border:none;border-top:1px solid #eee;margin:15px 0;" />
+          <p style="color:#999;font-size:12px;">
+            Este cliente não receberá mais emails automáticos nem campanhas.<br>
+            Para recadastrar, acesse o CRM e desmarque o opt-out manualmente.
+          </p>
+        </div>
+      `,
+    });
+  } catch {
+    // Não falha o descadastro se a notificação der erro
+    logger.warn("Falha ao notificar descadastro", { email });
+  }
+
+  res.send(paginaSucesso(email));
+});
+
+// ── Páginas HTML de resposta ─────────────────────────────────
+
+function paginaSucesso(email: string): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Descadastrado - Papelaria Bibelô</title></head>
+<body style="margin:0;padding:0;background:#f5f0f2;font-family:'Segoe UI',Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+  <div style="background:#fff;border-radius:16px;padding:40px;max-width:440px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
+    <div style="width:64px;height:64px;background:#f0fff0;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px;">✓</div>
+    <h1 style="color:#333;font-size:22px;margin:0 0 10px;">Descadastrado com sucesso</h1>
+    <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 20px;">
+      O email <strong>${email}</strong> não receberá mais comunicações da Papelaria Bibelô.
+    </p>
+    <p style="color:#999;font-size:13px;margin:0 0 25px;">
+      Se isso foi um engano, entre em contato:<br>
+      <a href="mailto:contato@papelariabibelo.com.br" style="color:#fe68c4;">contato@papelariabibelo.com.br</a>
+    </p>
+    <a href="https://www.papelariabibelo.com.br" style="display:inline-block;background:#fe68c4;color:#fff;padding:12px 30px;border-radius:30px;text-decoration:none;font-weight:600;font-size:14px;">
+      Voltar para a loja
+    </a>
+  </div>
+</body>
+</html>`;
+}
+
+function paginaErro(msg: string): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Erro - Papelaria Bibelô</title></head>
+<body style="margin:0;padding:0;background:#f5f0f2;font-family:'Segoe UI',Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+  <div style="background:#fff;border-radius:16px;padding:40px;max-width:440px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
+    <div style="width:64px;height:64px;background:#fff0f0;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px;">!</div>
+    <h1 style="color:#333;font-size:22px;margin:0 0 10px;">Algo deu errado</h1>
+    <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 20px;">${msg}</p>
+    <a href="https://www.papelariabibelo.com.br" style="display:inline-block;background:#fe68c4;color:#fff;padding:12px 30px;border-radius:30px;text-decoration:none;font-weight:600;font-size:14px;">
+      Voltar para a loja
+    </a>
+  </div>
+</body>
+</html>`;
+}
