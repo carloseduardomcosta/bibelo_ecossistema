@@ -138,16 +138,9 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
 
   const linksHtml = LINKS.map(link => {
     const href = `${apiBase}/api/links/go/${link.slug}`;
-    const destaqueStyle = link.destaque
-      ? "background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;font-weight:700;box-shadow:0 4px 15px rgba(254,104,196,0.3);"
-      : "background:#fff;color:#333;border:2px solid #f0e0f0;";
-    return `
-      <a href="${href}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-radius:14px;text-decoration:none;font-size:15px;transition:transform 0.15s;${destaqueStyle}" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
-        <span style="font-size:22px;flex-shrink:0;">${link.icone}</span>
-        <span style="flex:1;text-align:left;">${link.titulo}</span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.4;"><path d="M9 18l6-6-6-6"/></svg>
-      </a>`;
-  }).join("\n");
+    const cls = link.destaque ? "link-btn destaque" : "link-btn";
+    return `<a href="${href}" target="_blank" rel="noopener" class="${cls}"><span class="icon">${link.icone}</span><span class="label">${link.titulo}</span><svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>`;
+  }).join("\n      ");
 
   res.send(`<!DOCTYPE html>
 <html lang="pt-BR">
@@ -157,93 +150,51 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
   <title>Papelaria Bibelô — Links</title>
   <meta name="description" content="Papelaria Bibelô — Loja online, WhatsApp, Grupo VIP e mais">
   <meta property="og:title" content="Papelaria Bibelô">
-  <meta property="og:description" content="Papelaria fofa em São Bento do Sul — Loja online, WhatsApp, Grupo VIP">
+  <meta property="og:description" content="Papelaria fofa em Timbó/SC — Loja online, WhatsApp, Grupo VIP">
   <meta property="og:image" content="${apiBase}/logo.png">
   <meta property="og:type" content="website">
   <link rel="icon" href="${apiBase}/logo.png">
   <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body {
-      font-family: 'Jost', 'Segoe UI', Arial, sans-serif;
-      background: linear-gradient(180deg, #fff0f5 0%, #fff7fa 40%, #f5f0f2 100%);
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      padding: 20px 16px 40px;
-    }
-    .container {
-      width: 100%;
-      max-width: 420px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    .avatar {
-      width: 96px; height: 96px;
-      border-radius: 50%;
-      border: 4px solid #fe68c4;
-      box-shadow: 0 4px 20px rgba(254,104,196,0.25);
-      margin-top: 20px;
-    }
-    .nome {
-      font-size: 22px;
-      font-weight: 700;
-      color: #333;
-      margin: 16px 0 4px;
-    }
-    .bio {
-      font-size: 14px;
-      color: #888;
-      margin-bottom: 28px;
-      text-align: center;
-      line-height: 1.4;
-    }
-    .links {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .footer {
-      margin-top: 32px;
-      text-align: center;
-      color: #ccc;
-      font-size: 11px;
-    }
-    .footer a { color: #fe68c4; text-decoration: none; }
-    .cupom-banner {
-      width: 100%;
-      background: linear-gradient(135deg, #fff7c1, #ffe5ec);
-      border: 2px dashed #fe68c4;
-      border-radius: 14px;
-      padding: 16px;
-      text-align: center;
-      margin-bottom: 8px;
-    }
-    .cupom-banner p { font-size: 13px; color: #666; margin: 0 0 6px; }
-    .cupom-banner strong { color: #fe68c4; font-size: 20px; letter-spacing: 1px; }
-    .cupom-banner small { display: block; color: #999; font-size: 11px; margin-top: 4px; }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Jost','Segoe UI',Arial,sans-serif;background:#ffe5ec;min-height:100vh;display:flex;flex-direction:column;align-items:center}
+    .card{width:100%;max-width:440px;background:#fff;border-radius:0 0 20px 20px;box-shadow:0 8px 30px rgba(254,104,196,0.12);overflow:hidden;min-height:100vh;display:flex;flex-direction:column}
+    .header{background:linear-gradient(135deg,#fff7c1,#ffe5ec);padding:36px 24px 28px;text-align:center;border-bottom:3px solid #fe68c4}
+    .avatar{width:88px;height:88px;border-radius:50%;border:3px solid #fe68c4;box-shadow:0 4px 15px rgba(254,104,196,0.2)}
+    .nome{font-size:22px;font-weight:700;color:#333;margin:14px 0 4px}
+    .bio{font-size:14px;color:#888;font-weight:500;line-height:1.4}
+    .body{padding:24px 20px;flex:1;display:flex;flex-direction:column;gap:12px}
+    .link-btn{display:flex;align-items:center;gap:12px;padding:15px 18px;border-radius:12px;text-decoration:none;font-size:15px;font-weight:500;color:#333;background:#fff;border:2px solid #f0e0f0;transition:all 0.15s}
+    .link-btn:hover{transform:scale(1.02);border-color:#fe68c4}
+    .link-btn.destaque{background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;border:none;font-weight:700;box-shadow:0 4px 15px rgba(254,104,196,0.3)}
+    .link-btn.destaque:hover{box-shadow:0 6px 20px rgba(254,104,196,0.4)}
+    .icon{font-size:20px;flex-shrink:0;width:28px;text-align:center}
+    .label{flex:1;text-align:left}
+    .arrow{flex-shrink:0;opacity:0.3}
+    .link-btn.destaque .arrow{opacity:0.6}
+    .footer{background:#fff7c1;padding:20px 24px;text-align:center;border-top:1px solid #fee}
+    .footer p{color:#777;font-size:13px;font-weight:500;margin:0}
+    .footer .sub{color:#aaa;font-size:11px;margin:4px 0 0}
+    .footer a{color:#fe68c4;text-decoration:none;font-weight:500}
+    @media(min-width:441px){.card{min-height:auto;margin:20px auto;border-radius:20px}}
   </style>
 </head>
 <body>
-  <div class="container">
-    <img src="${apiBase}/logo.png" alt="Papelaria Bibelô" class="avatar" />
-    <h1 class="nome">Papelaria Bibelô</h1>
-    <p class="bio">Papelaria fofa em São Bento do Sul/SC<br>Entrega para todo o Brasil</p>
-
-    <div class="cupom-banner">
-      <p>Primeira compra no site?</p>
-      <strong>BIBELO10</strong>
-      <small>10% OFF no seu primeiro pedido</small>
+  <div class="card">
+    <div class="header">
+      <img src="${apiBase}/logo.png" alt="Papelaria Bibelô" class="avatar" />
+      <h1 class="nome">Papelaria Bibelô</h1>
+      <p class="bio">Papelaria fofa em Timbó/SC<br>Entrega para todo o Brasil</p>
     </div>
 
-    <div class="links">
+    <div class="body">
       ${linksHtml}
     </div>
 
     <div class="footer">
-      <p>Papelaria Bibelô &middot; <a href="https://www.papelariabibelo.com.br">papelariabibelo.com.br</a></p>
+      <p>Papelaria Bibelô</p>
+      <p class="sub">CNPJ 63.961.764/0001-63 &middot; contato@papelariabibelo.com.br &middot; (47) 9 3386-2514</p>
+      <p style="margin:6px 0 0"><a href="https://www.papelariabibelo.com.br">papelariabibelo.com.br</a></p>
     </div>
   </div>
 </body>

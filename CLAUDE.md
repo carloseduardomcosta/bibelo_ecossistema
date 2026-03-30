@@ -8,6 +8,7 @@ Leia este arquivo inteiro antes de executar qualquer tarefa.
 ## Identidade do projeto
 
 **BibelôCRM** é o CRM + Hub de Marketing da Papelaria Bibelô.
+Localização: **Timbó/SC** — loja física + online.
 Faz parte do **Ecossistema Bibelô** — integrado com Bling ERP e NuvemShop.
 Dono: Carlos Eduardo — carloseduardocostatj@gmail.com
 Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
