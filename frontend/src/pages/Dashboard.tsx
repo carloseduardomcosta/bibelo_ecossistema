@@ -6,7 +6,7 @@ import {
 import {
   DollarSign, ShoppingCart, TrendingUp, TrendingDown,
   AlertTriangle, PackageX, Users, ArrowUpRight, ArrowDownRight,
-  ArrowDown, ArrowUp, Wallet, Minus, UserCheck,
+  ArrowDown, ArrowUp, Wallet, Minus, UserCheck, MapPin,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import api from '../lib/api';
@@ -46,6 +46,22 @@ interface Insights {
   categorias_margem: Array<{ categoria: string; qtd: number; margem_media: number }>;
 }
 
+interface GeoData {
+  byRegion: Array<{ region: string; total: number; visitors: number }>;
+  byCity: Array<{ city: string; region: string; total: number; visitors: number }>;
+  byCountry: Array<{ country: string; visitors: number }>;
+}
+
+const ESTADO_NOMES: Record<string, string> = {
+  AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia',
+  CE: 'Ceará', DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás',
+  MA: 'Maranhão', MT: 'Mato Grosso', MS: 'Mato Grosso do Sul', MG: 'Minas Gerais',
+  PA: 'Pará', PB: 'Paraíba', PR: 'Paraná', PE: 'Pernambuco', PI: 'Piauí',
+  RJ: 'Rio de Janeiro', RN: 'Rio Grande do Norte', RS: 'Rio Grande do Sul',
+  RO: 'Rondônia', RR: 'Roraima', SC: 'Santa Catarina', SP: 'São Paulo',
+  SE: 'Sergipe', TO: 'Tocantins',
+};
+
 const SEGMENT_COLORS = ['#8B5CF6', '#F472B6', '#34D399', '#FBBF24', '#60A5FA', '#F87171'];
 
 function fmt(v: number) {
@@ -84,20 +100,24 @@ export default function Dashboard() {
   const [ov, setOv] = useState<Overview | null>(null);
   const [revenue, setRevenue] = useState<RevenuePoint[]>([]);
   const [insights, setInsights] = useState<Insights | null>(null);
+  const [geoData, setGeoData] = useState<GeoData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
     const p = `periodo=${periodo}`;
+    const geoDias = periodo === '7d' ? 7 : periodo === '15d' ? 15 : periodo === '30d' ? 30 : periodo === '3m' ? 90 : periodo === '6m' ? 180 : 365;
     Promise.all([
       api.get(`/analytics/overview?${p}`),
       api.get(`/analytics/revenue?${p}`),
       api.get(`/analytics/insights?${p}`),
+      api.get(`/tracking/geo?dias=${geoDias}`),
     ])
-      .then(([ovRes, revRes, insRes]) => {
+      .then(([ovRes, revRes, insRes, geoRes]) => {
         setOv(ovRes.data);
         setRevenue(revRes.data.data);
         setInsights(insRes.data);
+        setGeoData(geoRes.data);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -427,6 +447,73 @@ export default function Dashboard() {
                           className={`h-full rounded-full ${c.margem_media >= 50 ? 'bg-emerald-500' : c.margem_media >= 30 ? 'bg-amber-500' : 'bg-red-500'}`}
                           style={{ width: `${Math.min(c.margem_media, 100)}%` }}
                         />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Visitantes por Estado */}
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+              <h2 className="text-sm font-medium text-bibelo-muted mb-3 flex items-center gap-2">
+                <MapPin size={14} className="text-blue-400" /> Visitantes por Estado — {periodoLabel}
+              </h2>
+              {!geoData?.byRegion?.length ? (
+                <p className="text-sm text-bibelo-muted py-4 text-center">Sem dados geográficos ainda</p>
+              ) : (
+                <div className="space-y-2">
+                  {geoData.byRegion.slice(0, 10).map((r, i) => {
+                    const maxVisitors = geoData.byRegion[0]?.visitors || 1;
+                    return (
+                      <div key={r.region}>
+                        <div className="flex items-center justify-between text-sm mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-blue-400/20 text-blue-400 text-xs font-bold flex items-center justify-center">
+                              {i + 1}
+                            </span>
+                            <span className="text-bibelo-text">{ESTADO_NOMES[r.region] || r.region}</span>
+                            <span className="text-xs text-bibelo-muted">{r.region}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-bibelo-text font-medium">{r.visitors}</span>
+                            <span className="text-xs text-bibelo-muted ml-1">visitantes</span>
+                          </div>
+                        </div>
+                        <div className="h-1.5 bg-bibelo-border rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-400 rounded-full transition-all"
+                            style={{ width: `${(r.visitors / maxVisitors) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Top Cidades */}
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+              <h2 className="text-sm font-medium text-bibelo-muted mb-3 flex items-center gap-2">
+                <MapPin size={14} className="text-pink-400" /> Top Cidades — {periodoLabel}
+              </h2>
+              {!geoData?.byCity?.length ? (
+                <p className="text-sm text-bibelo-muted py-4 text-center">Sem dados de cidades ainda</p>
+              ) : (
+                <div className="space-y-2">
+                  {geoData.byCity.slice(0, 10).map((c, i) => (
+                    <div key={`${c.city}-${c.region}`} className="flex items-center justify-between text-sm py-1.5 border-b border-bibelo-border/50 last:border-0">
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-5 h-5 rounded-full bg-pink-400/20 text-pink-400 text-xs font-bold flex items-center justify-center">
+                          {i + 1}
+                        </span>
+                        <span className="text-bibelo-text">{c.city}</span>
+                        <span className="text-xs text-bibelo-muted">{c.region}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-bibelo-text font-medium">{c.visitors}</span>
+                        <span className="text-xs text-bibelo-muted ml-1">visitantes</span>
                       </div>
                     </div>
                   ))}

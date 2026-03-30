@@ -36,11 +36,9 @@ function validateBlingHMAC(payload: string, signature: string): boolean {
 function blingWebhookAuth(req: Request, res: Response, next: () => void): void {
   const signature = req.headers["x-bling-signature-256"] as string;
 
-  // Bling pode enviar sem assinatura em desenvolvimento — loggar mas aceitar
   if (!signature) {
-    logger.warn("Bling webhook: sem assinatura HMAC");
-    // Aceita mesmo assim para não perder eventos durante configuração
-    next();
+    logger.warn("Bling webhook: sem assinatura HMAC — rejeitado");
+    res.status(403).json({ error: "Assinatura HMAC obrigatória" });
     return;
   }
 

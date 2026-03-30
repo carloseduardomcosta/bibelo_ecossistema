@@ -36,9 +36,8 @@ function webhookAuth(req: Request, res: Response, next: () => void): void {
   const signature = req.headers["x-linkedstore-hmac-sha256"] as string;
 
   if (!signature) {
-    logger.warn("NuvemShop webhook: sem assinatura HMAC");
-    // Aceita mesmo assim durante configuração inicial
-    next();
+    logger.warn("NuvemShop webhook: sem assinatura HMAC — rejeitado");
+    res.status(403).json({ error: "Assinatura HMAC obrigatória" });
     return;
   }
 
@@ -83,7 +82,9 @@ async function fetchCustomerDetails(customerId: string): Promise<Record<string, 
 
 async function processOrder(resourceId: string, event: string): Promise<void> {
   const order = await fetchOrderDetails(resourceId);
-  if (!order) return;
+  if (!order) {
+    throw new Error(`Falha ao buscar pedido ${resourceId} da NuvemShop — webhook será retentado`);
+  }
 
   const customer = order.customer as Record<string, unknown> | undefined;
   let customerId: string | null = null;
@@ -130,9 +131,10 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
     // ── Motor de fluxos: disparar automações ──
     const paymentStatus = (order.payment_status as string) || "pending";
 
-    // Pedido entregue → disparar fluxo de avaliação (12h depois)
+    // Pedido entregue → marcar como convertido (para não disparar abandono) + fluxo de avaliação
     const shippingStatus = (order.shipping_status as string) || "";
     if (event === "order/fulfilled" || shippingStatus === "delivered") {
+      await markOrderConverted(resourceId);
       await triggerFlow("order.delivered", customerId, {
         ns_order_id: resourceId,
         valor,
@@ -191,7 +193,9 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
 
 async function processCustomer(resourceId: string, event: string): Promise<void> {
   const customer = await fetchCustomerDetails(resourceId);
-  if (!customer) return;
+  if (!customer) {
+    throw new Error(`Falha ao buscar cliente ${resourceId} da NuvemShop — webhook será retentado`);
+  }
 
   const upserted = await upsertCustomer({
     nome: (customer.name as string) || "Sem nome",
@@ -227,12 +231,6 @@ nuvemshopWebhookRouter.post("/", webhookAuth, async (req: Request, res: Response
   logger.info("NuvemShop webhook recebido", { event, resourceId, storeId });
 
   try {
-    // Log do evento
-    await query(
-      `INSERT INTO sync.sync_logs (fonte, tipo, status, registros, erro) VALUES ('nuvemshop', $1, 'ok', 1, NULL)`,
-      [`webhook:${event}`]
-    );
-
     if (event.startsWith("order/") && resourceId) {
       await processOrder(resourceId, event);
     } else if (event.startsWith("customer/") && resourceId) {
@@ -240,6 +238,12 @@ nuvemshopWebhookRouter.post("/", webhookAuth, async (req: Request, res: Response
     } else {
       logger.info("NuvemShop webhook: evento não mapeado", { event });
     }
+
+    // Log do evento APÓS processamento bem-sucedido
+    await query(
+      `INSERT INTO sync.sync_logs (fonte, tipo, status, registros, erro) VALUES ('nuvemshop', $1, 'ok', 1, NULL)`,
+      [`webhook:${event}`]
+    );
 
     // Atualiza sync_state
     await query(

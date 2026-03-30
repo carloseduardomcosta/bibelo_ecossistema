@@ -429,7 +429,7 @@ function OverviewTab({ flowStats, flows, leadStats, leads, onFlowClick }: {
               <p className="text-sm font-medium text-bibelo-text mb-1 group-hover:text-bibelo-primary transition-colors">{f.nome}</p>
               <p className="text-xs text-bibelo-muted mb-3">{GATILHO_LABELS[f.gatilho]?.split(' ').slice(1).join(' ') || f.gatilho}</p>
               <div className="flex items-center gap-1">
-                {(typeof f.steps === 'string' ? JSON.parse(f.steps) : f.steps || []).map((s: { tipo: string }, i: number) => (
+                {((() => { try { return typeof f.steps === 'string' ? JSON.parse(f.steps) : f.steps || []; } catch { return []; } })()).map((s: { tipo: string }, i: number) => (
                   <span key={i} className="text-xs" title={s.tipo}>{STEP_ICONS[s.tipo] || '❓'}</span>
                 ))}
               </div>
@@ -499,7 +499,7 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
               </button>
             </div>
             <div className="flex items-center gap-2 mt-3">
-              {(typeof f.steps === 'string' ? JSON.parse(f.steps) : f.steps || []).map((s: { tipo: string; template?: string; delay_horas: number }, i: number) => (
+              {((() => { try { return typeof f.steps === 'string' ? JSON.parse(f.steps) : f.steps || []; } catch { return []; } })()).map((s: { tipo: string; template?: string; delay_horas: number }, i: number) => (
                 <div key={i} className="flex items-center gap-1">
                   {i > 0 && <ChevronRight size={10} className="text-bibelo-muted/40" />}
                   <span className="text-xs px-2 py-0.5 bg-bibelo-bg rounded-md text-bibelo-muted" title={s.template || s.tipo}>
@@ -529,7 +529,7 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
 
             {/* Steps visuais */}
             <div className="flex items-center gap-2 mb-6 p-4 bg-bibelo-bg rounded-xl overflow-x-auto">
-              {(typeof selected.steps === 'string' ? JSON.parse(selected.steps) : selected.steps || []).map((s: { tipo: string; template?: string; delay_horas: number }, i: number) => (
+              {((() => { try { return typeof selected.steps === 'string' ? JSON.parse(selected.steps) : selected.steps || []; } catch { return []; } })()).map((s: { tipo: string; template?: string; delay_horas: number }, i: number) => (
                 <div key={i} className="flex items-center gap-2">
                   {i > 0 && <div className="w-8 h-px bg-bibelo-border" />}
                   <div className="flex flex-col items-center gap-1 min-w-[80px]">

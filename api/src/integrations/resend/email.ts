@@ -42,23 +42,37 @@ export async function sendEmail(params: SendEmailParams): Promise<{ id: string }
   const from = rawFrom.includes("<") ? rawFrom : `Papelaria Bibelô <${rawFrom}>`;
   const replyTo = params.replyTo || process.env.EMAIL_REPLY_TO || "contato@papelariabibelo.com.br";
 
-  const { data, error } = await client.emails.send({
-    from,
-    to: params.to,
-    subject: params.subject,
-    html: params.html,
-    text: params.text,
-    reply_to: replyTo,
-    tags: params.tags,
-  });
+  // Tenta enviar com 1 retry para erros temporários (rate limit, server error)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { data, error } = await client.emails.send({
+      from,
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+      text: params.text,
+      reply_to: replyTo,
+      tags: params.tags,
+    });
 
-  if (error) {
-    logger.error("Erro ao enviar email via Resend", { error: error.message, to: params.to });
-    throw new Error(error.message);
+    if (error) {
+      const msg = error.message || "";
+      const isTemporary = msg.includes("rate") || msg.includes("429") || msg.includes("500") || msg.includes("503") || msg.includes("timeout");
+
+      if (isTemporary && attempt === 0) {
+        logger.warn("Resend erro temporário — retentando em 3s", { error: msg, to: params.to });
+        await new Promise((r) => setTimeout(r, 3000));
+        continue;
+      }
+
+      logger.error("Erro ao enviar email via Resend", { error: msg, to: params.to, attempt });
+      throw new Error(msg);
+    }
+
+    logger.info("Email enviado via Resend", { id: data?.id, to: params.to, subject: params.subject });
+    return data ? { id: data.id } : null;
   }
 
-  logger.info("Email enviado via Resend", { id: data?.id, to: params.to, subject: params.subject });
-  return data ? { id: data.id } : null;
+  return null;
 }
 
 // ── Enviar campanha para segmento ───────────────────────────────
@@ -153,14 +167,19 @@ export async function sendCampaignEmails(campaignId: string): Promise<{ sent: nu
     }
   }
 
-  // Atualiza totais da campanha
+  // Atualiza totais da campanha — marca concluída quando não há mais pendentes
+  const pendentes = await queryOne<{ count: number }>(
+    "SELECT COUNT(*)::int AS count FROM marketing.campaign_sends WHERE campaign_id = $1 AND status = 'pendente'",
+    [campaignId]
+  );
+
   await query(
     `UPDATE marketing.campaigns
      SET total_envios = total_envios + $2,
          status = CASE WHEN $3 = 0 THEN 'concluida' ELSE status END,
          atualizado_em = NOW()
      WHERE id = $1`,
-    [campaignId, sent, sends.length - sent - failed]
+    [campaignId, sent, pendentes?.count || 0]
   );
 
   logger.info("Campanha de email processada", { campaignId, sent, failed });

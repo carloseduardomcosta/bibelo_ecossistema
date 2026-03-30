@@ -4,6 +4,7 @@ import { query, queryOne } from "../db";
 import { logger } from "../utils/logger";
 import { authMiddleware } from "../middleware/auth";
 import rateLimit from "express-rate-limit";
+import { resolveGeo } from "../utils/geoip";
 
 export const trackingRouter = Router();
 
@@ -54,10 +55,14 @@ trackingRouter.post("/event", publicLimiter, async (req: Request, res: Response)
     [d.visitor_id]
   );
 
+  const geo = resolveGeo(req.ip);
+
   await query(
     `INSERT INTO crm.tracking_events
-     (visitor_id, customer_id, evento, pagina, pagina_tipo, resource_id, resource_nome, resource_preco, resource_imagem, referrer, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+     (visitor_id, customer_id, evento, pagina, pagina_tipo, resource_id, resource_nome,
+      resource_preco, resource_imagem, referrer, metadata,
+      ip, geo_city, geo_region, geo_country, geo_lat, geo_lon)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
     [
       d.visitor_id,
       link?.customer_id || null,
@@ -70,6 +75,12 @@ trackingRouter.post("/event", publicLimiter, async (req: Request, res: Response)
       d.resource_imagem || null,
       d.referrer || null,
       JSON.stringify(d.metadata || {}),
+      geo?.ip || null,
+      geo?.city || null,
+      geo?.region || null,
+      geo?.country || null,
+      geo?.lat || null,
+      geo?.lon || null,
     ]
   );
 
@@ -134,7 +145,7 @@ trackingRouter.get("/timeline", authMiddleware, async (req: Request, res: Respon
   const events = await query<Record<string, unknown>>(
     `SELECT t.id, t.visitor_id, t.evento, t.pagina, t.pagina_tipo,
             t.resource_id, t.resource_nome, t.resource_preco, t.resource_imagem,
-            t.metadata, t.criado_em,
+            t.metadata, t.criado_em, t.geo_city, t.geo_region, t.geo_country,
             c.nome AS customer_nome, c.email AS customer_email
      FROM crm.tracking_events t
      LEFT JOIN crm.customers c ON c.id = t.customer_id
@@ -196,6 +207,51 @@ trackingRouter.get("/visitor/:vid", authMiddleware, async (req: Request, res: Re
   );
 
   res.json(events);
+});
+
+// ── GET /api/tracking/geo — geolocalização dos visitantes ─────
+
+trackingRouter.get("/geo", authMiddleware, async (req: Request, res: Response) => {
+  const dias = Math.min(parseInt(String(req.query.dias || "30"), 10), 365);
+
+  const byRegion = await query<{ region: string; total: number; visitors: number }>(
+    `SELECT geo_region AS region,
+            COUNT(*)::int AS total,
+            COUNT(DISTINCT visitor_id)::int AS visitors
+     FROM crm.tracking_events
+     WHERE geo_country = 'BR' AND geo_region IS NOT NULL
+       AND criado_em > NOW() - $1::int * INTERVAL '1 day'
+     GROUP BY geo_region
+     ORDER BY visitors DESC`,
+    [dias]
+  );
+
+  const byCity = await query<{ city: string; region: string; total: number; visitors: number }>(
+    `SELECT geo_city AS city, geo_region AS region,
+            COUNT(*)::int AS total,
+            COUNT(DISTINCT visitor_id)::int AS visitors
+     FROM crm.tracking_events
+     WHERE geo_city IS NOT NULL
+       AND criado_em > NOW() - $1::int * INTERVAL '1 day'
+     GROUP BY geo_city, geo_region
+     ORDER BY visitors DESC
+     LIMIT 15`,
+    [dias]
+  );
+
+  const byCountry = await query<{ country: string; visitors: number }>(
+    `SELECT geo_country AS country,
+            COUNT(DISTINCT visitor_id)::int AS visitors
+     FROM crm.tracking_events
+     WHERE geo_country IS NOT NULL
+       AND criado_em > NOW() - $1::int * INTERVAL '1 day'
+     GROUP BY geo_country
+     ORDER BY visitors DESC
+     LIMIT 20`,
+    [dias]
+  );
+
+  res.json({ dias, byRegion, byCity, byCountry });
 });
 
 // ── GET /api/tracking/funnel — funil do site ──────────────────
