@@ -55,6 +55,11 @@ const eventSchema = z.object({
   resource_imagem: z.string().max(1000).optional(),
   referrer: z.string().max(2000).optional(),
   metadata: z.record(z.unknown()).optional(),
+  utm_source: z.string().max(100).optional(),
+  utm_medium: z.string().max(100).optional(),
+  utm_campaign: z.string().max(200).optional(),
+  utm_content: z.string().max(200).optional(),
+  utm_term: z.string().max(200).optional(),
 });
 
 trackingRouter.post("/event", publicLimiter, async (req: Request, res: Response) => {
@@ -89,8 +94,9 @@ trackingRouter.post("/event", publicLimiter, async (req: Request, res: Response)
     `INSERT INTO crm.tracking_events
      (visitor_id, customer_id, evento, pagina, pagina_tipo, resource_id, resource_nome,
       resource_preco, resource_imagem, referrer, metadata,
-      ip, geo_city, geo_region, geo_country, geo_lat, geo_lon)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+      ip, geo_city, geo_region, geo_country, geo_lat, geo_lon,
+      utm_source, utm_medium, utm_campaign, utm_content, utm_term)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
     [
       d.visitor_id,
       link?.customer_id || null,
@@ -109,6 +115,11 @@ trackingRouter.post("/event", publicLimiter, async (req: Request, res: Response)
       geo?.country || null,
       geo?.lat || null,
       geo?.lon || null,
+      d.utm_source || null,
+      d.utm_medium || null,
+      d.utm_campaign || null,
+      d.utm_content || null,
+      d.utm_term || null,
     ]
   );
 

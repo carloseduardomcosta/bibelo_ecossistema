@@ -54,8 +54,9 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── leads.ts       ← captura leads + verificação email + confirm + stats + config popups
 │   │   │   ├── leads-script.ts ← GET /api/leads/popup.js — script JS popup + exit-intent
 │   │   │   ├── email.ts       ← descadastro 1-click LGPD (público, HMAC token)
-│   │   │   ├── tracking.ts    ← eventos tracking + timeline + stats + funil + geo (público + protegido)
-│   │   │   └── tracking-script.ts ← GET /api/tracking/bibelo.js — script tracking NuvemShop
+│   │   │   ├── tracking.ts    ← eventos tracking + timeline + stats + funil + geo + UTM (público + protegido)
+│   │   │   ├── tracking-script.ts ← GET /api/tracking/bibelo.js — script tracking NuvemShop + captura UTM
+│   │   │   └── links.ts      ← página de links (substitui Linktree) + redirect com tracking de cliques
 │   │   ├── services/
 │   │   │   ├── customer.service.ts ← upsert, score, timeline, segments
 │   │   │   └── flow.service.ts    ← motor de fluxos: trigger, execute, advance, carrinho abandonado, visitou-não-comprou
@@ -337,6 +338,11 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `POST /api/flows/:id/toggle` — ativar/desativar
 - `GET  /api/flows/:id/executions/:execId` — detalhe execução + steps
 
+### Página de Links (público — substitui Linktree)
+- `GET  /links` — página HTML com links da Bibelô (servida via Nginx rewrite)
+- `GET  /api/links/go/:slug` — redirect com tracking de clique + UTM automático
+- `GET  /api/links/stats` — stats de cliques por link (últimos 30 dias)
+
 ### Webhooks (validação HMAC)
 - `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop + dispara fluxos automáticos
 - `POST /api/webhooks/bling` — recebe eventos do Bling (contatos, pedidos, estoque)
@@ -613,6 +619,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - d11e2d9 feat: verificação de email para leads — cupom só após confirmar (anti-fake)
 - 6662186 fix: normaliza email lowercase na captura de leads + sanitiza nome contra XSS
 - d4ca1ac docs: atualiza CLAUDE.md — opt-out LGPD, verificação email leads, rotas, integrações
+- 481d9c7 fix: auditoria tracking — IP real, geolocalização, upsert case-insensitive, merge duplicados
 - 012e928 feat: pagina Pedidos — lista completa de compras Bling com filtros e detalhe
 
 
@@ -666,6 +673,8 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Drip Nutrição Lead | ✅ produção | dia 2 produtos populares, dia 5 lembrete cupom, dia 10 prova social |
 | Lead Quente sem Compra | ✅ produção | checker 10min: add_to_cart sem purchase em 3h → email com cupom |
 | Vinculação Visitor→Customer | ✅ produção | popup vincula visitor_id ao customer, atualiza tracking retroativo, identify case-insensitive |
+| UTM Tracking | ✅ produção | script JS captura utm_source/medium/campaign da URL, persiste cookie 30d, grava em colunas dedicadas |
+| Página de Links | ✅ produção | webhook.papelariabibelo.com.br/links — substitui Linktree, branding Bibelô, cliques rastreados, UTM auto |
 | Segurança (Pentest) | ✅ produção | 9 fixes (auto-admin, SQL injection, XSS DOMPurify, IP spoof, HMAC, idempotency, CSP/HSTS, health sanitizado) |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
 
@@ -684,4 +693,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 30 de Março de 2026 — Página Pedidos (lista Bling + filtros + detalhe), opt-out LGPD, verificação email leads, template novidades redesenhado*
+*Última atualização: 30 de Março de 2026 — UTM tracking, página de links própria (substitui Linktree), auditoria tracking completa (IP real, geo, upsert case-insensitive)*

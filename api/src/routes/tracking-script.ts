@@ -50,6 +50,32 @@ trackingScriptRouter.get("/bibelo.js", (_req: Request, res: Response) => {
     setCookie(VID_COOKIE, vid, 365);
   }
 
+  // ── UTM params — captura da URL e persiste na sessão ────
+  var UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+  var UTM_COOKIE = '_bibelo_utm';
+
+  function captureUtm() {
+    var params = new URLSearchParams(window.location.search);
+    var utm = {};
+    var found = false;
+    UTM_KEYS.forEach(function(k) {
+      var v = params.get(k);
+      if (v) { utm[k] = v; found = true; }
+    });
+    if (found) {
+      setCookie(UTM_COOKIE, JSON.stringify(utm), 30);
+      return utm;
+    }
+    // Recupera da sessão (navegação interna perde query string)
+    var saved = getCookie(UTM_COOKIE);
+    if (saved) {
+      try { return JSON.parse(saved); } catch(e) { return {}; }
+    }
+    return {};
+  }
+
+  var utmData = captureUtm();
+
   // ── Enviar evento (com debounce) ────────────────────────
   function track(evento, data) {
     var now = Date.now();
@@ -62,6 +88,11 @@ trackingScriptRouter.get("/bibelo.js", (_req: Request, res: Response) => {
       pagina: window.location.href,
       referrer: document.referrer || undefined
     };
+
+    // Merge UTM data
+    for (var u in utmData) {
+      if (utmData.hasOwnProperty(u)) payload[u] = utmData[u];
+    }
 
     // Merge data
     if (data) {
