@@ -137,7 +137,7 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
   const apiBase = process.env.WEBHOOK_URL || "https://webhook.papelariabibelo.com.br";
 
   const linksHtml = LINKS.map(link => {
-    const href = `${apiBase}/api/links/go/${link.slug}`;
+    const href = `/api/links/go/${link.slug}`;
     const cls = link.destaque ? "link-btn destaque" : "link-btn";
     return `<a href="${href}" target="_blank" rel="noopener" class="${cls}"><span class="icon">${link.icone}</span><span class="label">${link.titulo}</span><svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>`;
   }).join("\n      ");
