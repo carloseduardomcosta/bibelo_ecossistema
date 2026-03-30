@@ -9,17 +9,22 @@ import { resolveGeo } from "../utils/geoip";
 export const trackingRouter = Router();
 
 // ── Filtro de tráfego interno/testes ─────────────────────────
-// Exclui: IPs Docker internos, customers de teste, IPs do admin (via .env)
+// Exclui: customers de teste, IPs do admin (via .env)
+// NÃO exclui 172.21.% — eventos antigos gravados com IP do Docker proxy
 const INTERNAL_FILTER = `
-  AND t.ip::text NOT LIKE '172.21.%'
-  AND t.ip::text NOT LIKE '163.116.%'
-  AND t.ip::text NOT LIKE '167.238.%'
   AND NOT EXISTS (
     SELECT 1 FROM crm.customers c2
     WHERE c2.id = t.customer_id
       AND (c2.canal_origem = 'teste' OR c2.email LIKE '%+teste@%')
   )
 `;
+
+// IPs de rede Docker interna (proxy) — quando o request vem desses, usamos X-Forwarded-For
+const DOCKER_NETS = ["172.21.", "172.22.", "172.23.", "10.0.", "192.168."];
+function isDockerProxy(ip: string | undefined): boolean {
+  if (!ip) return false;
+  return DOCKER_NETS.some(net => ip.includes(net));
+}
 
 function getInternalIps(): string[] {
   return (process.env.INTERNAL_IPS || "").split(",").map(ip => ip.trim()).filter(Boolean);
@@ -72,8 +77,12 @@ trackingRouter.post("/event", publicLimiter, async (req: Request, res: Response)
     [d.visitor_id]
   );
 
-  // Usa IP real do socket (não X-Forwarded-For) para prevenir spoofing em endpoint público
-  const realIp = req.socket.remoteAddress || req.ip;
+  // Se request vem do proxy Docker/Nginx, confia no X-Forwarded-For (IP real do visitante)
+  // Caso contrário usa socket (previne spoofing em acesso direto)
+  const socketIp = req.socket.remoteAddress || "";
+  const realIp = isDockerProxy(socketIp)
+    ? (req.headers["x-forwarded-for"]?.toString().split(",")[0].trim() || socketIp)
+    : socketIp;
   const geo = resolveGeo(realIp);
 
   await query(
@@ -122,9 +131,9 @@ trackingRouter.post("/identify", publicLimiter, async (req: Request, res: Respon
 
   const { visitor_id, email } = parsed.data;
 
-  // Busca cliente pelo email
+  // Busca cliente pelo email (case-insensitive)
   const customer = await queryOne<{ id: string }>(
-    "SELECT id FROM crm.customers WHERE email = $1",
+    "SELECT id FROM crm.customers WHERE LOWER(email) = LOWER($1)",
     [email]
   );
 
@@ -250,42 +259,49 @@ trackingRouter.get("/visitor/:vid", authMiddleware, async (req: Request, res: Re
 
 trackingRouter.get("/geo", authMiddleware, async (req: Request, res: Response) => {
   const dias = Math.min(parseInt(String(req.query.dias || "30"), 10), 365);
+  const ips = getInternalIps();
+  const ipFilter = ips.length > 0
+    ? `AND (ip IS NULL OR ip::text NOT IN (${ips.map((_, i) => `$${i + 2}`).join(",")}))`
+    : "";
 
   const byRegion = await query<{ region: string; total: number; visitors: number }>(
     `SELECT geo_region AS region,
             COUNT(*)::int AS total,
             COUNT(DISTINCT visitor_id)::int AS visitors
-     FROM crm.tracking_events
+     FROM crm.tracking_events t
      WHERE geo_country = 'BR' AND geo_region IS NOT NULL
        AND criado_em > NOW() - $1::int * INTERVAL '1 day'
+       ${INTERNAL_FILTER} ${ipFilter}
      GROUP BY geo_region
      ORDER BY visitors DESC`,
-    [dias]
+    [dias, ...ips]
   );
 
   const byCity = await query<{ city: string; region: string; total: number; visitors: number }>(
     `SELECT geo_city AS city, geo_region AS region,
             COUNT(*)::int AS total,
             COUNT(DISTINCT visitor_id)::int AS visitors
-     FROM crm.tracking_events
+     FROM crm.tracking_events t
      WHERE geo_city IS NOT NULL
        AND criado_em > NOW() - $1::int * INTERVAL '1 day'
+       ${INTERNAL_FILTER} ${ipFilter}
      GROUP BY geo_city, geo_region
      ORDER BY visitors DESC
      LIMIT 15`,
-    [dias]
+    [dias, ...ips]
   );
 
   const byCountry = await query<{ country: string; visitors: number }>(
     `SELECT geo_country AS country,
             COUNT(DISTINCT visitor_id)::int AS visitors
-     FROM crm.tracking_events
+     FROM crm.tracking_events t
      WHERE geo_country IS NOT NULL
        AND criado_em > NOW() - $1::int * INTERVAL '1 day'
+       ${INTERNAL_FILTER} ${ipFilter}
      GROUP BY geo_country
      ORDER BY visitors DESC
      LIMIT 20`,
-    [dias]
+    [dias, ...ips]
   );
 
   res.json({ dias, byRegion, byCity, byCountry });

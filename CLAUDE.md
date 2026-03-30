@@ -392,6 +392,8 @@ Este projeto pode ter **múltiplos agents Claude trabalhando simultaneamente**.
 - **Cupom só após verificação de email** — popup NÃO entrega cupom na tela. Envia email com link HMAC de confirmação. Só ao clicar o cupom é revelado e o fluxo de boas-vindas é disparado. Previne emails fake/temporários.
 - **Opt-out LGPD respeitado em tudo** — clientes com `email_optout=true` são excluídos de campanhas (sends marcados como 'ignorado') e fluxos automáticos (steps de email cancelados). Link de descadastro no footer de todos os emails.
 - **Descadastro notifica o admin** — ao fazer opt-out, email é enviado para carloseduardocostatj@gmail.com com dados do cliente.
+- **IP real do visitante**: Tracking resolve IP via `X-Forwarded-For` quando request vem do proxy Docker (172.21.x). Nunca usar `req.socket.remoteAddress` direto em endpoints públicos atrás de Nginx.
+- **Busca de email sempre case-insensitive** — `LOWER(email) = LOWER($1)` em upsertCustomer, identify, e qualquer lookup por email. Evita duplicatas por diferença de capitalização.
 
 ---
 
@@ -603,6 +605,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - e893017 feat: opt-out de email LGPD — descadastro 1-click, filtro em campanhas e fluxos
 - d11e2d9 feat: verificação de email para leads — cupom só após confirmar (anti-fake)
 - 6662186 fix: normaliza email lowercase na captura de leads + sanitiza nome contra XSS
+- d4ca1ac docs: atualiza CLAUDE.md — opt-out LGPD, verificação email leads, rotas, integrações
 
 
 ## Protocolo de atualização deste arquivo
@@ -645,16 +648,16 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Opt-out Email (LGPD) | ✅ produção | descadastro 1-click, link em todos os emails, campanhas e fluxos respeitam opt-out |
 | Evolution WhatsApp | ⏳ pendente | aguardando configuração |
 | Painel Marketing Frontend | ✅ produção | 3 abas: Visão Geral (KPIs, gráficos), Fluxos (detalhe+toggle), Leads (tabela+stats) |
-| Tracking Comportamental | ✅ produção | page_view, product_view, add_to_cart, search, checkout — script JS via GTM |
+| Tracking Comportamental | ✅ produção | page_view, product_view, add_to_cart, search, checkout — script JS via GTM, IP real via X-Forwarded-For |
 | Visitou mas não comprou | ✅ produção | detecta 2+ views do mesmo produto em 24h, email 4h depois |
 | Funil do Site | ✅ produção | visitantes → produto → carrinho → checkout → compra (7d) |
-| Geolocalização Visitantes | ✅ produção | geoip-lite (MaxMind offline), IP → cidade/estado/país, dashboard por estado e cidade |
+| Geolocalização Visitantes | ✅ produção | geoip-lite (MaxMind offline), IP real → cidade/estado/país, filtro INTERNAL_IPS, geo endpoint filtrado |
 | Score de Leads | ✅ produção | engajamento (popup +15, views +3, cart +10, emails +3), segmentos lead/lead_quente |
 | Lead → Pipeline | ✅ produção | deal criado automaticamente na captura (etapa prospecção, prob 20%) |
 | Notificação Leads | ✅ produção | sino mostra leads últimas 72h, badge rosa, refresh 2min |
 | Drip Nutrição Lead | ✅ produção | dia 2 produtos populares, dia 5 lembrete cupom, dia 10 prova social |
 | Lead Quente sem Compra | ✅ produção | checker 10min: add_to_cart sem purchase em 3h → email com cupom |
-| Vinculação Visitor→Customer | ✅ produção | popup vincula visitor_id ao customer, atualiza tracking retroativo |
+| Vinculação Visitor→Customer | ✅ produção | popup vincula visitor_id ao customer, atualiza tracking retroativo, identify case-insensitive |
 | Segurança (Pentest) | ✅ produção | 9 fixes (auto-admin, SQL injection, XSS DOMPurify, IP spoof, HMAC, idempotency, CSP/HSTS, health sanitizado) |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
 
@@ -673,4 +676,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 30 de Março de 2026 — Opt-out LGPD (descadastro 1-click), verificação de email para leads (anti-fake), template novidades redesenhado*
+*Última atualização: 30 de Março de 2026 — Auditoria tracking: IP real via X-Forwarded-For, geo 100%, upsert case-insensitive, merge duplicados, geo endpoint filtrado*

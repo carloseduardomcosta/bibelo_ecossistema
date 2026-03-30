@@ -73,7 +73,7 @@ export async function upsertCustomer(dados: CustomerData): Promise<Customer> {
 
   if (!existing && dados.email) {
     existing = await queryOne<Customer>(
-      "SELECT * FROM crm.customers WHERE email = $1",
+      "SELECT * FROM crm.customers WHERE LOWER(email) = LOWER($1)",
       [dados.email]
     );
   }
