@@ -40,7 +40,7 @@ function gerarLinkVerificacao(email: string): string {
 async function enviarEmailVerificacao(email: string, cupom: string | null, nome: string | null): Promise<void> {
   const link = gerarLinkVerificacao(email);
   const descontoTexto = cupom === "BIBELO10" ? "10% OFF" : "7% OFF";
-  const nomeDisplay = nome || "Cliente";
+  const nomeDisplay = (nome || "Cliente").replace(/[<>"'&]/g, "");
 
   await sendEmail({
     to: email,
@@ -112,7 +112,8 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
     return;
   }
 
-  const { email, nome, telefone, popup_id, visitor_id, pagina } = parsed.data;
+  const { nome, telefone, popup_id, visitor_id, pagina } = parsed.data;
+  const email = parsed.data.email.toLowerCase().trim();
 
   // Busca cupom do popup
   let cupom: string | null = null;
