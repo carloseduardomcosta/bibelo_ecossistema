@@ -1,5 +1,5 @@
 import axios from "axios";
-import { query, queryOne } from "../../db";
+import { db, query, queryOne } from "../../db";
 import { logger } from "../../utils/logger";
 
 // ── Tipos ─────────────────────────────────────────────────────
@@ -122,25 +122,37 @@ export async function refreshReviewsCache(): Promise<PlaceReviews | null> {
 
   await ensureReviewsTable();
 
-  // Limpa cache antigo e insere novos
-  await query("DELETE FROM marketing.google_reviews");
+  // Limpa cache antigo e insere novos dentro de uma transação
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
 
-  for (const r of data.reviews) {
-    await query(
-      `INSERT INTO marketing.google_reviews
-       (author_name, rating, review_text, review_time, relative_time, profile_photo_url, overall_rating, total_reviews)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [r.author_name, r.rating, r.text, r.time, r.relative_time_description,
-       r.profile_photo_url, data.overall_rating, data.total_reviews]
-    );
-  }
+    await client.query("DELETE FROM marketing.google_reviews");
 
-  // Salva fotos no primeiro registro (campo profile_photo_url como JSON das fotos do local)
-  if (data.photos.length > 0 && data.reviews.length > 0) {
-    await query(
-      `UPDATE marketing.google_reviews SET profile_photo_url = $1 WHERE id = (SELECT MIN(id) FROM marketing.google_reviews)`,
-      [JSON.stringify(data.photos)]
-    );
+    for (const r of data.reviews) {
+      await client.query(
+        `INSERT INTO marketing.google_reviews
+         (author_name, rating, review_text, review_time, relative_time, profile_photo_url, overall_rating, total_reviews)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [r.author_name, r.rating, r.text, r.time, r.relative_time_description,
+         r.profile_photo_url, data.overall_rating, data.total_reviews]
+      );
+    }
+
+    // Salva fotos no primeiro registro (campo profile_photo_url como JSON das fotos do local)
+    if (data.photos.length > 0 && data.reviews.length > 0) {
+      await client.query(
+        `UPDATE marketing.google_reviews SET profile_photo_url = $1 WHERE id = (SELECT MIN(id) FROM marketing.google_reviews)`,
+        [JSON.stringify(data.photos)]
+      );
+    }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
 
   logger.info("Google Reviews atualizados", {

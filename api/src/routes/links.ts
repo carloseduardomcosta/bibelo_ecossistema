@@ -5,6 +5,7 @@ import { resolveGeo } from "../utils/geoip";
 import { upsertCustomer } from "../services/customer.service";
 import { sendEmail } from "../integrations/resend/email";
 import { logger } from "../utils/logger";
+import { authMiddleware } from "../middleware/auth";
 import rateLimit from "express-rate-limit";
 
 export const linksRouter = Router();
@@ -118,7 +119,7 @@ linksRouter.get("/go/:slug", limiter, async (req: Request, res: Response) => {
 
 // ── GET /api/links/stats — stats dos cliques (protegido) ─────
 
-linksRouter.get("/stats", async (_req: Request, res: Response) => {
+linksRouter.get("/stats", authMiddleware, async (_req: Request, res: Response) => {
   const stats = await query<{ slug: string; cliques: string; ultimo: string }>(
     `SELECT slug, COUNT(*)::text AS cliques, MAX(criado_em)::text AS ultimo
      FROM marketing.link_clicks

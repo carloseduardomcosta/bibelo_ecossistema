@@ -282,7 +282,7 @@ financeiroRouter.put("/lancamentos/:id", async (req: Request, res: Response) => 
   const parse = updateSchema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: "Dados inválidos" }); return; }
 
-  const ALLOWED_LANC = ["tipo","descricao","valor","data","status","categoria_id","observacao"];
+  const ALLOWED_LANC = ["tipo","descricao","valor","data","status","categoria_id","observacoes","qtd_vendas","forma_pagamento"];
   const safeEntries = Object.entries(parse.data).filter(([k, v]) => v !== undefined && ALLOWED_LANC.includes(k));
   if (safeEntries.length === 0) { res.status(400).json({ error: "Nenhum campo para atualizar" }); return; }
 
@@ -388,7 +388,7 @@ financeiroRouter.put("/despesas-fixas/:id", async (req: Request, res: Response) 
   const parse = schema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: "Dados inválidos" }); return; }
 
-  const ALLOWED_DESP = ["nome","valor","dia_vencimento","categoria_id","observacoes","ativo"];
+  const ALLOWED_DESP = ["descricao","valor","dia_vencimento","categoria_id","observacoes","ativo"];
   const safeEntries = Object.entries(parse.data).filter(([k, v]) => v !== undefined && ALLOWED_DESP.includes(k));
   if (safeEntries.length === 0) { res.status(400).json({ error: "Nenhum campo" }); return; }
 
@@ -682,8 +682,8 @@ financeiroRouter.get("/dre", async (req: Request, res: Response) => {
   let lFilter = "";
 
   if (mes) {
-    bFilter = `AND o.criado_bling >= '${mes}-01'::date AND o.criado_bling < '${mes}-01'::date + INTERVAL '1 month'`;
-    lFilter = `AND l.data >= '${mes}-01'::date AND l.data < '${mes}-01'::date + INTERVAL '1 month'`;
+    bFilter = `AND o.criado_bling >= $1::date AND o.criado_bling < $1::date + INTERVAL '1 month'`;
+    lFilter = `AND l.data >= $1::date AND l.data < $1::date + INTERVAL '1 month'`;
   } else {
     bFilter = blingDateFilter(periodo);
     lFilter = lancDateFilter(periodo);
@@ -696,14 +696,14 @@ financeiroRouter.get("/dre", async (req: Request, res: Response) => {
       COUNT(*)::text AS pedidos,
       CASE WHEN COUNT(*) > 0 THEN ROUND(SUM(o.valor) / COUNT(*), 2)::text ELSE '0' END AS ticket
     FROM sync.bling_orders o WHERE 1=1 ${bFilter}
-  `, []);
+  `, mes ? [`${mes}-01`] : []);
 
   // Outras receitas manuais
   const outrasReceitas = await queryOne<{ total: string }>(`
     SELECT COALESCE(SUM(l.valor), 0)::text AS total
     FROM financeiro.lancamentos l
     WHERE l.tipo = 'receita' AND l.status != 'cancelado' ${lFilter}
-  `, []);
+  `, mes ? [`${mes}-01`] : []);
 
   // Despesas por categoria
   const despesasCat = await query<{ categoria: string; cor: string; valor: string }>(`
@@ -712,14 +712,14 @@ financeiroRouter.get("/dre", async (req: Request, res: Response) => {
     JOIN financeiro.categorias c ON c.id = l.categoria_id
     WHERE l.tipo = 'despesa' AND l.status != 'cancelado' ${lFilter}
     GROUP BY c.nome, c.cor ORDER BY SUM(l.valor) DESC
-  `, []);
+  `, mes ? [`${mes}-01`] : []);
 
   // Custo de produtos (NFs de entrada contabilizadas)
   const custoNfs = await queryOne<{ total: string }>(`
     SELECT COALESCE(SUM(l.valor), 0)::text AS total
     FROM financeiro.lancamentos l
     WHERE l.tipo = 'despesa' AND l.status != 'cancelado' AND l.referencia_tipo = 'nf_entrada' ${lFilter}
-  `, []);
+  `, mes ? [`${mes}-01`] : []);
 
   // Despesas fixas do período
   const despFixas = await queryOne<{ total: string }>(`

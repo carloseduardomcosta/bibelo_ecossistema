@@ -118,7 +118,7 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
         FROM financeiro.notas_entrada_itens ni
         JOIN financeiro.notas_entrada ne ON ne.id = ni.nota_id
         WHERE ne.status != 'cancelada'
-          AND ne.data_emissao >= CURRENT_DATE - INTERVAL '${dias} days'
+          AND ne.data_emissao >= CURRENT_DATE - make_interval(days => $2)
         ORDER BY LOWER(ni.descricao), ne.data_emissao DESC
       )
       SELECT
@@ -165,7 +165,7 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
         COALESCE(ns.estoque, (bp.dados_raw->'estoque'->>'saldoVirtualTotal')::int, 0) DESC,
         i.data_emissao DESC
       LIMIT $1
-    `, [lim]);
+    `, [lim, dias]);
   }
 
   // Expansão automática: se poucos produtos no período, amplia até 60 dias

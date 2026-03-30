@@ -2,6 +2,10 @@ import { Router, Request, Response } from "express";
 import { getCachedReviews } from "../integrations/google/reviews";
 import rateLimit from "express-rate-limit";
 
+function escJs(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3c').replace(/>/g, '\\x3e').replace(/\n/g, '\\n');
+}
+
 export const reviewsWidgetRouter = Router();
 
 const limiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: { error: "Rate limit" } });
@@ -32,8 +36,13 @@ reviewsWidgetRouter.get("/widget.js", (_req: Request, res: Response) => {
 (function() {
   'use strict';
 
-  var API = '${apiBase}/api/reviews/data';
+  var API = '${escJs(apiBase)}/api/reviews/data';
   var REVIEW_LINK = 'https://g.page/r/CdahFa43hhIXEAE/review';
+
+  function escH(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
 
   // Só exibe na home page
   var path = window.location.pathname;
@@ -90,7 +99,7 @@ reviewsWidgetRouter.get("/widget.js", (_req: Request, res: Response) => {
     if (validPhotos.length > 0) {
       photosHtml += '<div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-bottom:40px;">';
       validPhotos.forEach(function(url) {
-        photosHtml += '<img src="' + url + '" alt="Foto de cliente" loading="lazy" style="width:200px;height:200px;object-fit:cover;border-radius:16px;flex-shrink:0;border:3px solid #fce7f3;box-shadow:0 4px 12px rgba(244,63,142,0.1);transition:transform 0.3s;" onmouseover="this.style.transform=\\'scale(1.05)\\'" onmouseout="this.style.transform=\\'none\\'" />';
+        photosHtml += '<img src="' + escH(url) + '" alt="Foto de cliente" loading="lazy" style="width:200px;height:200px;object-fit:cover;border-radius:16px;flex-shrink:0;border:3px solid #fce7f3;box-shadow:0 4px 12px rgba(244,63,142,0.1);transition:transform 0.3s;" onmouseover="this.style.transform=\\'scale(1.05)\\'" onmouseout="this.style.transform=\\'none\\'" />';
       });
       photosHtml += '</div>';
     }
@@ -112,19 +121,19 @@ reviewsWidgetRouter.get("/widget.js", (_req: Request, res: Response) => {
       var photoUrl = r.profile_photo_url;
       var authorPhoto;
       if (isValidUrl(photoUrl)) {
-        authorPhoto = '<img src="' + photoUrl + '" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid #fce7f3;" />';
+        authorPhoto = '<img src="' + escH(photoUrl) + '" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid #fce7f3;" />';
       } else {
-        authorPhoto = '<div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#fce7f3,#f43f8e);display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;font-weight:700;">' + (r.author_name || 'C').charAt(0).toUpperCase() + '</div>';
+        authorPhoto = '<div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#fce7f3,#f43f8e);display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;font-weight:700;">' + escH((r.author_name || 'C').charAt(0).toUpperCase()) + '</div>';
       }
 
       reviewsHtml += '<div data-br-review="' + idx + '" style="min-width:340px;max-width:400px;flex-shrink:0;background:#fff;border:2px solid #fce7f3;border-radius:20px;padding:28px;box-shadow:0 4px 16px rgba(244,63,142,0.06);transition:transform 0.2s,box-shadow 0.2s;" onmouseover="this.style.transform=\\'translateY(-4px)\\';this.style.boxShadow=\\'0 8px 24px rgba(244,63,142,0.12)\\'" onmouseout="this.style.transform=\\'none\\';this.style.boxShadow=\\'0 4px 16px rgba(244,63,142,0.06)\\'">';
       reviewsHtml += '<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">';
       reviewsHtml += authorPhoto;
-      reviewsHtml += '<div><p style="font-size:16px;font-weight:700;color:#333;margin:0;">' + (r.author_name || 'Cliente') + '</p>';
-      reviewsHtml += '<p style="font-size:12px;color:#a07090;margin:2px 0 0;">via Google \\u2022 ' + (r.relative_time_description || '') + '</p></div>';
+      reviewsHtml += '<div><p style="font-size:16px;font-weight:700;color:#333;margin:0;">' + escH(r.author_name || 'Cliente') + '</p>';
+      reviewsHtml += '<p style="font-size:12px;color:#a07090;margin:2px 0 0;">via Google \\u2022 ' + escH(r.relative_time_description || '') + '</p></div>';
       reviewsHtml += '</div>';
       reviewsHtml += '<p style="font-size:18px;margin:0 0 12px;line-height:1;">' + rStars + '</p>';
-      reviewsHtml += '<p style="font-size:15px;color:#555;line-height:1.7;margin:0;font-style:italic;">\\u201C' + text + '\\u201D</p>';
+      reviewsHtml += '<p style="font-size:15px;color:#555;line-height:1.7;margin:0;font-style:italic;">\\u201C' + escH(text) + '\\u201D</p>';
       reviewsHtml += '</div>';
     });
     reviewsHtml += '</div>';

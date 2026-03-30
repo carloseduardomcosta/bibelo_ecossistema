@@ -100,6 +100,20 @@ export const syncWorker = new Worker(
           break;
         }
 
+        case "cleanup-old-data": {
+          const tracking = await query(
+            "DELETE FROM crm.tracking_events WHERE criado_em < NOW() - INTERVAL '90 days'"
+          );
+          const logs = await query(
+            "DELETE FROM sync.sync_logs WHERE criado_em < NOW() - INTERVAL '60 days'"
+          );
+          const trackingDeleted = (tracking as any).rowCount || 0;
+          const logsDeleted = (logs as any).rowCount || 0;
+          logger.info("Cleanup concluído", { trackingDeleted, logsDeleted });
+          result = { trackingDeleted, logsDeleted, processed: trackingDeleted + logsDeleted };
+          break;
+        }
+
         default:
           logger.warn("Job desconhecido", { name: job.name });
           return;
@@ -162,7 +176,12 @@ export async function registerScheduledJobs(): Promise<void> {
     repeat: { pattern: "0 6 * * *" },
   });
 
-  logger.info("Jobs agendados registrados: bling-sync (30min), scores (2h), google-reviews (6h)");
+  // Cleanup dados antigos: diário às 4h (tracking 90d, sync_logs 60d)
+  await syncQueue.add("cleanup-old-data", {}, {
+    repeat: { pattern: "0 4 * * *" },
+  });
+
+  logger.info("Jobs agendados registrados: bling-sync (30min), scores (2h), google-reviews (6h), cleanup (4h)");
 }
 
 // ── Event listeners ────────────────────────────────────────────

@@ -39,6 +39,7 @@ export async function exchangeCode(code: string): Promise<BlingTokens> {
         Authorization: `Basic ${credentials}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
+      timeout: 15000,
     }
   );
 
@@ -77,6 +78,7 @@ export async function refreshToken(): Promise<BlingTokens> {
         Authorization: `Basic ${credentials}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
+      timeout: 15000,
     }
   );
 
@@ -119,6 +121,8 @@ async function getStoredTokens(): Promise<BlingTokens | null> {
 
 // ── Get Valid Token (auto-refresh) ─────────────────────────────
 
+let refreshPromise: Promise<string> | null = null;
+
 export async function getValidToken(): Promise<string> {
   const stored = await getStoredTokens();
 
@@ -129,8 +133,12 @@ export async function getValidToken(): Promise<string> {
   // Renova se expira em menos de 5 minutos
   const expiresAt = new Date(stored.expires_at).getTime();
   if (Date.now() > expiresAt - 5 * 60 * 1000) {
-    const renewed = await refreshToken();
-    return renewed.access_token;
+    if (!refreshPromise) {
+      refreshPromise = refreshToken()
+        .then((renewed) => renewed.access_token)
+        .finally(() => { refreshPromise = null; });
+    }
+    return refreshPromise;
   }
 
   return stored.access_token;

@@ -327,7 +327,7 @@ function paginaErroVerificacao(msg: string): string {
   <div style="background:#fff;border-radius:16px;padding:40px;max-width:440px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
     <div style="width:64px;height:64px;background:#fff0f0;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px;">!</div>
     <h1 style="color:#333;font-size:22px;margin:0 0 10px;">Algo deu errado</h1>
-    <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 20px;">${msg}</p>
+    <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 20px;">${esc(msg)}</p>
     <a href="https://www.papelariabibelo.com.br" style="display:inline-block;background:#fe68c4;color:#fff;padding:12px 30px;border-radius:30px;text-decoration:none;font-weight:600;font-size:14px;">
       Voltar para a loja
     </a>

@@ -41,7 +41,7 @@ function webhookAuth(req: Request, res: Response, next: () => void): void {
     return;
   }
 
-  const rawBody = JSON.stringify(req.body);
+  const rawBody = (req as any).rawBody?.toString() || JSON.stringify(req.body);
   if (!validateHMAC(rawBody, signature)) {
     logger.warn("NuvemShop webhook: HMAC inválido");
     res.status(401).json({ error: "Assinatura inválida" });

@@ -276,7 +276,8 @@ function periodoToInterval(periodo?: string): string {
 productsRouter.get("/analytics/profitability", async (req: Request, res: Response) => {
   const limit = Math.min(Number(req.query.limit) || 20, 100);
   const intervalo = periodoToInterval(req.query.periodo as string);
-  const dateFilter = intervalo ? `AND o.criado_bling >= NOW() - INTERVAL '${intervalo}'` : "";
+  const dateFilterWithLimit = intervalo ? `AND o.criado_bling >= NOW() - $2::interval` : "";
+  const dateFilterNoLimit = intervalo ? `AND o.criado_bling >= NOW() - $1::interval` : "";
 
   // Top produtos por receita
   const topProdutos = await query<{
@@ -294,11 +295,11 @@ productsRouter.get("/analytics/profitability", async (req: Request, res: Respons
     FROM sync.bling_orders o,
          jsonb_array_elements(o.itens) AS item
     JOIN sync.bling_products p ON (p.sku = item->>'codigo' OR p.bling_id = item->'produto'->>'id')
-    WHERE o.status NOT IN ('cancelado', 'devolvido') ${dateFilter}
+    WHERE o.status NOT IN ('cancelado', 'devolvido') ${dateFilterWithLimit}
     GROUP BY p.bling_id, p.nome, p.sku, p.preco_custo
     ORDER BY SUM((item->>'quantidade')::numeric * (item->>'valor')::numeric) DESC
     LIMIT $1
-  `, [limit]);
+  `, intervalo ? [limit, intervalo] : [limit]);
 
   const formattedTop = topProdutos.map((p) => {
     const receita = parseFloat(p.receita);
@@ -334,10 +335,10 @@ productsRouter.get("/analytics/profitability", async (req: Request, res: Respons
     FROM sync.bling_orders o,
          jsonb_array_elements(o.itens) AS item
     JOIN sync.bling_products p ON (p.sku = item->>'codigo' OR p.bling_id = item->'produto'->>'id')
-    WHERE o.status NOT IN ('cancelado', 'devolvido') ${dateFilter}
+    WHERE o.status NOT IN ('cancelado', 'devolvido') ${dateFilterNoLimit}
     GROUP BY p.categoria
     ORDER BY SUM((item->>'quantidade')::numeric * (item->>'valor')::numeric) DESC
-  `);
+  `, intervalo ? [intervalo] : []);
 
   res.json({
     resumo: {

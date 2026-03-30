@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
+const JWT_SECRET: string = process.env.JWT_SECRET || "";
+if (!JWT_SECRET) throw new Error("JWT_SECRET environment variable is required");
+
 export interface AuthPayload {
   userId: string;
   email:  string;
@@ -24,7 +27,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 
   const token = header.substring(7);
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET!) as AuthPayload;
+    const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
     req.user = payload;
     next();
   } catch {

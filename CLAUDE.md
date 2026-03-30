@@ -759,5 +759,28 @@ git push origin main
 
 ---
 
+## Code Review Completo (comando: /review)
+
+Quando o dono pedir um "code review completo" ou "/review", executar a instrução abaixo:
+
+### Escopo
+- Todos os arquivos fonte (incluindo config, scripts e infra)
+- Todas as features, módulos e camadas (frontend, backend, DB, API)
+
+### Áreas de revisão
+
+1. **Código duplicado e morto** — lógica duplicada, funções/componentes repetidos, imports/exports/variáveis não usados, dead code paths. Consolidar padrões repetidos em abstrações reutilizáveis.
+2. **Lógica e arquitetura** — lógica complexa demais, fluxo de dados e state management, N+1 queries, índices faltando, loops ineficientes, design patterns melhores.
+3. **Segurança** — secrets hardcoded, SQL injection, XSS, command injection, dependências com CVEs, validação de input faltando, auth/authorization incorretos, dados sensíveis em logs ou erros.
+4. **Error handling e resiliência** — promise rejections não tratadas, try/catch faltando, mensagens de erro insuficientes, race conditions, edge cases não cobertos.
+5. **Qualidade e consistência** — naming conventions, estilo inconsistente, funções fazendo demais (SRP), comentários faltando ou desatualizados em lógica complexa.
+6. **Performance** — re-renders desnecessários, computações caras em hot paths, caching faltando, imports grandes que poderiam ser tree-shaken.
+
+### Formato de saída
+Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), **descrição** e **fix concreto**.
+Ao final: lista priorizada (Critical primeiro) + recomendações arquiteturais de longo prazo.
+
+---
+
 *BibelôCRM — Ecossistema Bibelô 🎀*
 *Última atualização: 30 de Março de 2026 — Widget Google Reviews na NuvemShop: carrossel com setas, fotos de clientes, CORS fix, posição antes do Instagram, design visual rosa*

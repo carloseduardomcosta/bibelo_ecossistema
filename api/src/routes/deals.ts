@@ -126,7 +126,7 @@ dealsRouter.put("/:id", async (req: Request, res: Response) => {
   const parse = updateSchema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: "Dados inválidos" }); return; }
 
-  const ALLOWED_DEAL = ["customer_id","titulo","valor","etapa","prioridade","responsavel","descricao","previsao_fechamento"];
+  const ALLOWED_DEAL = ["titulo","valor","etapa","origem","probabilidade","fechamento_previsto","notas"];
   const safeEntries = Object.entries(parse.data).filter(([k, v]) => v !== undefined && ALLOWED_DEAL.includes(k));
   if (safeEntries.length === 0) { res.status(400).json({ error: "Nenhum campo" }); return; }
 

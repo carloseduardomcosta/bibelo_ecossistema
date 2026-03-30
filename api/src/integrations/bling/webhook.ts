@@ -44,7 +44,7 @@ function blingWebhookAuth(req: Request, res: Response, next: () => void): void {
     return;
   }
 
-  const rawBody = JSON.stringify(req.body);
+  const rawBody = (req as any).rawBody?.toString() || JSON.stringify(req.body);
   if (!validateBlingHMAC(rawBody, signature)) {
     logger.warn("Bling webhook: HMAC inválido");
     res.status(401).json({ error: "Assinatura inválida" });

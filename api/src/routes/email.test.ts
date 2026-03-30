@@ -6,7 +6,7 @@ import crypto from "crypto";
 const JWT_SECRET = process.env.JWT_SECRET || "bibelo-unsub-fallback";
 
 function gerarToken(email: string): string {
-  return crypto.createHmac("sha256", JWT_SECRET).update(email.toLowerCase().trim()).digest("hex");
+  return crypto.createHmac("sha256", JWT_SECRET).update("email-unsub:" + email.toLowerCase().trim()).digest("hex");
 }
 
 describe("GET /api/email/unsubscribe", () => {

@@ -29,33 +29,39 @@ function classifyCanal(lojaId: number | undefined | null): string {
 let lastRequestTime = 0;
 
 export async function rateLimitedGet<T>(url: string, token: string): Promise<T> {
-  // Garante intervalo mínimo de 350ms entre requests (≈2.8 req/s, margem segura)
-  const now = Date.now();
-  const elapsed = now - lastRequestTime;
-  if (elapsed < 350) {
-    await new Promise((resolve) => setTimeout(resolve, 350 - elapsed));
-  }
-  lastRequestTime = Date.now();
+  const MAX_RETRIES = 3;
+  const BACKOFF = [5000, 10000, 20000];
 
-  try {
-    const { data } = await axios.get<T>(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    return data;
-  } catch (err: unknown) {
-    const axiosErr = err as { response?: { status?: number } };
-    if (axiosErr.response?.status === 429) {
-      // Rate limited — espera 10s e retenta
-      logger.warn("Bling rate limit 429: aguardando 10s");
-      await new Promise((resolve) => setTimeout(resolve, 10_000));
-      lastRequestTime = Date.now();
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    // Garante intervalo mínimo de 350ms entre requests (≈2.8 req/s, margem segura)
+    const now = Date.now();
+    const elapsed = now - lastRequestTime;
+    if (elapsed < 350) {
+      await new Promise((resolve) => setTimeout(resolve, 350 - elapsed));
+    }
+    lastRequestTime = Date.now();
+
+    try {
       const { data } = await axios.get<T>(url, {
         headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000,
       });
       return data;
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { status?: number; headers?: Record<string, string> } };
+      if (axiosErr.response?.status === 429 && attempt < MAX_RETRIES) {
+        const retryAfter = parseInt(axiosErr.response.headers?.["retry-after"] || "0", 10);
+        const waitMs = retryAfter > 0 ? retryAfter * 1000 : BACKOFF[attempt];
+        logger.warn(`Bling rate limit 429: tentativa ${attempt + 1}/${MAX_RETRIES}, aguardando ${waitMs}ms`);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        lastRequestTime = Date.now();
+        continue;
+      }
+      throw err;
     }
-    throw err;
   }
+  // Unreachable, but TypeScript needs it
+  throw new Error("Bling rateLimitedGet: max retries exceeded");
 }
 
 // ── Sync Customers ─────────────────────────────────────────────

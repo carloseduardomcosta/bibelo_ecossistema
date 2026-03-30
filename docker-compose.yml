@@ -88,7 +88,6 @@ services:
       target:     production
     container_name: bibelo_frontend
     restart: unless-stopped
-    env_file: .env
     environment:
       NODE_ENV:      production
       VITE_API_URL:  /api

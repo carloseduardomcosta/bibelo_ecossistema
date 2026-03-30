@@ -66,7 +66,7 @@ app.use("/api/auth/google", rateLimit({
 }));
 
 // ── Body parser
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "1mb", verify: (req: any, _res: any, buf: Buffer) => { req.rawBody = buf; } }));
 app.use(express.text({ type: "text/plain", limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 

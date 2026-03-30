@@ -184,11 +184,12 @@ contasPagarRouter.post("/:id/pagar", async (req: Request, res: Response) => {
     const token = await getValidToken();
 
     // Cria bordero no Bling (registra pagamento)
+    const valorPago = typeof conta.valor === 'string' ? parseFloat(conta.valor) : conta.valor;
     await axios.post(`${BLING_API}/borderos`, {
       data: dataPagamento,
       pagamentos: [{
         contaPagar: { id: parseInt(blingId, 10) },
-        valorPago: conta.valor,
+        valorPago,
       }],
     }, {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

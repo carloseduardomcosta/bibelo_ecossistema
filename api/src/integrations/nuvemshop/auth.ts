@@ -28,7 +28,7 @@ export async function exchangeNuvemShopCode(code: string): Promise<{
     client_secret: NS_CLIENT_SECRET,
     grant_type: "authorization_code",
     code,
-  });
+  }, { timeout: 15000 });
 
   // Salva token no sync_state (token nunca expira na NuvemShop)
   const tokenData = JSON.stringify({
@@ -102,6 +102,7 @@ export async function nsRequest<T>(
         "User-Agent": `BibeloCRM (${NS_APP_ID})`,
         "Content-Type": "application/json",
       },
+      timeout: 15000,
     });
     return data;
   } catch (err: unknown) {
@@ -120,6 +121,7 @@ export async function nsRequest<T>(
           "User-Agent": `BibeloCRM (${NS_APP_ID})`,
           "Content-Type": "application/json",
         },
+        timeout: 15000,
       });
       return data;
     }
