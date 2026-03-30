@@ -64,14 +64,25 @@ export async function fetchGoogleReviews(): Promise<PlaceReviews | null> {
       }
     );
 
-    // Resolve URLs de fotos do local (até 6)
-    const photoNames: string[] = (data.photos || []).slice(0, 6).map((p: Record<string, unknown>) => p.name as string).filter(Boolean);
+    // Resolve URLs de fotos — prioriza fotos de clientes (pula fotos do dono da loja)
+    const allPhotos: Array<Record<string, unknown>> = data.photos || [];
+    // Filtra: pula fotos do dono do estabelecimento
+    const ownerKeywords = ["papelaria bibel", "papelaria bibelo", "bibelô", "bibelo"];
+    const customerPhotos = allPhotos.filter((p: Record<string, unknown>) => {
+      const authors = p.authorAttributions as Array<Record<string, string>> | undefined;
+      if (!authors || authors.length === 0) return true; // sem autor = aceita
+      const name = (authors[0]?.displayName || "").toLowerCase();
+      return !ownerKeywords.some(kw => name.includes(kw));
+    });
+    // Usa fotos de clientes (até 10); se poucas, pula as 5 primeiras (logo/fachada/estoque)
+    const selectedPhotos = customerPhotos.length >= 4 ? customerPhotos.slice(0, 10) : allPhotos.slice(5, 15);
+    const photoNames: string[] = selectedPhotos.map((p: Record<string, unknown>) => p.name as string).filter(Boolean);
     const photoUrls: string[] = [];
     for (const name of photoNames) {
       try {
         const photoRes = await axios.get(`https://places.googleapis.com/v1/${name}/media`, {
           headers: { "X-Goog-Api-Key": apiKey },
-          params: { maxWidthPx: 400 },
+          params: { maxWidthPx: 600 },
           maxRedirects: 0,
           validateStatus: (s: number) => s === 302 || s === 200,
         });
@@ -152,7 +163,7 @@ export async function getCachedReviews(): Promise<PlaceReviews> {
     review_time: number; relative_time: string; profile_photo_url: string;
     overall_rating: number; total_reviews: number;
   }>(
-    "SELECT * FROM marketing.google_reviews ORDER BY review_time DESC LIMIT 5"
+    "SELECT * FROM marketing.google_reviews ORDER BY review_time DESC LIMIT 10"
   );
 
   if (rows.length === 0) {

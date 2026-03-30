@@ -681,6 +681,10 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - 5d1051e docs: atualiza CLAUDE.md — sessão completa: tracking, menu, UTM, formulário
 - fffe8b5 sec+fix: auditoria completa — segurança (6 fixes), UX (6 fixes), banco (vacuum + scores)
 - 7e70883 docs: atualiza CLAUDE.md — auditoria completa, segurança, testes, menu
+- 31e2a55 feat: inteligência de fluxos + Google Reviews + popup inteligente
+- 0cbe856 fix: adapta Google Reviews para Places API (New) + configura credenciais
+- bdd14a7 feat: widget de reviews Google para NuvemShop + fotos do local
+- b5e84ec fix: widget reviews só aparece na home page
 
 
 ## Protocolo de atualização deste arquivo
@@ -737,7 +741,7 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Página de Links (Menu) | ✅ produção | menu.papelariabibelo.com.br — substitui Linktree, design Nunito, banner loja, formulário cadastro, cliques rastreados, UTM auto, notificação email admin |
 | Segurança (Pentest) | ✅ produção | 15 fixes: SQL injection params, CSRF OAuth state, admin env var, NF-e transaction, campaign lock, XSS, IP spoof, HMAC, CSP/HSTS |
 | Testes Automatizados | ✅ produção | Vitest + Supertest, 30 testes integração (health, email, leads, orders), script test.sh com Docker |
-| Google Reviews | ✅ produção | Places API, cache DB diário (6h), endpoint /api/analytics/reviews, template prova social com reviews reais |
+| Google Reviews | ✅ produção | Places API (New), cache DB 6h, widget JS NuvemShop via GTM, carrossel reviews com setas, fotos de clientes (filtra dono), CORS fix Nginx, posicionado antes do Instagram |
 | Inteligência de Fluxos | ✅ produção | pula step cupom se lead já comprou, reativação só para quem tem pedido, popup não aparece para leads |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
 
@@ -756,4 +760,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 30 de Março de 2026 — Inteligência de fluxos (pula cupom se já comprou, fix reativação), Google Reviews API, template prova social + produtos populares reais, popup inteligente*
+*Última atualização: 30 de Março de 2026 — Widget Google Reviews na NuvemShop: carrossel com setas, fotos de clientes, CORS fix, posição antes do Instagram, design visual rosa*
