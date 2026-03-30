@@ -218,7 +218,8 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 ### Protegidas (Bearer JWT obrigatório)
 - `GET  /api/auth/me`
 - `POST /api/auth/logout`
-- `GET  /api/customers` — lista paginada com filtros
+- `GET  /api/customers` — lista paginada com filtros (search, segmento, canal_origem, ordenar)
+- `GET  /api/customers/stats` — KPIs: total, com email, com WhatsApp, novos 30d, inativos, score
 - `GET  /api/customers/:id` — perfil completo + score
 - `POST /api/customers` — criar/atualizar (upsert por email)
 - `PUT  /api/customers/:id` — atualizar dados
@@ -311,7 +312,7 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `POST /api/leads/view` — registrar exibição do popup
 
 ### Caça-Leads (Bearer JWT obrigatório)
-- `GET  /api/leads` — listar leads capturados (paginado)
+- `GET  /api/leads` — listar leads capturados (paginado, search, status, ordenar)
 - `GET  /api/leads/stats` — KPIs: total, 7d, 30d, convertidos, taxa, popups
 - `PUT  /api/leads/popups/:id` — atualizar config do popup
 
@@ -583,9 +584,13 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - 5006970 feat: adiciona logo clicável nos templates de email
 - 392a607 fix: logo dos emails servida via webhook (sem Cloudflare Access)
 - aabe5fe fix: cor dos templates de email para rosa oficial #fe68c4
-- PENDENTE feat: geolocalização visitantes, auditoria gaps, botão WhatsApp produto, Dashboard melhorias
-- PENDENTE feat: funil de leads completo — score engajamento, pipeline auto, sino notificações, drip nutrição
-- PENDENTE sec: pentest completo — auto-admin, SQL injection, XSS, IP spoof, CSP, HSTS, idempotency
+- 923fa62 feat: geolocalização visitantes, auditoria gaps, botão WhatsApp produto, Dashboard melhorias
+- be0a7d2 feat: funil de leads completo — score engajamento, pipeline auto, sino notificações, drip nutrição
+- 5addbc1 fix: padroniza templates de email — design único, footer correto, HTTPS imagens
+- c2957c6 sec: pentest completo — auto-admin, SQL injection, XSS, IP spoof, CSP, HSTS, idempotency
+- 65a6a40 fix: filtra tráfego interno do tracking — só clientes reais na Atividade
+- ec2e0b9 feat: melhora lista de leads — busca, filtros, ordenação e paginação
+- e3668e4 feat: melhora página Clientes — KPIs, filtros, ordenação, visual renovado
 
 
 ## Protocolo de atualização deste arquivo
@@ -654,4 +659,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 30 de Março de 2026 — Pentest completo (9 fixes segurança), geolocalização visitantes, doc WhatsApp Business, auditoria gaps (11 fixes), funil de leads, 10 fluxos, 19 templates, 5 jobs BullMQ*
+*Última atualização: 30 de Março de 2026 — Página Clientes renovada (KPIs, filtros, ordenação, score visual), lista Leads com busca/filtros, limpeza dados teste*
