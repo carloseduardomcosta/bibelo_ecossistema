@@ -8,7 +8,8 @@ import {
   Eye, UserPlus, CheckCircle2, AlertCircle,
   Play, ToggleLeft, ToggleRight, ChevronRight,
   Send, Target, TrendingUp, ArrowUpRight, Activity,
-  Package, Search, Globe,
+  Package, Search, Globe, Filter, Mail, Phone, RefreshCw,
+  ChevronLeft,
 } from 'lucide-react';
 import api from '../lib/api';
 
@@ -239,7 +240,7 @@ export default function Marketing() {
       {tab === 'overview' && <OverviewTab flowStats={flowStats} flows={flows} leadStats={leadStats} leads={leads} onFlowClick={fetchFlowDetail} />}
       {tab === 'atividade' && <AtividadeTab events={trackingEvents} stats={trackingStats} funnel={funnel} onRefresh={fetchAll} />}
       {tab === 'fluxos' && <FluxosTab flows={flows} executions={executions} selectedFlow={selectedFlow} onFlowClick={fetchFlowDetail} onRefresh={fetchAll} />}
-      {tab === 'leads' && <LeadsTab leadStats={leadStats} leads={leads} />}
+      {tab === 'leads' && <LeadsTab leadStats={leadStats} />}
     </div>
   );
 }
@@ -599,10 +600,38 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
 
 // ── Leads Tab ─────────────────────────────────────────────────
 
-function LeadsTab({ leadStats, leads }: {
+function LeadsTab({ leadStats }: {
   leadStats: LeadStats | null;
-  leads: Lead[];
 }) {
+  const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'' | 'convertido' | 'pendente'>('');
+  const [ordenar, setOrdenar] = useState<'recentes' | 'email_primeiro' | 'nome'>('email_primeiro');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [loadingLeads, setLoadingLeads] = useState(false);
+
+  const fetchLeads = useCallback(async () => {
+    setLoadingLeads(true);
+    try {
+      const params = new URLSearchParams({ page: String(page), ordenar });
+      if (search) params.set('search', search);
+      if (statusFilter) params.set('status', statusFilter);
+      const { data } = await api.get(`/leads?${params}`);
+      setFilteredLeads(data.leads);
+      setTotalPages(data.pages);
+      setTotal(data.total);
+    } catch { /* */ } finally {
+      setLoadingLeads(false);
+    }
+  }, [page, search, statusFilter, ordenar]);
+
+  useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  // Reset para página 1 ao mudar filtros
+  useEffect(() => { setPage(1); }, [search, statusFilter, ordenar]);
+
   const kpis = [
     { label: 'Total de Leads', value: leadStats?.total_leads || 0, icon: Users, color: 'text-pink-400', bg: 'bg-pink-400/10' },
     { label: 'Últimos 7 dias', value: leadStats?.leads_7d || 0, icon: ArrowUpRight, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
@@ -661,16 +690,65 @@ function LeadsTab({ leadStats, leads }: {
         </div>
       </div>
 
-      {/* Lista de leads */}
+      {/* Lista de leads com filtros */}
       <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-bibelo-text mb-4">Leads Capturados</h3>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-bibelo-text">Leads Capturados</h3>
+            <span className="text-[10px] px-2 py-0.5 bg-pink-400/10 text-pink-400 rounded-full font-bold">{total}</span>
+          </div>
+          <button onClick={fetchLeads} className="text-bibelo-muted hover:text-pink-400 transition-colors" title="Atualizar">
+            <RefreshCw size={14} className={loadingLeads ? 'animate-spin' : ''} />
+          </button>
+        </div>
+
+        {/* Barra de filtros */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          {/* Busca */}
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-bibelo-muted" />
+            <input
+              type="text"
+              placeholder="Buscar por nome, email ou telefone..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-sm bg-bibelo-bg border border-bibelo-border rounded-lg text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none focus:border-pink-400/50 transition-colors"
+            />
+          </div>
+
+          {/* Filtro status */}
+          <div className="relative">
+            <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-bibelo-muted" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as '' | 'convertido' | 'pendente')}
+              className="pl-9 pr-8 py-2 text-sm bg-bibelo-bg border border-bibelo-border rounded-lg text-bibelo-text appearance-none cursor-pointer focus:outline-none focus:border-pink-400/50 transition-colors"
+            >
+              <option value="">Todos</option>
+              <option value="pendente">Pendentes</option>
+              <option value="convertido">Convertidos</option>
+            </select>
+          </div>
+
+          {/* Ordenação */}
+          <select
+            value={ordenar}
+            onChange={(e) => setOrdenar(e.target.value as 'recentes' | 'email_primeiro' | 'nome')}
+            className="px-3 py-2 text-sm bg-bibelo-bg border border-bibelo-border rounded-lg text-bibelo-text appearance-none cursor-pointer focus:outline-none focus:border-pink-400/50 transition-colors"
+          >
+            <option value="email_primeiro">Com contato primeiro</option>
+            <option value="recentes">Mais recentes</option>
+            <option value="nome">Por nome A-Z</option>
+          </select>
+        </div>
+
+        {/* Tabela */}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-bibelo-border">
-                <th className="text-left text-xs font-semibold text-bibelo-muted py-2 px-3">Nome</th>
-                <th className="text-left text-xs font-semibold text-bibelo-muted py-2 px-3">Email</th>
-                <th className="text-left text-xs font-semibold text-bibelo-muted py-2 px-3">WhatsApp</th>
+                <th className="text-left text-xs font-semibold text-bibelo-muted py-2 px-3">Lead</th>
+                <th className="text-left text-xs font-semibold text-bibelo-muted py-2 px-3">Contato</th>
                 <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3">Cupom</th>
                 <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3">Fonte</th>
                 <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3">Status</th>
@@ -678,41 +756,98 @@ function LeadsTab({ leadStats, leads }: {
               </tr>
             </thead>
             <tbody>
-              {leads.length === 0 ? (
+              {loadingLeads && filteredLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-sm text-bibelo-muted">Nenhum lead capturado ainda</td>
+                  <td colSpan={6} className="py-8 text-center text-sm text-bibelo-muted">Carregando...</td>
+                </tr>
+              ) : filteredLeads.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-sm text-bibelo-muted">
+                    {search || statusFilter ? 'Nenhum lead encontrado com esses filtros' : 'Nenhum lead capturado ainda'}
+                  </td>
                 </tr>
               ) : (
-                leads.map((l) => (
-                  <tr key={l.id} className="border-b border-bibelo-border/50 hover:bg-bibelo-bg transition-colors">
+                filteredLeads.map((l) => (
+                  <tr key={l.id} className="border-b border-bibelo-border/50 hover:bg-bibelo-bg transition-colors group">
                     <td className="py-3 px-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-pink-400/10 flex items-center justify-center text-xs font-bold text-pink-400">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-pink-400/10 flex items-center justify-center text-xs font-bold text-pink-400 shrink-0">
                           {(l.nome || l.email).charAt(0).toUpperCase()}
                         </div>
-                        <span className="text-sm font-medium text-bibelo-text">{l.nome || '—'}</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-bibelo-text truncate">{l.nome || '—'}</p>
+                          <p className="text-[11px] text-bibelo-muted truncate">{l.email}</p>
+                        </div>
                       </div>
                     </td>
-                    <td className="py-3 px-3 text-sm text-bibelo-muted">{l.email}</td>
-                    <td className="py-3 px-3 text-sm text-bibelo-muted">{l.telefone || '—'}</td>
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-2">
+                        {l.email && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400" title={l.email}>
+                            <Mail size={12} />
+                          </span>
+                        )}
+                        {l.telefone ? (
+                          <a
+                            href={`https://wa.me/55${l.telefone.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 transition-colors"
+                            title={l.telefone}
+                          >
+                            <Phone size={12} />
+                            <span className="hidden sm:inline">{l.telefone}</span>
+                          </a>
+                        ) : (
+                          <span className="text-[11px] text-bibelo-muted/40">sem WhatsApp</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="py-3 px-3 text-center">
-                      {l.cupom && (
+                      {l.cupom ? (
                         <span className="text-[10px] px-2 py-0.5 bg-pink-400/10 text-pink-400 rounded-full font-bold">{l.cupom}</span>
+                      ) : (
+                        <span className="text-[10px] text-bibelo-muted/40">—</span>
                       )}
                     </td>
-                    <td className="py-3 px-3 text-center text-xs text-bibelo-muted">{l.fonte}</td>
+                    <td className="py-3 px-3 text-center text-xs text-bibelo-muted capitalize">{l.fonte}</td>
                     <td className="py-3 px-3 text-center">
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${l.convertido ? 'bg-emerald-400/10 text-emerald-400' : 'bg-amber-400/10 text-amber-400'}`}>
                         {l.convertido ? 'Convertido' : 'Pendente'}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-right text-xs text-bibelo-muted">{fmtDateShort(l.criado_em)}</td>
+                    <td className="py-3 px-3 text-right text-xs text-bibelo-muted whitespace-nowrap">{fmtDateShort(l.criado_em)}</td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+
+        {/* Paginação */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-bibelo-border/50">
+            <span className="text-xs text-bibelo-muted">
+              Página {page} de {totalPages} ({total} leads)
+            </span>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="p-1.5 rounded-lg border border-bibelo-border text-bibelo-muted hover:text-pink-400 hover:border-pink-400/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="p-1.5 rounded-lg border border-bibelo-border text-bibelo-muted hover:text-pink-400 hover:border-pink-400/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

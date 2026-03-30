@@ -155,17 +155,51 @@ leadsRouter.get("/", authMiddleware, async (req: Request, res: Response) => {
   const page = parseInt(String(req.query.page || "1"), 10);
   const limit = 50;
   const offset = (page - 1) * limit;
+  const search = String(req.query.search || "").trim();
+  const status = String(req.query.status || ""); // convertido, pendente, todos
+  const ordenar = String(req.query.ordenar || "recentes"); // recentes, email_primeiro, nome
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  let idx = 1;
+
+  if (search) {
+    conditions.push(`(l.email ILIKE $${idx} OR l.nome ILIKE $${idx} OR l.telefone ILIKE $${idx})`);
+    params.push(`%${search}%`);
+    idx++;
+  }
+
+  if (status === "convertido") {
+    conditions.push("l.convertido = true");
+  } else if (status === "pendente") {
+    conditions.push("l.convertido = false");
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  let orderBy = "l.criado_em DESC";
+  if (ordenar === "email_primeiro") {
+    orderBy = "CASE WHEN l.email IS NOT NULL AND l.email != '' THEN 0 ELSE 1 END, CASE WHEN l.telefone IS NOT NULL AND l.telefone != '' THEN 0 ELSE 1 END, l.criado_em DESC";
+  } else if (ordenar === "nome") {
+    orderBy = "COALESCE(l.nome, 'zzz') ASC, l.criado_em DESC";
+  }
+
+  params.push(limit, offset);
 
   const [leads, countResult] = await Promise.all([
     query<Record<string, unknown>>(
       `SELECT l.*, c.nome AS customer_nome
        FROM marketing.leads l
        LEFT JOIN crm.customers c ON c.id = l.customer_id
-       ORDER BY l.criado_em DESC
-       LIMIT $1 OFFSET $2`,
-      [limit, offset]
+       ${where}
+       ORDER BY ${orderBy}
+       LIMIT $${idx} OFFSET $${idx + 1}`,
+      params
     ),
-    queryOne<{ total: string }>("SELECT COUNT(*)::text AS total FROM marketing.leads"),
+    queryOne<{ total: string }>(
+      `SELECT COUNT(*)::text AS total FROM marketing.leads l ${where}`,
+      params.slice(0, -2)
+    ),
   ]);
 
   res.json({
