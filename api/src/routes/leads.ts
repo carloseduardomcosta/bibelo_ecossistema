@@ -94,6 +94,30 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
     [email, nome || null, telefone || null, popup_id || null, cupom, visitor_id || null, pagina || null, customer.id]
   );
 
+  // Vincula visitor_id ao customer (fecha o loop de atribuição)
+  if (visitor_id) {
+    await query(
+      `INSERT INTO crm.visitor_customers (visitor_id, customer_id)
+       VALUES ($1, $2)
+       ON CONFLICT (visitor_id) DO NOTHING`,
+      [visitor_id, customer.id]
+    );
+    // Retroativamente atribui tracking_events anteriores ao customer
+    await query(
+      `UPDATE crm.tracking_events SET customer_id = $2
+       WHERE visitor_id = $1 AND customer_id IS NULL`,
+      [visitor_id, customer.id]
+    );
+    logger.info("Visitor vinculado ao customer via lead capture", { visitorId: visitor_id, customerId: customer.id });
+  }
+
+  // Cria deal no pipeline (prospecção automática)
+  await query(
+    `INSERT INTO crm.deals (customer_id, titulo, valor, etapa, origem, probabilidade, notas)
+     VALUES ($1, $2, 0, 'prospeccao', 'popup', 20, $3)`,
+    [customer.id, `Lead: ${nome || email.split("@")[0]}`, `Captado via popup${cupom ? ` — cupom ${cupom}` : ""}. Página: ${pagina || "home"}`]
+  );
+
   // Dispara fluxo de boas-vindas com cupom
   await triggerFlow("lead.captured", customer.id, {
     email,

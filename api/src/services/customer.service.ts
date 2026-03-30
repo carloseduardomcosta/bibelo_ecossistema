@@ -163,6 +163,52 @@ export async function calculateScore(customerId: string): Promise<CustomerScore 
     );
   }
 
+  // ── Lead sem compra: score baseado em engajamento ────────────
+  if (totalPedidos === 0) {
+    const engagement = await queryOne<{
+      is_lead: string; total_events: string; has_cart: string; total_emails: string;
+    }>(
+      `SELECT
+         (SELECT COUNT(*)::text FROM marketing.leads WHERE customer_id = $1) AS is_lead,
+         (SELECT COUNT(*)::text FROM crm.tracking_events WHERE customer_id = $1) AS total_events,
+         (SELECT COUNT(*)::text FROM crm.tracking_events WHERE customer_id = $1 AND evento = 'add_to_cart') AS has_cart,
+         (SELECT COUNT(*)::text FROM crm.interactions WHERE customer_id = $1 AND tipo = 'email_enviado') AS total_emails`,
+      [customerId]
+    );
+
+    const isLead = parseInt(engagement?.is_lead || "0", 10) > 0;
+    const totalEvents = parseInt(engagement?.total_events || "0", 10);
+    const hasCart = parseInt(engagement?.has_cart || "0", 10) > 0;
+    const totalEmails = parseInt(engagement?.total_emails || "0", 10);
+
+    // Score de engajamento para leads (0-50)
+    let leadScore = 0;
+    if (isLead) leadScore += 15;                    // cadastrou via popup
+    leadScore += Math.min(totalEvents * 3, 15);     // até 15 pts por page views
+    if (hasCart) leadScore += 10;                    // add to cart = intenção forte
+    leadScore += Math.min(totalEmails * 3, 10);     // até 10 pts por emails recebidos
+    leadScore = Math.round(Math.min(50, leadScore));
+
+    // Segmento para leads
+    let leadSegmento = "lead";
+    if (hasCart) leadSegmento = "lead_quente";
+
+    const result = await queryOne<CustomerScore>(
+      `INSERT INTO crm.customer_scores (customer_id, ltv, ticket_medio, total_pedidos, score, frequencia_dias, ultima_compra, risco_churn, segmento, calculado_em)
+       VALUES ($1, 0, 0, 0, $2, NULL, NULL, 'nenhum', $3, NOW())
+       ON CONFLICT (customer_id) DO UPDATE SET
+         ltv = 0, ticket_medio = 0, total_pedidos = 0, score = $2,
+         frequencia_dias = NULL, ultima_compra = NULL, risco_churn = 'nenhum', segmento = $3, calculado_em = NOW()
+       RETURNING *`,
+      [customerId, leadScore, leadSegmento]
+    );
+
+    logger.info("Score lead calculado", { customerId, score: leadScore, segmento: leadSegmento, isLead, totalEvents, hasCart });
+    return result;
+  }
+
+  // ── Cliente com compras: score baseado em LTV/frequência/recência ──
+
   // Risco de churn
   let riscoChurn = "baixo";
   if (diasSemCompra > 90) riscoChurn = "alto";

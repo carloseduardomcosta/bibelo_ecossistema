@@ -30,12 +30,36 @@ const SEGMENT_COLORS: Record<string, string> = {
   regular: 'bg-blue-500/20 text-blue-400',
   ocasional: 'bg-amber-500/20 text-amber-400',
   inativo: 'bg-red-500/20 text-red-400',
+  lead: 'bg-pink-500/20 text-pink-400',
+  lead_quente: 'bg-orange-500/20 text-orange-400',
+  novo: 'bg-cyan-500/20 text-cyan-400',
+  alto_valor: 'bg-emerald-500/20 text-emerald-400',
+  recorrente: 'bg-blue-500/20 text-blue-400',
+};
+
+const SEGMENT_LABELS: Record<string, string> = {
+  vip: 'VIP',
+  frequente: 'Frequente',
+  regular: 'Regular',
+  ocasional: 'Ocasional',
+  inativo: 'Inativo',
+  lead: 'Lead',
+  lead_quente: 'Lead Quente',
+  novo: 'Novo',
+  alto_valor: 'Alto Valor',
+  recorrente: 'Recorrente',
 };
 
 function segmentBadge(seg?: string) {
   if (!seg) return null;
-  const cls = SEGMENT_COLORS[seg.toLowerCase()] || 'bg-bibelo-border text-bibelo-muted';
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{seg}</span>;
+  const key = seg.toLowerCase();
+  const cls = SEGMENT_COLORS[key] || 'bg-bibelo-border text-bibelo-muted';
+  const label = SEGMENT_LABELS[key] || seg;
+  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{label}</span>;
+}
+
+function isRecent(dateStr: string): boolean {
+  return Date.now() - new Date(dateStr).getTime() < 7 * 24 * 3600 * 1000;
 }
 
 function scoreColor(score?: number) {
@@ -112,9 +136,12 @@ export default function Clientes() {
           className="px-3 py-2 bg-bibelo-card border border-bibelo-border rounded-lg text-sm text-bibelo-text focus:outline-none focus:border-bibelo-primary transition-colors"
         >
           <option value="">Todos os segmentos</option>
+          <option value="lead_quente">Lead Quente</option>
+          <option value="lead">Lead</option>
           <option value="vip">VIP</option>
-          <option value="frequente">Frequente</option>
-          <option value="regular">Regular</option>
+          <option value="alto_valor">Alto Valor</option>
+          <option value="recorrente">Recorrente</option>
+          <option value="novo">Novo</option>
           <option value="ocasional">Ocasional</option>
           <option value="inativo">Inativo</option>
         </select>
@@ -156,9 +183,14 @@ export default function Clientes() {
                 clientes.map((c) => (
                   <tr key={c.id} className="border-b border-bibelo-border/50 hover:bg-bibelo-border/20 transition-colors">
                     <td className="px-4 py-3">
-                      <Link to={`/clientes/${c.id}`} className="text-bibelo-text hover:text-bibelo-primary font-medium transition-colors">
-                        {c.nome}
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link to={`/clientes/${c.id}`} className="text-bibelo-text hover:text-bibelo-primary font-medium transition-colors">
+                          {c.nome}
+                        </Link>
+                        {isRecent(c.criado_em) && (
+                          <span className="px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 text-[10px] font-bold rounded uppercase">novo</span>
+                        )}
+                      </div>
                       <p className="text-xs text-bibelo-muted sm:hidden">{c.email}</p>
                     </td>
                     <td className="px-4 py-3 text-bibelo-muted hidden sm:table-cell">{c.email || '—'}</td>

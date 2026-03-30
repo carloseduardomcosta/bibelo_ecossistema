@@ -68,11 +68,22 @@ export const syncWorker = new Worker(
             );
 
             if (after?.risco_churn === "alto" && riscoAntes !== "alto") {
-              await triggerFlow("customer.inactive", c.id, {
-                risco_anterior: riscoAntes,
-                risco_atual: "alto",
-              });
-              reactivationTriggered++;
+              // Só reativar quem já comprou pelo menos 1x (não faz sentido para leads puros)
+              const hasPurchase = await queryOne<{ total: string }>(
+                `SELECT COUNT(*)::text AS total FROM sync.nuvemshop_orders WHERE customer_id = $1
+                 UNION ALL
+                 SELECT COUNT(*)::text FROM sync.bling_orders WHERE customer_id = $1`,
+                [c.id]
+              );
+              const totalPedidos = (hasPurchase ? parseInt(hasPurchase.total, 10) : 0);
+
+              if (totalPedidos > 0) {
+                await triggerFlow("customer.inactive", c.id, {
+                  risco_anterior: riscoAntes,
+                  risco_atual: "alto",
+                });
+                reactivationTriggered++;
+              }
             }
 
             processed++;

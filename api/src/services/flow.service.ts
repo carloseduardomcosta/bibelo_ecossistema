@@ -47,27 +47,25 @@ export async function triggerFlow(
   const executionIds: string[] = [];
 
   for (const flow of flows) {
-    // Verifica se já existe execução ativa deste fluxo para este cliente
-    const existing = await queryOne<{ id: string }>(
-      "SELECT id FROM marketing.flow_executions WHERE flow_id = $1 AND customer_id = $2 AND status = 'ativo'",
-      [flow.id, customerId]
-    );
-
-    if (existing) {
-      logger.info("Fluxo já ativo para cliente, ignorando", { flowId: flow.id, customerId });
+    let steps: FlowStep[];
+    try {
+      steps = typeof flow.steps === "string" ? JSON.parse(flow.steps) : flow.steps;
+    } catch {
+      logger.error("Fluxo com steps inválidos", { flowId: flow.id });
       continue;
     }
-
-    const steps = typeof flow.steps === "string" ? JSON.parse(flow.steps) : flow.steps;
     const firstStep = steps[0] as FlowStep | undefined;
 
     // Calcula quando executar o primeiro step
-    const delayMs = (firstStep?.delay_horas || 0) * 3600 * 1000;
+    const delayMs = Math.max((firstStep?.delay_horas || 0), 0) * 3600 * 1000;
     const proximoStepEm = new Date(Date.now() + delayMs);
 
+    // INSERT atômico com ON CONFLICT — previne race condition de webhooks simultâneos
     const execution = await queryOne<{ id: string }>(
       `INSERT INTO marketing.flow_executions (flow_id, customer_id, step_atual, status, metadata, proximo_step_em)
-       VALUES ($1, $2, 0, 'ativo', $3, $4) RETURNING id`,
+       VALUES ($1, $2, 0, 'ativo', $3, $4)
+       ON CONFLICT (flow_id, customer_id) DO NOTHING
+       RETURNING id`,
       [flow.id, customerId, JSON.stringify(metadata), proximoStepEm]
     );
 
@@ -288,26 +286,48 @@ async function executeEmailStep(
       ],
     });
 
-    return { sent: true, messageId: result?.id, templateUsed: "built-in" };
+    if (!result?.id) {
+      throw new Error("Email não foi enviado — Resend retornou null");
+    }
+
+    // Registra interação na timeline do cliente
+    await query(
+      `INSERT INTO crm.interactions (customer_id, tipo, canal, descricao, metadata)
+       VALUES ($1, 'email_enviado', 'email', $2, $3)`,
+      [customer.id, `Email automático: ${step.template || "genérico"}`, JSON.stringify({ messageId: result.id, template: step.template })]
+    );
+
+    return { sent: true, messageId: result.id, templateUsed: "built-in" };
   }
 
   // Usa template do banco (marketing.templates)
   const recoveryUrl = (metadata.recovery_url as string) || "";
-  const html = (template.html || "")
-    .replace(/\{\{nome\}\}/g, customer.nome || "Cliente")
-    .replace(/\{\{email\}\}/g, customer.email)
-    .replace(/\{\{valor\}\}/g, formatBRL(metadata.valor))
-    .replace(/\{\{itens\}\}/g, formatItens(metadata.itens))
-    .replace(/\{\{recovery_url\}\}/g, recoveryUrl);
+  const vars: Record<string, string> = {
+    nome: customer.nome || "Cliente",
+    email: customer.email,
+    valor: formatBRL(metadata.valor),
+    itens: formatItens(metadata.itens),
+    recovery_url: recoveryUrl,
+    numero: String(metadata.numero || metadata.ns_order_id || ""),
+    codigo: String(metadata.codigo_rastreio || metadata.codigo || ""),
+    prazo: String(metadata.prazo || ""),
+    cupom: String(metadata.cupom || ""),
+    produto: String(metadata.resource_nome || ""),
+  };
 
-  const subject = (template.assunto || step.template || "")
-    .replace(/\{\{nome\}\}/g, customer.nome || "Cliente");
+  let html = template.html || "";
+  let subject = template.assunto || step.template || "";
+  for (const [key, val] of Object.entries(vars)) {
+    const regex = new RegExp(`\\{\\{${key}\\}\\}`, "g");
+    html = html.replace(regex, val);
+    subject = subject.replace(regex, val);
+  }
 
   const result = await sendEmail({
     to: customer.email,
     subject,
     html,
-    text: template.texto?.replace(/\{\{nome\}\}/g, customer.nome || "Cliente"),
+    text: template.texto ? Object.entries(vars).reduce((t, [k, v]) => t.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v), template.texto) : undefined,
     tags: [
       { name: "flow", value: "true" },
       { name: "template_id", value: template.id },
@@ -315,7 +335,18 @@ async function executeEmailStep(
     ],
   });
 
-  return { sent: true, messageId: result?.id, templateId: template.id };
+  if (!result?.id) {
+    throw new Error("Email não foi enviado — Resend retornou null");
+  }
+
+  // Registra interação na timeline do cliente
+  await query(
+    `INSERT INTO crm.interactions (customer_id, tipo, canal, descricao, metadata)
+     VALUES ($1, 'email_enviado', 'email', $2, $3)`,
+    [customer.id, `Email automático: ${step.template || "genérico"}`, JSON.stringify({ messageId: result.id, templateId: template.id, assunto: subject })]
+  );
+
+  return { sent: true, messageId: result.id, templateId: template.id };
 }
 
 // ── Executar step de WhatsApp ──────────────────────────────────
@@ -537,6 +568,130 @@ function buildReactivationEmail(nome: string): string {
   `);
 }
 
+// ── Template: Lead Quente (add_to_cart sem compra) ────────────
+
+function buildLeadCartEmail(nome: string, metadata: Record<string, unknown>): string {
+  const cupom = (metadata.cupom as string) || "BIBELO10";
+  const productName = (metadata.resource_nome as string) || "";
+  const productImg = (metadata.resource_imagem as string) || "";
+  const productUrl = (metadata.recovery_url as string) || "https://www.papelariabibelo.com.br";
+
+  const productBlock = productName ? `
+    <div style="background:#fef6fa;border-radius:12px;padding:20px;text-align:center;margin:20px 0;">
+      ${productImg ? `<img src="${productImg}" alt="${productName}" style="max-width:200px;height:auto;border-radius:8px;margin-bottom:12px;" />` : ""}
+      <p style="font-size:16px;font-weight:600;color:#333;margin:0;">${productName}</p>
+    </div>` : "";
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! 👋</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Vimos que você se interessou por algo na nossa loja${productName ? ` — <strong>${productName}</strong>` : ""}!
+    </p>
+    ${productBlock}
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Lembra do seu cupom de boas-vindas? Ele ainda está ativo:
+    </p>
+    <div style="background:#fff3e0;border:2px dashed #fe68c4;border-radius:10px;padding:18px;text-align:center;margin:20px 0;">
+      <p style="font-size:14px;color:#888;margin:0 0 6px;">Use o cupom:</p>
+      <p style="font-size:26px;font-weight:800;color:#fe68c4;margin:0;letter-spacing:2px;">${cupom}</p>
+      <p style="font-size:14px;color:#888;margin:6px 0 0;">10% de desconto na primeira compra!</p>
+    </div>
+    ${ctaButton("Aproveitar agora", productUrl)}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      Frete calculado no carrinho. Cupom válido para primeira compra.
+    </p>
+  `);
+}
+
+// ── Template: Produtos Populares (drip dia 2) ─────────────────
+
+function buildPopularProductsEmail(nome: string): string {
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! ✨</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Quer saber quais são os <strong>produtos mais amados</strong> pelas nossas clientes?
+      Separamos os queridinhos da Papelaria Bibelô para você:
+    </p>
+    <div style="background:#fef6fa;border-radius:12px;padding:20px;margin:20px 0;">
+      <p style="font-size:15px;color:#555;margin:0 0 12px;">🎀 Agendas e planners decorados</p>
+      <p style="font-size:15px;color:#555;margin:0 0 12px;">✏️ Canetas e marcadores fofos</p>
+      <p style="font-size:15px;color:#555;margin:0 0 12px;">📒 Cadernos e blocos especiais</p>
+      <p style="font-size:15px;color:#555;margin:0 0 12px;">🎁 Presentes criativos e kits</p>
+      <p style="font-size:15px;color:#555;margin:0;">💝 Acessórios e organizadores</p>
+    </div>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      E lembra que você tem um <strong>cupom de desconto</strong> esperando? 😉
+    </p>
+    ${ctaButton("Ver os mais vendidos", "https://www.papelariabibelo.com.br/mais-vendidos/")}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      Nos siga no Instagram: <a href="https://instagram.com/papelariabibelo" style="color:#fe68c4;">@papelariabibelo</a>
+    </p>
+  `);
+}
+
+// ── Template: Lembrete Cupom (drip dia 5) ─────────────────────
+
+function buildCouponReminderEmail(nome: string, metadata: Record<string, unknown>): string {
+  const cupom = (metadata.cupom as string) || "BIBELO10";
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! ⏰</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Passando para lembrar: seu cupom de <strong>10% de desconto</strong>
+      ainda está ativo, mas não vai durar para sempre!
+    </p>
+    <div style="background:linear-gradient(135deg,#fff3e0,#fce4ec);border-radius:12px;padding:24px;text-align:center;margin:20px 0;">
+      <p style="font-size:14px;color:#888;margin:0 0 8px;">Seu cupom exclusivo:</p>
+      <p style="font-size:30px;font-weight:800;color:#fe68c4;margin:0;letter-spacing:3px;">${cupom}</p>
+      <p style="font-size:15px;color:#e65100;font-weight:600;margin:10px 0 0;">Aproveite antes que expire!</p>
+    </div>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      É só escolher seus produtos favoritos e aplicar o cupom no carrinho.
+      Simples assim! 💕
+    </p>
+    ${ctaButton("Usar meu cupom agora", "https://www.papelariabibelo.com.br")}
+  `);
+}
+
+// ── Template: Prova Social (drip dia 10) ──────────────────────
+
+function buildSocialProofEmail(nome: string, metadata: Record<string, unknown>): string {
+  const cupom = (metadata.cupom as string) || "BIBELO10";
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! ⭐</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Quem compra na Papelaria Bibelô, volta sempre!
+      Veja o que nossas clientes estão dizendo:
+    </p>
+
+    <div style="background:#f8f9fa;border-left:4px solid #fe68c4;padding:15px 20px;border-radius:4px;margin:15px 0;">
+      <p style="font-size:14px;color:#555;margin:0;font-style:italic;">
+        "Amei tudo! Embalagem linda, produtos de qualidade. Com certeza vou comprar de novo!"
+      </p>
+      <p style="font-size:13px;color:#999;margin:8px 0 0;">⭐⭐⭐⭐⭐ — via Google</p>
+    </div>
+
+    <div style="background:#f8f9fa;border-left:4px solid #fe68c4;padding:15px 20px;border-radius:4px;margin:15px 0;">
+      <p style="font-size:14px;color:#555;margin:0;font-style:italic;">
+        "Entrega rápida e atendimento maravilhoso. A papelaria mais fofa que já vi!"
+      </p>
+      <p style="font-size:13px;color:#999;margin:8px 0 0;">⭐⭐⭐⭐⭐ — via Google</p>
+    </div>
+
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Quer fazer parte desse time? Seu cupom <strong>${cupom}</strong> ainda está
+      valendo — essa é sua última chance de usar!
+    </p>
+    ${ctaButton("Quero experimentar!", "https://www.papelariabibelo.com.br")}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      <a href="https://g.page/r/CWeMz1EAqHzfEBM/review" style="color:#fe68c4;text-decoration:none;">
+        Veja mais avaliações no Google →
+      </a>
+    </p>
+  `);
+}
+
 // ── Build email por template name ──────────────────────────────
 
 function buildFlowEmail(nome: string, templateName: string, metadata: Record<string, unknown>): string {
@@ -556,6 +711,18 @@ function buildFlowEmail(nome: string, templateName: string, metadata: Record<str
   }
   if (lower.includes("reativação") || lower.includes("saudade") || lower.includes("inativ")) {
     return buildReactivationEmail(nome);
+  }
+  if (lower.includes("lead carrinho") || lower.includes("lead quente")) {
+    return buildLeadCartEmail(nome, metadata);
+  }
+  if (lower.includes("produtos populares") || lower.includes("mais vendidos")) {
+    return buildPopularProductsEmail(nome);
+  }
+  if (lower.includes("lembrete cupom") || lower.includes("cupom expirando")) {
+    return buildCouponReminderEmail(nome, metadata);
+  }
+  if (lower.includes("prova social") || lower.includes("avaliações")) {
+    return buildSocialProofEmail(nome, metadata);
   }
 
   // Fallback genérico
@@ -588,23 +755,43 @@ function getFlowSubject(templateName: string, nome: string): string {
   if (lower.includes("reativação") || lower.includes("inativ")) {
     return `Sentimos sua falta, ${nome || "Cliente"}! 💌`;
   }
+  if (lower.includes("lead carrinho") || lower.includes("lead quente")) {
+    return `${nome || "Oi"}, vimos que você gostou! Use seu cupom 🛍️`;
+  }
+  if (lower.includes("produtos populares") || lower.includes("mais vendidos")) {
+    return `${nome || "Oi"}, esses são os queridinhos da Bibelô! ✨`;
+  }
+  if (lower.includes("lembrete cupom") || lower.includes("cupom expirando")) {
+    return `⏰ ${nome || "Oi"}, seu cupom de desconto está acabando!`;
+  }
+  if (lower.includes("prova social") || lower.includes("avaliações")) {
+    return `${nome || "Oi"}, veja o que nossas clientes estão dizendo! ⭐`;
+  }
   return `Novidades da Papelaria Bibelô para você!`;
 }
 
 // ── Processar steps prontos (chamado pelo worker) ──────────────
 
 export async function processReadySteps(): Promise<number> {
-  // Busca execuções ativas com próximo step vencido
+  // Lock atômico: marca como 'executando' e retorna IDs — previne workers concorrentes
   const executions = await query<{ id: string }>(
-    `SELECT id FROM marketing.flow_executions
-     WHERE status = 'ativo' AND proximo_step_em <= NOW()
-     ORDER BY proximo_step_em ASC
-     LIMIT 50`
+    `UPDATE marketing.flow_executions
+     SET status = 'executando'
+     WHERE id IN (
+       SELECT id FROM marketing.flow_executions
+       WHERE status = 'ativo' AND proximo_step_em <= NOW()
+       ORDER BY proximo_step_em ASC
+       LIMIT 50
+       FOR UPDATE SKIP LOCKED
+     )
+     RETURNING id`
   );
 
   let processed = 0;
 
   for (const exec of executions) {
+    // Restaura status para 'ativo' antes de executar (executeStep espera 'ativo')
+    await query("UPDATE marketing.flow_executions SET status = 'ativo' WHERE id = $1", [exec.id]);
     const success = await executeStep(exec.id);
     if (success) processed++;
   }
@@ -630,6 +817,16 @@ export async function checkAbandonedCarts(): Promise<number> {
 
   for (const cart of abandoned) {
     if (!cart.customer_id) continue;
+
+    // Verifica se o pedido foi pago enquanto esperávamos (evita email após pagamento)
+    const paidCheck = await queryOne<{ status: string }>(
+      "SELECT status FROM sync.nuvemshop_orders WHERE ns_id = $1",
+      [cart.ns_order_id]
+    );
+    if (paidCheck && paidCheck.status === "paid") {
+      await query("UPDATE marketing.pedidos_pendentes SET convertido = true WHERE id = $1", [cart.id]);
+      continue;
+    }
 
     // Tenta buscar recovery_url se ainda não temos
     let recoveryUrl = cart.recovery_url;
@@ -761,6 +958,81 @@ export async function markOrderConverted(nsOrderId: string): Promise<void> {
     "UPDATE marketing.pedidos_pendentes SET convertido = true WHERE ns_order_id = $1",
     [nsOrderId]
   );
+}
+
+// ── Detectar lead quente que não comprou (add_to_cart sem purchase) ──
+
+export async function checkLeadCartAbandoned(): Promise<number> {
+  // Busca leads que fizeram add_to_cart nas últimas 24h mas não compraram
+  // e não foram notificados por este fluxo nas últimas 48h
+  const hotLeads = await query<{
+    customer_id: string;
+    resource_nome: string;
+    resource_preco: number;
+    resource_imagem: string;
+    resource_id: string;
+    pagina: string;
+    cupom: string;
+  }>(
+    `SELECT DISTINCT ON (t.customer_id)
+       t.customer_id,
+       t.resource_nome,
+       t.resource_preco,
+       t.resource_imagem,
+       t.resource_id,
+       t.pagina,
+       COALESCE(l.cupom, 'BIBELO10') AS cupom
+     FROM crm.tracking_events t
+     JOIN marketing.leads l ON l.customer_id = t.customer_id
+     WHERE t.evento = 'add_to_cart'
+       AND t.customer_id IS NOT NULL
+       AND t.criado_em > NOW() - INTERVAL '24 hours'
+       AND t.criado_em < NOW() - INTERVAL '3 hours'
+       -- Não comprou (sem pedido NuvemShop recente)
+       AND NOT EXISTS (
+         SELECT 1 FROM sync.nuvemshop_orders o
+         WHERE o.customer_id = t.customer_id
+           AND o.webhook_em > NOW() - INTERVAL '24 hours'
+       )
+       -- Não disparamos este fluxo recentemente
+       AND NOT EXISTS (
+         SELECT 1 FROM marketing.flow_executions fe
+         JOIN marketing.flows f ON f.id = fe.flow_id
+         WHERE f.gatilho = 'lead.cart_abandoned'
+           AND fe.customer_id = t.customer_id
+           AND fe.iniciado_em > NOW() - INTERVAL '48 hours'
+       )
+     ORDER BY t.customer_id, t.criado_em DESC
+     LIMIT 20`
+  );
+
+  let triggered = 0;
+
+  for (const lead of hotLeads) {
+    const productUrl = lead.pagina || "https://www.papelariabibelo.com.br";
+
+    const executionIds = await triggerFlow("lead.cart_abandoned", lead.customer_id, {
+      resource_nome: lead.resource_nome,
+      resource_preco: lead.resource_preco,
+      resource_imagem: lead.resource_imagem,
+      resource_id: lead.resource_id,
+      cupom: lead.cupom,
+      recovery_url: productUrl,
+      itens: [{
+        name: lead.resource_nome,
+        price: lead.resource_preco,
+        image_url: lead.resource_imagem,
+        quantity: 1,
+      }],
+    });
+
+    if (executionIds.length > 0) triggered++;
+  }
+
+  if (triggered > 0) {
+    logger.info("Leads quentes sem compra detectados", { total: hotLeads.length, triggered });
+  }
+  return triggered;
 }
 
 // ── Detectar "visitou mas não comprou" ────────────────────────

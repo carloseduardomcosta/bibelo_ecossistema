@@ -52,7 +52,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── flows.ts       ← CRUD fluxos automáticos + stats + execuções
 │   │   │   ├── leads.ts       ← captura leads + stats + config popups (público + protegido)
 │   │   │   ├── leads-script.ts ← GET /api/leads/popup.js — script JS popup + exit-intent
-│   │   │   ├── tracking.ts    ← eventos tracking + timeline + stats + funil (público + protegido)
+│   │   │   ├── tracking.ts    ← eventos tracking + timeline + stats + funil + geo (público + protegido)
 │   │   │   └── tracking-script.ts ← GET /api/tracking/bibelo.js — script tracking NuvemShop
 │   │   ├── services/
 │   │   │   ├── customer.service.ts ← upsert, score, timeline, segments
@@ -78,7 +78,8 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── index.ts         ← Pool + query/queryOne helpers
 │   │   │   └── migrate.ts       ← migration runner
 │   │   └── utils/
-│   │       └── logger.ts        ← Winston logger
+│   │       ├── logger.ts        ← Winston logger
+│   │       └── geoip.ts         ← resolve IP → cidade/estado/país (MaxMind offline)
 │   ├── Dockerfile
 │   ├── package.json
 │   └── tsconfig.json
@@ -149,7 +150,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 - `interactions` — histórico de contatos e interações
 - `deals` — pipeline de negociações
 - `segments` — segmentos dinâmicos de clientes
-- `tracking_events` — page views, produto visualizado, add to cart, busca, checkout
+- `tracking_events` — page views, produto visualizado, add to cart, busca, checkout + geo (ip, cidade, estado, país, lat/lon)
 - `visitor_customers` — vínculo visitor_id → customer_id (identifica anônimos)
 
 ### schema: marketing
@@ -299,6 +300,7 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 ### Tracking Comportamental (Bearer JWT obrigatório)
 - `GET  /api/tracking/timeline` — feed real-time de eventos (paginado)
 - `GET  /api/tracking/stats` — KPIs: eventos, visitantes, produtos vistos, top produtos
+- `GET  /api/tracking/geo` — geolocalização dos visitantes (por estado, cidade, país) (param: dias)
 - `GET  /api/tracking/funnel` — funil do site (visitantes → produto → carrinho → checkout → compra)
 - `GET  /api/tracking/visitor/:vid` — histórico de um visitante
 
@@ -374,6 +376,13 @@ Este projeto pode ter **múltiplos agents Claude trabalhando simultaneamente**.
 - Usar `console.log` em produção — sempre `logger`
 - Expor detalhes do banco em respostas de erro
 - Deixar rotas sem tratamento de erro
+
+### Regras anti-redundância de emails e fluxos
+- **triggerFlow nunca re-executa** — se já existe execução (ativa, concluída ou erro), ignora. Evita duplicatas.
+- **Reativação só para quem já comprou** — fluxo `customer.inactive` só dispara se o cliente tem pelo menos 1 pedido (NuvemShop ou Bling). Leads puros sem compra NÃO recebem email de "sentimos sua falta".
+- **Testes de email: SEMPRE no email do Carlos** — `carloseduardocostatj@gmail.com`. Nunca disparar triggerFlow manualmente para clientes/leads reais. Criar customer de teste se necessário.
+- **Captura de lead vincula visitor** — ao capturar lead via popup, o `visitor_id` é vinculado ao `customer_id` na tabela `visitor_customers` e tracking_events anteriores são retroativamente atribuídos.
+- **Cada email enviado por fluxo registra interação** — inserido em `crm.interactions` com tipo `email_enviado` para aparecer na timeline do cliente.
 
 ---
 
@@ -574,6 +583,8 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - 5006970 feat: adiciona logo clicável nos templates de email
 - 392a607 fix: logo dos emails servida via webhook (sem Cloudflare Access)
 - aabe5fe fix: cor dos templates de email para rosa oficial #fe68c4
+- PENDENTE feat: geolocalização visitantes, auditoria gaps, botão WhatsApp produto, Dashboard melhorias
+- PENDENTE feat: funil de leads completo — score engajamento, pipeline auto, sino notificações, drip nutrição
 
 
 ## Protocolo de atualização deste arquivo
@@ -608,7 +619,7 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | NuvemShop Sync | ✅ produção | clientes, pedidos, produtos — sync manual + webhooks real-time |
 | NuvemShop Webhooks | ✅ produção | 9 webhooks — order/created,updated,paid,fulfilled,cancelled + customer/* + product/* |
 | Resend E-mail | ✅ produção | remetente "Papelaria Bibelô", 14 templates, domínio verificado |
-| Motor de Fluxos | ✅ produção | 8 fluxos ativos, BullMQ process-steps 1min, check-abandoned 5min, check-interest 15min |
+| Motor de Fluxos | ✅ produção | 10 fluxos ativos, BullMQ process-steps 1min, check-abandoned 5min, check-interest 15min, check-lead-cart 10min |
 | Carrinho Abandonado | ✅ produção | detecta order/created sem paid após 2h, recovery_url real do checkout |
 | Avaliação Pós-Entrega | ✅ produção | webhook order/fulfilled → email 12h após entrega (Google + site) |
 | Caça-Leads (Popup) | ✅ produção | popup JS via GTM, captura email+WhatsApp, cupom BIBELO10 (10% OFF) |
@@ -617,6 +628,13 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Tracking Comportamental | ✅ produção | page_view, product_view, add_to_cart, search, checkout — script JS via GTM |
 | Visitou mas não comprou | ✅ produção | detecta 2+ views do mesmo produto em 24h, email 4h depois |
 | Funil do Site | ✅ produção | visitantes → produto → carrinho → checkout → compra (7d) |
+| Geolocalização Visitantes | ✅ produção | geoip-lite (MaxMind offline), IP → cidade/estado/país, dashboard por estado e cidade |
+| Score de Leads | ✅ produção | engajamento (popup +15, views +3, cart +10, emails +3), segmentos lead/lead_quente |
+| Lead → Pipeline | ✅ produção | deal criado automaticamente na captura (etapa prospecção, prob 20%) |
+| Notificação Leads | ✅ produção | sino mostra leads últimas 72h, badge rosa, refresh 2min |
+| Drip Nutrição Lead | ✅ produção | dia 2 produtos populares, dia 5 lembrete cupom, dia 10 prova social |
+| Lead Quente sem Compra | ✅ produção | checker 10min: add_to_cart sem purchase em 3h → email com cupom |
+| Vinculação Visitor→Customer | ✅ produção | popup vincula visitor_id ao customer, atualiza tracking retroativo |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
 
 ### Regra obrigatória:
@@ -634,4 +652,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 29 de Março de 2026 — Tracking comportamental completo, funil do site, "visitou mas não comprou", 8 fluxos, 15 templates, popup 10% OFF + exit-intent, 9 webhooks NuvemShop*
+*Última atualização: 30 de Março de 2026 — Funil de leads completo (score engajamento, pipeline automático, sino notificações, drip nutrição, lead quente), vinculação visitor→customer, regras anti-redundância, 10 fluxos, 19 templates, 5 jobs BullMQ*

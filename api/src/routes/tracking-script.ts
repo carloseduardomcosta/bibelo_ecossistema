@@ -238,23 +238,61 @@ trackingScriptRouter.get("/bibelo.js", (_req: Request, res: Response) => {
           target.getAttribute('data-action') === 'add-to-cart';
 
         if (isCartButton && (target.tagName === 'BUTTON' || target.tagName === 'A' || target.tagName === 'INPUT')) {
-          // Buscar dados do produto na página (DOM real)
           var productData = { pagina_tipo: 'product' };
-          var ogT = document.querySelector('meta[property="og:title"]');
-          if (ogT) productData.resource_nome = ogT.getAttribute('content');
-          if (!productData.resource_nome) {
-            var tParts = (document.title || '').split(/\\s*[-\\u2013|]\\s*/);
-            if (tParts[0]) productData.resource_nome = tParts[0].trim();
+
+          // Tenta extrair dados do produto PRÓXIMO ao botão clicado (funciona em listagens/home)
+          var card = target.closest('[data-product-id], .js-product-container, .product-card, .item-product, article, .js-item-product');
+          if (card) {
+            var cardName = card.querySelector('.js-item-name, .item-name, .product-name, h2 a, h3 a, .js-product-name');
+            if (cardName) productData.resource_nome = cardName.textContent.trim();
+            var cardImg = card.querySelector('img');
+            if (cardImg) productData.resource_imagem = cardImg.getAttribute('data-srcset') || cardImg.getAttribute('data-src') || cardImg.getAttribute('src');
+            var cardPrice = card.querySelector('[data-product-price], .js-price-display, .item-price, .price');
+            if (cardPrice) {
+              var cp = (cardPrice.textContent || '').replace(/[^0-9,.]/g, '').replace('.', '').replace(',', '.');
+              var cpn = parseFloat(cp);
+              if (cpn > 0) productData.resource_preco = cpn;
+            }
+            var cardId = card.getAttribute('data-product-id') || card.getAttribute('data-product');
+            if (cardId) productData.resource_id = cardId;
+            // Link do produto no card
+            if (!productData.resource_id) {
+              var cardLink = card.querySelector('a[href*="/produtos/"], a[href*="/products/"]');
+              if (cardLink) {
+                var href = cardLink.getAttribute('href') || '';
+                var slug = href.split('/').filter(Boolean).pop();
+                productData.resource_id = slug || undefined;
+              }
+            }
           }
-          var ogI = document.querySelector('meta[property="og:image"]');
-          if (ogI) productData.resource_imagem = ogI.getAttribute('content');
-          var ogP = document.querySelector('meta[property="product:price:amount"]');
-          if (ogP) productData.resource_preco = parseFloat(ogP.getAttribute('content') || '0');
-          var pIdEl = document.querySelector('[data-product-id]');
-          if (pIdEl) productData.resource_id = pIdEl.getAttribute('data-product-id');
+
+          // Fallback: página de produto individual (og:title = nome do produto)
+          if (!productData.resource_nome) {
+            var isProductPage = window.location.pathname.match(/^\\/(produtos|products)\\/[^/]+\\/?$/);
+            var ogT = document.querySelector('meta[property="og:title"]');
+            if (ogT && isProductPage) {
+              productData.resource_nome = ogT.getAttribute('content');
+            }
+            if (!productData.resource_nome) {
+              var tParts = (document.title || '').split(/\\s*[-\\u2013|]\\s*/);
+              if (tParts[0] && isProductPage) productData.resource_nome = tParts[0].trim();
+            }
+          }
+          if (!productData.resource_imagem) {
+            var ogI = document.querySelector('meta[property="og:image"]');
+            if (ogI) productData.resource_imagem = ogI.getAttribute('content');
+          }
+          if (!productData.resource_preco) {
+            var ogP = document.querySelector('meta[property="product:price:amount"]');
+            if (ogP) productData.resource_preco = parseFloat(ogP.getAttribute('content') || '0');
+          }
+          if (!productData.resource_id) {
+            var pIdEl = document.querySelector('[data-product-id]');
+            if (pIdEl) productData.resource_id = pIdEl.getAttribute('data-product-id');
+          }
           if (!productData.resource_id) {
             var s = window.location.pathname.split('/').filter(Boolean).pop();
-            productData.resource_id = s || undefined;
+            if (window.location.pathname.match(/^\\/(produtos|products)\\//)) productData.resource_id = s || undefined;
           }
           track('add_to_cart', productData);
           return;

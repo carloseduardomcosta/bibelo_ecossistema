@@ -1,6 +1,6 @@
 import { Queue, Worker } from "bullmq";
 import { logger } from "../utils/logger";
-import { processReadySteps, checkAbandonedCarts, checkProductInterest } from "../services/flow.service";
+import { processReadySteps, checkAbandonedCarts, checkProductInterest, checkLeadCartAbandoned } from "../services/flow.service";
 import { query } from "../db";
 
 // ── Redis connection ───────────────────────────────────────────
@@ -49,6 +49,12 @@ export const flowWorker = new Worker(
 
         case "flow-check-interest": {
           const triggered = await checkProductInterest();
+          result = { triggered };
+          break;
+        }
+
+        case "flow-check-lead-cart": {
+          const triggered = await checkLeadCartAbandoned();
           result = { triggered };
           break;
         }
@@ -113,7 +119,12 @@ export async function registerFlowJobs(): Promise<void> {
     repeat: { pattern: "*/15 * * * *" },
   });
 
-  logger.info("Flow jobs registrados: process-steps (1min), check-abandoned (5min), check-interest (15min)");
+  // Verificar leads quentes que não compraram: a cada 10 minutos
+  await flowQueue.add("flow-check-lead-cart", {}, {
+    repeat: { pattern: "*/10 * * * *" },
+  });
+
+  logger.info("Flow jobs registrados: process-steps (1min), check-abandoned (5min), check-interest (15min), check-lead-cart (10min)");
 }
 
 // ── Event listeners ────────────────────────────────────────────

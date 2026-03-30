@@ -180,26 +180,56 @@ interface Notificacao {
   categoria_cor: string;
 }
 
+interface LeadNotif {
+  id: string;
+  nome: string | null;
+  email: string;
+  telefone: string | null;
+  cupom: string | null;
+  criado_em: string;
+}
+
+function timeAgo(date: string): string {
+  const ms = Date.now() - new Date(date).getTime();
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  return `${d}d`;
+}
+
 function NotificationBell() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [alertas, setAlertas] = useState<Notificacao[]>([]);
+  const [leads, setLeads] = useState<LeadNotif[]>([]);
   const [resumo, setResumo] = useState({ atrasados: 0, vence_em_breve: 0, pagos: 0, pendentes: 0, total: 0 });
   const ref = useRef<HTMLDivElement>(null);
 
   const fetchAlertas = useCallback(async () => {
     try {
-      const { data } = await api.get('/financeiro/despesas-fixas/alertas');
-      setAlertas(data.data.filter((d: Notificacao) => d.alerta !== 'pago'));
-      setResumo(data.resumo);
+      const [finResp, leadsResp] = await Promise.all([
+        api.get('/financeiro/despesas-fixas/alertas'),
+        api.get('/leads?limit=5'),
+      ]);
+      setAlertas(finResp.data.data.filter((d: Notificacao) => d.alerta !== 'pago'));
+      setResumo(finResp.data.resumo);
+      // Leads das últimas 72h
+      const recentes = (leadsResp.data.leads || []).filter((l: LeadNotif) => {
+        const ms = Date.now() - new Date(l.criado_em).getTime();
+        return ms < 72 * 3600 * 1000;
+      });
+      setLeads(recentes);
     } catch {}
   }, []);
 
   useEffect(() => { fetchAlertas(); }, [fetchAlertas]);
 
-  // Refresh a cada 5 min
+  // Refresh a cada 2 min
   useEffect(() => {
-    const interval = setInterval(fetchAlertas, 5 * 60 * 1000);
+    const interval = setInterval(fetchAlertas, 2 * 60 * 1000);
     return () => clearInterval(interval);
   }, [fetchAlertas]);
 
@@ -212,7 +242,7 @@ function NotificationBell() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const urgentes = resumo.atrasados + resumo.vence_em_breve;
+  const urgentes = resumo.atrasados + resumo.vence_em_breve + leads.length;
 
   const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -235,6 +265,11 @@ function NotificationBell() {
           <div className="px-4 py-3 border-b border-bibelo-border flex items-center justify-between">
             <h3 className="text-sm font-bold text-bibelo-text">Notificações</h3>
             <div className="flex items-center gap-2">
+              {leads.length > 0 && (
+                <span className="text-[10px] px-2 py-0.5 bg-pink-400/10 text-pink-400 rounded-full font-medium">
+                  {leads.length} lead{leads.length > 1 ? 's' : ''} novo{leads.length > 1 ? 's' : ''}
+                </span>
+              )}
               {resumo.atrasados > 0 && (
                 <span className="text-[10px] px-2 py-0.5 bg-red-400/10 text-red-400 rounded-full font-medium">
                   {resumo.atrasados} atrasada{resumo.atrasados > 1 ? 's' : ''}
@@ -248,49 +283,96 @@ function NotificationBell() {
             </div>
           </div>
 
-          <div className="max-h-72 overflow-y-auto">
-            {alertas.length === 0 ? (
+          <div className="max-h-80 overflow-y-auto">
+            {/* ── Leads recentes ── */}
+            {leads.length > 0 && (
+              <>
+                <div className="px-4 py-2 bg-pink-400/5 border-b border-bibelo-border/50">
+                  <p className="text-[10px] font-bold text-pink-400 uppercase tracking-wider">Novos Leads</p>
+                </div>
+                {leads.map((l) => (
+                  <button
+                    key={l.id}
+                    onClick={() => { setOpen(false); navigate('/marketing'); }}
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bibelo-border/30 transition-colors text-left border-b border-bibelo-border/50"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-pink-400/20 flex items-center justify-center shrink-0">
+                      <Sparkles size={14} className="text-pink-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-bibelo-text truncate">{l.nome || l.email.split('@')[0]}</p>
+                      <p className="text-xs text-bibelo-muted">
+                        {l.email}
+                        {l.telefone && <span className="ml-1">· {l.telefone}</span>}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] text-pink-400 font-medium">{timeAgo(l.criado_em)}</span>
+                      {l.cupom && <p className="text-[10px] text-bibelo-muted">{l.cupom}</p>}
+                    </div>
+                  </button>
+                ))}
+              </>
+            )}
+
+            {/* ── Alertas financeiros ── */}
+            {alertas.length > 0 && (
+              <>
+                <div className="px-4 py-2 bg-amber-400/5 border-b border-bibelo-border/50">
+                  <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Despesas Fixas</p>
+                </div>
+                {alertas.map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => { setOpen(false); navigate('/despesas-fixas'); }}
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bibelo-border/30 transition-colors text-left border-b border-bibelo-border/50 last:border-0"
+                  >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                      n.alerta === 'atrasado' ? 'bg-red-400/20' :
+                      n.alerta === 'vence_em_breve' ? 'bg-amber-400/20' :
+                      'bg-bibelo-border'
+                    }`}>
+                      {n.alerta === 'atrasado' ? <AlertTriangle size={14} className="text-red-400" /> :
+                       n.alerta === 'vence_em_breve' ? <Clock size={14} className="text-amber-400" /> :
+                       <Clock size={14} className="text-bibelo-muted" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-bibelo-text truncate">{n.descricao}</p>
+                      <p className="text-xs text-bibelo-muted">
+                        Dia {n.dia_vencimento} · {fmt(parseFloat(n.valor))}
+                        {n.alerta === 'atrasado' && <span className="text-red-400 ml-1">· ATRASADO</span>}
+                        {n.alerta === 'vence_em_breve' && <span className="text-amber-400 ml-1">· Vence em breve</span>}
+                      </p>
+                    </div>
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: n.categoria_cor }} />
+                  </button>
+                ))}
+              </>
+            )}
+
+            {alertas.length === 0 && leads.length === 0 && (
               <div className="px-4 py-8 text-center">
                 <CheckCircle2 size={24} className="mx-auto mb-2 text-emerald-400" />
                 <p className="text-sm text-bibelo-muted">Tudo em dia!</p>
-                <p className="text-xs text-bibelo-muted/60 mt-1">Nenhuma despesa pendente ou atrasada</p>
+                <p className="text-xs text-bibelo-muted/60 mt-1">Nenhum lead novo ou despesa pendente</p>
               </div>
-            ) : (
-              alertas.map((n) => (
-                <button
-                  key={n.id}
-                  onClick={() => { setOpen(false); navigate('/despesas-fixas'); }}
-                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bibelo-border/30 transition-colors text-left border-b border-bibelo-border/50 last:border-0"
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                    n.alerta === 'atrasado' ? 'bg-red-400/20' :
-                    n.alerta === 'vence_em_breve' ? 'bg-amber-400/20' :
-                    'bg-bibelo-border'
-                  }`}>
-                    {n.alerta === 'atrasado' ? <AlertTriangle size={14} className="text-red-400" /> :
-                     n.alerta === 'vence_em_breve' ? <Clock size={14} className="text-amber-400" /> :
-                     <Clock size={14} className="text-bibelo-muted" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-bibelo-text truncate">{n.descricao}</p>
-                    <p className="text-xs text-bibelo-muted">
-                      Dia {n.dia_vencimento} · {fmt(parseFloat(n.valor))}
-                      {n.alerta === 'atrasado' && <span className="text-red-400 ml-1">· ATRASADO</span>}
-                      {n.alerta === 'vence_em_breve' && <span className="text-amber-400 ml-1">· Vence em breve</span>}
-                    </p>
-                  </div>
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: n.categoria_cor }} />
-                </button>
-              ))
             )}
           </div>
 
-          <div className="px-4 py-2.5 border-t border-bibelo-border">
+          <div className="px-4 py-2.5 border-t border-bibelo-border flex gap-2">
+            {leads.length > 0 && (
+              <button
+                onClick={() => { setOpen(false); navigate('/marketing'); }}
+                className="flex-1 text-center text-xs text-pink-400 hover:text-pink-300 font-medium transition-colors"
+              >
+                Ver leads
+              </button>
+            )}
             <button
               onClick={() => { setOpen(false); navigate('/despesas-fixas'); }}
-              className="w-full text-center text-xs text-bibelo-primary hover:text-bibelo-primary/80 font-medium transition-colors"
+              className="flex-1 text-center text-xs text-bibelo-primary hover:text-bibelo-primary/80 font-medium transition-colors"
             >
-              Ver todas as despesas fixas
+              Ver despesas
             </button>
           </div>
         </div>
