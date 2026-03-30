@@ -50,8 +50,9 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── contas-pagar.ts ← contas a pagar Bling + pagamento
 │   │   │   ├── search.ts      ← busca global (clientes, produtos, NFs, lançamentos)
 │   │   │   ├── flows.ts       ← CRUD fluxos automáticos + stats + execuções
-│   │   │   ├── leads.ts       ← captura leads + stats + config popups (público + protegido)
+│   │   │   ├── leads.ts       ← captura leads + verificação email + confirm + stats + config popups
 │   │   │   ├── leads-script.ts ← GET /api/leads/popup.js — script JS popup + exit-intent
+│   │   │   ├── email.ts       ← descadastro 1-click LGPD (público, HMAC token)
 │   │   │   ├── tracking.ts    ← eventos tracking + timeline + stats + funil + geo (público + protegido)
 │   │   │   └── tracking-script.ts ← GET /api/tracking/bibelo.js — script tracking NuvemShop
 │   │   ├── services/
@@ -305,11 +306,15 @@ GOOGLE_CLIENT_ID    + GOOGLE_CLIENT_SECRET
 - `GET  /api/tracking/funnel` — funil do site (visitantes → produto → carrinho → checkout → compra)
 - `GET  /api/tracking/visitor/:vid` — histórico de um visitante
 
+### Email / LGPD (endpoints públicos — sem auth)
+- `GET  /api/email/unsubscribe` — descadastro 1-click (HMAC token, marca email_optout)
+
 ### Caça-Leads (endpoints públicos — sem auth)
 - `GET  /api/leads/config` — retorna popups ativos (config dinâmica)
 - `GET  /api/leads/popup.js` — script JS do popup (servido via webhook.papelariabibelo.com.br)
-- `POST /api/leads/capture` — capturar lead (email, nome, telefone, popup_id)
+- `POST /api/leads/capture` — capturar lead (envia email de verificação, NÃO entrega cupom)
 - `POST /api/leads/view` — registrar exibição do popup
+- `GET  /api/leads/confirm` — confirma email via HMAC token, entrega cupom, dispara fluxo boas-vindas
 
 ### Caça-Leads (Bearer JWT obrigatório)
 - `GET  /api/leads` — listar leads capturados (paginado, search, status, ordenar)
@@ -384,6 +389,9 @@ Este projeto pode ter **múltiplos agents Claude trabalhando simultaneamente**.
 - **Testes de email: SEMPRE no email do Carlos** — `carloseduardocostatj@gmail.com`. Nunca disparar triggerFlow manualmente para clientes/leads reais. Criar customer de teste se necessário.
 - **Captura de lead vincula visitor** — ao capturar lead via popup, o `visitor_id` é vinculado ao `customer_id` na tabela `visitor_customers` e tracking_events anteriores são retroativamente atribuídos.
 - **Cada email enviado por fluxo registra interação** — inserido em `crm.interactions` com tipo `email_enviado` para aparecer na timeline do cliente.
+- **Cupom só após verificação de email** — popup NÃO entrega cupom na tela. Envia email com link HMAC de confirmação. Só ao clicar o cupom é revelado e o fluxo de boas-vindas é disparado. Previne emails fake/temporários.
+- **Opt-out LGPD respeitado em tudo** — clientes com `email_optout=true` são excluídos de campanhas (sends marcados como 'ignorado') e fluxos automáticos (steps de email cancelados). Link de descadastro no footer de todos os emails.
+- **Descadastro notifica o admin** — ao fazer opt-out, email é enviado para carloseduardocostatj@gmail.com com dados do cliente.
 
 ---
 
@@ -591,6 +599,10 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - 65a6a40 fix: filtra tráfego interno do tracking — só clientes reais na Atividade
 - ec2e0b9 feat: melhora lista de leads — busca, filtros, ordenação e paginação
 - e3668e4 feat: melhora página Clientes — KPIs, filtros, ordenação, visual renovado
+- 550a1b2 docs: atualiza CLAUDE.md — rotas, commits, página Clientes e Leads
+- e893017 feat: opt-out de email LGPD — descadastro 1-click, filtro em campanhas e fluxos
+- d11e2d9 feat: verificação de email para leads — cupom só após confirmar (anti-fake)
+- 6662186 fix: normaliza email lowercase na captura de leads + sanitiza nome contra XSS
 
 
 ## Protocolo de atualização deste arquivo
@@ -628,7 +640,9 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Motor de Fluxos | ✅ produção | 10 fluxos ativos, BullMQ process-steps 1min, check-abandoned 5min, check-interest 15min, check-lead-cart 10min |
 | Carrinho Abandonado | ✅ produção | detecta order/created sem paid após 2h, recovery_url real do checkout |
 | Avaliação Pós-Entrega | ✅ produção | webhook order/fulfilled → email 12h após entrega (Google + site) |
-| Caça-Leads (Popup) | ✅ produção | popup JS via GTM, captura email+WhatsApp, cupom BIBELO10 (10% OFF) |
+| Caça-Leads (Popup) | ✅ produção | popup JS via GTM, captura email+WhatsApp, verificação email obrigatória, cupom só após confirmar |
+| Verificação Email Lead | ✅ produção | HMAC token, email de confirmação via Resend, anti-fake (email temp não recebe cupom) |
+| Opt-out Email (LGPD) | ✅ produção | descadastro 1-click, link em todos os emails, campanhas e fluxos respeitam opt-out |
 | Evolution WhatsApp | ⏳ pendente | aguardando configuração |
 | Painel Marketing Frontend | ✅ produção | 3 abas: Visão Geral (KPIs, gráficos), Fluxos (detalhe+toggle), Leads (tabela+stats) |
 | Tracking Comportamental | ✅ produção | page_view, product_view, add_to_cart, search, checkout — script JS via GTM |
@@ -659,4 +673,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 30 de Março de 2026 — Página Clientes renovada (KPIs, filtros, ordenação, score visual), lista Leads com busca/filtros, limpeza dados teste*
+*Última atualização: 30 de Março de 2026 — Opt-out LGPD (descadastro 1-click), verificação de email para leads (anti-fake), template novidades redesenhado*
