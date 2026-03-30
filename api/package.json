@@ -8,7 +8,9 @@
     "build": "tsc --project tsconfig.json",
     "start": "node dist/server.js",
     "db:migrate": "node dist/db/migrate.js",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@react-oauth/google": "^0.13.4",
@@ -43,7 +45,10 @@
     "@types/multer": "^2.1.0",
     "@types/node": "^20.11.5",
     "@types/pg": "^8.10.9",
+    "@types/supertest": "^7.2.0",
+    "supertest": "^7.2.2",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^1.6.1"
   }
 }

@@ -427,6 +427,33 @@ Executar: `Agent de QA/segurança` para auditar os arquivos modificados na sess�
 
 ---
 
+## Testes automatizados
+
+Framework: **Vitest 1.6** + **Supertest** (testes de integração contra banco real)
+
+```bash
+# Rodar todos os testes
+bash scripts/test.sh
+
+# Rodar um arquivo específico
+bash scripts/test.sh src/routes/leads.test.ts
+```
+
+### Cobertura atual (30 testes)
+- `health.test.ts` — 1 teste (health check)
+- `email.test.ts` — 6 testes (unsubscribe: validação, HMAC, XSS, idempotência)
+- `leads.test.ts` — 14 testes (capture, confirm, verificação email, SQL injection, case sensitivity)
+- `orders.test.ts` — 9 testes (auth, lista, filtros, stats, detalhe com itens/custo)
+
+### Regras para testes
+- Todo endpoint público novo DEVE ter testes de: validação de input, token inválido, XSS
+- Todo endpoint protegido DEVE testar: 401 sem token, resposta com token válido
+- Dados de teste DEVEM ser limpos no `afterAll`
+- Testes rodam contra o banco real (via rede Docker) — não usar mocks de DB
+- Script `scripts/test.sh` resolve IPs dos containers automaticamente
+
+---
+
 ## Comandos do dia a dia
 ```bash
 # Ver status dos containers

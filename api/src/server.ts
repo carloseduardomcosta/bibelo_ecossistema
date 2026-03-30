@@ -106,7 +106,10 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   res.status(500).json({ error: "Erro interno do servidor" });
 });
 
-// ── Start
+// ── Export para testes (supertest)
+export { app };
+
+// ── Start (não executa durante testes)
 async function start(): Promise<void> {
   await dbConnect();
   await registerScheduledJobs();
@@ -117,7 +120,11 @@ async function start(): Promise<void> {
   });
 }
 
-start().catch((err) => {
-  logger.error("Falha ao iniciar API", { error: err.message });
-  process.exit(1);
-});
+const isTest = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
+
+if (!isTest) {
+  start().catch((err) => {
+    logger.error("Falha ao iniciar API", { error: err.message });
+    process.exit(1);
+  });
+}
