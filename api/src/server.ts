@@ -27,6 +27,7 @@ import { trackingRouter }    from "./routes/tracking";
 import { trackingScriptRouter } from "./routes/tracking-script";
 import { emailRouter }           from "./routes/email";
 import { linksRouter }           from "./routes/links";
+import { reviewsWidgetRouter }   from "./routes/reviews-widget";
 import { ordersRouter }          from "./routes/orders";
 import { nuvemshopWebhookRouter } from "./integrations/nuvemshop/webhook";
 import { blingWebhookRouter }     from "./integrations/bling/webhook";
@@ -90,6 +91,7 @@ app.use("/api/leads", leadsScriptRouter);
 app.use("/api/tracking", trackingRouter);
 app.use("/api/tracking", trackingScriptRouter);
 app.use("/api/links", linksRouter);   // página de links + redirect com tracking
+app.use("/api/reviews", reviewsWidgetRouter); // widget reviews público + script JS
 app.use("/api/email", emailRouter);  // público: descadastro 1-click (LGPD)
 app.use("/api/orders", ordersRouter);
 app.use("/api/webhooks/nuvemshop", nuvemshopWebhookRouter);

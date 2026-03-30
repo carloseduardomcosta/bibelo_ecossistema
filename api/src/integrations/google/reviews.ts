@@ -17,6 +17,7 @@ export interface PlaceReviews {
   overall_rating: number;
   total_reviews: number;
   reviews: GoogleReview[];
+  photos: string[];
 }
 
 // ── Tabela de cache ───────────────────────────────────────────
@@ -56,12 +57,27 @@ export async function fetchGoogleReviews(): Promise<PlaceReviews | null> {
       {
         headers: {
           "X-Goog-Api-Key": apiKey,
-          "X-Goog-FieldMask": "rating,userRatingCount,reviews",
+          "X-Goog-FieldMask": "rating,userRatingCount,reviews,photos",
         },
         params: { languageCode: "pt-BR" },
         timeout: 10000,
       }
     );
+
+    // Resolve URLs de fotos do local (até 6)
+    const photoNames: string[] = (data.photos || []).slice(0, 6).map((p: Record<string, unknown>) => p.name as string).filter(Boolean);
+    const photoUrls: string[] = [];
+    for (const name of photoNames) {
+      try {
+        const photoRes = await axios.get(`https://places.googleapis.com/v1/${name}/media`, {
+          headers: { "X-Goog-Api-Key": apiKey },
+          params: { maxWidthPx: 400 },
+          maxRedirects: 0,
+          validateStatus: (s: number) => s === 302 || s === 200,
+        });
+        if (photoRes.headers.location) photoUrls.push(photoRes.headers.location);
+      } catch { /* skip photo */ }
+    }
 
     return {
       overall_rating: data.rating || 0,
@@ -79,6 +95,7 @@ export async function fetchGoogleReviews(): Promise<PlaceReviews | null> {
           profile_photo_url: author?.photoUri || "",
         };
       }),
+      photos: photoUrls,
     };
   } catch (err) {
     logger.error("Falha ao buscar Google Reviews", { error: String(err) });
@@ -107,10 +124,19 @@ export async function refreshReviewsCache(): Promise<PlaceReviews | null> {
     );
   }
 
+  // Salva fotos no primeiro registro (campo profile_photo_url como JSON das fotos do local)
+  if (data.photos.length > 0 && data.reviews.length > 0) {
+    await query(
+      `UPDATE marketing.google_reviews SET profile_photo_url = $1 WHERE id = (SELECT MIN(id) FROM marketing.google_reviews)`,
+      [JSON.stringify(data.photos)]
+    );
+  }
+
   logger.info("Google Reviews atualizados", {
     rating: data.overall_rating,
     total: data.total_reviews,
     reviews: data.reviews.length,
+    photos: data.photos.length,
   });
 
   return data;
@@ -156,7 +182,17 @@ export async function getCachedReviews(): Promise<PlaceReviews> {
           profile_photo_url: "",
         },
       ],
+      photos: [],
     };
+  }
+
+  // Busca fotos do local (salvas como JSON no primeiro registro)
+  let photos: string[] = [];
+  const first = await queryOne<{ profile_photo_url: string }>(
+    "SELECT profile_photo_url FROM marketing.google_reviews ORDER BY id LIMIT 1"
+  );
+  if (first?.profile_photo_url?.startsWith("[")) {
+    try { photos = JSON.parse(first.profile_photo_url); } catch { /* ignore */ }
   }
 
   return {
@@ -170,5 +206,6 @@ export async function getCachedReviews(): Promise<PlaceReviews> {
       relative_time_description: r.relative_time,
       profile_photo_url: r.profile_photo_url,
     })),
+    photos,
   };
 }
