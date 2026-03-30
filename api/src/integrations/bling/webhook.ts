@@ -3,6 +3,8 @@ import { Router, Request, Response } from "express";
 import { query, queryOne } from "../../db";
 import { logger } from "../../utils/logger";
 import { upsertCustomer, calculateScore } from "../../services/customer.service";
+import { getValidToken, BLING_API } from "./auth";
+import { rateLimitedGet } from "./sync";
 
 export const blingWebhookRouter = Router();
 
@@ -84,6 +86,29 @@ async function processPedido(data: Record<string, unknown>, evento: string): Pro
   const pedido = (data.pedido || data) as Record<string, unknown>;
   if (!pedido || !pedido.id) return;
 
+  // Webhook do Bling NÃO envia itens — buscar detalhe via API
+  let itens: unknown[] = pedido.itens as unknown[] || [];
+  let valorTotal = pedido.totalProdutos || pedido.total || 0;
+
+  if (!itens.length) {
+    try {
+      const token = await getValidToken();
+      const detail = await rateLimitedGet<{ data: Record<string, unknown> }>(
+        `${BLING_API}/pedidos/vendas/${pedido.id}`,
+        token
+      );
+      if (detail.data?.itens) {
+        itens = detail.data.itens as unknown[];
+      }
+      if (detail.data?.total) {
+        valorTotal = detail.data.total;
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro";
+      logger.warn("Bling webhook: erro ao buscar detalhe do pedido", { pedidoId: pedido.id, error: msg });
+    }
+  }
+
   const contato = pedido.contato as Record<string, unknown> | undefined;
   let customerId: string | null = null;
 
@@ -104,10 +129,10 @@ async function processPedido(data: Record<string, unknown>, evento: string): Pro
       String(pedido.id),
       customerId,
       pedido.numero || null,
-      pedido.totalProdutos || pedido.total || 0,
+      valorTotal,
       (pedido.situacao as Record<string, unknown>)?.valor || evento,
       pedido.loja ? "online" : "fisico",
-      JSON.stringify(pedido.itens || []),
+      JSON.stringify(itens),
       pedido.data || null,
     ]
   );
@@ -116,7 +141,7 @@ async function processPedido(data: Record<string, unknown>, evento: string): Pro
     await calculateScore(customerId);
   }
 
-  logger.info(`Bling webhook: pedido ${evento}`, { blingId: pedido.id, customerId });
+  logger.info(`Bling webhook: pedido ${evento}`, { blingId: pedido.id, customerId, itens: itens.length });
 }
 
 // ── Processar evento de estoque ──────────────────────────────

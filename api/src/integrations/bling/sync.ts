@@ -28,7 +28,7 @@ function classifyCanal(lojaId: number | undefined | null): string {
 
 let lastRequestTime = 0;
 
-async function rateLimitedGet<T>(url: string, token: string): Promise<T> {
+export async function rateLimitedGet<T>(url: string, token: string): Promise<T> {
   // Garante intervalo mínimo de 350ms entre requests (≈2.8 req/s, margem segura)
   const now = Date.now();
   const elapsed = now - lastRequestTime;
@@ -512,6 +512,25 @@ export async function incrementalSync(): Promise<{ customers: number; orders: nu
       if (!data.data || data.data.length === 0) break;
 
       for (const pedido of data.data) {
+        // Busca detalhe para obter itens (lista Bling não traz)
+        let itens: unknown[] = [];
+        let valorTotal = pedido.totalProdutos || pedido.total || 0;
+        try {
+          const detail = await rateLimitedGet<{ data: Record<string, unknown> }>(
+            `${BLING_API}/pedidos/vendas/${pedido.id}`,
+            token
+          );
+          if (detail.data?.itens) {
+            itens = detail.data.itens as unknown[];
+          }
+          if (detail.data?.total) {
+            valorTotal = detail.data.total;
+          }
+        } catch (detailErr: unknown) {
+          const msg = detailErr instanceof Error ? detailErr.message : "Erro";
+          logger.warn("Bling incremental: erro ao buscar detalhe do pedido", { pedidoId: pedido.id, error: msg });
+        }
+
         const contato = pedido.contato as Record<string, unknown> | undefined;
         let customerId: string | null = null;
 
@@ -532,10 +551,10 @@ export async function incrementalSync(): Promise<{ customers: number; orders: nu
             String(pedido.id),
             customerId,
             pedido.numero || null,
-            pedido.totalProdutos || pedido.total || 0,
+            valorTotal,
             (pedido.situacao as Record<string, unknown>)?.valor || "desconhecido",
             classifyCanal((pedido.loja as Record<string, unknown>)?.id as number),
-            JSON.stringify(pedido.itens || []),
+            JSON.stringify(itens),
             pedido.data || null,
           ]
         );
