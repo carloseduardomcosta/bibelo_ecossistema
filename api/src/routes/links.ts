@@ -12,13 +12,12 @@ const limiter = rateLimit({
 });
 
 // ── Configuração dos links ────────────────────────────────────
-// Cada link tem slug, título, URL destino, ícone e UTM params
 
 interface LinkItem {
   slug: string;
   titulo: string;
   url: string;
-  icone: string;  // emoji ou SVG inline
+  icone: string;
   destaque?: boolean;
   utm?: { source: string; medium: string; campaign: string };
 }
@@ -30,7 +29,7 @@ const LINKS: LinkItem[] = [
     url: "https://www.papelariabibelo.com.br",
     icone: "🛍️",
     destaque: true,
-    utm: { source: "instagram", medium: "bio_link", campaign: "links" },
+    utm: { source: "instagram", medium: "bio_link", campaign: "menu" },
   },
   {
     slug: "whatsapp",
@@ -51,8 +50,15 @@ const LINKS: LinkItem[] = [
     icone: "📸",
   },
   {
+    slug: "formulario",
+    titulo: "Preencha o formulário",
+    url: "https://www.papelariabibelo.com.br",
+    icone: "📋",
+    utm: { source: "instagram", medium: "bio_link", campaign: "formulario" },
+  },
+  {
     slug: "email",
-    titulo: "Nos envie um E-mail",
+    titulo: "Nos envie um E-mail (B2B)",
     url: "mailto:contato@papelariabibelo.com.br",
     icone: "📧",
   },
@@ -110,7 +116,6 @@ linksRouter.get("/go/:slug", limiter, async (req: Request, res: Response) => {
 // ── GET /api/links/stats — stats dos cliques (protegido) ─────
 
 linksRouter.get("/stats", async (_req: Request, res: Response) => {
-  // Stats por link (últimos 30 dias)
   const stats = await query<{ slug: string; cliques: string; ultimo: string }>(
     `SELECT slug, COUNT(*)::text AS cliques, MAX(criado_em)::text AS ultimo
      FROM marketing.link_clicks
@@ -133,14 +138,15 @@ linksRouter.get("/stats", async (_req: Request, res: Response) => {
 linksRouter.get("/page", (_req: Request, res: Response) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "public, max-age=300");
-
-  const apiBase = process.env.WEBHOOK_URL || "https://webhook.papelariabibelo.com.br";
-
-  const linksHtml = LINKS.map(link => {
-    const href = `/api/links/go/${link.slug}`;
-    const cls = link.destaque ? "link-btn destaque" : "link-btn";
-    return `<a href="${href}" target="_blank" rel="noopener" class="${cls}"><span class="icon">${link.icone}</span><span class="label">${link.titulo}</span><svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>`;
-  }).join("\n      ");
+  // CSP específico para a página de links (permite Google Fonts e inline styles/scripts para animação)
+  res.setHeader("Content-Security-Policy",
+    "default-src 'self'; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+    "font-src 'self' https://fonts.gstatic.com; " +
+    "img-src 'self' data: https:; " +
+    "script-src 'self' 'unsafe-inline'; " +
+    "frame-ancestors 'none';"
+  );
 
   res.send(`<!DOCTYPE html>
 <html lang="pt-BR">
@@ -154,49 +160,444 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
   <meta property="og:image" content="https://menu.papelariabibelo.com.br/logo.png">
   <meta property="og:type" content="website">
   <link rel="icon" href="/logo.png">
-  <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
   <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Jost','Segoe UI',Arial,sans-serif;background:#ffe5ec;min-height:100vh;display:flex;flex-direction:column;align-items:center}
-    .card{width:100%;max-width:440px;background:#fff;border-radius:0 0 20px 20px;box-shadow:0 8px 30px rgba(254,104,196,0.12);overflow:hidden;min-height:100vh;display:flex;flex-direction:column}
-    .header{background:linear-gradient(135deg,#fff7c1,#ffe5ec);padding:36px 24px 28px;text-align:center;border-bottom:3px solid #fe68c4}
-    .avatar{width:88px;height:88px;border-radius:50%;border:3px solid #fe68c4;box-shadow:0 4px 15px rgba(254,104,196,0.2)}
-    .nome{font-size:22px;font-weight:700;color:#333;margin:14px 0 4px}
-    .bio{font-size:14px;color:#888;font-weight:500;line-height:1.4}
-    .body{padding:24px 20px;flex:1;display:flex;flex-direction:column;gap:12px}
-    .link-btn{display:flex;align-items:center;gap:12px;padding:15px 18px;border-radius:12px;text-decoration:none;font-size:15px;font-weight:500;color:#333;background:#fff;border:2px solid #f0e0f0;transition:all 0.15s}
-    .link-btn:hover{transform:scale(1.02);border-color:#fe68c4}
-    .link-btn.destaque{background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;border:none;font-weight:700;box-shadow:0 4px 15px rgba(254,104,196,0.3)}
-    .link-btn.destaque:hover{box-shadow:0 6px 20px rgba(254,104,196,0.4)}
-    .icon{font-size:20px;flex-shrink:0;width:28px;text-align:center}
-    .label{flex:1;text-align:left}
-    .arrow{flex-shrink:0;opacity:0.3}
-    .link-btn.destaque .arrow{opacity:0.6}
-    .footer{background:#fff7c1;padding:20px 24px;text-align:center;border-top:1px solid #fee}
-    .footer p{color:#777;font-size:13px;font-weight:500;margin:0}
-    .footer .sub{color:#aaa;font-size:11px;margin:4px 0 0}
-    .footer a{color:#fe68c4;text-decoration:none;font-weight:500}
-    @media(min-width:441px){.card{min-height:auto;margin:20px auto;border-radius:20px}}
+    /* ===== RESET & BASE ===== */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --pink-main:   #f43f8e;
+      --pink-light:  #fce7f3;
+      --pink-pale:   #fff0f6;
+      --pink-dark:   #c2185b;
+      --pink-glow:   rgba(244, 63, 142, 0.35);
+      --yellow-soft: #fff9c4;
+      --text-dark:   #2d1b2e;
+      --text-mid:    #6b4c6b;
+      --text-soft:   #a07090;
+      --white:       #ffffff;
+      --radius-lg:   18px;
+      --radius-md:   12px;
+      --shadow-card: 0 10px 40px rgba(244, 63, 142, 0.15);
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(160deg, #ffe0ef 0%, #fce7f3 40%, #fff0f6 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 0 40px;
+    }
+
+    /* ===== CARD ===== */
+    .card {
+      width: 100%;
+      max-width: 460px;
+      background: var(--white);
+      border-radius: 0 0 28px 28px;
+      box-shadow: var(--shadow-card);
+      overflow: hidden;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ===== HEADER ===== */
+    .header {
+      background: linear-gradient(160deg, var(--yellow-soft) 0%, #ffe8f5 60%, var(--pink-light) 100%);
+      padding: 40px 28px 32px;
+      text-align: center;
+      border-bottom: 3px solid var(--pink-main);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header::before,
+    .header::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+      opacity: 0.18;
+    }
+    .header::before {
+      width: 140px; height: 140px;
+      background: var(--pink-main);
+      top: -50px; right: -40px;
+    }
+    .header::after {
+      width: 90px; height: 90px;
+      background: #f9a8d4;
+      bottom: -30px; left: -20px;
+    }
+
+    .avatar-wrap {
+      position: relative;
+      display: inline-block;
+      margin-bottom: 16px;
+    }
+    .avatar {
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      border: 4px solid var(--pink-main);
+      box-shadow: 0 0 0 6px rgba(244, 63, 142, 0.15), 0 6px 20px var(--pink-glow);
+      display: block;
+      object-fit: cover;
+      transition: transform 0.3s ease;
+    }
+    .avatar:hover {
+      transform: scale(1.06) rotate(-2deg);
+    }
+
+    .avatar-ring {
+      position: absolute;
+      inset: -8px;
+      border-radius: 50%;
+      border: 2px solid var(--pink-main);
+      opacity: 0;
+      animation: pulse-ring 2.5s ease-out infinite;
+    }
+    @keyframes pulse-ring {
+      0%   { transform: scale(0.9); opacity: 0.6; }
+      100% { transform: scale(1.3); opacity: 0; }
+    }
+
+    .nome {
+      font-size: 24px;
+      font-weight: 900;
+      color: var(--text-dark);
+      margin-bottom: 6px;
+      letter-spacing: -0.3px;
+    }
+
+    .boas-vindas {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--pink-main);
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    .bio {
+      font-size: 13px;
+      color: var(--text-soft);
+      font-weight: 600;
+      line-height: 1.5;
+    }
+
+    /* ===== BANNER DESTAQUE LOJA ===== */
+    .loja-banner {
+      margin: 0;
+      background: linear-gradient(135deg, #f43f8e 0%, #ec4899 50%, #db2777 100%);
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      text-decoration: none;
+      color: var(--white);
+      position: relative;
+      overflow: hidden;
+      transition: filter 0.2s ease, transform 0.15s ease;
+    }
+    .loja-banner:hover {
+      filter: brightness(1.08);
+      transform: scaleY(1.02);
+    }
+    .loja-banner::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.12) 50%, transparent 100%);
+      transform: translateX(-100%);
+      animation: shimmer 2.8s ease-in-out infinite;
+    }
+    @keyframes shimmer {
+      0%   { transform: translateX(-100%); }
+      60%  { transform: translateX(100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .loja-icon {
+      font-size: 32px;
+      flex-shrink: 0;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    }
+    .loja-texto { flex: 1; }
+    .loja-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.25);
+      color: var(--white);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 20px;
+      margin-bottom: 4px;
+    }
+    .loja-titulo {
+      font-size: 18px;
+      font-weight: 900;
+      line-height: 1.2;
+      display: block;
+    }
+    .loja-sub {
+      font-size: 12px;
+      font-weight: 600;
+      opacity: 0.88;
+      margin-top: 2px;
+      display: block;
+    }
+    .loja-arrow {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ===== CORPO DOS LINKS ===== */
+    .body {
+      padding: 20px 18px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--text-soft);
+      padding: 4px 4px 2px;
+    }
+
+    .link-btn {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: var(--radius-md);
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-dark);
+      background: var(--white);
+      border: 2px solid #f3d0e8;
+      transition: all 0.18s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .link-btn:hover {
+      border-color: var(--pink-main);
+      background: var(--pink-pale);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(244, 63, 142, 0.15);
+    }
+    .link-btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-icon {
+      font-size: 22px;
+      flex-shrink: 0;
+      width: 32px;
+      text-align: center;
+    }
+    .btn-label {
+      flex: 1;
+      text-align: left;
+      line-height: 1.3;
+    }
+    .btn-sub {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-soft);
+      margin-top: 1px;
+    }
+    .btn-arrow {
+      flex-shrink: 0;
+      color: #d0a0c0;
+      transition: transform 0.18s ease;
+    }
+    .link-btn:hover .btn-arrow {
+      transform: translateX(3px);
+      color: var(--pink-main);
+    }
+
+    .link-btn.whatsapp { border-color: #d4f4e0; }
+    .link-btn.whatsapp:hover {
+      border-color: #25d366;
+      background: #f0fff6;
+      box-shadow: 0 6px 18px rgba(37, 211, 102, 0.15);
+    }
+
+    .link-btn.instagram:hover {
+      border-color: #e1306c;
+      background: #fff5f8;
+      box-shadow: 0 6px 18px rgba(225, 48, 108, 0.15);
+    }
+
+    .link-btn.vip {
+      border-color: #f3d0e8;
+      background: linear-gradient(135deg, #fff0f8, #fff);
+    }
+    .link-btn.vip:hover {
+      border-color: var(--pink-main);
+      background: linear-gradient(135deg, #ffe0f0, #fff5fb);
+    }
+
+    /* ===== FOOTER ===== */
+    .footer {
+      background: linear-gradient(135deg, var(--yellow-soft), #fff5fb);
+      padding: 22px 24px;
+      text-align: center;
+      border-top: 2px solid #fce7f3;
+    }
+    .footer-brand {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--text-mid);
+      margin-bottom: 4px;
+    }
+    .footer-info {
+      font-size: 11px;
+      color: var(--text-soft);
+      font-weight: 600;
+      line-height: 1.6;
+    }
+    .footer-link {
+      color: var(--pink-main);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .footer-link:hover {
+      text-decoration: underline;
+    }
+
+    @media (min-width: 461px) {
+      body { padding: 24px 16px 48px; }
+      .card { min-height: auto; border-radius: 28px; }
+    }
   </style>
 </head>
 <body>
+
   <div class="card">
+
+    <!-- HEADER -->
     <div class="header">
-      <img src="/logo.png" alt="Papelaria Bibelô" class="avatar" />
+      <div class="avatar-wrap">
+        <span class="avatar-ring"></span>
+        <img src="/logo.png" alt="Papelaria Bibelô" class="avatar">
+      </div>
       <h1 class="nome">Papelaria Bibelô</h1>
+      <p class="boas-vindas">Olá! Bem-vindo(a) ao mundo da<br>Papelaria Bibelô</p>
       <p class="bio">Papelaria fofa em Timbó/SC<br>Entrega para todo o Brasil</p>
     </div>
 
+    <!-- BANNER LOJA -->
+    <a href="/api/links/go/loja" target="_blank" rel="noopener" class="loja-banner" aria-label="Acessar Loja Online da Papelaria Bibelô">
+      <span class="loja-icon">🛍️</span>
+      <span class="loja-texto">
+        <span class="loja-badge">✨ Compre aqui</span>
+        <span class="loja-titulo">Acessar Loja Online</span>
+        <span class="loja-sub">papelariabibelo.com.br</span>
+      </span>
+      <span class="loja-arrow">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </span>
+    </a>
+
+    <!-- LINKS -->
     <div class="body">
-      ${linksHtml}
+
+      <p class="section-label">Fale com a gente</p>
+
+      <a href="/api/links/go/whatsapp" target="_blank" rel="noopener" class="link-btn whatsapp">
+        <span class="btn-icon">💬</span>
+        <span class="btn-label">Fale conosco no WhatsApp<span class="btn-sub">Atendimento rápido e carinhoso</span></span>
+        <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </a>
+
+      <a href="/api/links/go/grupo-vip" target="_blank" rel="noopener" class="link-btn vip">
+        <span class="btn-icon">💖</span>
+        <span class="btn-label">Entrar no Grupo VIP<span class="btn-sub">Promoções exclusivas para membros</span></span>
+        <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </a>
+
+      <p class="section-label" style="margin-top:6px;">Nos acompanhe</p>
+
+      <a href="/api/links/go/instagram" target="_blank" rel="noopener" class="link-btn instagram">
+        <span class="btn-icon">📸</span>
+        <span class="btn-label">Siga no Instagram<span class="btn-sub">Novidades e inspirações todo dia</span></span>
+        <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </a>
+
+      <a href="/api/links/go/formulario" target="_blank" rel="noopener" class="link-btn">
+        <span class="btn-icon">📋</span>
+        <span class="btn-label">Preencha o formulário<span class="btn-sub">Cadastre-se e receba novidades</span></span>
+        <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </a>
+
+      <p class="section-label" style="margin-top:6px;">Contato profissional</p>
+
+      <a href="/api/links/go/email" target="_blank" rel="noopener" class="link-btn">
+        <span class="btn-icon">📧</span>
+        <span class="btn-label">Nos envie um E-mail (B2B)<span class="btn-sub">Parcerias e revendas</span></span>
+        <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </a>
+
     </div>
 
+    <!-- FOOTER -->
     <div class="footer">
-      <p>Papelaria Bibelô</p>
-      <p class="sub">CNPJ 63.961.764/0001-63 &middot; contato@papelariabibelo.com.br &middot; (47) 9 3386-2514</p>
-      <p style="margin:6px 0 0"><a href="https://www.papelariabibelo.com.br">papelariabibelo.com.br</a></p>
+      <p class="footer-brand">Papelaria Bibelô</p>
+      <p class="footer-info">
+        CNPJ 63.961.764/0001-63 &nbsp;&middot;&nbsp;
+        <a href="mailto:contato@papelariabibelo.com.br" class="footer-link">contato@papelariabibelo.com.br</a>
+        <br>
+        (47) 9 3386-2514 &nbsp;&middot;&nbsp;
+        <a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener" class="footer-link">papelariabibelo.com.br</a>
+      </p>
     </div>
+
   </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var items = document.querySelectorAll('.link-btn, .loja-banner');
+      items.forEach(function(el, i) {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(16px)';
+        el.style.transition = 'opacity 0.35s ease ' + (i * 0.07) + 's, transform 0.35s ease ' + (i * 0.07) + 's, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, filter 0.2s ease';
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0)';
+          });
+        });
+      });
+    });
+  </script>
+
 </body>
 </html>`);
 });
