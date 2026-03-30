@@ -151,9 +151,9 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
   <meta name="description" content="Papelaria Bibelô — Loja online, WhatsApp, Grupo VIP e mais">
   <meta property="og:title" content="Papelaria Bibelô">
   <meta property="og:description" content="Papelaria fofa em Timbó/SC — Loja online, WhatsApp, Grupo VIP">
-  <meta property="og:image" content="${apiBase}/logo.png">
+  <meta property="og:image" content="https://menu.papelariabibelo.com.br/logo.png">
   <meta property="og:type" content="website">
-  <link rel="icon" href="${apiBase}/logo.png">
+  <link rel="icon" href="/logo.png">
   <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
@@ -182,7 +182,7 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
 <body>
   <div class="card">
     <div class="header">
-      <img src="${apiBase}/logo.png" alt="Papelaria Bibelô" class="avatar" />
+      <img src="/logo.png" alt="Papelaria Bibelô" class="avatar" />
       <h1 class="nome">Papelaria Bibelô</h1>
       <p class="bio">Papelaria fofa em Timbó/SC<br>Entrega para todo o Brasil</p>
     </div>
