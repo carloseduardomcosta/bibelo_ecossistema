@@ -50,37 +50,35 @@ export async function fetchGoogleReviews(): Promise<PlaceReviews | null> {
   }
 
   try {
+    // Usa Places API (New) — já ativada no projeto Google Cloud
     const { data } = await axios.get(
-      "https://maps.googleapis.com/maps/api/place/details/json",
+      `https://places.googleapis.com/v1/places/${placeId}`,
       {
-        params: {
-          place_id: placeId,
-          fields: "rating,user_ratings_total,reviews",
-          key: apiKey,
-          language: "pt-BR",
-          reviews_sort: "newest",
+        headers: {
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": "rating,userRatingCount,reviews",
         },
+        params: { languageCode: "pt-BR" },
         timeout: 10000,
       }
     );
 
-    if (data.status !== "OK") {
-      logger.error("Google Places API error", { status: data.status, error_message: data.error_message });
-      return null;
-    }
-
-    const result = data.result;
     return {
-      overall_rating: result.rating || 0,
-      total_reviews: result.user_ratings_total || 0,
-      reviews: (result.reviews || []).map((r: Record<string, unknown>) => ({
-        author_name: r.author_name || "Cliente",
-        rating: r.rating || 5,
-        text: r.text || "",
-        time: r.time || 0,
-        relative_time_description: r.relative_time_description || "",
-        profile_photo_url: r.profile_photo_url || "",
-      })),
+      overall_rating: data.rating || 0,
+      total_reviews: data.userRatingCount || 0,
+      reviews: (data.reviews || []).map((r: Record<string, unknown>) => {
+        const author = r.authorAttribution as Record<string, string> | undefined;
+        const textObj = r.text as Record<string, string> | undefined;
+        const origText = r.originalText as Record<string, string> | undefined;
+        return {
+          author_name: author?.displayName || "Cliente",
+          rating: (r.rating as number) || 5,
+          text: origText?.text || textObj?.text || "",
+          time: r.publishTime ? Math.floor(new Date(r.publishTime as string).getTime() / 1000) : 0,
+          relative_time_description: r.relativePublishTimeDescription as string || "",
+          profile_photo_url: author?.photoUri || "",
+        };
+      }),
     };
   } catch (err) {
     logger.error("Falha ao buscar Google Reviews", { error: String(err) });
