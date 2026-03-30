@@ -1,8 +1,20 @@
 import { Router, Request, Response } from "express";
 import crypto from "crypto";
+import rateLimit from "express-rate-limit";
 import { query, queryOne } from "../db";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../integrations/resend/email";
+
+// ── Sanitização HTML (anti-XSS) ─────────────────────────────
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+const publicLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { error: "Muitas requisições — tente novamente em 1 minuto" },
+});
 
 export const emailRouter = Router();
 
@@ -25,7 +37,7 @@ export function gerarLinkDescadastro(email: string): string {
 
 // ── GET /api/email/unsubscribe — descadastro 1-click (público) ──
 
-emailRouter.get("/unsubscribe", async (req: Request, res: Response) => {
+emailRouter.get("/unsubscribe", publicLimiter, async (req: Request, res: Response) => {
   const email = (req.query.email as string || "").toLowerCase().trim();
   const token = (req.query.token as string || "").trim();
 
@@ -80,12 +92,12 @@ emailRouter.get("/unsubscribe", async (req: Request, res: Response) => {
   try {
     await sendEmail({
       to: "carloseduardocostatj@gmail.com",
-      subject: `[Descadastro] ${cliente.nome || email} saiu da lista de emails`,
+      subject: `[Descadastro] ${(cliente.nome || email).replace(/[<>"]/g, "")} saiu da lista de emails`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px;">
           <h2 style="color:#ff4444;margin:0 0 15px;">Descadastro de Email</h2>
-          <p><strong>Cliente:</strong> ${cliente.nome || "—"}</p>
-          <p><strong>Email:</strong> ${email}</p>
+          <p><strong>Cliente:</strong> ${esc(cliente.nome || "—")}</p>
+          <p><strong>Email:</strong> ${esc(email)}</p>
           <p><strong>Data:</strong> ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p>
           <hr style="border:none;border-top:1px solid #eee;margin:15px 0;" />
           <p style="color:#999;font-size:12px;">
@@ -115,7 +127,7 @@ function paginaSucesso(email: string): string {
     <div style="width:64px;height:64px;background:#f0fff0;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px;">✓</div>
     <h1 style="color:#333;font-size:22px;margin:0 0 10px;">Descadastrado com sucesso</h1>
     <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 20px;">
-      O email <strong>${email}</strong> não receberá mais comunicações da Papelaria Bibelô.
+      O email <strong>${esc(email)}</strong> não receberá mais comunicações da Papelaria Bibelô.
     </p>
     <p style="color:#999;font-size:13px;margin:0 0 25px;">
       Se isso foi um engano, entre em contato:<br>

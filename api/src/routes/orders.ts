@@ -20,19 +20,19 @@ ordersRouter.get("/stats", async (req: Request, res: Response) => {
         COUNT(*) FILTER (WHERE canal IN ('nuvemshop', 'online')) AS online,
         COUNT(*) FILTER (WHERE canal = 'shopee') AS shopee
       FROM sync.bling_orders
-      WHERE status = '1' AND criado_bling >= CURRENT_DATE - INTERVAL '${dias} days'
+      WHERE status = '1' AND criado_bling >= CURRENT_DATE - make_interval(days => $1)
     ),
     anterior AS (
       SELECT COUNT(*) AS total, COALESCE(SUM(valor), 0) AS receita
       FROM sync.bling_orders
       WHERE status = '1'
-        AND criado_bling >= CURRENT_DATE - INTERVAL '${dias * 2} days'
-        AND criado_bling < CURRENT_DATE - INTERVAL '${dias} days'
+        AND criado_bling >= CURRENT_DATE - make_interval(days => $1 * 2)
+        AND criado_bling < CURRENT_DATE - make_interval(days => $1)
     ),
     ns AS (
       SELECT COUNT(*) AS total, COALESCE(SUM(valor), 0) AS receita
       FROM sync.nuvemshop_orders
-      WHERE status = 'paid' AND webhook_em >= CURRENT_DATE - INTERVAL '${dias} days'
+      WHERE status = 'paid' AND webhook_em >= CURRENT_DATE - make_interval(days => $1)
     )
     SELECT
       p.total::int AS total_pedidos,
@@ -48,7 +48,7 @@ ordersRouter.get("/stats", async (req: Request, res: Response) => {
       CASE WHEN a.total > 0 THEN ROUND((p.total - a.total) * 100.0 / a.total, 1) ELSE 0 END AS variacao_pedidos,
       CASE WHEN a.receita > 0 THEN ROUND((p.receita - a.receita) * 100.0 / a.receita, 1) ELSE 0 END AS variacao_receita
     FROM periodo p, anterior a, ns
-  `);
+  `, [dias]);
 
   res.json(stats);
 });
@@ -91,9 +91,11 @@ ordersRouter.get("/", async (req: Request, res: Response) => {
 
   if (periodo) {
     const diasMap: Record<string, number> = { "7d": 7, "15d": 15, "30d": 30, "3m": 90, "6m": 180, "1a": 365 };
-    const dias = diasMap[periodo];
-    if (dias) {
-      conditions.push(`o.criado_bling >= CURRENT_DATE - INTERVAL '${dias} days'`);
+    const diasPeriodo = diasMap[periodo];
+    if (diasPeriodo) {
+      conditions.push(`o.criado_bling >= CURRENT_DATE - make_interval(days => $${idx})`);
+      params.push(diasPeriodo);
+      idx++;
     }
   }
 

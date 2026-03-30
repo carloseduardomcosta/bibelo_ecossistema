@@ -9,6 +9,11 @@ import { sendEmail } from "../integrations/resend/email";
 import { authMiddleware } from "../middleware/auth";
 import rateLimit from "express-rate-limit";
 
+// ── Sanitização HTML (anti-XSS) ─────────────────────────────
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 export const leadsRouter = Router();
 
 // ── Rate limit agressivo para endpoints públicos ──────────────
@@ -275,7 +280,8 @@ leadsRouter.get("/confirm", publicLimiter, async (req: Request, res: Response) =
 // ── Páginas HTML de verificação ──────────────────────────────
 
 function paginaCupomVerificado(email: string, cupom: string | null): string {
-  const cupomCode = cupom || "BIBELO7";
+  const cupomCode = esc(cupom || "BIBELO7");
+  const emailSafe = esc(email);
   const desconto = cupom === "BIBELO10" ? "10%" : "7%";
   return `<!DOCTYPE html>
 <html lang="pt-BR">

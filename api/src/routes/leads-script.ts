@@ -44,6 +44,10 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
     });
   }
 
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
   // ── Já mostrou popup? ───────────────────────────────────
   if (getCookie(COOKIE_NAME)) return;
 
@@ -122,9 +126,9 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
     card.innerHTML =
       '<div style="background:#fff7c1;padding:28px 24px 20px;text-align:center;border-bottom:3px solid #fe68c4;position:relative;">' +
         '<button id="bibelo-popup-close" style="position:absolute;top:12px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:#999;line-height:1;">&times;</button>' +
-        '<div style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:8px 20px;border-radius:50px;font-size:20px;font-weight:700;margin-bottom:12px;">' + (config.desconto_texto || '7% OFF') + '</div>' +
-        '<h2 style="color:#333;margin:0 0 6px;font-size:20px;font-weight:700;">' + (config.titulo || 'Ganhe 7% na primeira compra!') + '</h2>' +
-        '<p style="color:#777;margin:0;font-size:14px;line-height:1.5;">' + (config.subtitulo || 'Cadastre seu e-mail e receba um cupom exclusivo.') + '</p>' +
+        '<div style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:8px 20px;border-radius:50px;font-size:20px;font-weight:700;margin-bottom:12px;">' + esc(config.desconto_texto || '7% OFF') + '</div>' +
+        '<h2 style="color:#333;margin:0 0 6px;font-size:20px;font-weight:700;">' + esc(config.titulo || 'Ganhe 7% na primeira compra!') + '</h2>' +
+        '<p style="color:#777;margin:0;font-size:14px;line-height:1.5;">' + esc(config.subtitulo || 'Cadastre seu e-mail e receba um cupom exclusivo.') + '</p>' +
       '</div>' +
       '<div style="padding:24px;">' +
         '<form id="bibelo-popup-form">' +

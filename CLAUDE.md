@@ -397,6 +397,20 @@ Este projeto pode ter **múltiplos agents Claude trabalhando simultaneamente**.
 - Expor detalhes do banco em respostas de erro
 - Deixar rotas sem tratamento de erro
 
+### Protocolo de validação de segurança
+
+Após **qualquer implementação ou ajuste** no projeto, o agente DEVE rodar uma validação de segurança antes de finalizar a sessão:
+
+1. **SQL Injection** — verificar que TODAS as queries usam parâmetros `$1, $2` — nunca interpolação `${var}` em SQL. Para intervalos de tempo, usar `make_interval(days => $1)` em vez de `INTERVAL '${dias} days'`
+2. **XSS** — toda variável renderizada em HTML (páginas, emails, scripts) DEVE ser sanitizada com `esc()` (helper que escapa `& < > "`)
+3. **Rate Limiting** — todo endpoint público (sem auth) DEVE ter `publicLimiter` do express-rate-limit
+4. **HMAC tokens** — usar `timingSafeEqual` com verificação de tamanho + prefixo de domínio (ex: `"lead-verify:"`) para evitar cross-use entre features
+5. **Logs** — nunca logar secrets, tokens JWT, ou senhas. Erros para o cliente devem ser genéricos
+6. **Inputs** — validar com Zod em rotas que recebem dados do usuário
+7. **Dados em HTML** — nomes de clientes, emails, nomes de produtos vindos do banco podem conter XSS — sempre escapar antes de renderizar
+
+Executar: `Agent de QA/segurança` para auditar os arquivos modificados na sessão.
+
 ### Regras anti-redundância de emails e fluxos
 - **triggerFlow nunca re-executa** — se já existe execução (ativa, concluída ou erro), ignora. Evita duplicatas.
 - **Reativação só para quem já comprou** — fluxo `customer.inactive` só dispara se o cliente tem pelo menos 1 pedido (NuvemShop ou Bling). Leads puros sem compra NÃO recebem email de "sentimos sua falta".
@@ -622,6 +636,8 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - d4ca1ac docs: atualiza CLAUDE.md — opt-out LGPD, verificação email leads, rotas, integrações
 - 481d9c7 fix: auditoria tracking — IP real, geolocalização, upsert case-insensitive, merge duplicados
 - 012e928 feat: pagina Pedidos — lista completa de compras Bling com filtros e detalhe
+- 7b9fe21 feat: detalhe do pedido com itens, custo NF e lucro por produto
+- e26a4f4 fix: sync Bling busca detalhe dos pedidos (itens + valor real)
 
 
 ## Protocolo de atualização deste arquivo
@@ -694,4 +710,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 30 de Março de 2026 — UTM tracking, página de links própria (substitui Linktree), auditoria tracking completa (IP real, geo, upsert case-insensitive)*
+*Última atualização: 30 de Março de 2026 — Página Pedidos (lista + detalhe itens + custo/lucro), opt-out LGPD, verificação email leads, auditoria segurança (SQL injection, XSS, rate limit)*
