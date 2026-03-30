@@ -38,6 +38,7 @@ const listQuerySchema = z.object({
   search: z.string().optional(),
   segmento: z.string().optional(),
   canal_origem: z.string().optional(),
+  ordenar: z.enum(["recentes", "nome", "score", "score_desc"]).default("recentes"),
 });
 
 // ── GET /api/customers — lista paginada ────────────────────────
@@ -49,7 +50,7 @@ customersRouter.get("/", async (req: Request, res: Response) => {
     return;
   }
 
-  const { page, limit, search, segmento, canal_origem } = parse.data;
+  const { page, limit, search, segmento, canal_origem, ordenar } = parse.data;
   const offset = (page - 1) * limit;
 
   const conditions: string[] = ["c.ativo = true"];
@@ -85,13 +86,18 @@ customersRouter.get("/", async (req: Request, res: Response) => {
 
   const total = parseInt(countResult?.total || "0", 10);
 
+  let orderBy = "c.criado_em DESC";
+  if (ordenar === "nome") orderBy = "COALESCE(c.nome, 'zzz') ASC";
+  else if (ordenar === "score") orderBy = "COALESCE(cs.score, -1) ASC, c.nome ASC";
+  else if (ordenar === "score_desc") orderBy = "COALESCE(cs.score, -1) DESC, c.nome ASC";
+
   params.push(limit, offset);
   const rows = await query(
     `SELECT c.*, cs.score, cs.ltv, cs.segmento, cs.risco_churn
      FROM crm.customers c
      LEFT JOIN crm.customer_scores cs ON cs.customer_id = c.id
      WHERE ${where}
-     ORDER BY c.criado_em DESC
+     ORDER BY ${orderBy}
      LIMIT $${idx} OFFSET $${idx + 1}`,
     params
   );
@@ -105,6 +111,25 @@ customersRouter.get("/", async (req: Request, res: Response) => {
       pages: Math.ceil(total / limit),
     },
   });
+});
+
+// ── GET /api/customers/stats — KPIs rápidos ───────────────────
+
+customersRouter.get("/stats", async (_req: Request, res: Response) => {
+  const stats = await queryOne<Record<string, string>>(
+    `SELECT
+       COUNT(*)::text AS total,
+       COUNT(*) FILTER (WHERE c.email IS NOT NULL AND c.email != '')::text AS com_email,
+       COUNT(*) FILTER (WHERE c.telefone IS NOT NULL AND c.telefone != '')::text AS com_telefone,
+       COUNT(*) FILTER (WHERE c.criado_em > NOW() - INTERVAL '30 days')::text AS novos_30d,
+       COUNT(*) FILTER (WHERE cs.segmento = 'inativo')::text AS inativos,
+       COUNT(*) FILTER (WHERE cs.score >= 70)::text AS score_alto,
+       COALESCE(ROUND(AVG(cs.score), 0)::text, '0') AS score_medio
+     FROM crm.customers c
+     LEFT JOIN crm.customer_scores cs ON cs.customer_id = c.id
+     WHERE c.ativo = true`
+  );
+  res.json(stats);
 });
 
 // ── GET /api/customers/:id — perfil completo ───────────────────
