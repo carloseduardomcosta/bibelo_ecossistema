@@ -49,15 +49,26 @@ authRouter.post("/google", async (req: Request, res: Response) => {
   }
 
   if (!user) {
-    // Primeiro login — cria conta automaticamente
+    // Primeiro login — cria conta como viewer inativo (admin ativa manualmente)
+    // Exceção: email do dono do projeto é auto-aprovado como admin
+    const isOwner = email === "carloseduardocostatj@gmail.com";
+    const papel = isOwner ? "admin" : "viewer";
+    const ativo = isOwner;
+
     user = await queryOne<{
       id: string; nome: string; email: string; papel: string; ativo: boolean;
     }>(
       `INSERT INTO public.users (nome, email, google_id, avatar_url, papel, ativo)
-       VALUES ($1, $2, $3, $4, 'admin', true)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, nome, email, papel, ativo`,
-      [name || email.split("@")[0], email, googleId, picture || null]
+      [name || email.split("@")[0], email, googleId, picture || null, papel, ativo]
     );
+
+    if (!ativo) {
+      logger.warn("Novo usuário aguardando aprovação", { email, googleId });
+      res.status(403).json({ error: "Conta criada, mas aguarda aprovação do administrador." });
+      return;
+    }
   } else {
     // Atualiza google_id e avatar se ainda não tinha
     await query(

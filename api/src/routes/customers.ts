@@ -176,13 +176,15 @@ customersRouter.put("/:id", async (req: Request, res: Response) => {
     return;
   }
 
-  const entries = Object.entries(parse.data).filter(([, v]) => v !== undefined);
+  // Whitelist de colunas permitidas — previne SQL column injection
+  const ALLOWED_COLS = new Set(["nome","email","telefone","cpf","data_nasc","canal_origem","bling_id","nuvemshop_id","instagram","cidade","estado","cep"]);
+  const entries = Object.entries(parse.data).filter(([k, v]) => v !== undefined && ALLOWED_COLS.has(k));
   if (entries.length === 0) {
     res.status(400).json({ error: "Nenhum campo para atualizar" });
     return;
   }
 
-  const sets = entries.map(([k], i) => `${k} = $${i + 1}`);
+  const sets = entries.map(([k], i) => `"${k}" = $${i + 1}`);
   const values = entries.map(([, v]) => v);
   values.push(id);
 

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import {
   Megaphone, Plus, Send, Mail, MessageCircle, ChevronLeft, ChevronRight,
   X, Eye, Trash2, FileText, Users, Pencil, Play, Sparkles,
@@ -364,7 +365,7 @@ export default function Campanhas() {
 
                   {/* Preview snippet */}
                   {t.html && (
-                    <div className="mt-3 p-2 bg-bibelo-bg rounded text-[10px] text-bibelo-muted h-16 overflow-hidden" dangerouslySetInnerHTML={{ __html: t.html.substring(0, 200) }} />
+                    <div className="mt-3 p-2 bg-bibelo-bg rounded text-[10px] text-bibelo-muted h-16 overflow-hidden" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(t.html.substring(0, 200)) }} />
                   )}
 
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-bibelo-border">
@@ -511,7 +512,7 @@ export default function Campanhas() {
               <p className="text-sm font-medium text-gray-700">Preview do Email</p>
               <button onClick={() => setPreviewHtml('')} className="text-gray-500 hover:text-gray-800"><X size={18} /></button>
             </div>
-            <div className="p-6" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            <div className="p-6" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }} />
           </div>
         </div>
       )}

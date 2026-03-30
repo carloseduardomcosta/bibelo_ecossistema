@@ -282,11 +282,12 @@ financeiroRouter.put("/lancamentos/:id", async (req: Request, res: Response) => 
   const parse = updateSchema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: "Dados inválidos" }); return; }
 
-  const entries = Object.entries(parse.data).filter(([, v]) => v !== undefined);
-  if (entries.length === 0) { res.status(400).json({ error: "Nenhum campo para atualizar" }); return; }
+  const ALLOWED_LANC = ["tipo","descricao","valor","data","status","categoria_id","observacao"];
+  const safeEntries = Object.entries(parse.data).filter(([k, v]) => v !== undefined && ALLOWED_LANC.includes(k));
+  if (safeEntries.length === 0) { res.status(400).json({ error: "Nenhum campo para atualizar" }); return; }
 
-  const sets = entries.map(([k], i) => `${k} = $${i + 1}`);
-  const values: unknown[] = entries.map(([, v]) => v);
+  const sets = safeEntries.map(([k], i) => `"${k}" = $${i + 1}`);
+  const values: unknown[] = safeEntries.map(([, v]) => v);
   values.push(req.params.id);
 
   const updated = await queryOne(`
@@ -387,11 +388,12 @@ financeiroRouter.put("/despesas-fixas/:id", async (req: Request, res: Response) 
   const parse = schema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: "Dados inválidos" }); return; }
 
-  const entries = Object.entries(parse.data).filter(([, v]) => v !== undefined);
-  if (entries.length === 0) { res.status(400).json({ error: "Nenhum campo" }); return; }
+  const ALLOWED_DESP = ["nome","valor","dia_vencimento","categoria_id","observacoes","ativo"];
+  const safeEntries = Object.entries(parse.data).filter(([k, v]) => v !== undefined && ALLOWED_DESP.includes(k));
+  if (safeEntries.length === 0) { res.status(400).json({ error: "Nenhum campo" }); return; }
 
-  const sets = entries.map(([k], i) => `${k} = $${i + 1}`);
-  const values: unknown[] = entries.map(([, v]) => v);
+  const sets = safeEntries.map(([k], i) => `"${k}" = $${i + 1}`);
+  const values: unknown[] = safeEntries.map(([, v]) => v);
   values.push(req.params.id);
 
   const updated = await queryOne(`
@@ -563,11 +565,12 @@ financeiroRouter.put("/embalagens/:id", async (req: Request, res: Response) => {
   const parse = schema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: "Dados inválidos" }); return; }
 
-  const entries = Object.entries(parse.data).filter(([, v]) => v !== undefined);
-  if (entries.length === 0) { res.status(400).json({ error: "Nenhum campo" }); return; }
+  const ALLOWED_EMB = ["nome","custo_unitario","unidade"];
+  const safeEntries = Object.entries(parse.data).filter(([k, v]) => v !== undefined && ALLOWED_EMB.includes(k));
+  if (safeEntries.length === 0) { res.status(400).json({ error: "Nenhum campo" }); return; }
 
-  const sets = entries.map(([k], i) => `${k} = $${i + 1}`);
-  const values: unknown[] = entries.map(([, v]) => v);
+  const sets = safeEntries.map(([k], i) => `"${k}" = $${i + 1}`);
+  const values: unknown[] = safeEntries.map(([, v]) => v);
   values.push(req.params.id);
 
   const updated = await queryOne(`
@@ -598,11 +601,12 @@ financeiroRouter.put("/canais/:id", async (req: Request, res: Response) => {
   const parse = schema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: "Dados inválidos" }); return; }
 
-  const entries = Object.entries(parse.data).filter(([, v]) => v !== undefined);
-  if (entries.length === 0) { res.status(400).json({ error: "Nenhum campo" }); return; }
+  const ALLOWED_CANAL = ["nome","taxa_venda_pct","taxa_fixa","taxa_pagamento_pct"];
+  const safeEntries = Object.entries(parse.data).filter(([k, v]) => v !== undefined && ALLOWED_CANAL.includes(k));
+  if (safeEntries.length === 0) { res.status(400).json({ error: "Nenhum campo" }); return; }
 
-  const sets = entries.map(([k], i) => `${k} = $${i + 1}`);
-  const values: unknown[] = entries.map(([, v]) => v);
+  const sets = safeEntries.map(([k], i) => `"${k}" = $${i + 1}`);
+  const values: unknown[] = safeEntries.map(([, v]) => v);
   values.push(req.params.id);
 
   const updated = await queryOne(`

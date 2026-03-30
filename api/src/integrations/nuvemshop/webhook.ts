@@ -230,6 +230,21 @@ nuvemshopWebhookRouter.post("/", webhookAuth, async (req: Request, res: Response
 
   logger.info("NuvemShop webhook recebido", { event, resourceId, storeId });
 
+  // Idempotency: rejeita webhook duplicado (mesmo evento + resource nos últimos 60s)
+  const idempotencyKey = `${event}:${resourceId}`;
+  const duplicate = await queryOne<{ id: string }>(
+    `SELECT id FROM sync.sync_logs
+     WHERE fonte = 'nuvemshop' AND tipo = $1 AND status = 'ok'
+       AND criado_em > NOW() - INTERVAL '60 seconds'
+     LIMIT 1`,
+    [`webhook:${idempotencyKey}`]
+  );
+  if (duplicate) {
+    logger.info("NuvemShop webhook duplicado ignorado", { event, resourceId });
+    res.status(200).json({ ok: true, duplicate: true });
+    return;
+  }
+
   try {
     if (event.startsWith("order/") && resourceId) {
       await processOrder(resourceId, event);
@@ -239,10 +254,10 @@ nuvemshopWebhookRouter.post("/", webhookAuth, async (req: Request, res: Response
       logger.info("NuvemShop webhook: evento não mapeado", { event });
     }
 
-    // Log do evento APÓS processamento bem-sucedido
+    // Log do evento APÓS processamento bem-sucedido (usado como idempotency key)
     await query(
       `INSERT INTO sync.sync_logs (fonte, tipo, status, registros, erro) VALUES ('nuvemshop', $1, 'ok', 1, NULL)`,
-      [`webhook:${event}`]
+      [`webhook:${idempotencyKey}`]
     );
 
     // Atualiza sync_state

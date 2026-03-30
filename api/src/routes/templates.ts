@@ -106,14 +106,16 @@ templatesRouter.put("/:id", async (req: Request, res: Response) => {
     (data as Record<string, unknown>).variaveis = JSON.stringify(data.variaveis);
   }
 
-  const entries = Object.entries(data).filter(([, v]) => v !== undefined);
-  if (entries.length === 0) {
+  // Whitelist de colunas — previne SQL column injection
+  const ALLOWED = ["nome","canal","categoria","assunto","html","texto","variaveis"];
+  const safeEntries = Object.entries(data).filter(([k, v]) => v !== undefined && ALLOWED.includes(k));
+  if (safeEntries.length === 0) {
     res.status(400).json({ error: "Nenhum campo para atualizar" });
     return;
   }
 
-  const sets = entries.map(([k], i) => `${k} = $${i + 1}`);
-  const values = entries.map(([, v]) => v);
+  const sets = safeEntries.map(([k], i) => `"${k}" = $${i + 1}`);
+  const values: unknown[] = safeEntries.map(([, v]) => v);
   values.push(req.params.id);
 
   const updated = await queryOne(

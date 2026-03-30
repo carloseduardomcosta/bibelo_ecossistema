@@ -585,6 +585,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - aabe5fe fix: cor dos templates de email para rosa oficial #fe68c4
 - PENDENTE feat: geolocalização visitantes, auditoria gaps, botão WhatsApp produto, Dashboard melhorias
 - PENDENTE feat: funil de leads completo — score engajamento, pipeline auto, sino notificações, drip nutrição
+- PENDENTE sec: pentest completo — auto-admin, SQL injection, XSS, IP spoof, CSP, HSTS, idempotency
 
 
 ## Protocolo de atualização deste arquivo
@@ -635,6 +636,7 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Drip Nutrição Lead | ✅ produção | dia 2 produtos populares, dia 5 lembrete cupom, dia 10 prova social |
 | Lead Quente sem Compra | ✅ produção | checker 10min: add_to_cart sem purchase em 3h → email com cupom |
 | Vinculação Visitor→Customer | ✅ produção | popup vincula visitor_id ao customer, atualiza tracking retroativo |
+| Segurança (Pentest) | ✅ produção | 9 fixes (auto-admin, SQL injection, XSS DOMPurify, IP spoof, HMAC, idempotency, CSP/HSTS, health sanitizado) |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
 
 ### Regra obrigatória:
@@ -652,4 +654,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 30 de Março de 2026 — Funil de leads completo (score engajamento, pipeline automático, sino notificações, drip nutrição, lead quente), vinculação visitor→customer, regras anti-redundância, 10 fluxos, 19 templates, 5 jobs BullMQ*
+*Última atualização: 30 de Março de 2026 — Pentest completo (9 fixes segurança), geolocalização visitantes, doc WhatsApp Business, auditoria gaps (11 fixes), funil de leads, 10 fluxos, 19 templates, 5 jobs BullMQ*

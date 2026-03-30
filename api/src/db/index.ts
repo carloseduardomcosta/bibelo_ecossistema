@@ -34,3 +34,19 @@ export async function queryOne<T = Record<string, unknown>>(
   const rows = await query<T>(sql, params);
   return rows[0] ?? null;
 }
+
+/**
+ * Constrói SET clause seguro para UPDATE — previne SQL column injection.
+ * Só permite colunas que estão na whitelist (nomes simples [a-z_]).
+ */
+export function safeBuildUpdate(
+  data: Record<string, unknown>,
+  allowedCols: string[]
+): { sets: string; values: unknown[] } {
+  const allowed = new Set(allowedCols);
+  const entries = Object.entries(data).filter(([k, v]) => v !== undefined && allowed.has(k));
+  if (entries.length === 0) throw new Error("Nenhum campo válido para atualizar");
+  const sets = entries.map(([k], i) => `"${k.replace(/[^a-z_]/g, "")}" = $${i + 1}`).join(", ");
+  const values = entries.map(([, v]) => v);
+  return { sets, values };
+}

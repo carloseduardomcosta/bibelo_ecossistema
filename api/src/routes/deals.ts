@@ -126,11 +126,12 @@ dealsRouter.put("/:id", async (req: Request, res: Response) => {
   const parse = updateSchema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: "Dados inválidos" }); return; }
 
-  const entries = Object.entries(parse.data).filter(([, v]) => v !== undefined);
-  if (entries.length === 0) { res.status(400).json({ error: "Nenhum campo" }); return; }
+  const ALLOWED_DEAL = ["customer_id","titulo","valor","etapa","prioridade","responsavel","descricao","previsao_fechamento"];
+  const safeEntries = Object.entries(parse.data).filter(([k, v]) => v !== undefined && ALLOWED_DEAL.includes(k));
+  if (safeEntries.length === 0) { res.status(400).json({ error: "Nenhum campo" }); return; }
 
-  const sets = entries.map(([k], i) => `${k} = $${i + 1}`);
-  const values: unknown[] = entries.map(([, v]) => v);
+  const sets = safeEntries.map(([k], i) => `"${k}" = $${i + 1}`);
+  const values: unknown[] = safeEntries.map(([, v]) => v);
   values.push(req.params.id);
 
   const updated = await queryOne(`
