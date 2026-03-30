@@ -392,32 +392,46 @@ function formatItens(itens: unknown): string {
     .join(", ");
 }
 
+// ── Normalizar URL de imagem (HTTPS + fallback formato) ───────
+
+function safeImageUrl(url: string | undefined | null): string {
+  if (!url) return "";
+  let safe = url.trim();
+  // Força HTTPS (Gmail bloqueia HTTP em emails)
+  safe = safe.replace(/^http:\/\//i, "https://");
+  return safe;
+}
+
 // ── Email base wrapper ─────────────────────────────────────────
 
 function emailWrapper(content: string): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f5f5f5;font-family:'Segoe UI',Arial,sans-serif;">
-<div style="max-width:600px;margin:0 auto;background:#fff;">
-  <!-- Header -->
-  <div style="background:linear-gradient(135deg,#fe68c4,#ff8fd3);padding:30px 20px;text-align:center;">
-    <a href="https://www.papelariabibelo.com.br" target="_blank" style="text-decoration:none;">
-      <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" style="width:80px;height:80px;border-radius:50%;border:3px solid #fff;" />
-    </a>
-    <h1 style="color:#fff;margin:10px 0 0;font-size:28px;font-weight:700;">Papelaria Bibelô</h1>
-    <p style="color:rgba(255,255,255,0.9);margin:5px 0 0;font-size:14px;">Encantando momentos com papelaria</p>
-  </div>
-  <!-- Content -->
-  <div style="padding:30px 25px;">
-    ${content}
-  </div>
-  <!-- Footer -->
-  <div style="background:#f9f9f9;padding:20px;text-align:center;border-top:1px solid #eee;">
-    <p style="color:#999;font-size:12px;margin:0;">Papelaria Bibelô — Teresina, PI</p>
-    <p style="color:#bbb;font-size:11px;margin:5px 0 0;">
-      <a href="https://www.papelariabibelo.com.br" style="color:#fe68c4;text-decoration:none;">papelariabibelo.com.br</a>
-    </p>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>@import url('https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap');*{font-family:Jost,'Segoe UI',Arial,sans-serif;}</style>
+</head>
+<body style="margin:0;padding:0;background:#ffe5ec;">
+<div style="max-width:600px;margin:0 auto;padding:20px 10px;">
+  <div style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 8px 30px rgba(254,104,196,0.12);">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#fff7c1,#ffe5ec);padding:40px 30px;text-align:center;border-bottom:3px solid #fe68c4;">
+      <a href="https://www.papelariabibelo.com.br" target="_blank" style="text-decoration:none;">
+        <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" style="width:80px;height:80px;border-radius:50%;border:3px solid #fe68c4;" />
+      </a>
+      <h1 style="color:#fe68c4;margin:10px 0 0;font-size:28px;font-weight:700;">Papelaria Bibelô</h1>
+      <p style="color:#888;margin:5px 0 0;font-size:14px;font-weight:500;">Encantando momentos com papelaria</p>
+    </div>
+    <!-- Content -->
+    <div style="padding:35px 30px;">
+      ${content}
+      <p style="font-size:13px;color:#999;text-align:center;margin:24px 0 0;">Dúvidas? Fale conosco: <a href="https://wa.me/5547933862514" style="color:#fe68c4;text-decoration:none;">(47) 9 3386-2514</a></p>
+    </div>
+    <!-- Footer -->
+    <div style="background:#fff7c1;padding:24px 30px;text-align:center;border-top:1px solid #fee;">
+      <p style="color:#777;font-size:13px;margin:0;font-weight:500;">Papelaria Bibelô</p>
+      <p style="color:#aaa;font-size:11px;margin:4px 0 0;">CNPJ 63.961.764/0001-63 · contato@papelariabibelo.com.br · (47) 9 3386-2514</p>
+      <p style="margin:8px 0 0;"><a href="https://www.papelariabibelo.com.br" style="color:#fe68c4;text-decoration:none;font-size:12px;font-weight:500;">papelariabibelo.com.br</a> · <a href="https://instagram.com/papelariabibelo" style="color:#fe68c4;text-decoration:none;font-size:12px;">@papelariabibelo</a></p>
+    </div>
   </div>
 </div>
 </body>
@@ -427,8 +441,8 @@ function emailWrapper(content: string): string {
 // ── Botão CTA ──────────────────────────────────────────────────
 
 function ctaButton(text: string, url: string): string {
-  return `<div style="text-align:center;margin:25px 0;">
-    <a href="${url}" style="background:#fe68c4;color:#fff;padding:14px 32px;text-decoration:none;border-radius:8px;font-size:16px;font-weight:600;display:inline-block;">
+  return `<div style="text-align:center;margin:28px 0;">
+    <a href="${url}" style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:16px 40px;text-decoration:none;border-radius:50px;font-size:16px;font-weight:600;display:inline-block;box-shadow:0 4px 15px rgba(254,104,196,0.35);">
       ${text}
     </a>
   </div>`;
@@ -444,7 +458,7 @@ function buildAbandonedCartEmail(nome: string, metadata: Record<string, unknown>
   let productsHtml = "";
   if (itens.length > 0) {
     const rows = itens.map((item: Record<string, unknown>) => {
-      const imgUrl = (item.image_url as string) || "";
+      const imgUrl = safeImageUrl(item.image_url as string);
       const imgTag = imgUrl
         ? `<img src="${imgUrl}" alt="${item.name}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid #eee;" />`
         : `<div style="width:70px;height:70px;background:#f0f0f0;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;">📦</div>`;
@@ -573,12 +587,12 @@ function buildReactivationEmail(nome: string): string {
 function buildLeadCartEmail(nome: string, metadata: Record<string, unknown>): string {
   const cupom = (metadata.cupom as string) || "BIBELO10";
   const productName = (metadata.resource_nome as string) || "";
-  const productImg = (metadata.resource_imagem as string) || "";
+  const productImg = safeImageUrl(metadata.resource_imagem as string);
   const productUrl = (metadata.recovery_url as string) || "https://www.papelariabibelo.com.br";
 
   const productBlock = productName ? `
     <div style="background:#fef6fa;border-radius:12px;padding:20px;text-align:center;margin:20px 0;">
-      ${productImg ? `<img src="${productImg}" alt="${productName}" style="max-width:200px;height:auto;border-radius:8px;margin-bottom:12px;" />` : ""}
+      ${productImg ? `<a href="${productUrl}" style="text-decoration:none;"><img src="${productImg}" alt="${productName}" style="max-width:250px;width:100%;height:auto;border-radius:12px;margin-bottom:12px;" /></a>` : ""}
       <p style="font-size:16px;font-weight:600;color:#333;margin:0;">${productName}</p>
     </div>` : "";
 
@@ -697,6 +711,10 @@ function buildSocialProofEmail(nome: string, metadata: Record<string, unknown>):
 function buildFlowEmail(nome: string, templateName: string, metadata: Record<string, unknown>): string {
   const lower = (templateName || "").toLowerCase();
 
+  // Lead quente ANTES de carrinho abandonado (ambos contêm "carrinho")
+  if (lower.includes("lead quente") || lower.includes("lead interessado")) {
+    return buildLeadCartEmail(nome, metadata);
+  }
   if (lower.includes("carrinho abandonado") || lower.includes("recuperação")) {
     return buildAbandonedCartEmail(nome, metadata);
   }
@@ -711,9 +729,6 @@ function buildFlowEmail(nome: string, templateName: string, metadata: Record<str
   }
   if (lower.includes("reativação") || lower.includes("saudade") || lower.includes("inativ")) {
     return buildReactivationEmail(nome);
-  }
-  if (lower.includes("lead carrinho") || lower.includes("lead quente")) {
-    return buildLeadCartEmail(nome, metadata);
   }
   if (lower.includes("produtos populares") || lower.includes("mais vendidos")) {
     return buildPopularProductsEmail(nome);
@@ -740,6 +755,10 @@ function buildFlowEmail(nome: string, templateName: string, metadata: Record<str
 function getFlowSubject(templateName: string, nome: string): string {
   const lower = (templateName || "").toLowerCase();
 
+  // Lead quente ANTES de carrinho (ambos contêm "carrinho")
+  if (lower.includes("lead quente") || lower.includes("lead interessado")) {
+    return `${nome || "Oi"}, vimos que você gostou! Use seu cupom 🛍️`;
+  }
   if (lower.includes("carrinho") || lower.includes("recuperação")) {
     return `${nome || "Oi"}, seus itens estão esperando! 🛒`;
   }
@@ -754,9 +773,6 @@ function getFlowSubject(templateName: string, nome: string): string {
   }
   if (lower.includes("reativação") || lower.includes("inativ")) {
     return `Sentimos sua falta, ${nome || "Cliente"}! 💌`;
-  }
-  if (lower.includes("lead carrinho") || lower.includes("lead quente")) {
-    return `${nome || "Oi"}, vimos que você gostou! Use seu cupom 🛍️`;
   }
   if (lower.includes("produtos populares") || lower.includes("mais vendidos")) {
     return `${nome || "Oi"}, esses são os queridinhos da Bibelô! ✨`;

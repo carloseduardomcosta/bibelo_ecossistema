@@ -55,7 +55,9 @@ trackingRouter.post("/event", publicLimiter, async (req: Request, res: Response)
     [d.visitor_id]
   );
 
-  const geo = resolveGeo(req.ip);
+  // Usa IP real do socket (não X-Forwarded-For) para prevenir spoofing em endpoint público
+  const realIp = req.socket.remoteAddress || req.ip;
+  const geo = resolveGeo(realIp);
 
   await query(
     `INSERT INTO crm.tracking_events
@@ -72,7 +74,7 @@ trackingRouter.post("/event", publicLimiter, async (req: Request, res: Response)
       d.resource_id || null,
       d.resource_nome || null,
       d.resource_preco || null,
-      d.resource_imagem || null,
+      d.resource_imagem ? d.resource_imagem.replace(/^http:\/\//i, "https://") : null,
       d.referrer || null,
       JSON.stringify(d.metadata || {}),
       geo?.ip || null,
@@ -110,7 +112,8 @@ trackingRouter.post("/identify", publicLimiter, async (req: Request, res: Respon
   );
 
   if (!customer) {
-    res.json({ ok: true, linked: false });
+    // Resposta genérica — não revela se email existe (previne enumeration)
+    res.json({ ok: true });
     return;
   }
 
@@ -128,8 +131,9 @@ trackingRouter.post("/identify", publicLimiter, async (req: Request, res: Respon
     [visitor_id, customer.id]
   );
 
-  logger.info("Visitor vinculado a cliente", { visitor_id, customerId: customer.id, email });
-  res.json({ ok: true, linked: true });
+  logger.info("Visitor vinculado a cliente", { visitor_id, customerId: customer.id });
+  // Resposta genérica idêntica — não revela se email existe
+  res.json({ ok: true });
 });
 
 // ════════════════════════════════════════════════════════════════
