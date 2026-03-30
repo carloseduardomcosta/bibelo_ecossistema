@@ -117,12 +117,13 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   ├── Layout.tsx       ← sidebar grupos + header com busca global
 │   │   │   ├── ProtectedRoute.tsx ← redirect se não autenticado
 │   │   │   ├── Toast.tsx        ← ToastProvider + useToast (sucesso/erro/warning)
-│   │   │   └── GlobalSearch.tsx ← busca global Ctrl+K (clientes, produtos, NFs)
+│   │   │   └── GlobalSearch.tsx ← busca global Ctrl+K + navegação teclado (↑↓ Enter)
 │   │   ├── hooks/               ← useCustomers, useCampaigns etc
 │   │   └── lib/
 │   │       ├── api.ts           ← Axios + JWT interceptor
 │   │       ├── auth.tsx         ← AuthContext + useAuth + Google login
-│   │       └── export.ts        ← exportCsv() utilitário reutilizável
+│   │       ├── export.ts        ← exportCsv() utilitário reutilizável
+│   │       └── format.ts        ← formatDate, formatDateTime, formatCurrency, formatMonth, timeAgo
 │   ├── tailwind.config.js       ← tema BibelôCRM
 │   ├── postcss.config.js
 │   ├── Dockerfile
@@ -674,6 +675,9 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - 7b9fe21 feat: detalhe do pedido com itens, custo NF e lucro por produto
 - e26a4f4 fix: sync Bling busca detalhe dos pedidos (itens + valor real)
 - 465f22f sec: auditoria segurança — SQL injection, XSS, rate limit + protocolo no CLAUDE.md
+- d89aa30 feat: testes automatizados — Vitest + Supertest, 30 testes de integração
+- 5d1051e docs: atualiza CLAUDE.md — sessão completa: tracking, menu, UTM, formulário
+- fffe8b5 sec+fix: auditoria completa — segurança (6 fixes), UX (6 fixes), banco (vacuum + scores)
 
 
 ## Protocolo de atualização deste arquivo
@@ -728,7 +732,8 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Vinculação Visitor→Customer | ✅ produção | popup vincula visitor_id ao customer, atualiza tracking retroativo, identify case-insensitive |
 | UTM Tracking | ✅ produção | script JS captura utm_source/medium/campaign da URL, persiste cookie 30d, grava em colunas dedicadas |
 | Página de Links (Menu) | ✅ produção | menu.papelariabibelo.com.br — substitui Linktree, design Nunito, banner loja, formulário cadastro, cliques rastreados, UTM auto, notificação email admin |
-| Segurança (Pentest) | ✅ produção | 9 fixes (auto-admin, SQL injection, XSS DOMPurify, IP spoof, HMAC, idempotency, CSP/HSTS, health sanitizado) |
+| Segurança (Pentest) | ✅ produção | 15 fixes: SQL injection params, CSRF OAuth state, admin env var, NF-e transaction, campaign lock, XSS, IP spoof, HMAC, CSP/HSTS |
+| Testes Automatizados | ✅ produção | Vitest + Supertest, 30 testes integração (health, email, leads, orders), script test.sh com Docker |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
 
 ### Regra obrigatória:
@@ -746,4 +751,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 30 de Março de 2026 — Auditoria tracking (IP real, geo, case-insensitive), menu.papelariabibelo.com.br (substitui Linktree), UTM tracking, formulário de cadastro, testes automatizados (Vitest)*
+*Última atualização: 30 de Março de 2026 — Auditoria completa (segurança 15 fixes, UX 6 fixes, banco limpo), menu.papelariabibelo.com.br, UTM tracking, formulário cadastro, 30 testes passando*
