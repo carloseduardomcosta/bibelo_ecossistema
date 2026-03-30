@@ -163,6 +163,29 @@ ordersRouter.get("/:id", async (req: Request, res: Response) => {
     return;
   }
 
+  // Itens detalhados com custo (NF de entrada → bling_products → fallback)
+  const itensDetalhados = await query<Record<string, unknown>>(
+    `SELECT
+      i->>'descricao' AS descricao,
+      i->>'codigo' AS sku,
+      (i->>'valor')::numeric AS preco_venda,
+      (i->>'quantidade')::numeric AS quantidade,
+      (i->>'desconto')::numeric AS desconto,
+      i->'produto'->>'id' AS produto_bling_id,
+      bp.preco_custo AS custo_produto,
+      bp.preco_venda AS preco_catalogo,
+      bp.categoria,
+      bp.dados_raw->>'imagemURL' AS imagem_url,
+      (SELECT ni.valor_unitario
+       FROM financeiro.notas_entrada_itens ni
+       WHERE ni.codigo_produto = i->>'codigo'
+       ORDER BY ni.id DESC LIMIT 1
+      ) AS custo_nf
+    FROM jsonb_array_elements($1::jsonb) AS i
+    LEFT JOIN sync.bling_products bp ON bp.sku = i->>'codigo'`,
+    [JSON.stringify(order.itens || [])]
+  );
+
   // Parcelas/pagamento
   const parcelas = await query<Record<string, unknown>>(
     `SELECT forma_descricao, valor, data_vencimento
@@ -172,5 +195,20 @@ ordersRouter.get("/:id", async (req: Request, res: Response) => {
     [order.bling_id]
   );
 
-  res.json({ ...order, parcelas });
+  // Totais de custo
+  let custoTotal = 0;
+  for (const item of itensDetalhados) {
+    const custo = Number(item.custo_nf) || Number(item.custo_produto) || 0;
+    const qtd = Number(item.quantidade) || 1;
+    custoTotal += custo * qtd;
+  }
+
+  res.json({
+    ...order,
+    itens_detalhados: itensDetalhados,
+    parcelas,
+    custo_total: custoTotal,
+    lucro_estimado: Number(order.valor) - custoTotal,
+    margem_percentual: Number(order.valor) > 0 ? Math.round((Number(order.valor) - custoTotal) / Number(order.valor) * 100) : 0,
+  });
 });

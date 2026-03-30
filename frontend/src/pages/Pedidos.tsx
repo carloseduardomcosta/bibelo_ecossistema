@@ -24,11 +24,28 @@ interface Order {
   formas_pagamento: string | null;
 }
 
+interface ItemDetalhado {
+  descricao: string;
+  sku: string | null;
+  preco_venda: number;
+  quantidade: number;
+  desconto: number | null;
+  categoria: string | null;
+  imagem_url: string | null;
+  custo_produto: number | null;
+  custo_nf: number | null;
+  preco_catalogo: number | null;
+}
+
 interface OrderDetail extends Order {
   cliente_telefone: string | null;
   cliente_canal: string | null;
   sincronizado_em: string;
+  itens_detalhados: ItemDetalhado[];
   parcelas: Array<{ forma_descricao: string; valor: number; data_vencimento: string }>;
+  custo_total: number;
+  lucro_estimado: number;
+  margem_percentual: number;
 }
 
 interface Pagination { page: number; limit: number; total: number; pages: number }
@@ -75,12 +92,15 @@ function fmt(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+// Bling salva data sem hora (meia-noite UTC) — forçar leitura UTC para não mudar o dia
 function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: '2-digit' });
+  const dt = new Date(d);
+  return dt.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: '2-digit', timeZone: 'UTC' });
 }
 
 function fmtDateFull(d: string) {
-  return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const dt = new Date(d);
+  return dt.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' });
 }
 
 function canalBadge(canal: string) {
@@ -471,29 +491,71 @@ export default function Pedidos() {
                   </div>
                 )}
 
-                {/* Itens */}
+                {/* Itens detalhados */}
                 <div className="px-5 py-4">
                   <h3 className="text-xs text-bibelo-muted uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                    <Package size={12} /> Itens ({qtdItens(detail.itens)})
+                    <Package size={12} /> Itens ({detail.itens_detalhados?.length || 0})
                   </h3>
-                  <div className="space-y-2">
-                    {detail.itens && detail.itens.length > 0 ? detail.itens.map((item, i) => {
-                      const nome = (item as Record<string, unknown>).descricao as string
-                        || (item as Record<string, unknown>).name as string
-                        || (item as Record<string, unknown>).produto as string
-                        || 'Produto';
-                      const qtd = Number((item as Record<string, unknown>).quantidade) || 1;
-                      const val = Number((item as Record<string, unknown>).valor || (item as Record<string, unknown>).price) || 0;
-                      return (
-                        <div key={i} className="flex items-center justify-between py-2 border-b border-bibelo-border/30 last:border-0">
-                          <div className="flex-1 min-w-0 mr-3">
-                            <p className="text-sm text-bibelo-text truncate">{nome}</p>
-                            <p className="text-[11px] text-bibelo-muted">{qtd}x {val > 0 ? fmt(val) : ''}</p>
-                          </div>
-                          {val > 0 && <span className="text-sm font-bold text-bibelo-text shrink-0">{fmt(val * qtd)}</span>}
+                  <div className="space-y-1">
+                    {detail.itens_detalhados && detail.itens_detalhados.length > 0 ? (
+                      <>
+                        {/* Header */}
+                        <div className="grid grid-cols-12 gap-2 text-[10px] text-bibelo-muted uppercase tracking-wider pb-2 border-b border-bibelo-border/50">
+                          <span className="col-span-5">Produto</span>
+                          <span className="col-span-1 text-center">Qtd</span>
+                          <span className="col-span-2 text-right">Venda</span>
+                          <span className="col-span-2 text-right">Custo</span>
+                          <span className="col-span-2 text-right">Lucro</span>
                         </div>
-                      );
-                    }) : (
+                        {detail.itens_detalhados.map((item, i) => {
+                          const qtd = Number(item.quantidade) || 1;
+                          const venda = Number(item.preco_venda) || 0;
+                          const custo = Number(item.custo_nf) || Number(item.custo_produto) || 0;
+                          const lucroUnit = venda - custo;
+                          const temCusto = custo > 0;
+                          return (
+                            <div key={i} className="grid grid-cols-12 gap-2 py-2 border-b border-bibelo-border/20 last:border-0 items-center">
+                              <div className="col-span-5 min-w-0">
+                                <p className="text-sm text-bibelo-text truncate" title={item.descricao}>{item.descricao}</p>
+                                <div className="flex items-center gap-2">
+                                  {item.sku && <span className="text-[10px] text-bibelo-muted font-mono">{item.sku.length > 20 ? item.sku.slice(0, 20) + '...' : item.sku}</span>}
+                                  {item.categoria && <span className="text-[10px] px-1.5 py-0.5 bg-violet-500/10 text-violet-400 rounded">{item.categoria}</span>}
+                                </div>
+                              </div>
+                              <span className="col-span-1 text-center text-sm text-bibelo-text">{qtd}</span>
+                              <span className="col-span-2 text-right text-sm font-medium text-bibelo-text">{fmt(venda)}</span>
+                              <span className="col-span-2 text-right text-sm text-bibelo-muted">
+                                {temCusto ? fmt(custo) : <span className="text-bibelo-muted/40">--</span>}
+                              </span>
+                              <span className={`col-span-2 text-right text-sm font-bold ${temCusto ? (lucroUnit >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-bibelo-muted/40'}`}>
+                                {temCusto ? fmt(lucroUnit) : '--'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {/* Resumo custo/lucro */}
+                        <div className="pt-3 mt-1 border-t border-bibelo-border">
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-bibelo-border/30 rounded-lg p-2.5 text-center">
+                              <p className="text-[10px] text-bibelo-muted uppercase">Receita</p>
+                              <p className="text-sm font-bold text-bibelo-text">{fmt(detail.valor)}</p>
+                            </div>
+                            <div className="bg-bibelo-border/30 rounded-lg p-2.5 text-center">
+                              <p className="text-[10px] text-bibelo-muted uppercase">Custo</p>
+                              <p className="text-sm font-bold text-amber-400">{detail.custo_total > 0 ? fmt(detail.custo_total) : '--'}</p>
+                            </div>
+                            <div className="bg-bibelo-border/30 rounded-lg p-2.5 text-center">
+                              <p className="text-[10px] text-bibelo-muted uppercase">Lucro</p>
+                              <p className={`text-sm font-bold ${detail.lucro_estimado >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {detail.custo_total > 0 ? (
+                                  <>{fmt(detail.lucro_estimado)} <span className="text-[10px] font-normal">({detail.margem_percentual}%)</span></>
+                                ) : '--'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
                       <p className="text-sm text-bibelo-muted">Sem itens detalhados</p>
                     )}
                   </div>
