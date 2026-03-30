@@ -146,6 +146,26 @@ export async function executeStep(executionId: string): Promise<boolean> {
     return true;
   }
 
+  // Inteligência: pula step de cupom/lembrete se o lead já comprou (cupom já foi usado)
+  const tplName = (currentStep.template || "").toLowerCase();
+  if (currentStep.tipo === "email" && (tplName.includes("cupom") || tplName.includes("lembrete cupom"))) {
+    const hasOrder = await queryOne<{ total: string }>(
+      `SELECT ((SELECT COUNT(*) FROM sync.nuvemshop_orders WHERE customer_id = $1) +
+               (SELECT COUNT(*) FROM sync.bling_orders WHERE customer_id = $1))::text AS total`,
+      [execution.customer_id]
+    );
+    if (parseInt(hasOrder?.total || "0", 10) > 0) {
+      logger.info("Step de cupom ignorado: cliente já comprou", { executionId, customerId: execution.customer_id });
+      await query(
+        `UPDATE marketing.flow_step_executions SET status = 'ignorado', resultado = '{"motivo":"ja_comprou"}'::jsonb
+         WHERE execution_id = $1 AND step_index = $2`,
+        [executionId, execution.step_atual]
+      );
+      await advanceFlow(executionId, execution, steps);
+      return true;
+    }
+  }
+
   // Marca step como executando
   await query(
     `UPDATE marketing.flow_step_executions SET status = 'executando', executado_em = NOW()
@@ -286,7 +306,7 @@ async function executeEmailStep(
   if (!template) {
     // Usa templates built-in ricos (com fotos, recovery_url, etc.)
     _currentRecipientEmail = customer.email || "";
-    const html = buildFlowEmail(customer.nome, step.template || "", metadata);
+    const html = await buildFlowEmail(customer.nome, step.template || "", metadata);
     const subject = getFlowSubject(step.template || "", customer.nome);
 
     const result = await sendEmail({
@@ -639,24 +659,58 @@ function buildLeadCartEmail(nome: string, metadata: Record<string, unknown>): st
 
 // ── Template: Produtos Populares (drip dia 2) ─────────────────
 
-function buildPopularProductsEmail(nome: string): string {
+async function buildPopularProductsEmail(nome: string): Promise<string> {
+  // Busca top 4 produtos mais vistos no tracking (últimos 30 dias)
+  const topProducts = await query<{
+    resource_nome: string; resource_preco: number; resource_imagem: string; pagina: string; views: string;
+  }>(
+    `SELECT resource_nome, MAX(resource_preco) AS resource_preco,
+            MAX(resource_imagem) AS resource_imagem, MAX(pagina) AS pagina,
+            COUNT(*)::text AS views
+     FROM crm.tracking_events
+     WHERE evento = 'product_view' AND resource_nome IS NOT NULL
+       AND resource_imagem IS NOT NULL AND criado_em > NOW() - INTERVAL '30 days'
+     GROUP BY resource_nome ORDER BY COUNT(*) DESC LIMIT 4`
+  );
+
+  let productsHtml = "";
+  if (topProducts.length >= 2) {
+    productsHtml = topProducts.map(p => {
+      const img = (p.resource_imagem || "").replace(/^http:\/\//i, "https://");
+      const link = p.pagina || "https://www.papelariabibelo.com.br";
+      const preco = p.resource_preco ? `R$ ${Number(p.resource_preco).toFixed(2).replace(".", ",")}` : "";
+      return `
+        <a href="${link}" style="display:block;text-decoration:none;background:#fff;border:1px solid #f0e0f0;border-radius:10px;padding:12px;margin:8px 0;">
+          <table width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td width="70" style="vertical-align:top;">
+              <img src="${img}" alt="" width="60" height="60" style="width:60px;height:60px;object-fit:cover;border-radius:8px;" />
+            </td>
+            <td style="vertical-align:middle;padding-left:12px;">
+              <p style="font-size:14px;color:#333;font-weight:600;margin:0 0 4px;">${p.resource_nome}</p>
+              ${preco ? `<p style="font-size:14px;color:#fe68c4;font-weight:700;margin:0;">${preco}</p>` : ""}
+            </td>
+          </tr></table>
+        </a>`;
+    }).join("");
+  } else {
+    // Fallback: categorias genéricas se não houver dados suficientes
+    productsHtml = `
+      <div style="background:#fef6fa;border-radius:12px;padding:20px;margin:10px 0;">
+        <p style="font-size:15px;color:#555;margin:0 0 10px;">🎀 Agendas e planners decorados</p>
+        <p style="font-size:15px;color:#555;margin:0 0 10px;">✏️ Canetas e marcadores fofos</p>
+        <p style="font-size:15px;color:#555;margin:0 0 10px;">📒 Cadernos e blocos especiais</p>
+        <p style="font-size:15px;color:#555;margin:0;">🎁 Presentes criativos e kits</p>
+      </div>`;
+  }
+
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! ✨</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
       Quer saber quais são os <strong>produtos mais amados</strong> pelas nossas clientes?
       Separamos os queridinhos da Papelaria Bibelô para você:
     </p>
-    <div style="background:#fef6fa;border-radius:12px;padding:20px;margin:20px 0;">
-      <p style="font-size:15px;color:#555;margin:0 0 12px;">🎀 Agendas e planners decorados</p>
-      <p style="font-size:15px;color:#555;margin:0 0 12px;">✏️ Canetas e marcadores fofos</p>
-      <p style="font-size:15px;color:#555;margin:0 0 12px;">📒 Cadernos e blocos especiais</p>
-      <p style="font-size:15px;color:#555;margin:0 0 12px;">🎁 Presentes criativos e kits</p>
-      <p style="font-size:15px;color:#555;margin:0;">💝 Acessórios e organizadores</p>
-    </div>
-    <p style="font-size:15px;color:#555;line-height:1.6;">
-      E lembra que você tem um <strong>cupom de desconto</strong> esperando? 😉
-    </p>
-    ${ctaButton("Ver os mais vendidos", "https://www.papelariabibelo.com.br/mais-vendidos/")}
+    ${productsHtml}
+    ${ctaButton("Ver todos os produtos", "https://www.papelariabibelo.com.br")}
     <p style="font-size:13px;color:#999;text-align:center;">
       Nos siga no Instagram: <a href="https://instagram.com/papelariabibelo" style="color:#fe68c4;">@papelariabibelo</a>
     </p>
@@ -689,8 +743,28 @@ function buildCouponReminderEmail(nome: string, metadata: Record<string, unknown
 
 // ── Template: Prova Social (drip dia 10) ──────────────────────
 
-function buildSocialProofEmail(nome: string, metadata: Record<string, unknown>): string {
-  const cupom = (metadata.cupom as string) || "BIBELO10";
+async function buildSocialProofEmail(nome: string, _metadata: Record<string, unknown>): Promise<string> {
+  const { getCachedReviews } = await import("../integrations/google/reviews");
+  const reviewData = await getCachedReviews();
+
+  const stars = "⭐".repeat(Math.round(reviewData.overall_rating));
+  const ratingText = reviewData.total_reviews > 0
+    ? `${reviewData.overall_rating}/5 — ${reviewData.total_reviews} avaliações`
+    : "5/5 estrelas";
+
+  // Pega até 3 reviews com texto
+  const reviewsWithText = reviewData.reviews.filter(r => r.text && r.text.length > 10).slice(0, 3);
+
+  const reviewsHtml = reviewsWithText.map(r => {
+    const reviewStars = "⭐".repeat(r.rating);
+    const authorClean = (r.author_name || "Cliente").replace(/[<>"'&]/g, "");
+    const textClean = (r.text || "").replace(/[<>"'&]/g, "").slice(0, 200);
+    return `
+      <div style="background:#f8f9fa;border-left:4px solid #fe68c4;padding:15px 20px;border-radius:4px;margin:12px 0;">
+        <p style="font-size:14px;color:#555;margin:0;font-style:italic;">"${textClean}"</p>
+        <p style="font-size:13px;color:#999;margin:8px 0 0;">${reviewStars} — <strong>${authorClean}</strong> via Google</p>
+      </div>`;
+  }).join("");
 
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! ⭐</p>
@@ -699,28 +773,21 @@ function buildSocialProofEmail(nome: string, metadata: Record<string, unknown>):
       Veja o que nossas clientes estão dizendo:
     </p>
 
-    <div style="background:#f8f9fa;border-left:4px solid #fe68c4;padding:15px 20px;border-radius:4px;margin:15px 0;">
-      <p style="font-size:14px;color:#555;margin:0;font-style:italic;">
-        "Amei tudo! Embalagem linda, produtos de qualidade. Com certeza vou comprar de novo!"
-      </p>
-      <p style="font-size:13px;color:#999;margin:8px 0 0;">⭐⭐⭐⭐⭐ — via Google</p>
+    <div style="background:#fff7c1;border-radius:12px;padding:16px 20px;text-align:center;margin:15px 0;">
+      <p style="font-size:24px;margin:0 0 4px;">${stars}</p>
+      <p style="font-size:16px;color:#333;font-weight:700;margin:0;">${ratingText}</p>
+      <p style="font-size:11px;color:#999;margin:4px 0 0;">Powered by Google</p>
     </div>
 
-    <div style="background:#f8f9fa;border-left:4px solid #fe68c4;padding:15px 20px;border-radius:4px;margin:15px 0;">
-      <p style="font-size:14px;color:#555;margin:0;font-style:italic;">
-        "Entrega rápida e atendimento maravilhoso. A papelaria mais fofa que já vi!"
-      </p>
-      <p style="font-size:13px;color:#999;margin:8px 0 0;">⭐⭐⭐⭐⭐ — via Google</p>
-    </div>
+    ${reviewsHtml}
 
-    <p style="font-size:15px;color:#555;line-height:1.6;">
-      Quer fazer parte desse time? Seu cupom <strong>${cupom}</strong> ainda está
-      valendo — essa é sua última chance de usar!
+    <p style="font-size:15px;color:#555;line-height:1.6;margin-top:20px;">
+      Venha fazer parte desse time de clientes satisfeitas!
     </p>
     ${ctaButton("Quero experimentar!", "https://www.papelariabibelo.com.br")}
     <p style="font-size:13px;color:#999;text-align:center;">
-      <a href="https://g.page/r/CWeMz1EAqHzfEBM/review" style="color:#fe68c4;text-decoration:none;">
-        Veja mais avaliações no Google →
+      <a href="https://g.page/r/CdahFa43hhIXEAE/review" style="color:#fe68c4;text-decoration:none;">
+        Veja todas as avaliações no Google →
       </a>
     </p>
   `);
@@ -728,7 +795,7 @@ function buildSocialProofEmail(nome: string, metadata: Record<string, unknown>):
 
 // ── Build email por template name ──────────────────────────────
 
-function buildFlowEmail(nome: string, templateName: string, metadata: Record<string, unknown>): string {
+async function buildFlowEmail(nome: string, templateName: string, metadata: Record<string, unknown>): Promise<string> {
   const lower = (templateName || "").toLowerCase();
 
   // Lead quente ANTES de carrinho abandonado (ambos contêm "carrinho")
@@ -751,13 +818,13 @@ function buildFlowEmail(nome: string, templateName: string, metadata: Record<str
     return buildReactivationEmail(nome);
   }
   if (lower.includes("produtos populares") || lower.includes("mais vendidos")) {
-    return buildPopularProductsEmail(nome);
+    return await buildPopularProductsEmail(nome);
   }
   if (lower.includes("lembrete cupom") || lower.includes("cupom expirando")) {
     return buildCouponReminderEmail(nome, metadata);
   }
   if (lower.includes("prova social") || lower.includes("avaliações")) {
-    return buildSocialProofEmail(nome, metadata);
+    return await buildSocialProofEmail(nome, metadata);
   }
 
   // Fallback genérico

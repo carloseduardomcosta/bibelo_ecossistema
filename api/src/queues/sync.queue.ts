@@ -3,6 +3,7 @@ import { logger } from "../utils/logger";
 import { incrementalSync } from "../integrations/bling/sync";
 import { calculateScore } from "../services/customer.service";
 import { triggerFlow } from "../services/flow.service";
+import { refreshReviewsCache } from "../integrations/google/reviews";
 import { query, queryOne } from "../db";
 
 // ── Redis connection ───────────────────────────────────────────
@@ -70,9 +71,10 @@ export const syncWorker = new Worker(
             if (after?.risco_churn === "alto" && riscoAntes !== "alto") {
               // Só reativar quem já comprou pelo menos 1x (não faz sentido para leads puros)
               const hasPurchase = await queryOne<{ total: string }>(
-                `SELECT COUNT(*)::text AS total FROM sync.nuvemshop_orders WHERE customer_id = $1
-                 UNION ALL
-                 SELECT COUNT(*)::text FROM sync.bling_orders WHERE customer_id = $1`,
+                `SELECT (
+                   (SELECT COUNT(*) FROM sync.nuvemshop_orders WHERE customer_id = $1) +
+                   (SELECT COUNT(*) FROM sync.bling_orders WHERE customer_id = $1)
+                 )::text AS total`,
                 [c.id]
               );
               const totalPedidos = (hasPurchase ? parseInt(hasPurchase.total, 10) : 0);
@@ -89,6 +91,12 @@ export const syncWorker = new Worker(
             processed++;
           }
           result = { processed, reactivationTriggered };
+          break;
+        }
+
+        case "google-reviews-refresh": {
+          const reviews = await refreshReviewsCache();
+          result = { reviews: reviews?.reviews.length || 0, rating: reviews?.overall_rating || 0 };
           break;
         }
 
@@ -149,7 +157,12 @@ export async function registerScheduledJobs(): Promise<void> {
     repeat: { pattern: "0 2 * * *" },
   });
 
-  logger.info("Jobs agendados registrados: bling-sync-incremental (30min), score-recalculation (2h diário)");
+  // Google Reviews refresh: diário às 6h
+  await syncQueue.add("google-reviews-refresh", {}, {
+    repeat: { pattern: "0 6 * * *" },
+  });
+
+  logger.info("Jobs agendados registrados: bling-sync (30min), scores (2h), google-reviews (6h)");
 }
 
 // ── Event listeners ────────────────────────────────────────────

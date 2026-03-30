@@ -48,7 +48,10 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // ── Já mostrou popup? ───────────────────────────────────
+  // ── Já é lead cadastrado? Não mostrar popup de captura ──
+  if (getCookie('_bibelo_lead')) return;
+
+  // ── Já mostrou popup nesta sessão? ─────────────────────
   if (getCookie(COOKIE_NAME)) return;
 
   // ── Visitor ID ──────────────────────────────────────────
@@ -206,6 +209,7 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
           document.getElementById('bibelo-popup-submsg').textContent = 'Verifique tamb\\u00E9m a pasta de spam.';
         }
         setCookie(COOKIE_NAME, '1', COOKIE_DAYS);
+        setCookie('_bibelo_lead', '1', 365); // Marca como lead — popup não aparece mais
 
         // Fecha sozinho após 6 segundos
         setTimeout(closePopup, 6000);

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
+import { getCachedReviews, refreshReviewsCache } from "../integrations/google/reviews";
 
 export const analyticsRouter = Router();
 analyticsRouter.use(authMiddleware);
@@ -552,4 +553,22 @@ analyticsRouter.get("/nfe", async (req: Request, res: Response) => {
     })),
     ultimas,
   });
+});
+
+// ── GET /api/analytics/reviews — Google Reviews ──────────────
+
+analyticsRouter.get("/reviews", async (_req: Request, res: Response) => {
+  const data = await getCachedReviews();
+  res.json(data);
+});
+
+// ── POST /api/analytics/reviews/refresh — Force refresh ──────
+
+analyticsRouter.post("/reviews/refresh", async (_req: Request, res: Response) => {
+  const data = await refreshReviewsCache();
+  if (!data) {
+    res.status(500).json({ error: "Falha ao atualizar reviews. Verifique GOOGLE_MAPS_API_KEY e GOOGLE_PLACE_ID." });
+    return;
+  }
+  res.json(data);
 });

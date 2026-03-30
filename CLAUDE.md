@@ -71,10 +71,12 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   │   │   │   └── webhook.ts   ← HMAC + fetch full object + processamento
 │   │   │   ├── resend/
 │   │   │   │   └── email.ts    ← sendEmail, sendCampaignEmails, tracking
+│   │   │   ├── google/
+│   │   │   │   └── reviews.ts  ← Google Places API: fetch reviews, cache DB, refresh diário
 │   │   │   └── whatsapp/        ← (pendente)
 │   │   │   (bling/webhook.ts    ← webhook handler Bling: contatos, pedidos, estoque)
 │   │   ├── queues/
-│   │   │   ├── sync.queue.ts    ← BullMQ: sync 30min + scores 2h + reativação churn
+│   │   │   ├── sync.queue.ts    ← BullMQ: sync 30min + scores 2h + reativação churn + reviews 6h
 │   │   │   └── flow.queue.ts    ← BullMQ: process steps (1min) + check abandoned (5min) + check interest (15min)
 │   │   ├── middleware/
 │   │   │   └── auth.ts          ← JWT authMiddleware + requireAdmin
@@ -678,6 +680,7 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - d89aa30 feat: testes automatizados — Vitest + Supertest, 30 testes de integração
 - 5d1051e docs: atualiza CLAUDE.md — sessão completa: tracking, menu, UTM, formulário
 - fffe8b5 sec+fix: auditoria completa — segurança (6 fixes), UX (6 fixes), banco (vacuum + scores)
+- 7e70883 docs: atualiza CLAUDE.md — auditoria completa, segurança, testes, menu
 
 
 ## Protocolo de atualização deste arquivo
@@ -734,6 +737,8 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Página de Links (Menu) | ✅ produção | menu.papelariabibelo.com.br — substitui Linktree, design Nunito, banner loja, formulário cadastro, cliques rastreados, UTM auto, notificação email admin |
 | Segurança (Pentest) | ✅ produção | 15 fixes: SQL injection params, CSRF OAuth state, admin env var, NF-e transaction, campaign lock, XSS, IP spoof, HMAC, CSP/HSTS |
 | Testes Automatizados | ✅ produção | Vitest + Supertest, 30 testes integração (health, email, leads, orders), script test.sh com Docker |
+| Google Reviews | ✅ produção | Places API, cache DB diário (6h), endpoint /api/analytics/reviews, template prova social com reviews reais |
+| Inteligência de Fluxos | ✅ produção | pula step cupom se lead já comprou, reativação só para quem tem pedido, popup não aparece para leads |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
 
 ### Regra obrigatória:
@@ -751,4 +756,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 30 de Março de 2026 — Auditoria completa (segurança 15 fixes, UX 6 fixes, banco limpo), menu.papelariabibelo.com.br, UTM tracking, formulário cadastro, 30 testes passando*
+*Última atualização: 30 de Março de 2026 — Inteligência de fluxos (pula cupom se já comprou, fix reativação), Google Reviews API, template prova social + produtos populares reais, popup inteligente*
