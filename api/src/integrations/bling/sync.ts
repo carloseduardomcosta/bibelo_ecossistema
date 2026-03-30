@@ -4,6 +4,26 @@ import { logger } from "../../utils/logger";
 import { getValidToken, BLING_API } from "./auth";
 import { upsertCustomer, calculateScore } from "../../services/customer.service";
 
+// ── Mapeamento de lojas Bling → canal de venda ────────────────
+// Configurável via .env, fallback para IDs conhecidos
+// Formato: BLING_LOJAS_FISICAS=205995943,0  BLING_LOJAS_ONLINE=205945450:nuvemshop,205891189:shopee
+const LOJAS_FISICAS = new Set(
+  (process.env.BLING_LOJAS_FISICAS || "205995943").split(",").map(s => s.trim()).filter(Boolean)
+);
+
+const LOJAS_ONLINE: Record<string, string> = {};
+for (const entry of (process.env.BLING_LOJAS_ONLINE || "205945450:nuvemshop,205891189:shopee").split(",")) {
+  const [id, canal] = entry.trim().split(":");
+  if (id) LOJAS_ONLINE[id] = canal || "online";
+}
+
+function classifyCanal(lojaId: number | undefined | null): string {
+  const id = String(lojaId || 0);
+  if (id === "0" || LOJAS_FISICAS.has(id)) return "fisico";
+  if (LOJAS_ONLINE[id]) return LOJAS_ONLINE[id];
+  return "online"; // fallback: loja desconhecida → online
+}
+
 // ── Rate limit: max 3 req/s (Bling v3) ─────────────────────────
 
 let lastRequestTime = 0;
@@ -178,14 +198,14 @@ export async function syncOrders(): Promise<number> {
           `INSERT INTO sync.bling_orders (bling_id, customer_id, numero, valor, status, canal, itens, criado_bling)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (bling_id) DO UPDATE SET
-             customer_id = $2, valor = $4, status = $5, itens = $7`,
+             customer_id = $2, valor = $4, status = $5, canal = $6, itens = $7`,
           [
             String(pedido.id),
             customerId,
             pedido.numero || null,
             valorTotal,
             (pedido.situacao as Record<string, unknown>)?.valor || "desconhecido",
-            pedido.loja ? "online" : "fisico",
+            classifyCanal((pedido.loja as Record<string, unknown>)?.id as number),
             JSON.stringify(itens),
             pedido.data || null,
           ]
@@ -507,14 +527,14 @@ export async function incrementalSync(): Promise<{ customers: number; orders: nu
           `INSERT INTO sync.bling_orders (bling_id, customer_id, numero, valor, status, canal, itens, criado_bling)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (bling_id) DO UPDATE SET
-             customer_id = $2, valor = $4, status = $5, itens = $7`,
+             customer_id = $2, valor = $4, status = $5, canal = $6, itens = $7`,
           [
             String(pedido.id),
             customerId,
             pedido.numero || null,
             pedido.totalProdutos || pedido.total || 0,
             (pedido.situacao as Record<string, unknown>)?.valor || "desconhecido",
-            pedido.loja ? "online" : "fisico",
+            classifyCanal((pedido.loja as Record<string, unknown>)?.id as number),
             JSON.stringify(pedido.itens || []),
             pedido.data || null,
           ]

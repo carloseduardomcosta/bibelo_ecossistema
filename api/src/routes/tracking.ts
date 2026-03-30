@@ -306,7 +306,7 @@ trackingRouter.get("/funnel", authMiddleware, async (req: Request, res: Response
        (SELECT COUNT(DISTINCT t.visitor_id) FROM crm.tracking_events t WHERE t.evento = 'product_view' AND t.criado_em > NOW() - $1::int * INTERVAL '1 day' ${INTERNAL_FILTER} ${ipFilter}) AS viram_produto,
        (SELECT COUNT(DISTINCT t.visitor_id) FROM crm.tracking_events t WHERE t.evento = 'add_to_cart' AND t.criado_em > NOW() - $1::int * INTERVAL '1 day' ${INTERNAL_FILTER} ${ipFilter}) AS add_carrinho,
        (SELECT COUNT(DISTINCT t.visitor_id) FROM crm.tracking_events t WHERE t.evento = 'checkout_start' AND t.criado_em > NOW() - $1::int * INTERVAL '1 day' ${INTERNAL_FILTER} ${ipFilter}) AS checkout,
-       (SELECT COUNT(DISTINCT customer_id) FROM sync.nuvemshop_orders WHERE webhook_em > NOW() - $1::int * INTERVAL '1 day' AND status = 'paid') AS compraram`,
+       (SELECT COUNT(DISTINCT customer_id) FROM sync.bling_orders WHERE criado_bling > NOW() - $1::int * INTERVAL '1 day' AND canal NOT IN ('fisico') AND status NOT IN ('order.deleted', 'order.cancelled', 'desconhecido')) AS compraram`,
     [dias, ...ips]
   );
 
