@@ -666,9 +666,14 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - 481d9c7 fix: auditoria tracking — IP real, geolocalização, upsert case-insensitive, merge duplicados
 - d0d565c feat: página de links própria (substitui Linktree) + UTM tracking completo
 - 3a28546 feat: novo design página de links — Nunito, banner loja, animações, formulário
+- 85b27c1 fix: página de links — remove cupom, visual padrão templates Bibelô, Timbó/SC
+- 262ba1e feat: menu.papelariabibelo.com.br — subdomínio dedicado para página de links
+- dfe57ec fix: logo usa path relativo na página de links
+- 13850e7 feat: formulário de cadastro no menu + bio atualizada
 - 012e928 feat: pagina Pedidos — lista completa de compras Bling com filtros e detalhe
 - 7b9fe21 feat: detalhe do pedido com itens, custo NF e lucro por produto
 - e26a4f4 fix: sync Bling busca detalhe dos pedidos (itens + valor real)
+- 465f22f sec: auditoria segurança — SQL injection, XSS, rate limit + protocolo no CLAUDE.md
 
 
 ## Protocolo de atualização deste arquivo
@@ -722,7 +727,7 @@ Ao concluir qualquer tarefa que modifique o projeto, o agente DEVE atualizar o C
 | Lead Quente sem Compra | ✅ produção | checker 10min: add_to_cart sem purchase em 3h → email com cupom |
 | Vinculação Visitor→Customer | ✅ produção | popup vincula visitor_id ao customer, atualiza tracking retroativo, identify case-insensitive |
 | UTM Tracking | ✅ produção | script JS captura utm_source/medium/campaign da URL, persiste cookie 30d, grava em colunas dedicadas |
-| Página de Links | ✅ produção | webhook.papelariabibelo.com.br/links — substitui Linktree, branding Bibelô, cliques rastreados, UTM auto |
+| Página de Links (Menu) | ✅ produção | menu.papelariabibelo.com.br — substitui Linktree, design Nunito, banner loja, formulário cadastro, cliques rastreados, UTM auto, notificação email admin |
 | Segurança (Pentest) | ✅ produção | 9 fixes (auto-admin, SQL injection, XSS DOMPurify, IP spoof, HMAC, idempotency, CSP/HSTS, health sanitizado) |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
 
@@ -741,4 +746,4 @@ git push origin main
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 30 de Março de 2026 — Página Pedidos (lista + detalhe itens + custo/lucro), opt-out LGPD, verificação email leads, auditoria segurança (SQL injection, XSS, rate limit)*
+*Última atualização: 30 de Março de 2026 — Auditoria tracking (IP real, geo, case-insensitive), menu.papelariabibelo.com.br (substitui Linktree), UTM tracking, formulário de cadastro, testes automatizados (Vitest)*
