@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import api from '../lib/api';
+import { useToast } from '../components/Toast';
 
 interface Overview {
   receita_periodo: number;
@@ -96,6 +97,7 @@ const PERIODOS = [
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { error: showError } = useToast();
   const [periodo, setPeriodo] = useState('30d');
   const [ov, setOv] = useState<Overview | null>(null);
   const [revenue, setRevenue] = useState<RevenuePoint[]>([]);
@@ -119,7 +121,7 @@ export default function Dashboard() {
         setInsights(insRes.data);
         setGeoData(geoRes.data);
       })
-      .catch(() => {})
+      .catch(() => { showError('Erro ao carregar dados do dashboard'); })
       .finally(() => setLoading(false));
   }, [periodo]);
 

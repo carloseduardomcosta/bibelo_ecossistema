@@ -4,7 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { XMLParser } from "fast-xml-parser";
-import { query, queryOne } from "../db";
+import { query, queryOne, db } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 
@@ -371,69 +371,80 @@ nfEntradaRouter.post("/:id/contabilizar", async (req: Request, res: Response) =>
   );
   if (!categoria) { res.status(500).json({ error: "Categoria Fornecedores não encontrada" }); return; }
 
-  // Criar lançamento
-  const descricao = `NF ${nota.numero || "s/n"} — ${nota.fornecedor_nome}`;
-  const lancamento = await queryOne<{ id: string }>(`
-    INSERT INTO financeiro.lancamentos (
-      data, descricao, categoria_id, tipo, valor, status, observacoes,
-      referencia_id, referencia_tipo, criado_por
-    ) VALUES ($1, $2, $3, 'despesa', $4, 'realizado', $5, $6, 'nf_entrada', $7)
-    RETURNING id
-  `, [
-    nota.data_emissao || new Date().toISOString().split("T")[0],
-    descricao,
-    categoria.id,
-    parseFloat(nota.valor_total),
-    `Nota Fiscal de entrada #${nota.numero}`,
-    nota.id,
-    req.user?.userId || null,
-  ]);
-
-  // Atualizar NF
-  await query(`
-    UPDATE financeiro.notas_entrada SET status = 'contabilizada', lancamento_id = $1 WHERE id = $2
-  `, [lancamento?.id, nota.id]);
-
-  // Atualizar preco_custo dos produtos vinculados
+  // ── Transação: lançamento + atualização NF + custos de produtos ──
+  const client = await db.connect();
+  let lancamentoId: string | undefined;
   let produtosAtualizados = 0;
+
   try {
-    const itensNf = await query<{
-      codigo_produto: string; valor_unitario: string; quantidade: string;
-    }>(`
+    await client.query("BEGIN");
+
+    // Criar lançamento
+    const descricao = `NF ${nota.numero || "s/n"} — ${nota.fornecedor_nome}`;
+    const lancResult = await client.query(`
+      INSERT INTO financeiro.lancamentos (
+        data, descricao, categoria_id, tipo, valor, status, observacoes,
+        referencia_id, referencia_tipo, criado_por
+      ) VALUES ($1, $2, $3, 'despesa', $4, 'realizado', $5, $6, 'nf_entrada', $7)
+      RETURNING id
+    `, [
+      nota.data_emissao || new Date().toISOString().split("T")[0],
+      descricao,
+      categoria.id,
+      parseFloat(nota.valor_total),
+      `Nota Fiscal de entrada #${nota.numero}`,
+      nota.id,
+      req.user?.userId || null,
+    ]);
+    lancamentoId = lancResult.rows[0]?.id;
+
+    // Atualizar NF
+    await client.query(`
+      UPDATE financeiro.notas_entrada SET status = 'contabilizada', lancamento_id = $1 WHERE id = $2
+    `, [lancamentoId, nota.id]);
+
+    // Atualizar preco_custo dos produtos vinculados
+    const itensResult = await client.query(`
       SELECT codigo_produto, valor_unitario::text, quantidade::text
       FROM financeiro.notas_entrada_itens
       WHERE nota_id = $1 AND codigo_produto IS NOT NULL
     `, [nota.id]);
 
-    for (const item of itensNf) {
+    for (const item of itensResult.rows) {
       if (!item.codigo_produto) continue;
       const custo = parseFloat(item.valor_unitario);
       if (custo <= 0) continue;
 
-      // Tenta vincular por SKU ou GTIN
-      const updated = await queryOne<{ id: string }>(`
+      const updated = await client.query(`
         UPDATE sync.bling_products
         SET preco_custo = $1, atualizado_em = NOW()
         WHERE (sku = $2 OR gtin = $2) AND ativo = true
         RETURNING id
       `, [custo, item.codigo_produto]);
 
-      if (updated) produtosAtualizados++;
+      if (updated.rowCount && updated.rowCount > 0) produtosAtualizados++;
     }
 
-    if (produtosAtualizados > 0) {
-      logger.info("Preço de custo atualizado via NF", { nota_id: nota.id, produtos: produtosAtualizados });
-    }
+    await client.query("COMMIT");
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Erro";
-    logger.warn("Falha ao atualizar custo de produtos via NF", { nota_id: nota.id, error: message });
+    await client.query("ROLLBACK");
+    const message = err instanceof Error ? err.message : "Erro ao contabilizar";
+    logger.error("Erro na transação de contabilização", { nota_id: nota.id, error: message });
+    res.status(500).json({ error: "Erro ao contabilizar NF" });
+    return;
+  } finally {
+    client.release();
   }
 
-  logger.info("NF-e contabilizada", { nota_id: nota.id, lancamento_id: lancamento?.id, produtosAtualizados });
+  if (produtosAtualizados > 0) {
+    logger.info("Preço de custo atualizado via NF", { nota_id: nota.id, produtos: produtosAtualizados });
+  }
+
+  logger.info("NF-e contabilizada", { nota_id: nota.id, lancamento_id: lancamentoId, produtosAtualizados });
 
   res.json({
     message: "NF contabilizada com sucesso",
-    lancamento_id: lancamento?.id,
+    lancamento_id: lancamentoId,
     nota_id: nota.id,
     produtos_custo_atualizado: produtosAtualizados,
   });

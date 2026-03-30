@@ -22,7 +22,10 @@ export const emailRouter = Router();
 // Gera: hmac(email) com JWT_SECRET — verificável, sem banco
 
 function getSecret(): string {
-  return process.env.JWT_SECRET || "bibelo-unsub-fallback";
+  if (!process.env.JWT_SECRET) {
+    logger.warn("JWT_SECRET não definido — usando fallback para HMAC de descadastro. Configure JWT_SECRET no .env.");
+  }
+  return process.env.JWT_SECRET || "bibelo-unsub-fallback-k8x2m9pq4w7z1n6v3j5t0r8y";
 }
 
 export function gerarTokenDescadastro(email: string): string {

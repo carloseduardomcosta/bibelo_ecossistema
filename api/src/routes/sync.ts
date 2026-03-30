@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import crypto from "crypto";
 import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
@@ -8,6 +9,28 @@ import { getNuvemShopAuthUrl, exchangeNuvemShopCode, getNuvemShopToken } from ".
 import { syncNuvemShop, registerNsWebhooks } from "../integrations/nuvemshop/sync";
 
 export const syncRouter = Router();
+
+// ── OAuth state store (in-memory, 5-min TTL) ──────────────────
+const oauthStates = new Map<string, number>();
+const OAUTH_STATE_TTL_MS = 5 * 60 * 1000;
+
+function generateOAuthState(): string {
+  const state = crypto.randomBytes(16).toString("hex");
+  oauthStates.set(state, Date.now());
+  return state;
+}
+
+function validateOAuthState(state: string): boolean {
+  const created = oauthStates.get(state);
+  if (!created) return false;
+  oauthStates.delete(state);
+  if (Date.now() - created > OAUTH_STATE_TTL_MS) return false;
+  // Cleanup expired entries
+  for (const [key, ts] of oauthStates) {
+    if (Date.now() - ts > OAUTH_STATE_TTL_MS) oauthStates.delete(key);
+  }
+  return true;
+}
 
 // ── GET /api/sync/status — status das integrações ───────────────
 
@@ -169,7 +192,8 @@ syncRouter.post("/nuvemshop", authMiddleware, async (_req: Request, res: Respons
 // ── GET /api/auth/bling — redireciona para OAuth Bling ──────────
 
 syncRouter.get("/auth/bling", authMiddleware, (_req: Request, res: Response) => {
-  const url = getAuthUrl();
+  const state = generateOAuthState();
+  const url = getAuthUrl(state);
   res.json({ url });
 });
 
@@ -184,7 +208,7 @@ syncRouter.get("/auth/bling/callback", async (req: Request, res: Response) => {
     return;
   }
 
-  if (state !== "bibelo") {
+  if (!state || !validateOAuthState(state)) {
     res.status(400).json({ error: "State inválido" });
     return;
   }

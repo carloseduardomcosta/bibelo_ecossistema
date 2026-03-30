@@ -51,7 +51,8 @@ authRouter.post("/google", async (req: Request, res: Response) => {
   if (!user) {
     // Primeiro login — cria conta como viewer inativo (admin ativa manualmente)
     // Exceção: email do dono do projeto é auto-aprovado como admin
-    const isOwner = email === "carloseduardocostatj@gmail.com";
+    const adminEmail = process.env.ADMIN_EMAIL || "carloseduardocostatj@gmail.com";
+    const isOwner = email === adminEmail;
     const papel = isOwner ? "admin" : "viewer";
     const ativo = isOwner;
 

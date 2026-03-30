@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Users, Crown, Repeat, UserPlus, UserMinus, TrendingUp } from 'lucide-react';
 import api from '../lib/api';
+import { useToast } from '../components/Toast';
 
 interface Segment {
   segmento: string;
@@ -34,6 +35,7 @@ function formatCurrency(v: number) {
 }
 
 export default function Segmentos() {
+  const { error: showError } = useToast();
   const [segments, setSegments] = useState<Segment[]>([]);
   const [customers, setCustomers] = useState<SegmentCustomer[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export default function Segmentos() {
           setSegments(data.data.map((s: { segmento: string; total: number }) => ({
             ...s, ltv_medio: 0, ticket_medio: 0, score_medio: 0,
           })));
-        }).catch(() => {});
+        }).catch(() => { showError('Erro ao carregar segmentos'); });
       })
       .finally(() => setLoading(false));
   }, []);

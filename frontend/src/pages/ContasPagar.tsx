@@ -101,7 +101,7 @@ export default function ContasPagar() {
   };
 
   const handleDeletar = async (blingId: string) => {
-    if (!confirm('Tem certeza que deseja excluir esta conta? Sera removida do Bling.')) return;
+    if (!confirm('Tem certeza que deseja excluir esta conta? Será removida do Bling.')) return;
     setActionLoading(blingId);
     setMessage(null);
     try {
@@ -204,7 +204,7 @@ export default function ContasPagar() {
         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-6 flex items-center gap-3">
           <AlertTriangle size={20} className="text-red-400 shrink-0" />
           <div>
-            <p className="text-sm font-medium text-red-400">Atencao: {resumo.vencidas} conta{resumo.vencidas > 1 ? 's' : ''} vencida{resumo.vencidas > 1 ? 's' : ''}</p>
+            <p className="text-sm font-medium text-red-400">Atenção: {resumo.vencidas} conta{resumo.vencidas > 1 ? 's' : ''} vencida{resumo.vencidas > 1 ? 's' : ''}</p>
             <p className="text-xs text-red-400/70">Valor total em atraso: {formatCurrency(resumo.valor_vencido)}</p>
           </div>
         </div>

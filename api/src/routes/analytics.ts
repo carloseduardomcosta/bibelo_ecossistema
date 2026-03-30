@@ -24,14 +24,16 @@ function periodoToInterval(periodo?: string): { intervalo: string; dias: number 
 analyticsRouter.get("/overview", async (req: Request, res: Response) => {
   const { intervalo, dias } = periodoToInterval(req.query.periodo as string);
 
+  const diasAnterior = `${dias * 2} days`;
+
   // Período atual
   const atual = await queryOne<{ pedidos: string; receita: string; ticket: string }>(`
     SELECT COUNT(*)::text AS pedidos,
            COALESCE(SUM(valor), 0)::text AS receita,
            COALESCE(AVG(valor) FILTER (WHERE valor > 0), 0)::text AS ticket
     FROM sync.bling_orders
-    WHERE criado_bling >= NOW() - INTERVAL '${intervalo}'
-  `);
+    WHERE criado_bling >= NOW() - $1::interval
+  `, [intervalo]);
 
   // Período anterior (mesma duração, antes do atual)
   const anterior = await queryOne<{ pedidos: string; receita: string; ticket: string }>(`
@@ -39,31 +41,31 @@ analyticsRouter.get("/overview", async (req: Request, res: Response) => {
            COALESCE(SUM(valor), 0)::text AS receita,
            COALESCE(AVG(valor) FILTER (WHERE valor > 0), 0)::text AS ticket
     FROM sync.bling_orders
-    WHERE criado_bling >= NOW() - INTERVAL '${dias * 2} days'
-      AND criado_bling < NOW() - INTERVAL '${intervalo}'
-  `);
+    WHERE criado_bling >= NOW() - $1::interval
+      AND criado_bling < NOW() - $2::interval
+  `, [diasAnterior, intervalo]);
 
   // Clientes que compraram no período (ativos de verdade)
   const clientesPeriodo = await queryOne<{ compraram: string; compraram_anterior: string }>(`
     SELECT
-      COUNT(DISTINCT customer_id) FILTER (WHERE criado_bling >= NOW() - INTERVAL '${intervalo}')::text AS compraram,
+      COUNT(DISTINCT customer_id) FILTER (WHERE criado_bling >= NOW() - $1::interval)::text AS compraram,
       COUNT(DISTINCT customer_id) FILTER (
-        WHERE criado_bling >= NOW() - INTERVAL '${dias * 2} days'
-          AND criado_bling < NOW() - INTERVAL '${intervalo}'
+        WHERE criado_bling >= NOW() - $2::interval
+          AND criado_bling < NOW() - $1::interval
       )::text AS compraram_anterior
     FROM sync.bling_orders
     WHERE customer_id IS NOT NULL
-  `);
+  `, [intervalo, diasAnterior]);
 
   const totalClientes = await queryOne<{ total: string; novos: string; novos_anterior: string }>(`
     SELECT COUNT(*)::text AS total,
-           COUNT(*) FILTER (WHERE criado_em >= NOW() - INTERVAL '${intervalo}')::text AS novos,
+           COUNT(*) FILTER (WHERE criado_em >= NOW() - $1::interval)::text AS novos,
            COUNT(*) FILTER (
-             WHERE criado_em >= NOW() - INTERVAL '${dias * 2} days'
-               AND criado_em < NOW() - INTERVAL '${intervalo}'
+             WHERE criado_em >= NOW() - $2::interval
+               AND criado_em < NOW() - $1::interval
            )::text AS novos_anterior
     FROM crm.customers WHERE ativo = true
-  `);
+  `, [intervalo, diasAnterior]);
 
   const receitaTotal = await queryOne<{ total: string }>(`
     SELECT COALESCE(SUM(valor), 0)::text AS total FROM sync.bling_orders
@@ -72,14 +74,14 @@ analyticsRouter.get("/overview", async (req: Request, res: Response) => {
   // Despesas no período (do módulo financeiro)
   const despesasPeriodo = await queryOne<{ total: string; anterior: string }>(`
     SELECT
-      COALESCE(SUM(valor) FILTER (WHERE data >= (CURRENT_DATE - INTERVAL '${intervalo}')::date), 0)::text AS total,
+      COALESCE(SUM(valor) FILTER (WHERE data >= (CURRENT_DATE - $1::interval)::date), 0)::text AS total,
       COALESCE(SUM(valor) FILTER (
-        WHERE data >= (CURRENT_DATE - INTERVAL '${dias * 2} days')::date
-          AND data < (CURRENT_DATE - INTERVAL '${intervalo}')::date
+        WHERE data >= (CURRENT_DATE - $2::interval)::date
+          AND data < (CURRENT_DATE - $1::interval)::date
       ), 0)::text AS anterior
     FROM financeiro.lancamentos
     WHERE tipo = 'despesa' AND status != 'cancelado'
-  `);
+  `, [intervalo, diasAnterior]);
 
   // Estoque alertas
   const estoque = await queryOne<{ sem_estoque: string; estoque_baixo: string; total_produtos: string }>(`
@@ -164,10 +166,10 @@ analyticsRouter.get("/revenue", async (req: Request, res: Response) => {
       SUM(valor)::text AS receita,
       COUNT(*)::text AS pedidos
     FROM sync.bling_orders
-    WHERE criado_bling >= NOW() - INTERVAL '${intervalo}' AND criado_bling IS NOT NULL
+    WHERE criado_bling >= NOW() - $1::interval AND criado_bling IS NOT NULL
     GROUP BY date_trunc('month', criado_bling)
     ORDER BY mes ASC
-  `);
+  `, [intervalo]);
 
   res.json({
     data: rows.map((r) => ({
@@ -244,11 +246,11 @@ analyticsRouter.get("/insights", async (req: Request, res: Response) => {
            COALESCE(SUM(o.valor), 0)::text AS valor_total
     FROM crm.customers c
     JOIN sync.bling_orders o ON o.customer_id = c.id
-    WHERE o.criado_bling >= NOW() - INTERVAL '${intervalo}'
+    WHERE o.criado_bling >= NOW() - $1::interval
     GROUP BY c.id, c.nome
     ORDER BY SUM(o.valor) DESC
     LIMIT 10
-  `);
+  `, [intervalo]);
 
   // Produtos sem estoque de maior valor
   const oportunidadesPerdidas = await query<{ nome: string; sku: string; preco_venda: number }>(`
@@ -295,25 +297,39 @@ analyticsRouter.get("/contas-pagar", async (req: Request, res: Response) => {
   const status = req.query.status as string | undefined;
   const mes = req.query.mes as string | undefined; // formato YYYY-MM
 
-  // Filtro por mes: vencimento dentro do mes selecionado
+  // Build parameterized date filter
   let cpDateFilter = "";
+  const cpDateParams: (string)[] = [];
   if (mes && /^\d{4}-\d{2}$/.test(mes)) {
-    cpDateFilter = `AND vencimento >= '${mes}-01'::date AND vencimento < ('${mes}-01'::date + INTERVAL '1 month')`;
+    const mesDate = `${mes}-01`;
+    cpDateFilter = `AND vencimento >= $NEXT::date AND vencimento < ($NEXT::date + INTERVAL '1 month')`;
+    cpDateParams.push(mesDate, mesDate);
   } else {
     const { intervalo } = periodoToInterval(req.query.periodo as string);
-    if (req.query.periodo) cpDateFilter = `AND vencimento >= NOW() - INTERVAL '${intervalo}'`;
+    if (req.query.periodo) {
+      cpDateFilter = `AND vencimento >= NOW() - $NEXT::interval`;
+      cpDateParams.push(intervalo);
+    }
+  }
+
+  // Helper to replace $NEXT placeholders with actual param indices
+  function buildQuery(sql: string, baseParams: unknown[], dateFilter: string, dateParamValues: string[]): { sql: string; params: unknown[] } {
+    const allParams = [...baseParams];
+    let nextIdx = allParams.length + 1;
+    let resolvedFilter = dateFilter;
+    for (const val of dateParamValues) {
+      resolvedFilter = resolvedFilter.replace("$NEXT", `$${nextIdx}`);
+      allParams.push(val);
+      nextIdx++;
+    }
+    return { sql: sql.replace("__DATE_FILTER__", resolvedFilter), params: allParams };
   }
 
   const conditions: string[] = [];
   if (status === "pendente") conditions.push("situacao = 1");
   else if (status === "pago") conditions.push("situacao = 2");
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  const resumo = await queryOne<{
-    total: string; pendentes: string; pagas: string;
-    valor_pendente: string; valor_pago: string;
-    vencidas: string; valor_vencido: string;
-  }>(`
+  const resumoQ = buildQuery(`
     SELECT
       COUNT(*)::text AS total,
       COUNT(*) FILTER (WHERE situacao = 1)::text AS pendentes,
@@ -323,35 +339,52 @@ analyticsRouter.get("/contas-pagar", async (req: Request, res: Response) => {
       COUNT(*) FILTER (WHERE situacao = 1 AND vencimento < CURRENT_DATE)::text AS vencidas,
       COALESCE(SUM(valor) FILTER (WHERE situacao = 1 AND vencimento < CURRENT_DATE), 0)::text AS valor_vencido
     FROM sync.bling_contas_pagar
-    WHERE 1=1 ${cpDateFilter}
-  `);
+    WHERE 1=1 __DATE_FILTER__
+  `, [], cpDateFilter, [...cpDateParams]);
 
-  const contas = await query<{
-    bling_id: string; situacao: number; vencimento: string; valor: number;
-    numero_documento: string; historico: string; contato_nome: string;
-    forma_pagamento: string; data_pagamento: string; valor_pago: number;
-  }>(`
+  const resumo = await queryOne<{
+    total: string; pendentes: string; pagas: string;
+    valor_pendente: string; valor_pago: string;
+    vencidas: string; valor_vencido: string;
+  }>(resumoQ.sql, resumoQ.params);
+
+  // Build contas query with status filter + date filter
+  const contasWhere = conditions.length > 0
+    ? `WHERE ${conditions.join(" AND ")} `
+    : (cpDateFilter ? "WHERE 1=1 " : "");
+  const contasDatePart = conditions.length > 0
+    ? cpDateFilter
+    : (cpDateFilter ? cpDateFilter.replace("AND", "AND") : "");
+  const contasQ = buildQuery(`
     SELECT bling_id, situacao, vencimento, valor, numero_documento, historico,
            contato_nome, forma_pagamento, data_pagamento, valor_pago
     FROM sync.bling_contas_pagar
-    ${where} ${where ? cpDateFilter : cpDateFilter.replace("AND", "WHERE")}
+    ${contasWhere}__DATE_FILTER__
     ORDER BY CASE WHEN situacao = 1 AND vencimento < CURRENT_DATE THEN 0
                   WHEN situacao = 1 THEN 1
                   ELSE 2 END,
              vencimento ASC
     LIMIT 100
-  `);
+  `, [], contasDatePart, [...cpDateParams]);
 
-  const porFornecedor = await query<{ fornecedor: string; total: string; valor: string }>(`
+  const contas = await query<{
+    bling_id: string; situacao: number; vencimento: string; valor: number;
+    numero_documento: string; historico: string; contato_nome: string;
+    forma_pagamento: string; data_pagamento: string; valor_pago: number;
+  }>(contasQ.sql, contasQ.params);
+
+  const fornecedorQ = buildQuery(`
     SELECT COALESCE(NULLIF(contato_nome, ''), 'Não informado') AS fornecedor,
            COUNT(*)::text AS total,
            COALESCE(SUM(valor), 0)::text AS valor
     FROM sync.bling_contas_pagar
-    WHERE 1=1 ${cpDateFilter}
+    WHERE 1=1 __DATE_FILTER__
     GROUP BY contato_nome
     ORDER BY SUM(valor) DESC
     LIMIT 10
-  `);
+  `, [], cpDateFilter, [...cpDateParams]);
+
+  const porFornecedor = await query<{ fornecedor: string; total: string; valor: string }>(fornecedorQ.sql, fornecedorQ.params);
 
   res.json({
     resumo: {
@@ -376,30 +409,50 @@ analyticsRouter.get("/contas-pagar", async (req: Request, res: Response) => {
 
 analyticsRouter.get("/pagamentos", async (req: Request, res: Response) => {
   const { intervalo } = periodoToInterval(req.query.periodo as string);
-  const dateFilter = intervalo !== "1 month" || req.query.periodo ? `WHERE p.data_vencimento >= NOW() - INTERVAL '${intervalo}'` : "";
-  const dateFilterAnd = dateFilter ? `AND p.data_vencimento >= NOW() - INTERVAL '${intervalo}'` : "";
+  const hasPeriodo = intervalo !== "1 month" || !!req.query.periodo;
 
-  const porForma = await query<{ forma: string; total_pedidos: string; valor_total: string }>(`
-    SELECT
-      COALESCE(p.forma_descricao, 'Não informado') AS forma,
-      COUNT(DISTINCT p.order_bling_id)::text AS total_pedidos,
-      COALESCE(SUM(p.valor), 0)::text AS valor_total
-    FROM sync.bling_order_parcelas p
-    ${dateFilter}
-    GROUP BY p.forma_descricao
-    ORDER BY SUM(p.valor) DESC
-  `);
+  const porForma = hasPeriodo
+    ? await query<{ forma: string; total_pedidos: string; valor_total: string }>(`
+        SELECT
+          COALESCE(p.forma_descricao, 'Não informado') AS forma,
+          COUNT(DISTINCT p.order_bling_id)::text AS total_pedidos,
+          COALESCE(SUM(p.valor), 0)::text AS valor_total
+        FROM sync.bling_order_parcelas p
+        WHERE p.data_vencimento >= NOW() - $1::interval
+        GROUP BY p.forma_descricao
+        ORDER BY SUM(p.valor) DESC
+      `, [intervalo])
+    : await query<{ forma: string; total_pedidos: string; valor_total: string }>(`
+        SELECT
+          COALESCE(p.forma_descricao, 'Não informado') AS forma,
+          COUNT(DISTINCT p.order_bling_id)::text AS total_pedidos,
+          COALESCE(SUM(p.valor), 0)::text AS valor_total
+        FROM sync.bling_order_parcelas p
+        GROUP BY p.forma_descricao
+        ORDER BY SUM(p.valor) DESC
+      `);
 
-  const porMes = await query<{ mes: string; forma: string; valor: string }>(`
-    SELECT
-      TO_CHAR(p.data_vencimento, 'YYYY-MM') AS mes,
-      COALESCE(p.forma_descricao, 'Outros') AS forma,
-      SUM(p.valor)::text AS valor
-    FROM sync.bling_order_parcelas p
-    WHERE p.data_vencimento IS NOT NULL ${dateFilterAnd}
-    GROUP BY TO_CHAR(p.data_vencimento, 'YYYY-MM'), p.forma_descricao
-    ORDER BY mes ASC
-  `);
+  const porMes = hasPeriodo
+    ? await query<{ mes: string; forma: string; valor: string }>(`
+        SELECT
+          TO_CHAR(p.data_vencimento, 'YYYY-MM') AS mes,
+          COALESCE(p.forma_descricao, 'Outros') AS forma,
+          SUM(p.valor)::text AS valor
+        FROM sync.bling_order_parcelas p
+        WHERE p.data_vencimento IS NOT NULL AND p.data_vencimento >= NOW() - $1::interval
+        GROUP BY TO_CHAR(p.data_vencimento, 'YYYY-MM'), p.forma_descricao
+        ORDER BY mes ASC
+      `, [intervalo])
+    : await query<{ mes: string; forma: string; valor: string }>(`
+        SELECT
+          TO_CHAR(p.data_vencimento, 'YYYY-MM') AS mes,
+          COALESCE(p.forma_descricao, 'Outros') AS forma,
+          SUM(p.valor)::text AS valor
+        FROM sync.bling_order_parcelas p
+        WHERE p.data_vencimento IS NOT NULL
+        GROUP BY TO_CHAR(p.data_vencimento, 'YYYY-MM'), p.forma_descricao
+        ORDER BY mes ASC
+      `);
 
   const totalGeral = porForma.reduce((s, r) => s + parseFloat(r.valor_total), 0);
 
@@ -423,32 +476,56 @@ analyticsRouter.get("/pagamentos", async (req: Request, res: Response) => {
 
 analyticsRouter.get("/nfe", async (req: Request, res: Response) => {
   const { intervalo } = periodoToInterval(req.query.periodo as string);
-  const nfeDateFilter = req.query.periodo ? `AND data_emissao >= NOW() - INTERVAL '${intervalo}'` : "";
+  const hasPeriodo = !!req.query.periodo;
 
-  const resumo = await queryOne<{
-    total: string; autorizadas: string; canceladas: string;
-    valor_total: string; valor_autorizadas: string;
-  }>(`
-    SELECT
-      COUNT(*)::text AS total,
-      COUNT(*) FILTER (WHERE situacao IN (4, 6))::text AS autorizadas,
-      COUNT(*) FILTER (WHERE situacao = 3)::text AS canceladas,
-      COALESCE(SUM(valor_total), 0)::text AS valor_total,
-      COALESCE(SUM(valor_total) FILTER (WHERE situacao IN (4, 6)), 0)::text AS valor_autorizadas
-    FROM sync.bling_nfe
-    WHERE 1=1 ${nfeDateFilter}
-  `);
+  const resumo = hasPeriodo
+    ? await queryOne<{
+        total: string; autorizadas: string; canceladas: string;
+        valor_total: string; valor_autorizadas: string;
+      }>(`
+        SELECT
+          COUNT(*)::text AS total,
+          COUNT(*) FILTER (WHERE situacao IN (4, 6))::text AS autorizadas,
+          COUNT(*) FILTER (WHERE situacao = 3)::text AS canceladas,
+          COALESCE(SUM(valor_total), 0)::text AS valor_total,
+          COALESCE(SUM(valor_total) FILTER (WHERE situacao IN (4, 6)), 0)::text AS valor_autorizadas
+        FROM sync.bling_nfe
+        WHERE data_emissao >= NOW() - $1::interval
+      `, [intervalo])
+    : await queryOne<{
+        total: string; autorizadas: string; canceladas: string;
+        valor_total: string; valor_autorizadas: string;
+      }>(`
+        SELECT
+          COUNT(*)::text AS total,
+          COUNT(*) FILTER (WHERE situacao IN (4, 6))::text AS autorizadas,
+          COUNT(*) FILTER (WHERE situacao = 3)::text AS canceladas,
+          COALESCE(SUM(valor_total), 0)::text AS valor_total,
+          COALESCE(SUM(valor_total) FILTER (WHERE situacao IN (4, 6)), 0)::text AS valor_autorizadas
+        FROM sync.bling_nfe
+      `);
 
-  const porMes = await query<{ mes: string; quantidade: string; valor: string }>(`
-    SELECT
-      TO_CHAR(data_emissao, 'YYYY-MM') AS mes,
-      COUNT(*)::text AS quantidade,
-      COALESCE(SUM(valor_total), 0)::text AS valor
-    FROM sync.bling_nfe
-    WHERE data_emissao IS NOT NULL AND situacao IN (4, 6) ${nfeDateFilter}
-    GROUP BY TO_CHAR(data_emissao, 'YYYY-MM')
-    ORDER BY mes ASC
-  `);
+  const porMes = hasPeriodo
+    ? await query<{ mes: string; quantidade: string; valor: string }>(`
+        SELECT
+          TO_CHAR(data_emissao, 'YYYY-MM') AS mes,
+          COUNT(*)::text AS quantidade,
+          COALESCE(SUM(valor_total), 0)::text AS valor
+        FROM sync.bling_nfe
+        WHERE data_emissao IS NOT NULL AND situacao IN (4, 6) AND data_emissao >= NOW() - $1::interval
+        GROUP BY TO_CHAR(data_emissao, 'YYYY-MM')
+        ORDER BY mes ASC
+      `, [intervalo])
+    : await query<{ mes: string; quantidade: string; valor: string }>(`
+        SELECT
+          TO_CHAR(data_emissao, 'YYYY-MM') AS mes,
+          COUNT(*)::text AS quantidade,
+          COALESCE(SUM(valor_total), 0)::text AS valor
+        FROM sync.bling_nfe
+        WHERE data_emissao IS NOT NULL AND situacao IN (4, 6)
+        GROUP BY TO_CHAR(data_emissao, 'YYYY-MM')
+        ORDER BY mes ASC
+      `);
 
   const ultimas = await query<{
     numero: string; data_emissao: string; valor_total: number;

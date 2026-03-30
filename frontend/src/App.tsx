@@ -26,7 +26,7 @@ import Relatorios from './pages/Relatorios';
 import MarketingPage from './pages/Marketing';
 import { ToastProvider } from './components/Toast';
 
-const GOOGLE_CLIENT_ID = '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
 
 export default function App() {
   return (

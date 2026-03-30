@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Package, AlertTriangle, PackageX, ArrowDownCircle, Box, X, ArrowUpDown } from 'lucide-react';
 import api from '../lib/api';
+import { useToast } from '../components/Toast';
 
 interface StockOverview {
   total_produtos: number;
@@ -50,6 +51,7 @@ function formatCurrency(v: number) {
 }
 
 export default function Estoque() {
+  const { error: showError } = useToast();
   const [data, setData] = useState<StockOverview | null>(null);
   const [alerts, setAlerts] = useState<StockAlerts | null>(null);
   const [tab, setTab] = useState<'sem' | 'baixo'>('sem');
@@ -69,7 +71,7 @@ export default function Estoque() {
         setData(ovRes.data);
         setAlerts(alRes.data);
       })
-      .catch(() => {})
+      .catch(() => { showError('Erro ao carregar dados de estoque'); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -121,7 +123,7 @@ export default function Estoque() {
               <p className="text-xl font-bold text-bibelo-text">{data.com_estoque} <span className="text-sm text-bibelo-muted font-normal">de {data.total_ativos}</span></p>
             </div>
             <div>
-              <p className="text-xs text-bibelo-muted">Voce Pagou (Custo)</p>
+              <p className="text-xs text-bibelo-muted">Você Pagou (Custo)</p>
               <p className="text-xl font-bold text-amber-400">{formatCurrency(data.valor_estoque_custo)}</p>
             </div>
             <div>

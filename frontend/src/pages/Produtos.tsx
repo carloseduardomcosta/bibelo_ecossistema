@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, ChevronLeft, ChevronRight, Package, ArrowUpDown, Download } from 'lucide-react';
 import api from '../lib/api';
 import { exportCsv } from '../lib/export';
+import { useToast } from '../components/Toast';
 
 interface Product {
   id: string;
@@ -41,6 +42,7 @@ function estoqueColor(e: number) {
 }
 
 export default function Produtos() {
+  const { error: showError } = useToast();
   const [produtos, setProdutos] = useState<Product[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 20, total: 0, pages: 0 });
   const [search, setSearch] = useState('');
@@ -53,7 +55,7 @@ export default function Produtos() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/products/categories').then(({ data }) => setCategorias(data.data)).catch(() => {});
+    api.get('/products/categories').then(({ data }) => setCategorias(data.data)).catch(() => { showError('Erro ao carregar categorias'); });
   }, []);
 
   const fetchProdutos = useCallback(async (page: number) => {

@@ -14,10 +14,10 @@ interface BlingTokens {
 
 // ── Get Auth URL ───────────────────────────────────────────────
 
-export function getAuthUrl(): string {
+export function getAuthUrl(state: string): string {
   const clientId = process.env.BLING_CLIENT_ID!;
   const redirectUri = process.env.BLING_REDIRECT_URI!;
-  return `${BLING_AUTH}/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=bibelo`;
+  return `${BLING_AUTH}/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
 }
 
 // ── Exchange Code ──────────────────────────────────────────────

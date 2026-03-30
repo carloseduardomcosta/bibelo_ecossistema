@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
-import { query, queryOne } from "../db";
+import { query, queryOne, db } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { sendCampaignEmails, sendEmail, isResendConfigured, getResendStatus } from "../integrations/resend/email";
@@ -549,92 +549,120 @@ campaignsRouter.put("/:id", async (req: Request, res: Response) => {
 // ── POST /api/campaigns/:id/send — disparar campanha ────────────
 
 campaignsRouter.post("/:id/send", async (req: Request, res: Response) => {
-  const campaign = await queryOne<{
-    id: string; status: string; canal: string;
-    template_id: string | null; segment_id: string | null;
-  }>(
-    "SELECT id, status, canal, template_id, segment_id FROM marketing.campaigns WHERE id = $1",
-    [req.params.id]
-  );
+  // ── Transação com SELECT FOR UPDATE para evitar race condition ──
+  const client = await db.connect();
 
-  if (!campaign) {
-    res.status(404).json({ error: "Campanha não encontrada" });
-    return;
-  }
+  try {
+    await client.query("BEGIN");
 
-  if (campaign.status !== "rascunho" && campaign.status !== "agendada") {
-    res.status(400).json({ error: `Campanha com status "${campaign.status}" não pode ser disparada` });
-    return;
-  }
-
-  if (!campaign.template_id) {
-    res.status(400).json({ error: "Campanha precisa de um template antes de disparar" });
-    return;
-  }
-
-  // Busca clientes do segmento (ou todos ativos se sem segmento)
-  let customers: { id: string }[];
-  if (campaign.segment_id) {
-    customers = await query<{ id: string }>(
-      `SELECT c.id FROM crm.customers c
-       JOIN crm.customer_scores cs ON cs.customer_id = c.id
-       JOIN crm.segments s ON s.id = $1
-       WHERE c.ativo = true AND cs.segmento = s.nome`,
-      [campaign.segment_id]
+    // Lock na campanha para evitar disparo duplo concorrente
+    const campaignResult = await client.query(
+      "SELECT id, status, canal, template_id, segment_id FROM marketing.campaigns WHERE id = $1 FOR UPDATE",
+      [req.params.id]
     );
-  } else {
-    customers = await query<{ id: string }>(
-      "SELECT id FROM crm.customers WHERE ativo = true"
-    );
-  }
+    const campaign = campaignResult.rows[0] as {
+      id: string; status: string; canal: string;
+      template_id: string | null; segment_id: string | null;
+    } | undefined;
 
-  if (customers.length === 0) {
-    res.status(400).json({ error: "Nenhum cliente encontrado para esta campanha" });
-    return;
-  }
-
-  // Cria registros de envio
-  const values = customers.map((_, i) => `($1, $${i + 2}, 'pendente')`).join(", ");
-  const params = [campaign.id, ...customers.map((c) => c.id)];
-
-  await query(
-    `INSERT INTO marketing.campaign_sends (campaign_id, customer_id, status)
-     VALUES ${values}
-     ON CONFLICT (campaign_id, customer_id) DO NOTHING`,
-    params
-  );
-
-  // Atualiza status da campanha
-  await query(
-    `UPDATE marketing.campaigns
-     SET status = 'enviando', enviado_em = NOW(), total_envios = $2, atualizado_em = NOW()
-     WHERE id = $1`,
-    [campaign.id, customers.length]
-  );
-
-  logger.info("Campanha disparada", {
-    id: campaign.id,
-    canal: campaign.canal,
-    total: customers.length,
-    user: req.user?.email,
-  });
-
-  // Disparo real via Resend (email) — síncrono para volumes baixos
-  if (campaign.canal === "email") {
-    if (!isResendConfigured()) {
-      res.status(400).json({ error: "Resend não configurado. Adicione RESEND_API_KEY no .env" });
+    if (!campaign) {
+      await client.query("ROLLBACK");
+      res.status(404).json({ error: "Campanha não encontrada" });
       return;
     }
 
-    // Dispara em background (não bloqueia resposta)
-    sendCampaignEmails(campaign.id).catch((err) => {
-      logger.error("Erro no disparo de campanha", { campaignId: campaign.id, error: err.message });
-    });
-  }
+    if (campaign.status === "enviando" || campaign.status === "enviada" || campaign.status === "concluida") {
+      await client.query("ROLLBACK");
+      res.status(409).json({ error: `Campanha já está com status "${campaign.status}" e não pode ser disparada novamente` });
+      return;
+    }
 
-  res.json({
-    message: campaign.canal === "email" ? "Campanha de email em envio" : "Campanha criada (WhatsApp pendente de integração)",
-    total_envios: customers.length,
-  });
+    if (campaign.status !== "rascunho" && campaign.status !== "agendada") {
+      await client.query("ROLLBACK");
+      res.status(400).json({ error: `Campanha com status "${campaign.status}" não pode ser disparada` });
+      return;
+    }
+
+    if (!campaign.template_id) {
+      await client.query("ROLLBACK");
+      res.status(400).json({ error: "Campanha precisa de um template antes de disparar" });
+      return;
+    }
+
+    // Busca clientes do segmento (ou todos ativos se sem segmento)
+    let customersResult;
+    if (campaign.segment_id) {
+      customersResult = await client.query(
+        `SELECT c.id FROM crm.customers c
+         JOIN crm.customer_scores cs ON cs.customer_id = c.id
+         JOIN crm.segments s ON s.id = $1
+         WHERE c.ativo = true AND cs.segmento = s.nome`,
+        [campaign.segment_id]
+      );
+    } else {
+      customersResult = await client.query(
+        "SELECT id FROM crm.customers WHERE ativo = true"
+      );
+    }
+    const customers = customersResult.rows as { id: string }[];
+
+    if (customers.length === 0) {
+      await client.query("ROLLBACK");
+      res.status(400).json({ error: "Nenhum cliente encontrado para esta campanha" });
+      return;
+    }
+
+    // Cria registros de envio
+    const values = customers.map((_, i) => `($1, $${i + 2}, 'pendente')`).join(", ");
+    const params = [campaign.id, ...customers.map((c) => c.id)];
+
+    await client.query(
+      `INSERT INTO marketing.campaign_sends (campaign_id, customer_id, status)
+       VALUES ${values}
+       ON CONFLICT (campaign_id, customer_id) DO NOTHING`,
+      params
+    );
+
+    // Atualiza status da campanha
+    await client.query(
+      `UPDATE marketing.campaigns
+       SET status = 'enviando', enviado_em = NOW(), total_envios = $2, atualizado_em = NOW()
+       WHERE id = $1`,
+      [campaign.id, customers.length]
+    );
+
+    await client.query("COMMIT");
+
+    logger.info("Campanha disparada", {
+      id: campaign.id,
+      canal: campaign.canal,
+      total: customers.length,
+      user: req.user?.email,
+    });
+
+    // Disparo real via Resend (email) — em background após commit
+    if (campaign.canal === "email") {
+      if (!isResendConfigured()) {
+        res.status(400).json({ error: "Resend não configurado. Adicione RESEND_API_KEY no .env" });
+        return;
+      }
+
+      sendCampaignEmails(campaign.id).catch((err) => {
+        logger.error("Erro no disparo de campanha", { campaignId: campaign.id, error: err.message });
+      });
+    }
+
+    res.json({
+      message: campaign.canal === "email" ? "Campanha de email em envio" : "Campanha criada (WhatsApp pendente de integração)",
+      total_envios: customers.length,
+    });
+  } catch (err: unknown) {
+    await client.query("ROLLBACK");
+    const message = err instanceof Error ? err.message : "Erro ao disparar campanha";
+    logger.error("Erro na transação de disparo de campanha", { id: req.params.id, error: message });
+    res.status(500).json({ error: "Erro ao disparar campanha" });
+  } finally {
+    client.release();
+  }
 });
 

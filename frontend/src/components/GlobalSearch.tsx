@@ -43,6 +43,7 @@ export default function GlobalSearch() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
@@ -77,6 +78,22 @@ export default function GlobalSearch() {
     const timer = setTimeout(() => search(query), 300);
     return () => clearTimeout(timer);
   }, [query, search]);
+
+  // Reset selection when results change
+  useEffect(() => { setSelectedIdx(0); }, [results]);
+
+  const handleKeyNav = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIdx(i => Math.min(i + 1, allResults.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIdx(i => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter' && allResults.length > 0) {
+      e.preventDefault();
+      handleSelect(allResults[selectedIdx]._url);
+    }
+  };
 
   const handleSelect = (url: string) => {
     setOpen(false);
@@ -116,6 +133,7 @@ export default function GlobalSearch() {
                 placeholder="Buscar clientes, produtos, lançamentos, NFs..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={handleKeyNav}
                 className="flex-1 bg-transparent text-sm text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none"
               />
               {query && (
@@ -149,7 +167,7 @@ export default function GlobalSearch() {
                       <button
                         key={`${r._type}-${r.id}-${i}`}
                         onClick={() => handleSelect(r._url)}
-                        className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-bibelo-border/30 transition-colors"
+                        className={`flex items-center gap-3 w-full px-4 py-2.5 text-left transition-colors ${i === selectedIdx ? 'bg-bibelo-border/40' : 'hover:bg-bibelo-border/30'}`}
                       >
                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-bibelo-border/30`}>
                           <Icon size={16} className={cfg.color} />
@@ -176,7 +194,7 @@ export default function GlobalSearch() {
 
             {/* Footer */}
             <div className="flex items-center justify-between px-4 py-2 border-t border-bibelo-border text-[10px] text-bibelo-muted">
-              <span>Enter para selecionar</span>
+              <span>↑↓ navegar · Enter selecionar</span>
               <span>Esc para fechar</span>
             </div>
           </div>
