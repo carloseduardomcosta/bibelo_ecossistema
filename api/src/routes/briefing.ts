@@ -477,7 +477,7 @@ export async function enviarBriefingEmail(): Promise<void> {
   const html = gerarEmailBriefing(data);
   const hoje = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 
-  const adminEmail = process.env.ADMIN_EMAIL || "carloseduardocostatj@gmail.com";
+  const adminEmail = process.env.ADMIN_EMAIL || "contato@papelariabibelo.com.br";
 
   await sendEmail({
     to: adminEmail,

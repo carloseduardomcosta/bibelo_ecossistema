@@ -94,7 +94,7 @@ emailRouter.get("/unsubscribe", publicLimiter, async (req: Request, res: Respons
   // Notifica o Carlos
   try {
     await sendEmail({
-      to: "carloseduardocostatj@gmail.com",
+      to: process.env.ADMIN_EMAIL || "contato@papelariabibelo.com.br",
       subject: `[Descadastro] ${(cliente.nome || email).replace(/[<>"]/g, "")} saiu da lista de emails`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px;">

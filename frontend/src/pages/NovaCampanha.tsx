@@ -141,12 +141,12 @@ export default function NovaCampanha() {
       const assuntoTeste = assunto.replace(/\{\{nome\}\}/g, 'Carlos');
       const htmlTeste = html.replace(/\{\{nome\}\}/g, 'Carlos');
       await api.post('/campaigns/test-email', {
-        to: 'carloseduardocostatj@gmail.com',
+        to: 'contato@papelariabibelo.com.br',
         subject: `[TESTE] ${assuntoTeste}`,
         html: htmlTeste,
       });
       setTesteEnviado(true);
-      success('Email de teste enviado para carloseduardocostatj@gmail.com');
+      success('Email de teste enviado para contato@papelariabibelo.com.br');
     } catch {
       showError('Erro ao enviar teste');
     } finally {
