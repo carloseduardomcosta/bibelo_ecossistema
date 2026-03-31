@@ -109,3 +109,6 @@ Para histórico completo e atualizado, usar `git log --oneline`.
 - f74a502 feat: campanha personalizada — wizard com categorias, público e preview
 - 74e276b fix: seleção individual de produtos + público "Todos com email"
 - 00b4f88 feat: portal Briefing Diário + email automático às 7h BRT
+- 5be500b feat: separa clientes de fornecedores — CNPJ auto-classificado
+- c8c4c25 feat: filtros de contato e cidade na lista de clientes
+- d2098f4 feat: DNS SPF/DMARC via Cloudflare API — Hostinger + Resend, hardfail, DMARC quarantine

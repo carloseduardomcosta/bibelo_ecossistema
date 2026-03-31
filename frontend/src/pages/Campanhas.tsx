@@ -307,15 +307,25 @@ export default function Campanhas() {
                           {fmtDate(c.enviado_em || c.criado_em)}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {(c.status === 'rascunho' || c.status === 'agendada') && c.template_id && (
-                            <button
-                              onClick={() => handleSendCampaign(c.id)}
-                              disabled={sending === c.id}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-400/10 text-emerald-400 border border-emerald-400/20 rounded-lg text-xs hover:bg-emerald-400/20 transition-colors disabled:opacity-50"
-                            >
-                              <Play size={12} /> {sending === c.id ? 'Enviando...' : 'Disparar'}
-                            </button>
-                          )}
+                          <div className="flex items-center justify-end gap-1">
+                            {(c.status === 'concluida' || c.status === 'enviando') && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); abrirDetalhe(c.id); }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-bibelo-primary/10 text-bibelo-primary border border-bibelo-primary/20 rounded-lg text-xs hover:bg-bibelo-primary/20 transition-colors"
+                              >
+                                <Eye size={12} /> Ver
+                              </button>
+                            )}
+                            {(c.status === 'rascunho' || c.status === 'agendada') && c.template_id && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleSendCampaign(c.id); }}
+                                disabled={sending === c.id}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-400/10 text-emerald-400 border border-emerald-400/20 rounded-lg text-xs hover:bg-emerald-400/20 transition-colors disabled:opacity-50"
+                              >
+                                <Play size={12} /> {sending === c.id ? 'Enviando...' : 'Disparar'}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
