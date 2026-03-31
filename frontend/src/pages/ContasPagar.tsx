@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Receipt, AlertTriangle, CheckCircle, Clock, DollarSign, Check, Trash2 } from 'lucide-react';
 import api from '../lib/api';
+import { useToast } from '../components/Toast';
+import { formatCurrency } from '../lib/format';
 
 interface Resumo {
   total: number; pendentes: number; pagas: number;
@@ -16,10 +18,6 @@ interface Conta {
 
 interface Fornecedor {
   fornecedor: string; total: number; valor: number;
-}
-
-function formatCurrency(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 function formatDate(d: string) {
@@ -57,6 +55,7 @@ function navMes(mes: string, dir: number) {
 }
 
 export default function ContasPagar() {
+  const { error: showError } = useToast();
   const [resumo, setResumo] = useState<Resumo | null>(null);
   const [contas, setContas] = useState<Conta[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
@@ -77,7 +76,7 @@ export default function ContasPagar() {
         setContas(data.contas);
         setFornecedores(data.por_fornecedor);
       })
-      .catch(() => {})
+      .catch(() => { showError('Erro ao carregar dados'); })
       .finally(() => setLoading(false));
   };
 

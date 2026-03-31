@@ -5,6 +5,8 @@ import {
   ShoppingCart, Tag, BarChart3,
 } from 'lucide-react';
 import api from '../lib/api';
+import { useToast } from '../components/Toast';
+import { formatCurrency, margemColor } from '../lib/format';
 
 interface Produto {
   id: string;
@@ -29,16 +31,6 @@ interface Produto {
   };
 }
 
-function fmt(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function margemColor(m: number) {
-  if (m >= 50) return 'text-emerald-400';
-  if (m >= 20) return 'text-amber-400';
-  return 'text-red-400';
-}
-
 function margemBg(m: number) {
   if (m >= 50) return 'bg-emerald-400';
   if (m >= 20) return 'bg-amber-400';
@@ -50,13 +42,14 @@ export default function ProdutoPerfil() {
   const navigate = useNavigate();
   const [produto, setProduto] = useState<Produto | null>(null);
   const [loading, setLoading] = useState(true);
+  const { error: showError } = useToast();
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
     api.get(`/products/${id}`)
       .then(({ data }) => setProduto(data))
-      .catch(() => {})
+      .catch(() => { showError('Erro ao carregar dados'); })
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -110,14 +103,14 @@ export default function ProdutoPerfil() {
             <p className="text-xs text-bibelo-muted">Preço Venda</p>
             <Tag size={14} className="text-bibelo-primary" />
           </div>
-          <p className="text-xl font-bold text-bibelo-text">{fmt(produto.preco_venda)}</p>
+          <p className="text-xl font-bold text-bibelo-text">{formatCurrency(produto.preco_venda)}</p>
         </div>
         <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs text-bibelo-muted">Custo</p>
             <DollarSign size={14} className="text-amber-400" />
           </div>
-          <p className="text-xl font-bold text-bibelo-text">{fmt(produto.preco_custo)}</p>
+          <p className="text-xl font-bold text-bibelo-text">{formatCurrency(produto.preco_custo)}</p>
         </div>
         <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-1">
@@ -159,16 +152,16 @@ export default function ProdutoPerfil() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-bibelo-muted">Receita Total</p>
-                <p className="text-lg font-bold text-emerald-400">{fmt(produto.vendas.receita_total)}</p>
+                <p className="text-lg font-bold text-emerald-400">{formatCurrency(produto.vendas.receita_total)}</p>
               </div>
               <div>
                 <p className="text-xs text-bibelo-muted">Custo Total</p>
-                <p className="text-lg font-bold text-amber-400">{fmt(produto.vendas.custo_total)}</p>
+                <p className="text-lg font-bold text-amber-400">{formatCurrency(produto.vendas.custo_total)}</p>
               </div>
               <div>
                 <p className="text-xs text-bibelo-muted">Lucro Total</p>
                 <p className={`text-lg font-bold ${produto.vendas.lucro_total >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {fmt(produto.vendas.lucro_total)}
+                  {formatCurrency(produto.vendas.lucro_total)}
                 </p>
               </div>
               <div>

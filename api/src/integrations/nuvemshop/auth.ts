@@ -83,12 +83,14 @@ export async function nsRequest<T>(
   body?: unknown
 ): Promise<T> {
   // Garante intervalo mínimo de 520ms (≈1.9 req/s, margem segura)
+  // Atualiza timestamp ANTES do await para ser concurrency-safe
   const now = Date.now();
   const elapsed = now - lastNsRequest;
-  if (elapsed < 520) {
-    await new Promise((resolve) => setTimeout(resolve, 520 - elapsed));
+  const delay = elapsed < 520 ? 520 - elapsed : 0;
+  lastNsRequest = now + delay; // optimistic update — concurrent callers see this immediately
+  if (delay > 0) {
+    await new Promise((resolve) => setTimeout(resolve, delay));
   }
-  lastNsRequest = Date.now();
 
   const url = `${NS_API_BASE}/${token.store_id}/${path}`;
 

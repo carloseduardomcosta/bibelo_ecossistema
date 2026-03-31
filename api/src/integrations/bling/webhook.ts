@@ -8,6 +8,9 @@ import { rateLimitedGet } from "./sync";
 
 export const blingWebhookRouter = Router();
 
+// ── Idempotency cache (60s TTL) ─────────────────────────────
+const recentBlingEvents = new Map<string, number>();
+
 // ── Validar HMAC do Bling ────────────────────────────────────
 // Header: X-Bling-Signature-256: sha256=<hash>
 // Hash = HMAC-SHA256(body, BLING_CLIENT_SECRET)
@@ -188,6 +191,22 @@ async function processEstoque(data: Record<string, unknown>): Promise<void> {
 blingWebhookRouter.post("/", blingWebhookAuth, async (req: Request, res: Response) => {
   const body = req.body;
   const evento = (body.evento || body.event || "") as string;
+  const resourceId = String(body.data?.id || body.data?.pedido?.id || body.data?.contato?.id || body.data?.estoque?.produto?.id || "unknown");
+
+  // Idempotency: ignora eventos duplicados nos últimos 60s
+  const eventKey = `${evento}:${resourceId}`;
+  const lastSeen = recentBlingEvents.get(eventKey);
+  if (lastSeen && Date.now() - lastSeen < 60000) {
+    logger.info("Bling webhook duplicado ignorado", { evento, resourceId });
+    res.json({ ok: true, duplicado: true });
+    return;
+  }
+  recentBlingEvents.set(eventKey, Date.now());
+
+  // Cleanup entradas antigas
+  for (const [k, v] of recentBlingEvents) {
+    if (Date.now() - v > 120000) recentBlingEvents.delete(k);
+  }
 
   try {
     // Log do evento recebido

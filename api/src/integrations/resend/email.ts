@@ -3,14 +3,18 @@ import { queryOne, query } from "../../db";
 import { logger } from "../../utils/logger";
 import { gerarLinkDescadastro } from "../../routes/email";
 
-// ── Client (inicializa só se tiver API key) ─────────────────────
+// ── Client (inicializa só se tiver API key, cached) ─────────────
+
+let cachedClient: Resend | null = null;
 
 function getClient(): Resend | null {
+  if (cachedClient) return cachedClient;
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey || apiKey === "PREENCHER") {
     return null;
   }
-  return new Resend(apiKey);
+  cachedClient = new Resend(apiKey);
+  return cachedClient;
 }
 
 // ── Verificar se o Resend está configurado ──────────────────────

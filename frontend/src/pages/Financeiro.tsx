@@ -11,6 +11,7 @@ import {
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
 import { exportCsv } from '../lib/export';
+import { formatCurrency } from '../lib/format';
 
 interface DashboardData {
   receitas: number;
@@ -66,10 +67,6 @@ const PERIODOS = [
   { value: '1a', label: '1 Ano' },
   { value: 'total', label: 'Total' },
 ];
-
-function fmt(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 function fmtDate(d: string) {
   return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -272,7 +269,7 @@ export default function Financeiro() {
                   </div>
                   <div>
                     <p className="text-xs text-bibelo-muted uppercase tracking-wider">Entradas</p>
-                    <p className="text-2xl font-bold text-emerald-400">{fmt(dash?.receitas || 0)}</p>
+                    <p className="text-2xl font-bold text-emerald-400">{formatCurrency(dash?.receitas || 0)}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-xs text-bibelo-muted">{dash?.total_vendas || 0} vendas Bling</span>
                       {(dash?.variacao_receita || 0) !== 0 && <VariacaoBadge valor={dash?.variacao_receita || 0} />}
@@ -292,7 +289,7 @@ export default function Financeiro() {
                   </div>
                   <div>
                     <p className="text-xs text-bibelo-muted uppercase tracking-wider">Saídas</p>
-                    <p className="text-2xl font-bold text-red-400">{fmt(dash?.despesas || 0)}</p>
+                    <p className="text-2xl font-bold text-red-400">{formatCurrency(dash?.despesas || 0)}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-xs text-bibelo-muted">despesas + fornecedores</span>
                       {(dash?.variacao_despesa || 0) !== 0 && <VariacaoBadge valor={dash?.variacao_despesa || 0} />}
@@ -310,7 +307,7 @@ export default function Financeiro() {
                   </div>
                   <div>
                     <p className="text-xs text-bibelo-muted uppercase tracking-wider">Saldo</p>
-                    <p className={`text-2xl font-bold ${(dash?.saldo || 0) >= 0 ? 'text-bibelo-primary' : 'text-red-400'}`}>{fmt(dash?.saldo || 0)}</p>
+                    <p className={`text-2xl font-bold ${(dash?.saldo || 0) >= 0 ? 'text-bibelo-primary' : 'text-red-400'}`}>{formatCurrency(dash?.saldo || 0)}</p>
                     <span className="text-xs text-bibelo-muted">
                       margem {dash?.receitas ? Math.round(((dash.saldo || 0) / dash.receitas) * 100) : 0}%
                     </span>
@@ -350,8 +347,8 @@ export default function Financeiro() {
               ))
             ) : (
               <>
-                <KpiCard label="Ticket Médio" value={fmt(dash?.ticket_medio || 0)} icon={DollarSign} color="text-amber-400" />
-                <KpiCard label="Despesas Fixas/Mês" value={fmt(dash?.despesas_fixas_mensal || 0)} icon={Target} color="text-purple-400" />
+                <KpiCard label="Ticket Médio" value={formatCurrency(dash?.ticket_medio || 0)} icon={DollarSign} color="text-amber-400" />
+                <KpiCard label="Despesas Fixas/Mês" value={formatCurrency(dash?.despesas_fixas_mensal || 0)} icon={Target} color="text-purple-400" />
                 <KpiCard label="Ponto de Equilíbrio" value={`${dash?.ponto_equilibrio || 0} vendas/mês`} icon={ShoppingCart} color="text-blue-400" />
               </>
             )}
@@ -376,7 +373,7 @@ export default function Financeiro() {
                     <YAxis tickFormatter={(v) => `R$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} stroke="#64748B" fontSize={12} />
                     <Tooltip
                       contentStyle={{ background: '#0F1419', border: '1px solid #1E2A3A', borderRadius: 8 }}
-                      formatter={(v: number) => fmt(v)}
+                      formatter={(v: number) => formatCurrency(v)}
                     />
                     <Bar dataKey="receitas" name="Receitas" fill="#10B981" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="despesas" name="Despesas" fill="#EF4444" radius={[4, 4, 0, 0]} />
@@ -407,7 +404,7 @@ export default function Financeiro() {
                     <YAxis tickFormatter={(v) => `R$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} stroke="#64748B" fontSize={12} />
                     <Tooltip
                       contentStyle={{ background: '#0F1419', border: '1px solid #1E2A3A', borderRadius: 8 }}
-                      formatter={(v: number) => fmt(v)}
+                      formatter={(v: number) => formatCurrency(v)}
                     />
                     <Area type="monotone" dataKey="saldo" stroke="#8B5CF6" strokeWidth={2} fill="url(#colorSaldo)" />
                   </AreaChart>
@@ -520,7 +517,7 @@ export default function Financeiro() {
                           </span>
                         </td>
                         <td className={`px-4 py-3 text-right font-medium ${l.tipo === 'receita' ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {l.tipo === 'receita' ? '+' : '-'}{fmt(parseFloat(l.valor))}
+                          {l.tipo === 'receita' ? '+' : '-'}{formatCurrency(parseFloat(l.valor))}
                         </td>
                         <td className="px-4 py-3 hidden md:table-cell">
                           <span className={`inline-flex px-2 py-0.5 rounded text-xs ${
@@ -721,7 +718,7 @@ function CategoriaChart({ titulo, data, loading }: {
               </Pie>
               <Tooltip
                 contentStyle={{ background: '#0F1419', border: '1px solid #1E2A3A', borderRadius: 8, fontSize: 12 }}
-                formatter={(v: number) => fmt(v)}
+                formatter={(v: number) => formatCurrency(v)}
               />
             </PieChart>
           </ResponsiveContainer>
@@ -730,7 +727,7 @@ function CategoriaChart({ titulo, data, loading }: {
               <div key={i} className="flex items-center gap-2 text-xs">
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.cor }} />
                 <span className="text-bibelo-muted truncate flex-1">{d.name}</span>
-                <span className="text-bibelo-text font-medium">{fmt(d.value)}</span>
+                <span className="text-bibelo-text font-medium">{formatCurrency(d.value)}</span>
                 <span className="text-bibelo-muted w-10 text-right">{total > 0 ? `${Math.round((d.value / total) * 100)}%` : ''}</span>
               </div>
             ))}

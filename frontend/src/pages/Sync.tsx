@@ -1,8 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, CheckCircle, XCircle, ExternalLink, Clock, Database } from 'lucide-react';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import api from '../lib/api';
 
 interface SyncState {
@@ -30,7 +28,7 @@ interface SyncStatus {
 }
 
 function formatDate(date: string) {
-  return format(new Date(date), "dd MMM yyyy 'as' HH:mm", { locale: ptBR });
+  return new Date(date).toLocaleString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 export default function Sync() {

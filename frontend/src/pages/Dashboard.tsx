@@ -11,6 +11,7 @@ import {
 import { useAuth } from '../lib/auth';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
+import { formatCurrency, formatMonth } from '../lib/format';
 
 interface Overview {
   receita_periodo: number;
@@ -64,16 +65,6 @@ const ESTADO_NOMES: Record<string, string> = {
 };
 
 const SEGMENT_COLORS = ['#8B5CF6', '#F472B6', '#34D399', '#FBBF24', '#60A5FA', '#F87171'];
-
-function fmt(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function formatMonth(mes: string) {
-  const [year, month] = mes.split('-');
-  const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-  return `${months[parseInt(month, 10) - 1]}/${year.slice(2)}`;
-}
 
 function VariacaoBadge({ valor }: { valor: number }) {
   if (valor === 0) return null;
@@ -176,7 +167,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <p className="text-xs text-bibelo-muted">Entradas</p>
-                  <p className="text-2xl font-bold text-emerald-400">{fmt(ov.receita_periodo)}</p>
+                  <p className="text-2xl font-bold text-emerald-400">{formatCurrency(ov.receita_periodo)}</p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-xs text-bibelo-muted">{ov.pedidos_periodo} pedidos</span>
                     <VariacaoBadge valor={ov.receita_variacao} />
@@ -193,7 +184,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <p className="text-xs text-bibelo-muted">Saídas</p>
-                  <p className="text-2xl font-bold text-red-400">{fmt(ov.despesas_periodo)}</p>
+                  <p className="text-2xl font-bold text-red-400">{formatCurrency(ov.despesas_periodo)}</p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-xs text-bibelo-muted">despesas</span>
                     <VariacaoBadge valor={ov.despesas_variacao} />
@@ -210,7 +201,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <p className="text-xs text-bibelo-muted">Saldo</p>
-                  <p className={`text-2xl font-bold ${ov.saldo_periodo >= 0 ? 'text-bibelo-primary' : 'text-red-400'}`}>{fmt(ov.saldo_periodo)}</p>
+                  <p className={`text-2xl font-bold ${ov.saldo_periodo >= 0 ? 'text-bibelo-primary' : 'text-red-400'}`}>{formatCurrency(ov.saldo_periodo)}</p>
                   <span className="text-xs text-bibelo-muted">
                     margem {ov.receita_periodo > 0 ? Math.round((ov.saldo_periodo / ov.receita_periodo) * 100) : 0}%
                   </span>
@@ -246,7 +237,7 @@ export default function Dashboard() {
                 <p className="text-xl font-bold text-bibelo-text">{ov.pedidos_periodo}</p>
                 <VariacaoBadge valor={ov.pedidos_variacao} />
               </div>
-              <p className="text-xs text-bibelo-muted mt-0.5">ticket {fmt(ov.ticket_medio)}</p>
+              <p className="text-xs text-bibelo-muted mt-0.5">ticket {formatCurrency(ov.ticket_medio)}</p>
             </div>
 
             <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
@@ -279,10 +270,10 @@ export default function Dashboard() {
                 <DollarSign size={16} className="text-amber-400" />
               </div>
               <div className="flex items-baseline gap-2">
-                <p className="text-xl font-bold text-bibelo-text">{fmt(ov.ticket_medio)}</p>
+                <p className="text-xl font-bold text-bibelo-text">{formatCurrency(ov.ticket_medio)}</p>
                 <VariacaoBadge valor={ov.ticket_variacao} />
               </div>
-              <p className="text-xs text-bibelo-muted mt-0.5">total acumulado {fmt(ov.receita_total)}</p>
+              <p className="text-xs text-bibelo-muted mt-0.5">total acumulado {formatCurrency(ov.receita_total)}</p>
             </div>
           </div>
 
@@ -318,7 +309,7 @@ export default function Dashboard() {
                     <YAxis tickFormatter={(v) => `R$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} stroke="#64748B" fontSize={12} width={55} />
                     <Tooltip
                       formatter={(value: number, name: string) => [
-                        name === 'receita' ? fmt(value) : value,
+                        name === 'receita' ? formatCurrency(value) : value,
                         name === 'receita' ? 'Receita' : 'Pedidos',
                       ]}
                       contentStyle={{ background: '#0F1419', border: '1px solid #1E2A3A', borderRadius: 8 }}
@@ -380,7 +371,7 @@ export default function Dashboard() {
                         <span className="text-bibelo-text truncate max-w-[160px]">{c.nome}</span>
                       </div>
                       <div className="text-right">
-                        <p className="text-bibelo-text font-medium">{fmt(c.valor_total)}</p>
+                        <p className="text-bibelo-text font-medium">{formatCurrency(c.valor_total)}</p>
                         <p className="text-xs text-bibelo-muted">{c.total_pedidos} pedidos</p>
                       </div>
                     </div>
@@ -401,7 +392,7 @@ export default function Dashboard() {
                   {insights.oportunidades_perdidas.slice(0, 5).map((p) => (
                     <div key={p.sku} className="flex items-center justify-between text-sm py-1.5 border-b border-bibelo-border/50 last:border-0">
                       <span className="text-bibelo-text truncate max-w-[200px]">{p.nome}</span>
-                      <span className="text-red-400 font-medium">{fmt(p.preco_venda)}</span>
+                      <span className="text-red-400 font-medium">{formatCurrency(p.preco_venda)}</span>
                     </div>
                   ))}
                 </div>

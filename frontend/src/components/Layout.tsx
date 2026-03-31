@@ -2,6 +2,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import GlobalSearch from './GlobalSearch';
 import api from '../lib/api';
+import { timeAgo, formatCurrency } from '../lib/format';
 import {
   LayoutDashboard,
   Users,
@@ -191,17 +192,6 @@ interface LeadNotif {
   criado_em: string;
 }
 
-function timeAgo(date: string): string {
-  const ms = Date.now() - new Date(date).getTime();
-  const min = Math.floor(ms / 60000);
-  if (min < 1) return 'agora';
-  if (min < 60) return `${min}min`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  return `${d}d`;
-}
-
 function NotificationBell() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -245,8 +235,6 @@ function NotificationBell() {
   }, []);
 
   const urgentes = resumo.atrasados + resumo.vence_em_breve + leads.length;
-
-  const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   return (
     <div ref={ref} className="relative">
@@ -341,7 +329,7 @@ function NotificationBell() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-bibelo-text truncate">{n.descricao}</p>
                       <p className="text-xs text-bibelo-muted">
-                        Dia {n.dia_vencimento} · {fmt(parseFloat(n.valor))}
+                        Dia {n.dia_vencimento} · {formatCurrency(parseFloat(n.valor))}
                         {n.alerta === 'atrasado' && <span className="text-red-400 ml-1">· ATRASADO</span>}
                         {n.alerta === 'vence_em_breve' && <span className="text-amber-400 ml-1">· Vence em breve</span>}
                       </p>

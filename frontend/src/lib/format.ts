@@ -29,6 +29,12 @@ export function formatMonth(mesStr: string): string {
   return `${meses[parseInt(month, 10) - 1]}/${year?.slice(2)}`;
 }
 
+export function margemColor(margem: number): string {
+  if (margem >= 50) return 'text-emerald-400';
+  if (margem >= 20) return 'text-amber-400';
+  return 'text-red-400';
+}
+
 export function timeAgo(dateStr: string | null | undefined): string {
   if (!dateStr) return '';
   const now = Date.now();

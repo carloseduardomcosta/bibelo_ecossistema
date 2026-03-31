@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { TrendingUp, DollarSign, Percent, ShoppingCart } from 'lucide-react';
 import api from '../lib/api';
+import { useToast } from '../components/Toast';
+import { formatCurrency, margemColor } from '../lib/format';
 
 interface ProfitData {
   resumo: {
@@ -26,16 +28,6 @@ interface ProfitData {
   }>;
 }
 
-function formatCurrency(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function margemColor(m: number) {
-  if (m >= 50) return 'text-emerald-400';
-  if (m >= 20) return 'text-amber-400';
-  return 'text-red-400';
-}
-
 const PERIODOS = [
   { value: '7d', label: '7 dias' },
   { value: '15d', label: '15 dias' },
@@ -50,6 +42,7 @@ export default function Lucratividade() {
   const [data, setData] = useState<ProfitData | null>(null);
   const [loading, setLoading] = useState(true);
   const [periodo, setPeriodo] = useState('total');
+  const { error: showError } = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -57,7 +50,7 @@ export default function Lucratividade() {
       const params = periodo !== 'total' ? `?periodo=${periodo}` : '';
       const { data } = await api.get(`/products/analytics/profitability${params}`);
       setData(data);
-    } catch {}
+    } catch { showError('Erro ao carregar dados'); }
     finally { setLoading(false); }
   }, [periodo]);
 

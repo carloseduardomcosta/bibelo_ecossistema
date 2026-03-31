@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Package, AlertTriangle, PackageX, ArrowDownCircle, Box, X, ArrowUpDown } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
+import { formatCurrency } from '../lib/format';
 
 interface StockOverview {
   total_produtos: number;
@@ -44,10 +45,6 @@ interface Product {
   preco_custo: number;
   estoque_total: number;
   margem_percentual: number;
-}
-
-function formatCurrency(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 export default function Estoque() {
@@ -208,7 +205,7 @@ export default function Estoque() {
                   contentStyle={{ background: '#0F1419', border: '1px solid #1E2A3A', borderRadius: 8 }}
                 />
                 <Bar dataKey="estoque_total" radius={[0, 4, 4, 0]} cursor="pointer" onClick={handleBarClick}>
-                  {data.por_categoria.sort((a, b) => b.estoque_total - a.estoque_total).map((entry) => (
+                  {[...data.por_categoria].sort((a, b) => b.estoque_total - a.estoque_total).map((entry) => (
                     <Cell
                       key={entry.categoria}
                       fill={catSelecionada === entry.categoria ? '#7C3AED' : '#8B5CF6'}

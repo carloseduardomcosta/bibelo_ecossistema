@@ -1,3 +1,4 @@
+import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider } from './lib/auth';
@@ -28,12 +29,34 @@ import { ToastProvider } from './components/Toast';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
 
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-bibelo-bg flex items-center justify-center">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-bibelo-text mb-2">Ops! Algo deu errado</h1>
+            <p className="text-bibelo-muted mb-4">Tente recarregar a pagina</p>
+            <button onClick={() => window.location.reload()} className="px-4 py-2 bg-bibelo-primary text-white rounded-lg">
+              Recarregar
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <BrowserRouter>
         <AuthProvider>
           <ToastProvider>
+          <ErrorBoundary>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route
@@ -65,6 +88,7 @@ export default function App() {
               <Route path="/sync" element={<Sync />} />
             </Route>
           </Routes>
+          </ErrorBoundary>
           </ToastProvider>
         </AuthProvider>
       </BrowserRouter>

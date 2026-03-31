@@ -168,7 +168,16 @@ contasPagarRouter.delete("/:id", async (req: Request, res: Response) => {
 
 contasPagarRouter.post("/:id/pagar", async (req: Request, res: Response) => {
   const blingId = req.params.id;
-  const dataPagamento = (req.body.data_pagamento as string) || new Date().toISOString().split("T")[0];
+
+  const pagarSchema = z.object({
+    data_pagamento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  });
+  const parse = pagarSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: "Dados inválidos" });
+    return;
+  }
+  const dataPagamento = parse.data.data_pagamento || new Date().toISOString().split("T")[0];
 
   const conta = await queryOne<{ valor: number; contato_bling_id: string }>(
     "SELECT valor, contato_bling_id FROM sync.bling_contas_pagar WHERE bling_id = $1",

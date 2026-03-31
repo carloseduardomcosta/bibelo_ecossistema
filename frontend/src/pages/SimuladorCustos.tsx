@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Calculator } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import api from '../lib/api';
+import { formatCurrency } from '../lib/format';
+import { useToast } from '../components/Toast';
 
 interface Simulacao {
   canal_id: string;
@@ -32,10 +34,6 @@ interface ItemEmbalagem {
   unidade: string;
 }
 
-function fmt(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
 function corMargem(m: number) {
   if (m >= 30) return 'text-emerald-400';
   if (m >= 15) return 'text-amber-400';
@@ -49,6 +47,7 @@ function bgMargem(m: number) {
 }
 
 export default function SimuladorCustos() {
+  const { error: showError } = useToast();
   const [precoVenda, setPrecoVenda] = useState('69.67');
   const [custoProduto, setCustoProduto] = useState('32.00');
   const [custoEmbalagem, setCustoEmbalagem] = useState('5.25');
@@ -64,7 +63,7 @@ export default function SimuladorCustos() {
     api.get('/financeiro/embalagens').then(({ data }) => {
       setItensEmbalagem(data.itens);
       setKits(data.kits);
-    }).catch(() => {});
+    }).catch(() => { showError('Erro ao carregar dados'); });
   }, []);
 
   const handleSimular = async () => {
@@ -81,7 +80,7 @@ export default function SimuladorCustos() {
         custo_embalagem: ce,
       });
       setSimulacoes(data.data);
-    } catch {}
+    } catch { showError('Erro ao carregar dados'); }
     finally { setLoading(false); }
   };
 
@@ -161,7 +160,7 @@ export default function SimuladorCustos() {
                 >
                   <option value="">Personalizado</option>
                   {kits.map(k => (
-                    <option key={k.id} value={k.id}>{k.nome} ({fmt(parseFloat(k.custo_total))})</option>
+                    <option key={k.id} value={k.id}>{k.nome} ({formatCurrency(parseFloat(k.custo_total))})</option>
                   ))}
                 </select>
               </div>
@@ -198,7 +197,7 @@ export default function SimuladorCustos() {
                   <YAxis tickFormatter={(v) => `R$${v}`} stroke="#64748B" fontSize={12} />
                   <Tooltip
                     contentStyle={{ background: '#0F1419', border: '1px solid #1E2A3A', borderRadius: 8, fontSize: 12 }}
-                    formatter={(v: number, name: string) => [fmt(v), name === 'lucro' ? 'Lucro' : 'Margem']}
+                    formatter={(v: number, name: string) => [formatCurrency(v), name === 'lucro' ? 'Lucro' : 'Margem']}
                   />
                   <Bar dataKey="lucro" name="Lucro" radius={[4, 4, 0, 0]}>
                     {chartData.map((d, i) => (
@@ -230,12 +229,12 @@ export default function SimuladorCustos() {
                     {simulacoes.map((s) => (
                       <tr key={s.canal_id} className="border-b border-bibelo-border/50 hover:bg-bibelo-border/20 transition-colors">
                         <td className="px-4 py-3 text-bibelo-text font-medium">{s.canal_nome}</td>
-                        <td className="px-4 py-3 text-right text-bibelo-muted hidden sm:table-cell">{fmt(s.taxa_venda)}</td>
-                        <td className="px-4 py-3 text-right text-bibelo-muted hidden sm:table-cell">{fmt(s.taxa_pagamento)}</td>
-                        <td className="px-4 py-3 text-right text-bibelo-muted hidden md:table-cell">{fmt(s.custo_total)}</td>
-                        <td className="px-4 py-3 text-right text-bibelo-text hidden md:table-cell">{fmt(s.valor_receber)}</td>
+                        <td className="px-4 py-3 text-right text-bibelo-muted hidden sm:table-cell">{formatCurrency(s.taxa_venda)}</td>
+                        <td className="px-4 py-3 text-right text-bibelo-muted hidden sm:table-cell">{formatCurrency(s.taxa_pagamento)}</td>
+                        <td className="px-4 py-3 text-right text-bibelo-muted hidden md:table-cell">{formatCurrency(s.custo_total)}</td>
+                        <td className="px-4 py-3 text-right text-bibelo-text hidden md:table-cell">{formatCurrency(s.valor_receber)}</td>
                         <td className={`px-4 py-3 text-right font-bold ${s.lucro_liquido >= 0 ? corMargem(s.margem_lucro) : 'text-red-400'}`}>
-                          {fmt(s.lucro_liquido)}
+                          {formatCurrency(s.lucro_liquido)}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-2">
@@ -266,7 +265,7 @@ export default function SimuladorCustos() {
               <div key={kit.id} className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-bold text-bibelo-text">{kit.nome}</h3>
-                  <span className="text-lg font-bold text-bibelo-primary">{fmt(parseFloat(kit.custo_total))}</span>
+                  <span className="text-lg font-bold text-bibelo-primary">{formatCurrency(parseFloat(kit.custo_total))}</span>
                 </div>
                 {kit.descricao && <p className="text-xs text-bibelo-muted mb-3">{kit.descricao}</p>}
                 <div className="space-y-1.5">
@@ -275,7 +274,7 @@ export default function SimuladorCustos() {
                       <span className="text-bibelo-muted">
                         {item.quantidade}x {item.embalagem_nome}
                       </span>
-                      <span className="text-bibelo-text">{fmt(item.subtotal)}</span>
+                      <span className="text-bibelo-text">{formatCurrency(item.subtotal)}</span>
                     </div>
                   ))}
                 </div>
@@ -302,7 +301,7 @@ export default function SimuladorCustos() {
                   {itensEmbalagem.map((item) => (
                     <tr key={item.id} className="border-b border-bibelo-border/50 hover:bg-bibelo-border/20 transition-colors">
                       <td className="px-4 py-3 text-bibelo-text">{item.nome}</td>
-                      <td className="px-4 py-3 text-right font-medium text-bibelo-primary">{fmt(parseFloat(item.custo_unitario))}</td>
+                      <td className="px-4 py-3 text-right font-medium text-bibelo-primary">{formatCurrency(parseFloat(item.custo_unitario))}</td>
                       <td className="px-4 py-3 text-bibelo-muted">{item.unidade}</td>
                     </tr>
                   ))}

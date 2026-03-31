@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Users, Package, Receipt, FileText, X } from 'lucide-react';
 import api from '../lib/api';
+import { formatCurrency } from '../lib/format';
 
 interface SearchResult {
   id: string;
@@ -32,11 +33,6 @@ const TYPE_CONFIG: Record<string, { label: string; icon: typeof Users; color: st
   lancamento: { label: 'Lançamento', icon: Receipt, color: 'text-emerald-400' },
   nf: { label: 'NF Entrada', icon: FileText, color: 'text-amber-400' },
 };
-
-function fmt(v: string | number) {
-  const n = typeof v === 'string' ? parseFloat(v) : v;
-  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 export default function GlobalSearch() {
   const [open, setOpen] = useState(false);
@@ -161,7 +157,7 @@ export default function GlobalSearch() {
                     const cfg = TYPE_CONFIG[r._type] || TYPE_CONFIG.cliente;
                     const Icon = cfg.icon;
                     const title = r.nome || r.descricao || r.fornecedor_nome || `NF ${r.numero}`;
-                    const sub = r.email || r.sku || (r.valor ? fmt(r.valor) : null) || (r.valor_total ? fmt(r.valor_total) : null);
+                    const sub = r.email || r.sku || (r.valor ? formatCurrency(r.valor) : null) || (r.valor_total ? formatCurrency(r.valor_total) : null);
 
                     return (
                       <button

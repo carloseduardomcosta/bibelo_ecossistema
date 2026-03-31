@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
+import { formatCurrency } from '../lib/format';
 
 interface DespesaFixa {
   id: string;
@@ -35,10 +36,6 @@ interface Categoria {
   tipo: string;
 }
 
-function fmt(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
 function getMesLabel(mesRef: string) {
   const d = new Date(mesRef + 'T12:00:00');
   return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
@@ -48,7 +45,6 @@ export default function DespesasFixas() {
   const { success: showSuccess, error: showError } = useToast();
   const [alertas, setAlertas] = useState<DespesaFixa[]>([]);
   const [resumo, setResumo] = useState<Resumo>({ atrasados: 0, vence_em_breve: 0, pagos: 0, pendentes: 0, total: 0 });
-  const [_mesRef, setMesRef] = useState('');
   const [loading, setLoading] = useState(true);
   const [mesNavegacao, setMesNavegacao] = useState(() => {
     const d = new Date();
@@ -80,7 +76,6 @@ export default function DespesasFixas() {
       const { data } = await api.get('/financeiro/despesas-fixas/alertas');
       setAlertas(data.data);
       setResumo(data.resumo);
-      setMesRef(data.mes_referencia);
     } catch {}
     finally { setLoading(false); }
   }, []);
@@ -102,7 +97,6 @@ export default function DespesasFixas() {
         alerta: r.status === 'pago' ? 'pago' : 'pendente',
       }));
       setAlertas(items);
-      setMesRef(data.mes_referencia);
     } catch {}
     finally { setLoading(false); }
   }, [mesNavegacao]);
@@ -244,21 +238,21 @@ export default function DespesasFixas() {
             <p className="text-xs text-bibelo-muted">Total Mensal</p>
             <DollarSign size={16} className="text-bibelo-primary" />
           </div>
-          <p className="text-lg font-bold text-bibelo-text">{fmt(totalMensal)}</p>
+          <p className="text-lg font-bold text-bibelo-text">{formatCurrency(totalMensal)}</p>
         </div>
         <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs text-bibelo-muted">Pago</p>
             <CheckCircle2 size={16} className="text-emerald-400" />
           </div>
-          <p className="text-lg font-bold text-emerald-400">{fmt(totalPago)}</p>
+          <p className="text-lg font-bold text-emerald-400">{formatCurrency(totalPago)}</p>
         </div>
         <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs text-bibelo-muted">Pendente</p>
             <Clock size={16} className="text-amber-400" />
           </div>
-          <p className="text-lg font-bold text-amber-400">{fmt(totalPendente)}</p>
+          <p className="text-lg font-bold text-amber-400">{formatCurrency(totalPendente)}</p>
         </div>
         <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-1">
@@ -352,7 +346,7 @@ export default function DespesasFixas() {
                     isAtrasado ? 'text-red-400' :
                     'text-bibelo-text'
                   }`}>
-                    {fmt(parseFloat(df.valor))}
+                    {formatCurrency(parseFloat(df.valor))}
                   </p>
                 </div>
 

@@ -12,6 +12,7 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import api from '../lib/api';
+import { timeAgo } from '../lib/format';
 
 // ── Interfaces ────────────────────────────────────────────────
 
@@ -113,17 +114,6 @@ function fmtDateShort(d: string) {
   return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
-function timeAgo(d: string) {
-  const diff = Date.now() - new Date(d).getTime();
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return 'agora';
-  if (min < 60) return `${min}min atrás`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h atrás`;
-  const days = Math.floor(h / 24);
-  return `${days}d atrás`;
-}
-
 const GATILHO_LABELS: Record<string, string> = {
   'order.abandoned': '🛒 Carrinho abandonado',
   'order.paid': '💳 Pós-compra',
@@ -192,11 +182,45 @@ export default function Marketing() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Auto-refresh a cada 30s
+  // Auto-refresh a cada 30s — só busca endpoints da aba ativa
   useEffect(() => {
-    const interval = setInterval(fetchAll, 30000);
+    const interval = setInterval(async () => {
+      try {
+        if (tab === 'overview') {
+          const [statsRes, leadsStatsRes, funnelRes] = await Promise.all([
+            api.get('/flows/stats/overview'),
+            api.get('/leads/stats'),
+            api.get('/tracking/funnel?dias=7'),
+          ]);
+          setFlowStats(statsRes.data);
+          setLeadStats(leadsStatsRes.data);
+          setFunnel(funnelRes.data);
+        } else if (tab === 'atividade') {
+          const [timelineRes, trackStatsRes] = await Promise.all([
+            api.get('/tracking/timeline?limit=50'),
+            api.get('/tracking/stats'),
+          ]);
+          setTrackingEvents(timelineRes.data);
+          setTrackingStats(trackStatsRes.data);
+        } else if (tab === 'fluxos') {
+          const [statsRes, flowsRes] = await Promise.all([
+            api.get('/flows/stats/overview'),
+            api.get('/flows'),
+          ]);
+          setFlowStats(statsRes.data);
+          setFlows(flowsRes.data);
+        } else if (tab === 'leads') {
+          const [leadsStatsRes, leadsRes] = await Promise.all([
+            api.get('/leads/stats'),
+            api.get('/leads?page=1'),
+          ]);
+          setLeadStats(leadsStatsRes.data);
+          setLeads(leadsRes.data.leads);
+        }
+      } catch {}
+    }, 30000);
     return () => clearInterval(interval);
-  }, [fetchAll]);
+  }, [tab]);
 
   const fetchFlowDetail = async (flowId: string) => {
     try {

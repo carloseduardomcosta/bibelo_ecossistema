@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
+import { formatCurrency } from '../lib/format';
 
 interface Deal {
   id: string;
@@ -41,11 +42,6 @@ const ETAPA_CONFIG: Record<string, { label: string; cor: string; emoji: string }
   fechado_ganho: { label: 'Ganho', cor: 'border-t-emerald-400', emoji: '🎉' },
   fechado_perdido: { label: 'Perdido', cor: 'border-t-red-400', emoji: '❌' },
 };
-
-function fmt(v: number | string) {
-  const n = typeof v === 'string' ? parseFloat(v) : v;
-  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 export default function Pipeline() {
   const { success, error: showError } = useToast();
@@ -187,14 +183,14 @@ export default function Pipeline() {
               <p className="text-xs text-bibelo-muted">Valor Total</p>
               <DollarSign size={14} className="text-emerald-400" />
             </div>
-            <p className="text-xl font-bold text-emerald-400">{fmt(data.kpis.valor_total)}</p>
+            <p className="text-xl font-bold text-emerald-400">{formatCurrency(data.kpis.valor_total)}</p>
           </div>
           <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
             <div className="flex items-center justify-between mb-1">
               <p className="text-xs text-bibelo-muted">Valor Ponderado</p>
               <TrendingUp size={14} className="text-amber-400" />
             </div>
-            <p className="text-xl font-bold text-amber-400">{fmt(data.kpis.valor_ponderado)}</p>
+            <p className="text-xl font-bold text-amber-400">{formatCurrency(data.kpis.valor_ponderado)}</p>
           </div>
         </div>
       )}
@@ -230,7 +226,7 @@ export default function Pipeline() {
                       {deals.length}
                     </span>
                   </div>
-                  {total > 0 && <p className="text-xs text-bibelo-muted mt-0.5">{fmt(total)}</p>}
+                  {total > 0 && <p className="text-xs text-bibelo-muted mt-0.5">{formatCurrency(total)}</p>}
                 </div>
 
                 {/* Cards */}
@@ -254,7 +250,7 @@ export default function Pipeline() {
                         <span className="text-xs text-bibelo-muted truncate">{deal.cliente_nome}</span>
                       </div>
                       {parseFloat(deal.valor) > 0 && (
-                        <p className="text-sm font-bold text-emerald-400 mt-1.5">{fmt(deal.valor)}</p>
+                        <p className="text-sm font-bold text-emerald-400 mt-1.5">{formatCurrency(deal.valor)}</p>
                       )}
                       <div className="flex items-center justify-between mt-1.5">
                         <span className="text-[10px] text-bibelo-muted">{deal.probabilidade}% chance</span>

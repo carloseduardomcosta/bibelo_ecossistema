@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Mail, Phone, MapPin, Instagram, Calendar, TrendingUp } from 'lucide-react';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import api from '../lib/api';
+import { formatCurrency } from '../lib/format';
 
 interface CustomerFull {
   id: string;
@@ -41,12 +40,8 @@ interface TimelineEntry {
   criado_em: string;
 }
 
-function formatCurrency(value: number) {
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
 function formatDate(date: string) {
-  return format(new Date(date), "dd MMM yyyy", { locale: ptBR });
+  return new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 const TIPO_LABELS: Record<string, { label: string; color: string }> = {

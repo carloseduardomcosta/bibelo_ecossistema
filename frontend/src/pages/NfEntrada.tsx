@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
+import { formatCurrency } from '../lib/format';
 
 interface Nota {
   id: string;
@@ -65,11 +66,6 @@ interface Pagination {
   limit: number;
   total: number;
   pages: number;
-}
-
-function fmt(v: number | string) {
-  const n = typeof v === 'string' ? parseFloat(v) : v;
-  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 function fmtDate(d: string) {
@@ -212,7 +208,7 @@ export default function NfEntrada() {
         </div>
         <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
           <p className="text-xs text-bibelo-muted mb-1">Valor Total</p>
-          <p className="text-xl font-bold text-bibelo-text">{fmt(resumo?.valor_total || '0')}</p>
+          <p className="text-xl font-bold text-bibelo-text">{formatCurrency(resumo?.valor_total || '0')}</p>
         </div>
       </div>
 
@@ -283,7 +279,7 @@ export default function NfEntrada() {
                     <td className="px-4 py-3 text-bibelo-text max-w-[200px] truncate">{n.fornecedor_nome || '-'}</td>
                     <td className="px-4 py-3 text-bibelo-muted text-xs hidden md:table-cell">{fmtCnpj(n.fornecedor_cnpj)}</td>
                     <td className="px-4 py-3 text-bibelo-muted text-xs hidden sm:table-cell">{fmtDate(n.data_emissao)}</td>
-                    <td className="px-4 py-3 text-right font-medium text-bibelo-text">{fmt(n.valor_total)}</td>
+                    <td className="px-4 py-3 text-right font-medium text-bibelo-text">{formatCurrency(n.valor_total)}</td>
                     <td className="px-4 py-3 text-bibelo-muted text-center hidden sm:table-cell">{n.total_itens}</td>
                     <td className="px-4 py-3"><StatusBadge status={n.status} /></td>
                     <td className="px-4 py-3 text-right">
@@ -386,23 +382,23 @@ export default function NfEntrada() {
               <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-4">
                 <div>
                   <p className="text-xs text-bibelo-muted">Produtos</p>
-                  <p className="text-sm text-bibelo-text font-medium">{fmt(detalhe.valor_produtos)}</p>
+                  <p className="text-sm text-bibelo-text font-medium">{formatCurrency(detalhe.valor_produtos)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-bibelo-muted">Frete</p>
-                  <p className="text-sm text-bibelo-text">{fmt(detalhe.valor_frete)}</p>
+                  <p className="text-sm text-bibelo-text">{formatCurrency(detalhe.valor_frete)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-bibelo-muted">Desconto</p>
-                  <p className="text-sm text-red-400">{fmt(detalhe.valor_desconto)}</p>
+                  <p className="text-sm text-red-400">{formatCurrency(detalhe.valor_desconto)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-bibelo-muted">ICMS</p>
-                  <p className="text-sm text-bibelo-muted">{fmt(detalhe.icms_total)}</p>
+                  <p className="text-sm text-bibelo-muted">{formatCurrency(detalhe.icms_total)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-bibelo-muted">Total NF</p>
-                  <p className="text-lg text-bibelo-primary font-bold">{fmt(detalhe.valor_total)}</p>
+                  <p className="text-lg text-bibelo-primary font-bold">{formatCurrency(detalhe.valor_total)}</p>
                 </div>
               </div>
             </div>
@@ -445,15 +441,15 @@ export default function NfEntrada() {
                           <td className="px-3 py-2 text-right text-bibelo-text text-xs">
                             {parseFloat(item.quantidade).toLocaleString('pt-BR')} {item.unidade}
                           </td>
-                          <td className="px-3 py-2 text-right text-bibelo-muted text-xs">{fmt(item.valor_unitario)}</td>
-                          <td className="px-3 py-2 text-right text-bibelo-text text-xs font-medium">{fmt(item.valor_total)}</td>
+                          <td className="px-3 py-2 text-right text-bibelo-muted text-xs">{formatCurrency(item.valor_unitario)}</td>
+                          <td className="px-3 py-2 text-right text-bibelo-text text-xs font-medium">{formatCurrency(item.valor_total)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-bibelo-border">
                         <td colSpan={6} className="px-3 py-2 text-right text-xs text-bibelo-muted font-medium">Total</td>
-                        <td className="px-3 py-2 text-right text-sm text-bibelo-primary font-bold">{fmt(detalhe.valor_total)}</td>
+                        <td className="px-3 py-2 text-right text-sm text-bibelo-primary font-bold">{formatCurrency(detalhe.valor_total)}</td>
                       </tr>
                     </tfoot>
                   </table>

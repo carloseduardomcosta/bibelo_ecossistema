@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import api from '../lib/api';
 import { exportCsv } from '../lib/export';
+import { formatCurrency } from '../lib/format';
 
 interface Order {
   id: string;
@@ -87,10 +88,6 @@ const STATUS_COLORS: Record<string, string> = {
   'order.deleted': 'bg-red-500/15 text-red-400',
   'desconhecido': 'bg-amber-500/15 text-amber-400',
 };
-
-function fmt(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 // Bling salva data sem hora (meia-noite UTC) — forçar leitura UTC para não mudar o dia
 function fmtDate(d: string) {
@@ -193,8 +190,8 @@ export default function Pedidos() {
 
   const kpis = stats ? [
     { label: 'Pedidos', value: stats.total_pedidos, icon: ShoppingCart, color: 'text-pink-400', bg: 'bg-pink-400/10', extra: <VariacaoBadge valor={stats.variacao_pedidos} /> },
-    { label: 'Receita', value: fmt(stats.receita), icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-400/10', extra: <VariacaoBadge valor={stats.variacao_receita} /> },
-    { label: 'Ticket Medio', value: fmt(stats.ticket_medio), icon: TrendingUp, color: 'text-violet-400', bg: 'bg-violet-400/10', extra: null },
+    { label: 'Receita', value: formatCurrency(stats.receita), icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-400/10', extra: <VariacaoBadge valor={stats.variacao_receita} /> },
+    { label: 'Ticket Medio', value: formatCurrency(stats.ticket_medio), icon: TrendingUp, color: 'text-violet-400', bg: 'bg-violet-400/10', extra: null },
     { label: 'Loja Fisica', value: stats.fisico, icon: Store, color: 'text-blue-400', bg: 'bg-blue-400/10', extra: null },
     { label: 'Online', value: stats.online, icon: Globe, color: 'text-cyan-400', bg: 'bg-cyan-400/10', extra: null },
   ] : [];
@@ -412,7 +409,7 @@ export default function Pedidos() {
                     </td>
                     <td className="px-4 py-3">{statusBadge(o.status)}</td>
                     <td className="px-4 py-3 text-right">
-                      <span className="font-bold text-bibelo-text">{fmt(o.valor)}</span>
+                      <span className="font-bold text-bibelo-text">{formatCurrency(o.valor)}</span>
                     </td>
                     <td className="px-4 py-3">
                       <Eye size={14} className="text-bibelo-muted group-hover:text-pink-400 transition-colors" />
@@ -523,12 +520,12 @@ export default function Pedidos() {
                                 </div>
                               </div>
                               <span className="col-span-1 text-center text-sm text-bibelo-text">{qtd}</span>
-                              <span className="col-span-2 text-right text-sm font-medium text-bibelo-text">{fmt(venda)}</span>
+                              <span className="col-span-2 text-right text-sm font-medium text-bibelo-text">{formatCurrency(venda)}</span>
                               <span className="col-span-2 text-right text-sm text-bibelo-muted">
-                                {temCusto ? fmt(custo) : <span className="text-bibelo-muted/40">--</span>}
+                                {temCusto ? formatCurrency(custo) : <span className="text-bibelo-muted/40">--</span>}
                               </span>
                               <span className={`col-span-2 text-right text-sm font-bold ${temCusto ? (lucroUnit >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-bibelo-muted/40'}`}>
-                                {temCusto ? fmt(lucroUnit) : '--'}
+                                {temCusto ? formatCurrency(lucroUnit) : '--'}
                               </span>
                             </div>
                           );
@@ -538,17 +535,17 @@ export default function Pedidos() {
                           <div className="grid grid-cols-3 gap-3">
                             <div className="bg-bibelo-border/30 rounded-lg p-2.5 text-center">
                               <p className="text-[10px] text-bibelo-muted uppercase">Receita</p>
-                              <p className="text-sm font-bold text-bibelo-text">{fmt(detail.valor)}</p>
+                              <p className="text-sm font-bold text-bibelo-text">{formatCurrency(detail.valor)}</p>
                             </div>
                             <div className="bg-bibelo-border/30 rounded-lg p-2.5 text-center">
                               <p className="text-[10px] text-bibelo-muted uppercase">Custo</p>
-                              <p className="text-sm font-bold text-amber-400">{detail.custo_total > 0 ? fmt(detail.custo_total) : '--'}</p>
+                              <p className="text-sm font-bold text-amber-400">{detail.custo_total > 0 ? formatCurrency(detail.custo_total) : '--'}</p>
                             </div>
                             <div className="bg-bibelo-border/30 rounded-lg p-2.5 text-center">
                               <p className="text-[10px] text-bibelo-muted uppercase">Lucro</p>
                               <p className={`text-sm font-bold ${detail.lucro_estimado >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                 {detail.custo_total > 0 ? (
-                                  <>{fmt(detail.lucro_estimado)} <span className="text-[10px] font-normal">({detail.margem_percentual}%)</span></>
+                                  <>{formatCurrency(detail.lucro_estimado)} <span className="text-[10px] font-normal">({detail.margem_percentual}%)</span></>
                                 ) : '--'}
                               </p>
                             </div>
@@ -577,7 +574,7 @@ export default function Pedidos() {
                             <span className="text-[11px] text-bibelo-muted flex items-center gap-1">
                               <Calendar size={10} /> {new Date(p.data_vencimento).toLocaleDateString('pt-BR')}
                             </span>
-                            <span className="font-bold text-bibelo-text">{fmt(p.valor)}</span>
+                            <span className="font-bold text-bibelo-text">{formatCurrency(p.valor)}</span>
                           </div>
                         </div>
                       ))}
@@ -588,7 +585,7 @@ export default function Pedidos() {
                 {/* Total */}
                 <div className="px-5 py-4 border-t border-bibelo-border bg-bibelo-border/20 rounded-b-2xl flex items-center justify-between">
                   <span className="text-sm font-medium text-bibelo-muted">Total</span>
-                  <span className="text-xl font-bold text-pink-400">{fmt(detail.valor)}</span>
+                  <span className="text-xl font-bold text-pink-400">{formatCurrency(detail.valor)}</span>
                 </div>
               </>
             )}

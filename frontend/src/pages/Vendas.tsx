@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { CreditCard, FileText, Receipt, CheckCircle, XCircle } from 'lucide-react';
 import api from '../lib/api';
+import { formatCurrency, formatMonth } from '../lib/format';
 
 interface PagamentosData {
   por_forma: Array<{ forma: string; total_pedidos: number; valor_total: number; percentual: number }>;
@@ -18,16 +19,6 @@ interface NfeData {
 }
 
 const COLORS = ['#8B5CF6', '#F472B6', '#34D399', '#FBBF24', '#60A5FA', '#F87171', '#A78BFA', '#FB923C'];
-
-function formatCurrency(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function formatMonth(mes: string) {
-  const [year, month] = mes.split('-');
-  const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-  return `${months[parseInt(month, 10) - 1]}/${year.slice(2)}`;
-}
 
 const NFE_STATUS: Record<number, { label: string; color: string }> = {
   1: { label: 'Pendente', color: 'text-amber-400' },

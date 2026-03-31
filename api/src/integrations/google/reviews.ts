@@ -22,7 +22,10 @@ export interface PlaceReviews {
 
 // ── Tabela de cache ───────────────────────────────────────────
 
+let tableEnsured = false;
+
 export async function ensureReviewsTable(): Promise<void> {
+  if (tableEnsured) return;
   await query(`
     CREATE TABLE IF NOT EXISTS marketing.google_reviews (
       id SERIAL PRIMARY KEY,
@@ -37,6 +40,7 @@ export async function ensureReviewsTable(): Promise<void> {
       atualizado_em TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  tableEnsured = true;
 }
 
 // ── Buscar reviews da Google Places API ───────────────────────

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Users, Crown, Repeat, UserPlus, UserMinus, TrendingUp } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
+import { formatCurrency } from '../lib/format';
 
 interface Segment {
   segmento: string;
@@ -29,10 +30,6 @@ const SEGMENT_META: Record<string, { icon: typeof Users; color: string; bgColor:
   novo: { icon: UserPlus, color: 'text-amber-400', bgColor: 'bg-amber-500/20', desc: 'Primeiras compras recentes' },
   inativo: { icon: UserMinus, color: 'text-red-400', bgColor: 'bg-red-500/20', desc: 'Sem compras ha mais de 60 dias' },
 };
-
-function formatCurrency(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 export default function Segmentos() {
   const { error: showError } = useToast();
@@ -75,7 +72,7 @@ export default function Segmentos() {
         total_pedidos: (c as { total_pedidos?: number }).total_pedidos ?? 0,
         risco_churn: (c as { risco_churn?: string }).risco_churn ?? 'baixo',
       })));
-    } catch { setCustomers([]); }
+    } catch { showError('Erro ao carregar dados'); setCustomers([]); }
     finally { setLoadingCustomers(false); }
   };
 

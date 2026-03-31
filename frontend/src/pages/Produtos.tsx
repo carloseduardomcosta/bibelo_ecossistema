@@ -4,6 +4,7 @@ import { Search, ChevronLeft, ChevronRight, Package, ArrowUpDown, Download } fro
 import api from '../lib/api';
 import { exportCsv } from '../lib/export';
 import { useToast } from '../components/Toast';
+import { formatCurrency, margemColor } from '../lib/format';
 
 interface Product {
   id: string;
@@ -23,16 +24,6 @@ interface Pagination {
   limit: number;
   total: number;
   pages: number;
-}
-
-function formatCurrency(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function margemColor(m: number) {
-  if (m >= 50) return 'text-emerald-400';
-  if (m >= 20) return 'text-amber-400';
-  return 'text-red-400';
 }
 
 function estoqueColor(e: number) {

@@ -118,8 +118,6 @@ export default function Campanhas() {
 
   useEffect(() => {
     api.get('/analytics/segments').then(({ data }) => {
-      // Mapear segmentos para ter IDs (buscar da tabela crm.segments)
-      api.get('/customers', { params: { limit: 1 } }).catch(() => {});
       setSegments(data.data.map((s: Segment) => ({ id: s.segmento, nome: s.segmento })));
     }).catch(() => {});
   }, []);
