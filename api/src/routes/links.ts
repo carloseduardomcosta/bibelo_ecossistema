@@ -30,7 +30,7 @@ interface LinkItem {
 const LINKS: LinkItem[] = [
   {
     slug: "loja",
-    titulo: "Acessar Loja Online",
+    titulo: "Acessar Loja On-line",
     url: "https://www.papelariabibelo.com.br",
     icone: "🛍️",
     destaque: true,
@@ -158,9 +158,9 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Papelaria Bibelô — Links</title>
-  <meta name="description" content="Papelaria Bibelô — Loja online, WhatsApp, Grupo VIP e mais">
+  <meta name="description" content="Papelaria Bibelô — Loja On-line, WhatsApp, Grupo VIP e mais">
   <meta property="og:title" content="Papelaria Bibelô">
-  <meta property="og:description" content="A primeira Papelaria 100% on-line de Timbó e região">
+  <meta property="og:description" content="Papelaria Bibelô — Loja On-line, WhatsApp, Grupo VIP e mais">
   <meta property="og:image" content="https://menu.papelariabibelo.com.br/logo.png">
   <meta property="og:type" content="website">
   <link rel="icon" href="/logo.png">
@@ -198,10 +198,11 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
       font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
       background: linear-gradient(160deg, #ffe0ef 0%, #fce7f3 40%, #fff0f6 100%);
       min-height: 100vh;
+      min-height: 100dvh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 0 0 40px;
+      padding: 0;
     }
 
     /* ===== CARD ===== */
@@ -213,6 +214,7 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
       box-shadow: var(--shadow-card);
       overflow: hidden;
       min-height: 100vh;
+      min-height: 100dvh;
       display: flex;
       flex-direction: column;
     }
@@ -220,7 +222,7 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
     /* ===== HEADER ===== */
     .header {
       background: linear-gradient(160deg, var(--yellow-soft) 0%, #ffe8f5 60%, var(--pink-light) 100%);
-      padding: 40px 28px 32px;
+      padding: 24px 20px 16px;
       text-align: center;
       border-bottom: 3px solid var(--pink-main);
       position: relative;
@@ -248,11 +250,11 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
     .avatar-wrap {
       position: relative;
       display: inline-block;
-      margin-bottom: 16px;
+      margin-bottom: 10px;
     }
     .avatar {
-      width: 96px;
-      height: 96px;
+      width: 72px;
+      height: 72px;
       border-radius: 50%;
       border: 4px solid var(--pink-main);
       box-shadow: 0 0 0 6px rgba(244, 63, 142, 0.15), 0 6px 20px var(--pink-glow);
@@ -278,33 +280,33 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
     }
 
     .nome {
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 900;
       color: var(--text-dark);
-      margin-bottom: 6px;
+      margin-bottom: 4px;
       letter-spacing: -0.3px;
     }
 
     .boas-vindas {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 700;
       color: var(--pink-main);
-      margin-bottom: 8px;
-      line-height: 1.4;
+      margin-bottom: 4px;
+      line-height: 1.3;
     }
 
     .bio {
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text-soft);
       font-weight: 600;
-      line-height: 1.5;
+      line-height: 1.4;
     }
 
     /* ===== BANNER DESTAQUE LOJA ===== */
     .loja-banner {
       margin: 0;
       background: linear-gradient(135deg, #f43f8e 0%, #ec4899 50%, #db2777 100%);
-      padding: 18px 24px;
+      padding: 14px 20px;
       display: flex;
       align-items: center;
       gap: 14px;
@@ -376,27 +378,22 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
 
     /* ===== CORPO DOS LINKS ===== */
     .body {
-      padding: 20px 18px;
-      flex: 1;
+      padding: 14px 18px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
     }
 
-    .section-label {
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      color: var(--text-soft);
-      padding: 4px 4px 2px;
+    /* Espaço flexível entre links e footer */
+    .spacer {
+      flex: 1;
     }
 
     .link-btn {
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 14px 16px;
+      gap: 10px;
+      padding: 13px 16px;
       border-radius: var(--radius-md);
       text-decoration: none;
       font-size: 15px;
@@ -428,13 +425,6 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
       flex: 1;
       text-align: left;
       line-height: 1.3;
-    }
-    .btn-sub {
-      display: block;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-soft);
-      margin-top: 1px;
     }
     .btn-arrow {
       flex-shrink: 0;
@@ -471,15 +461,9 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
     /* ===== FOOTER ===== */
     .footer {
       background: linear-gradient(135deg, var(--yellow-soft), #fff5fb);
-      padding: 22px 24px;
+      padding: 10px 20px;
       text-align: center;
       border-top: 2px solid #fce7f3;
-    }
-    .footer-brand {
-      font-size: 13px;
-      font-weight: 800;
-      color: var(--text-mid);
-      margin-bottom: 4px;
     }
     .footer-info {
       font-size: 11px;
@@ -496,6 +480,25 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
       text-decoration: underline;
     }
 
+    /* Mobile pequeno (iPhone SE, 667px height) */
+    @media (max-height: 700px) {
+      .header { padding: 16px 16px 10px; }
+      .avatar { width: 56px; height: 56px; }
+      .avatar-wrap { margin-bottom: 6px; }
+      .nome { font-size: 20px; margin-bottom: 2px; }
+      .boas-vindas { font-size: 13px; margin-bottom: 0; }
+      .loja-banner { padding: 10px 16px; }
+      .loja-icon { font-size: 26px; }
+      .loja-titulo { font-size: 16px; }
+      .loja-badge { font-size: 9px; padding: 1px 6px; margin-bottom: 2px; }
+      .loja-sub { font-size: 11px; }
+      .body { padding: 10px 14px; gap: 6px; }
+      .link-btn { padding: 10px 12px; font-size: 14px; }
+      .btn-icon { font-size: 19px; width: 26px; }
+      .footer { padding: 8px 14px; }
+      .footer-info { font-size: 10px; }
+    }
+
     @media (min-width: 461px) {
       body { padding: 24px 16px 48px; }
       .card { min-height: auto; border-radius: 28px; }
@@ -508,21 +511,20 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
 
     <!-- HEADER -->
     <div class="header">
-      <div class="avatar-wrap">
+      <a href="/api/links/go/loja" target="_blank" rel="noopener" class="avatar-wrap">
         <span class="avatar-ring"></span>
         <img src="/logo.png" alt="Papelaria Bibelô" class="avatar">
-      </div>
+      </a>
       <h1 class="nome">Papelaria Bibelô</h1>
-      <p class="boas-vindas">Olá! Bem-vindo(a) ao mundo da<br>Papelaria Bibelô</p>
-      <p class="bio">A primeira Papelaria 100% on-line<br>de Timbó e região</p>
+      <p class="boas-vindas">Bem-vindo(a) ao mundo da Papelaria Bibelô!</p>
     </div>
 
     <!-- BANNER LOJA -->
-    <a href="/api/links/go/loja" target="_blank" rel="noopener" class="loja-banner" aria-label="Acessar Loja Online da Papelaria Bibelô">
+    <a href="/api/links/go/loja" target="_blank" rel="noopener" class="loja-banner" aria-label="Acessar Loja On-line da Papelaria Bibelô">
       <span class="loja-icon">🛍️</span>
       <span class="loja-texto">
         <span class="loja-badge">✨ Compre aqui</span>
-        <span class="loja-titulo">Acessar Loja Online</span>
+        <span class="loja-titulo">Acessar Loja On-line</span>
         <span class="loja-sub">papelariabibelo.com.br</span>
       </span>
       <span class="loja-arrow">
@@ -533,52 +535,44 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
     <!-- LINKS -->
     <div class="body">
 
-      <p class="section-label">Fale com a gente</p>
-
       <a href="/api/links/go/whatsapp" target="_blank" rel="noopener" class="link-btn whatsapp">
         <span class="btn-icon">💬</span>
-        <span class="btn-label">Fale conosco no WhatsApp<span class="btn-sub">Atendimento rápido e carinhoso</span></span>
+        <span class="btn-label">Fale conosco no WhatsApp</span>
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </a>
 
       <a href="/api/links/go/grupo-vip" target="_blank" rel="noopener" class="link-btn vip">
         <span class="btn-icon">💖</span>
-        <span class="btn-label">Entrar no Grupo VIP<span class="btn-sub">Promoções exclusivas para membros</span></span>
+        <span class="btn-label">Entrar no Grupo VIP</span>
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </a>
 
-      <p class="section-label" style="margin-top:6px;">Nos acompanhe</p>
-
       <a href="/api/links/go/instagram" target="_blank" rel="noopener" class="link-btn instagram">
         <span class="btn-icon">📸</span>
-        <span class="btn-label">Siga no Instagram<span class="btn-sub">Novidades e inspirações todo dia</span></span>
+        <span class="btn-label">Siga no Instagram</span>
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </a>
 
       <a href="/api/links/go/formulario" target="_blank" rel="noopener" class="link-btn">
         <span class="btn-icon">📋</span>
-        <span class="btn-label">Preencha o formulário<span class="btn-sub">Cadastre-se e receba novidades</span></span>
+        <span class="btn-label">Cadastre-se para novidades</span>
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </a>
 
-      <p class="section-label" style="margin-top:6px;">Contato profissional</p>
-
       <a href="/api/links/go/email" target="_blank" rel="noopener" class="link-btn">
         <span class="btn-icon">📧</span>
-        <span class="btn-label">Nos envie um E-mail (B2B)<span class="btn-sub">Parcerias e revendas</span></span>
+        <span class="btn-label">E-mail para parcerias (B2B)</span>
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </a>
 
     </div>
 
+    <div class="spacer"></div>
+
     <!-- FOOTER -->
     <div class="footer">
-      <p class="footer-brand">Papelaria Bibelô</p>
       <p class="footer-info">
-        CNPJ 63.961.764/0001-63 &nbsp;&middot;&nbsp;
-        <a href="mailto:contato@papelariabibelo.com.br" class="footer-link">contato@papelariabibelo.com.br</a>
-        <br>
-        (47) 9 3386-2514 &nbsp;&middot;&nbsp;
+        Papelaria Bibelô &nbsp;&middot;&nbsp;
         <a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener" class="footer-link">papelariabibelo.com.br</a>
       </p>
     </div>
@@ -633,33 +627,46 @@ linksRouter.get("/formulario", (_req: Request, res: Response) => {
   <style>
     *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
     :root{--pink-main:#f43f8e;--pink-light:#fce7f3;--pink-pale:#fff0f6;--pink-glow:rgba(244,63,142,0.35);--yellow-soft:#fff9c4;--text-dark:#2d1b2e;--text-mid:#6b4c6b;--text-soft:#a07090;--white:#fff}
-    body{font-family:'Nunito','Segoe UI',Arial,sans-serif;background:linear-gradient(160deg,#ffe0ef 0%,#fce7f3 40%,#fff0f6 100%);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:0 0 40px}
-    .card{width:100%;max-width:460px;background:var(--white);border-radius:0 0 28px 28px;box-shadow:0 10px 40px rgba(244,63,142,0.15);overflow:hidden;min-height:100vh;display:flex;flex-direction:column}
-    .header{background:linear-gradient(160deg,var(--yellow-soft) 0%,#ffe8f5 60%,var(--pink-light) 100%);padding:36px 28px 28px;text-align:center;border-bottom:3px solid var(--pink-main);position:relative;overflow:hidden}
+    body{font-family:'Nunito','Segoe UI',Arial,sans-serif;background:linear-gradient(160deg,#ffe0ef 0%,#fce7f3 40%,#fff0f6 100%);min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;padding:0}
+    .card{width:100%;max-width:460px;background:var(--white);border-radius:0 0 28px 28px;box-shadow:0 10px 40px rgba(244,63,142,0.15);overflow:hidden;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
+    .header{background:linear-gradient(160deg,var(--yellow-soft) 0%,#ffe8f5 60%,var(--pink-light) 100%);padding:20px 20px 14px;text-align:center;border-bottom:3px solid var(--pink-main);position:relative;overflow:hidden}
     .header::before{content:'';position:absolute;width:140px;height:140px;border-radius:50%;opacity:0.18;background:var(--pink-main);top:-50px;right:-40px}
     .header::after{content:'';position:absolute;width:90px;height:90px;border-radius:50%;opacity:0.18;background:#f9a8d4;bottom:-30px;left:-20px}
-    .avatar{width:72px;height:72px;border-radius:50%;border:3px solid var(--pink-main);box-shadow:0 4px 15px var(--pink-glow);margin-bottom:12px}
-    .header h1{font-size:20px;font-weight:900;color:var(--text-dark);margin-bottom:4px}
-    .header p{font-size:13px;color:var(--text-soft);font-weight:600}
-    .form-body{padding:28px 24px;flex:1;display:flex;flex-direction:column;gap:18px}
-    .form-intro{font-size:14px;color:var(--text-mid);font-weight:600;line-height:1.5;text-align:center}
-    .field{display:flex;flex-direction:column;gap:5px}
-    .field label{font-size:12px;font-weight:800;color:var(--text-mid);text-transform:uppercase;letter-spacing:0.8px}
-    .field input{padding:14px 16px;border:2px solid #f3d0e8;border-radius:12px;font-size:15px;font-family:'Nunito',sans-serif;font-weight:600;color:var(--text-dark);outline:none;transition:border-color 0.2s}
+    .avatar{width:56px;height:56px;border-radius:50%;border:3px solid var(--pink-main);box-shadow:0 4px 15px var(--pink-glow);margin-bottom:8px}
+    .header h1{font-size:19px;font-weight:900;color:var(--text-dark);margin-bottom:2px}
+    .header p{font-size:12px;color:var(--text-soft);font-weight:600}
+    .form-body{padding:16px 20px;flex:1;display:flex;flex-direction:column;gap:12px}
+    .form-intro{font-size:13px;color:var(--text-mid);font-weight:600;line-height:1.4;text-align:center}
+    .field{display:flex;flex-direction:column;gap:4px}
+    .field label{font-size:11px;font-weight:800;color:var(--text-mid);text-transform:uppercase;letter-spacing:0.8px}
+    .field input{padding:11px 14px;border:2px solid #f3d0e8;border-radius:10px;font-size:14px;font-family:'Nunito',sans-serif;font-weight:600;color:var(--text-dark);outline:none;transition:border-color 0.2s}
     .field input:focus{border-color:var(--pink-main);box-shadow:0 0 0 3px rgba(244,63,142,0.1)}
     .field input::placeholder{color:#c9a0b8;font-weight:500}
-    .submit-btn{padding:16px;border:none;border-radius:14px;background:linear-gradient(135deg,#f43f8e 0%,#ec4899 50%,#db2777 100%);color:var(--white);font-size:16px;font-weight:900;font-family:'Nunito',sans-serif;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 15px var(--pink-glow);margin-top:4px}
+    .submit-btn{padding:13px;border:none;border-radius:12px;background:linear-gradient(135deg,#f43f8e 0%,#ec4899 50%,#db2777 100%);color:var(--white);font-size:15px;font-weight:900;font-family:'Nunito',sans-serif;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 15px var(--pink-glow);margin-top:2px}
     .submit-btn:hover{filter:brightness(1.08);transform:translateY(-2px);box-shadow:0 6px 20px var(--pink-glow)}
     .submit-btn:active{transform:translateY(0)}
     .submit-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none}
-    .msg{padding:14px 16px;border-radius:12px;font-size:14px;font-weight:700;text-align:center;display:none}
+    .msg{padding:10px 14px;border-radius:10px;font-size:13px;font-weight:700;text-align:center;display:none}
     .msg.ok{display:block;background:#f0fff6;color:#166534;border:2px solid #bbf7d0}
     .msg.err{display:block;background:#fff5f5;color:#991b1b;border:2px solid #fecaca}
-    .footer{background:linear-gradient(135deg,var(--yellow-soft),#fff5fb);padding:18px 24px;text-align:center;border-top:2px solid #fce7f3}
+    .footer{background:linear-gradient(135deg,var(--yellow-soft),#fff5fb);padding:12px 20px;text-align:center;border-top:2px solid #fce7f3}
     .footer p{font-size:11px;color:var(--text-soft);font-weight:600}
     .footer a{color:var(--pink-main);text-decoration:none;font-weight:700}
-    .back-link{display:inline-flex;align-items:center;gap:6px;color:var(--pink-main);font-size:13px;font-weight:700;text-decoration:none;margin-top:4px}
+    .back-link{display:inline-flex;align-items:center;gap:6px;color:var(--pink-main);font-size:13px;font-weight:700;text-decoration:none;margin-top:2px}
     .back-link:hover{text-decoration:underline}
+    @media(max-height:700px){
+      .header{padding:14px 16px 10px}
+      .avatar{width:44px;height:44px;margin-bottom:6px}
+      .header h1{font-size:17px}
+      .header p{font-size:11px}
+      .form-body{padding:12px 16px;gap:10px}
+      .form-intro{font-size:12px}
+      .field label{font-size:10px}
+      .field input{padding:9px 12px;font-size:13px;border-radius:8px}
+      .submit-btn{padding:11px;font-size:14px;border-radius:10px}
+      .footer{padding:10px 16px}
+      .back-link{font-size:12px}
+    }
     @media(min-width:461px){body{padding:24px 16px 48px}.card{min-height:auto;border-radius:28px}}
   </style>
 </head>
