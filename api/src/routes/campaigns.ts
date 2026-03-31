@@ -485,16 +485,23 @@ campaignsRouter.get("/produtos", async (req: Request, res: Response) => {
     id: string; nome: string; preco: string; estoque: number;
     img: string | null; url: string | null; categoria: string | null;
   }>(
-    `SELECT DISTINCT ON (SPLIT_PART(np.nome, ' Cor:', 1))
-       np.id::text, np.nome, np.preco::text, np.estoque,
-       np.imagens->>0 AS img,
-       np.dados_raw->>'canonical_url' AS url,
-       bp.categoria
-     FROM sync.nuvemshop_products np
-     LEFT JOIN sync.bling_products bp ON bp.sku = np.sku
-       OR LOWER(bp.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
-     WHERE ${conditions.join(" AND ")}
-     ORDER BY SPLIT_PART(np.nome, ' Cor:', 1), np.dados_raw->>'created_at' DESC NULLS LAST
+    `SELECT * FROM (
+       SELECT DISTINCT ON (SPLIT_PART(np.nome, ' Cor:', 1))
+         np.id::text, np.nome, np.preco::text, np.estoque,
+         np.imagens->>0 AS img,
+         np.dados_raw->>'canonical_url' AS url,
+         bp.categoria,
+         np.dados_raw->>'created_at' AS criado_ns
+       FROM sync.nuvemshop_products np
+       LEFT JOIN LATERAL (
+         SELECT p.categoria FROM sync.bling_products p
+         WHERE p.sku = np.sku OR LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
+         LIMIT 1
+       ) bp ON true
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY SPLIT_PART(np.nome, ' Cor:', 1), np.dados_raw->>'created_at' DESC NULLS LAST
+     ) sub
+     ORDER BY sub.criado_ns DESC NULLS LAST
      LIMIT $${idx}`,
     params
   );
@@ -517,7 +524,7 @@ const gerarPersonalizadaSchema = z.object({
   produto_ids: z.array(z.string()).default([]),
   max_por_categoria: z.number().int().min(1).max(4).default(2),
   limite_produtos: z.number().int().min(1).max(12).default(6),
-  publico: z.enum(["todos", "nunca_contatados", "segmento", "manual"]),
+  publico: z.enum(["todos", "todos_com_email", "nunca_contatados", "segmento", "manual"]),
   segmento: z.string().optional(),
   customer_ids: z.array(z.string().uuid()).optional(),
 });
@@ -549,14 +556,17 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
       nome: string; preco: string; estoque: number;
       img: string | null; url: string | null; categoria: string | null;
     }>(
-      `SELECT np.nome, np.preco::text, np.estoque,
+      `SELECT DISTINCT ON (np.id) np.nome, np.preco::text, np.estoque,
          np.imagens->>0 AS img,
          np.dados_raw->>'canonical_url' AS url,
          bp.categoria
        FROM sync.nuvemshop_products np
-       LEFT JOIN sync.bling_products bp ON bp.sku = np.sku
-         OR LOWER(bp.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
-       WHERE np.id IN (${idParams}) AND np.estoque > 0`,
+       LEFT JOIN LATERAL (
+         SELECT p.categoria FROM sync.bling_products p
+         WHERE p.sku = np.sku OR LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
+         LIMIT 1
+       ) bp ON true
+       WHERE np.id::text IN (${idParams}) AND np.estoque > 0`,
       produto_ids
     );
     produtos.push(...manuais);
@@ -582,8 +592,11 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
              ORDER BY np.dados_raw->>'created_at' DESC NULLS LAST
            )::text AS rn
          FROM sync.nuvemshop_products np
-         LEFT JOIN sync.bling_products bp ON bp.sku = np.sku
-           OR LOWER(bp.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
+         LEFT JOIN LATERAL (
+           SELECT p.categoria FROM sync.bling_products p
+           WHERE p.sku = np.sku OR LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
+           LIMIT 1
+         ) bp ON true
          WHERE np.estoque > 0
            AND COALESCE(bp.categoria, 'OUTROS') IN (${catParams})
          ORDER BY SPLIT_PART(np.nome, ' Cor:', 1), np.dados_raw->>'created_at' DESC NULLS LAST
@@ -620,6 +633,14 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
          JOIN crm.customer_scores cs ON cs.customer_id = c.id
          WHERE c.ativo = true AND c.email IS NOT NULL AND c.email_optout = false AND cs.total_pedidos::int > 0
          ORDER BY cs.ltv DESC`
+      );
+      break;
+
+    case "todos_com_email":
+      destinatarios = await query(
+        `SELECT c.id, c.nome, c.email FROM crm.customers c
+         WHERE c.ativo = true AND c.email IS NOT NULL AND c.email_optout = false
+         ORDER BY c.nome`
       );
       break;
 

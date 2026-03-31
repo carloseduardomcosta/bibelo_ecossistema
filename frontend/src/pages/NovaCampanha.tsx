@@ -31,7 +31,7 @@ interface Destinatario {
   email: string;
 }
 
-type Publico = 'todos' | 'nunca_contatados' | 'manual';
+type Publico = 'todos' | 'todos_com_email' | 'nunca_contatados' | 'manual';
 
 const STEPS = ['Selecionar', 'Produtos', 'Público', 'Preview', 'Enviar'];
 type SelecaoTab = 'categorias' | 'produtos';
@@ -98,10 +98,12 @@ export default function NovaCampanha() {
     setBuscandoProdutos(false);
   };
 
-  // Debounce busca
+  // Debounce busca — eslint-disable porque buscarProdutos é estável
   useEffect(() => {
-    const t = setTimeout(() => { if (produtoBusca.length >= 2) buscarProdutos(produtoBusca); }, 400);
+    if (produtoBusca.length < 2) { setProdutosDisponiveis([]); return; }
+    const t = setTimeout(() => buscarProdutos(produtoBusca), 400);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [produtoBusca]);
 
   const toggleProduto = (p: Produto) => {
@@ -336,6 +338,22 @@ export default function NovaCampanha() {
             <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-6">
               <p className="text-xs text-bibelo-muted mb-4">Busque e selecione produtos específicos para o email</p>
 
+              {/* Produtos já selecionados */}
+              {produtosSelecionados.length > 0 && (
+                <div className="mb-4 p-3 bg-bibelo-bg rounded-lg">
+                  <p className="text-xs font-bold text-bibelo-muted mb-2">{produtosSelecionados.length} produto(s) selecionado(s):</p>
+                  <div className="flex flex-wrap gap-2">
+                    {produtosSelecionados.map((p) => (
+                      <div key={p.id} className="flex items-center gap-2 bg-bibelo-card border border-bibelo-primary/30 rounded-lg p-1.5 pr-2">
+                        {p.img && <img src={p.img} alt="" className="w-8 h-8 rounded object-cover" />}
+                        <span className="text-xs text-bibelo-text font-medium">{p.nome.length > 25 ? p.nome.slice(0, 25) + '...' : p.nome}</span>
+                        <button onClick={() => toggleProduto(p)} className="text-bibelo-muted hover:text-red-400"><X size={12} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="relative mb-4">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-bibelo-muted" />
                 <input
@@ -376,6 +394,10 @@ export default function NovaCampanha() {
                     );
                   })}
                 </div>
+              )}
+
+              {produtoBusca.length > 0 && produtoBusca.length < 2 && (
+                <p className="text-xs text-bibelo-muted">Digite pelo menos 2 caracteres</p>
               )}
 
               <div className="flex items-center gap-2">
@@ -455,9 +477,10 @@ export default function NovaCampanha() {
 
           <div className="flex gap-2 mb-4">
             {([
-              { value: 'todos', label: 'Todos com pedidos', icon: Users },
+              { value: 'todos_com_email', label: 'Todos com email', icon: Users },
+              { value: 'todos', label: 'Compraram', icon: Package },
               { value: 'nunca_contatados', label: 'Nunca contatados', icon: Mail },
-              { value: 'manual', label: 'Selecionar manualmente', icon: Sparkles },
+              { value: 'manual', label: 'Manual', icon: Sparkles },
             ] as const).map((opt) => (
               <button
                 key={opt.value}
