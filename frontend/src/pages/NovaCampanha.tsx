@@ -167,8 +167,9 @@ export default function NovaCampanha() {
       });
       setEnviado(true);
       success(`Campanha em envio para ${data.total} destinatários`);
-    } catch {
-      showError('Erro ao disparar campanha');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Erro ao disparar campanha';
+      showError(msg);
     } finally {
       setEnviando(false);
     }

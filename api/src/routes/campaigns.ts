@@ -703,7 +703,7 @@ campaignsRouter.post("/enviar-personalizada", async (req: Request, res: Response
   );
 
   if (clientes.length === 0) {
-    res.status(400).json({ error: "Nenhum destinatário válido" });
+    res.status(400).json({ error: "Nenhum destinatário válido — todos os selecionados estão sem email ou fizeram opt-out (descadastro)" });
     return;
   }
 
