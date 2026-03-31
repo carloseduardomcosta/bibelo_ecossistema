@@ -1231,7 +1231,17 @@ campaignsRouter.get("/:id", async (req: Request, res: Response) => {
     [req.params.id]
   );
 
-  res.json({ ...campaign, sends_por_status: sends });
+  const destinatarios = await query(
+    `SELECT cs.status, cs.message_id, cs.enviado_em, cs.aberto_em, cs.clicado_em,
+       cu.id AS customer_id, cu.nome, cu.email, cu.cidade, cu.estado
+     FROM marketing.campaign_sends cs
+     JOIN crm.customers cu ON cu.id = cs.customer_id
+     WHERE cs.campaign_id = $1
+     ORDER BY cs.enviado_em DESC NULLS LAST`,
+    [req.params.id]
+  );
+
+  res.json({ ...campaign, sends_por_status: sends, destinatarios });
 });
 
 // ── POST /api/campaigns — criar ─────────────────────────────────

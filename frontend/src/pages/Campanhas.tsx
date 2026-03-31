@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 import {
   Megaphone, Plus, Send, Mail, MessageCircle, ChevronLeft, ChevronRight,
   X, Eye, Trash2, FileText, Users, Pencil, Play, Sparkles,
+  CheckCircle2, XCircle, Clock, MapPin, BarChart3,
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
@@ -45,6 +46,22 @@ interface SegmentDB {
   nome: string;
 }
 
+interface CampanhaDetalhe extends Campaign {
+  sends_por_status: Array<{ status: string; total: string }>;
+  destinatarios: Array<{
+    status: string;
+    message_id: string | null;
+    enviado_em: string | null;
+    aberto_em: string | null;
+    clicado_em: string | null;
+    customer_id: string;
+    nome: string;
+    email: string;
+    cidade: string | null;
+    estado: string | null;
+  }>;
+}
+
 interface Pagination { page: number; limit: number; total: number; pages: number }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -82,6 +99,17 @@ export default function Campanhas() {
   const [previewHtml, setPreviewHtml] = useState('');
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
+  const [detalhe, setDetalhe] = useState<CampanhaDetalhe | null>(null);
+  const [loadingDetalhe, setLoadingDetalhe] = useState(false);
+
+  const abrirDetalhe = async (id: string) => {
+    setLoadingDetalhe(true);
+    try {
+      const { data } = await api.get(`/campaigns/${id}`);
+      setDetalhe(data);
+    } catch { showError('Erro ao carregar detalhe'); }
+    setLoadingDetalhe(false);
+  };
 
   // Campaign form
   const [campForm, setCampForm] = useState({
@@ -253,7 +281,7 @@ export default function Campanhas() {
                     </tr>
                   ) : (
                     campanhas.map((c) => (
-                      <tr key={c.id} className="border-b border-bibelo-border/50 hover:bg-bibelo-border/20 transition-colors">
+                      <tr key={c.id} onClick={() => abrirDetalhe(c.id)} className="border-b border-bibelo-border/50 hover:bg-bibelo-border/20 transition-colors cursor-pointer">
                         <td className="px-4 py-3">
                           <p className="text-bibelo-text font-medium">{c.nome}</p>
                           <div className="flex items-center gap-2 text-xs text-bibelo-muted mt-0.5">
@@ -514,6 +542,89 @@ export default function Campanhas() {
               <button onClick={() => setPreviewHtml('')} className="text-gray-500 hover:text-gray-800"><X size={18} /></button>
             </div>
             <div className="p-6" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }} />
+          </div>
+        </div>
+      )}
+      {/* Modal Detalhe Campanha */}
+      {detalhe && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setDetalhe(null)}>
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-bibelo-border sticky top-0 bg-bibelo-card z-10">
+              <div>
+                <h2 className="text-lg font-bold text-bibelo-text">{detalhe.nome}</h2>
+                <div className="flex items-center gap-3 mt-1">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${STATUS_COLORS[detalhe.status] || STATUS_COLORS.rascunho}`}>{detalhe.status}</span>
+                  {detalhe.enviado_em && <span className="text-xs text-bibelo-muted">{fmtDate(detalhe.enviado_em)}</span>}
+                </div>
+              </div>
+              <button onClick={() => setDetalhe(null)} className="text-bibelo-muted hover:text-bibelo-text"><X size={20} /></button>
+            </div>
+
+            {/* KPIs */}
+            <div className="grid grid-cols-4 gap-3 px-6 py-4">
+              {[
+                { label: 'Enviados', value: detalhe.destinatarios.filter((d) => d.status === 'enviado').length, icon: Send, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+                { label: 'Erros', value: detalhe.destinatarios.filter((d) => d.status === 'erro').length, icon: XCircle, color: 'text-red-400', bg: 'bg-red-400/10' },
+                { label: 'Abriram', value: detalhe.destinatarios.filter((d) => d.aberto_em).length, icon: Eye, color: 'text-blue-400', bg: 'bg-blue-400/10' },
+                { label: 'Clicaram', value: detalhe.destinatarios.filter((d) => d.clicado_em).length, icon: BarChart3, color: 'text-violet-400', bg: 'bg-violet-400/10' },
+              ].map((kpi) => (
+                <div key={kpi.label} className="bg-bibelo-bg rounded-lg p-3 text-center">
+                  <div className={`w-8 h-8 rounded-lg ${kpi.bg} flex items-center justify-center mx-auto mb-1`}>
+                    <kpi.icon size={14} className={kpi.color} />
+                  </div>
+                  <p className="text-xl font-bold text-bibelo-text">{kpi.value}</p>
+                  <p className="text-[10px] text-bibelo-muted">{kpi.label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Lista de destinatários */}
+            <div className="px-6 pb-6">
+              <h3 className="text-sm font-bold text-bibelo-text mb-3 flex items-center gap-2">
+                <Users size={14} className="text-bibelo-primary" />
+                Destinatarios ({detalhe.destinatarios.length})
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-bibelo-muted border-b border-bibelo-border">
+                      <th className="pb-2 pr-3">Status</th>
+                      <th className="pb-2 pr-3">Cliente</th>
+                      <th className="pb-2 pr-3">Email</th>
+                      <th className="pb-2 pr-3 hidden sm:table-cell">Local</th>
+                      <th className="pb-2 pr-3">Enviado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detalhe.destinatarios.map((d, i) => (
+                      <tr key={i} className="border-b border-bibelo-border/50 last:border-0">
+                        <td className="py-2 pr-3">
+                          {d.status === 'enviado' ? (
+                            <span className="flex items-center gap-1 text-emerald-400 text-xs"><CheckCircle2 size={12} /> Enviado</span>
+                          ) : d.status === 'erro' ? (
+                            <span className="flex items-center gap-1 text-red-400 text-xs"><XCircle size={12} /> Erro</span>
+                          ) : d.status === 'ignorado' ? (
+                            <span className="flex items-center gap-1 text-amber-400 text-xs"><Clock size={12} /> Ignorado</span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-bibelo-muted text-xs"><Clock size={12} /> {d.status}</span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 text-bibelo-text font-medium">{d.nome}</td>
+                        <td className="py-2 pr-3 text-bibelo-muted text-xs">{d.email}</td>
+                        <td className="py-2 pr-3 text-bibelo-muted text-xs hidden sm:table-cell">
+                          {(d.cidade || d.estado) ? (
+                            <span className="flex items-center gap-1"><MapPin size={10} /> {[d.cidade, d.estado].filter(Boolean).join('/')}</span>
+                          ) : '—'}
+                        </td>
+                        <td className="py-2 pr-3 text-bibelo-muted text-xs">
+                          {d.enviado_em ? new Date(d.enviado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       )}
