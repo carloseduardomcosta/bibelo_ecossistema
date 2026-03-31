@@ -139,7 +139,7 @@ export default function NovaCampanha() {
     setLoading(true);
     try {
       const assuntoTeste = assunto.replace(/\{\{nome\}\}/g, 'Carlos');
-      const htmlTeste = html.replace(/\{\{nome\}\}/g, 'Carlos').replace(/\{\{unsub_link\}\}/g, '#');
+      const htmlTeste = html.replace(/\{\{nome\}\}/g, 'Carlos');
       await api.post('/campaigns/test-email', {
         to: 'carloseduardocostatj@gmail.com',
         subject: `[TESTE] ${assuntoTeste}`,

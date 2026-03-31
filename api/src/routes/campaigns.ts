@@ -1050,10 +1050,16 @@ campaignsRouter.post("/test-email", async (req: Request, res: Response) => {
   if (!parse.success) { res.status(400).json({ error: "Dados inválidos" }); return; }
 
   try {
+    // Gera link de descadastro real se o HTML ainda tem {{unsub_link}}
+    let finalHtml = parse.data.html;
+    if (finalHtml.includes("{{unsub_link}}")) {
+      finalHtml = finalHtml.replace(/\{\{unsub_link\}\}/g, gerarLinkDescadastro(parse.data.to));
+    }
+
     const result = await sendEmail({
       to: parse.data.to,
       subject: parse.data.subject,
-      html: parse.data.html,
+      html: finalHtml,
     });
     logger.info("Email de teste enviado", { to: parse.data.to, user: req.user?.email });
     res.json({ message: "Email de teste enviado", resend_id: result?.id });
