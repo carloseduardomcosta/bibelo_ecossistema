@@ -100,15 +100,11 @@ export default function Campanhas() {
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<CampanhaDetalhe | null>(null);
-  const [loadingDetalhe, setLoadingDetalhe] = useState(false);
-
   const abrirDetalhe = async (id: string) => {
-    setLoadingDetalhe(true);
     try {
       const { data } = await api.get(`/campaigns/${id}`);
       setDetalhe(data);
     } catch { showError('Erro ao carregar detalhe'); }
-    setLoadingDetalhe(false);
   };
 
   // Campaign form
