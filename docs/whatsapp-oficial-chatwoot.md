@@ -3,9 +3,9 @@
 ## Arquitetura
 
 ```
-Cliente (WhatsApp / Instagram DM)
+Cliente (WhatsApp / Instagram DM / Chat no site)
         ↕
-    Meta Cloud API (oficial)
+    Meta Cloud API (WhatsApp/Insta) + Widget JS (site)
         ↕
     Chatwoot (self-hosted, Docker)
         ↕ webhooks bidirecional
@@ -196,6 +196,148 @@ server {
 chat.papelariabibelo.com.br  A  <IP_VPS>  (DNS-only, sem proxy)
 ```
 
+---
+
+## Widget de Chat no Site (Live Chat)
+
+Balão de chat no canto inferior direito da NuvemShop. Cliente clica, conversa em tempo real, tudo cai no painel do Chatwoot junto com WhatsApp e Instagram.
+
+### Recursos do widget
+
+- Balão customizável (cor rosa Bibelô `#fe68c4`, posição, texto)
+- **Pré-chat form** — coleta nome, email e WhatsApp antes de iniciar (vincula ao CRM)
+- Chat em tempo real com typing indicator
+- Histórico persistente (cookie) — cliente volta e vê conversas anteriores
+- Emojis, anexos (foto, arquivo)
+- **Horário de atendimento** — fora do expediente mostra "Deixe sua mensagem, responderemos em breve!"
+- Multilíngua pt-BR nativo
+- Responsivo (mobile + desktop)
+
+### Instalação via GTM (NuvemShop)
+
+Adicionar tag HTML personalizada no **GTM-M4MVC29L** (mesmo GTM do popup e tracking):
+
+```html
+<script>
+  window.chatwootSettings = {
+    hideMessageBubble: false,
+    position: "right",
+    locale: "pt_BR",
+    type: "standard",
+    launcherTitle: "Fale conosco 💬"
+  };
+  (function(d,t) {
+    var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
+    g.src="https://chat.papelariabibelo.com.br/packs/js/sdk.js";
+    g.defer=true;
+    g.async=true;
+    s.parentNode.insertBefore(g,s);
+    g.onload=function(){
+      window.chatwootSDK.run({
+        websiteToken: '<TOKEN_DO_INBOX_WEBSITE>',
+        baseUrl: 'https://chat.papelariabibelo.com.br'
+      })
+    }
+  })(document,"script");
+</script>
+```
+
+**Trigger GTM:** All Pages (mesmo trigger do tracking e popup).
+
+### Pré-chat form (coleta dados antes do chat)
+
+Configurar no painel Chatwoot → Inbox Website → Pre-chat Form:
+
+| Campo | Obrigatório | Motivo |
+|-------|------------|--------|
+| Nome | Sim | Identificar no CRM |
+| Email | Sim | Vincular ao customer |
+| WhatsApp | Não | Contato alternativo |
+
+Quando o cliente preenche, o Chatwoot cria/atualiza o Contact. O webhook `conversation_created` envia para o BibelôCRM → upsert customer → interação na timeline.
+
+### Horário de atendimento
+
+Configurar no Chatwoot → Settings → Business Hours:
+
+| Dia | Horário |
+|-----|---------|
+| Segunda a Sexta | 09:00 - 18:00 |
+| Sábado | 09:00 - 13:00 |
+| Domingo | Fechado |
+
+Fora do horário: widget mostra formulário de mensagem offline → vira conversa pendente no painel.
+
+### Personalização visual (cores Bibelô)
+
+```javascript
+// Chatwoot permite customizar via SDK
+window.chatwootSettings = {
+  // ... config base
+  darkMode: "light",
+  widgetStyle: "standard" // ou "expanded"
+};
+
+// Customizar cores via CSS injection no Chatwoot admin:
+// --widget-color: #fe68c4 (rosa Bibelô)
+// --widget-bubble-color: #fe68c4
+```
+
+No painel do Chatwoot → Inbox → Widget Settings:
+- **Widget Color:** `#fe68c4` (rosa Bibelô)
+- **Welcome Title:** "Olá! 🎀 Bem-vinda à Papelaria Bibelô"
+- **Welcome Tagline:** "Tire suas dúvidas aqui ou pelo WhatsApp"
+- **Reply Time:** "Respondemos em minutos"
+
+### Identificar visitante automaticamente (se já é lead/customer)
+
+Se o visitante já preencheu o popup de leads, podemos passar os dados ao widget:
+
+```javascript
+// No script de tracking (bibelo.js), após identificar visitante:
+if (window.$chatwoot && customerEmail) {
+  window.$chatwoot.setUser(customerId, {
+    email: customerEmail,
+    name: customerName,
+    phone_number: customerPhone,
+    identifier_hash: hmacHash // HMAC para segurança
+  });
+}
+```
+
+Isso evita que o cliente preencha o pré-chat form de novo e vincula a conversa ao perfil existente no CRM.
+
+### Integração widget → BibelôCRM
+
+```
+Cliente abre chat no site
+    ↓
+Preenche nome + email (ou já identificado)
+    ↓
+Chatwoot cria conversa + contact
+    ↓
+Webhook "conversation_created" → BibelôCRM
+    ↓
+CRM faz upsert customer (por email)
+    ↓
+Registra interação na timeline: "Chat iniciado pelo site"
+    ↓
+Agente responde no painel Chatwoot
+    ↓
+Webhook "message_created" → CRM atualiza timeline
+```
+
+### Convivência com popup de leads e widget de reviews
+
+O site terá 3 elementos visuais:
+1. **Popup de leads** — aparece 1x após delay/exit-intent (já existe)
+2. **Widget Google Reviews** — carrossel na home (já existe)
+3. **Balão de chat** — fixo no canto inferior direito (novo)
+
+Não há conflito visual — o popup é overlay temporário, reviews é inline, e o chat é fixo no canto.
+
+---
+
 ## Integração BibelôCRM → Chatwoot
 
 ### Enviar WhatsApp template via Chatwoot API
@@ -371,17 +513,26 @@ Step 4: whatsapp — template "reativacao_cliente"
 - [ ] Criar fluxos multi-canal no BibelôCRM
 - [ ] Testar com número do Carlos
 
-### Fase 5: Instagram (1 dia)
+### Fase 5: Widget de Chat no Site (1 dia)
+- [ ] Criar Inbox "Website" no Chatwoot (gera websiteToken)
+- [ ] Configurar pré-chat form (nome, email, WhatsApp opcional)
+- [ ] Personalizar cores (`#fe68c4`), textos, horário de atendimento
+- [ ] Adicionar script no GTM (tag HTML, trigger All Pages)
+- [ ] Integrar identificação automática (visitor → $chatwoot.setUser)
+- [ ] Testar convivência com popup de leads e widget reviews
+
+### Fase 6: Instagram (1 dia)
 - [ ] Conectar Instagram Business no Chatwoot
 - [ ] Testar recebimento de DMs
 - [ ] Configurar webhook → BibelôCRM
 
-### Fase 6: Go-live (1 dia)
+### Fase 7: Go-live (1 dia)
 - [ ] Ativar fluxos WhatsApp em produção
-- [ ] Monitorar qualidade (taxa de bloqueio)
-- [ ] Ajustar templates conforme feedback
+- [ ] Ativar widget de chat no site
+- [ ] Monitorar qualidade (taxa de bloqueio WhatsApp)
+- [ ] Ajustar templates e horários conforme feedback
 
-**Tempo total estimado: 8-13 dias**
+**Tempo total estimado: 9-14 dias**
 
 ## Variáveis de ambiente novas
 
@@ -392,6 +543,7 @@ CHATWOOT_API_TOKEN=
 CHATWOOT_ACCOUNT_ID=
 CHATWOOT_WHATSAPP_INBOX_ID=
 CHATWOOT_INSTAGRAM_INBOX_ID=
+CHATWOOT_WEBSITE_INBOX_TOKEN=
 CHATWOOT_SECRET_KEY=
 
 # Meta / Facebook App
