@@ -15,11 +15,13 @@ Referência completa de todos os endpoints.
 - `POST /api/auth/logout`
 
 ### Customers
-- `GET  /api/customers` — lista paginada com filtros (search, segmento, canal_origem, ordenar)
+- `GET  /api/customers` — lista paginada com filtros (search, segmento, canal_origem, contato, cidade, ordenar). Exclui fornecedores (CNPJ) por padrão.
 - `GET  /api/customers/stats` — KPIs: total, com email, com WhatsApp, novos 30d, inativos, score
+- `GET  /api/customers/cidades` — lista cidades com contagem para filtro
 - `GET  /api/customers/:id` — perfil completo + score
 - `POST /api/customers` — criar/atualizar (upsert por email)
 - `PUT  /api/customers/:id` — atualizar dados
+- `POST /api/customers/:id/reativar-email` — reverter opt-out (LGPD) com auditoria na timeline
 - `GET  /api/customers/:id/timeline` — histórico de interações
 
 ### Analytics
@@ -103,7 +105,8 @@ Referência completa de todos os endpoints.
 
 ### Campanhas Personalizadas
 - `GET  /api/campaigns/categorias` — lista categorias de produto com estoque para multi-select
-- `POST /api/campaigns/gerar-personalizada` — gera email HTML com produtos das categorias selecionadas + lista destinatários
+- `GET  /api/campaigns/produtos?search=X` — busca produtos em estoque para seleção individual
+- `POST /api/campaigns/gerar-personalizada` — gera email HTML com categorias + produto_ids + público + max_por_categoria
 - `POST /api/campaigns/enviar-personalizada` — dispara campanha personalizada para clientes selecionados via Resend
 - `GET  /api/campaigns/gerar-reengajamento?customer_id=X` — gera email personalizado baseado no histórico de compra do cliente
 

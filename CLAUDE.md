@@ -88,7 +88,7 @@ Ficam em `/opt/bibelocrm/.env` — nunca commitar. Ver `.env.example` para todos
 
 Referência completa em **`docs/api-routes.md`** (~120 endpoints).
 
-Resumo: auth (Google OAuth), customers CRUD + timeline, analytics, campaigns + templates, sync (Bling/NuvemShop), products, financeiro (20+ endpoints), NF entrada, orders, search, tracking, leads, flows, links, briefing diário, webhooks.
+Resumo: auth (Google OAuth), customers CRUD + timeline + reativar-email, analytics, campaigns + templates + personalizada (wizard), sync (Bling/NuvemShop), products, financeiro (20+ endpoints), NF entrada, orders, search, tracking, leads, flows, links, briefing diário, webhooks.
 
 Endpoints públicos (sem auth): `/health`, auth/google, tracking (event/identify/bibelo.js), leads (capture/confirm/popup.js/config/view), email/unsubscribe, links, webhooks.
 
@@ -265,4 +265,4 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 31 de Março de 2026 (briefing portal + email diário 7h)*
+*Última atualização: 31 de Março de 2026 — briefing, campanha personalizada, fluxos corrigidos, 74 testes, filtros clientes*

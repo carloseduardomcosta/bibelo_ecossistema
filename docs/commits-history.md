@@ -108,7 +108,16 @@ Para histórico completo e atualizado, usar `git log --oneline`.
 - 8559cf9 sec: fix XSS stored em nomes de fluxo — strip HTML tags
 - f74a502 feat: campanha personalizada — wizard com categorias, público e preview
 - 74e276b fix: seleção individual de produtos + público "Todos com email"
-- 00b4f88 feat: portal Briefing Diário + email automático às 7h BRT
+- a1a97e7 fix: link de descadastro funcional no email de teste
+- 2bf9639 fix: produtos mais recentes nas campanhas + link descadastro corrigido
+- 5d3e699 fix: mensagem de erro clara quando todos destinatários fizeram opt-out
+- 588e075 feat: banner opt-out no perfil do cliente + botão reativar email
+- 70bbf30 fix: notificações de admin para contato@papelariabibelo.com.br
+- 85ef971 fix: auto-admin login apenas para carloseduardocostatj@gmail.com
+- cedbc33 feat: seleção individual de produtos + max por categoria na campanha
 - 5be500b feat: separa clientes de fornecedores — CNPJ auto-classificado
 - c8c4c25 feat: filtros de contato e cidade na lista de clientes
 - d2098f4 feat: DNS SPF/DMARC via Cloudflare API — Hostinger + Resend, hardfail, DMARC quarantine
+- bef1a30 fix: sync incremental Bling busca detalhe quando email vazio
+- 8f25010 feat: detalhe da campanha — modal com destinatários e KPIs
+- b5d456a fix: botão Ver na campanha concluída
