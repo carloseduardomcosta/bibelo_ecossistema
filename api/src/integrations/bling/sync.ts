@@ -481,20 +481,61 @@ export async function incrementalSync(): Promise<{ customers: number; orders: nu
       if (!data.data || data.data.length === 0) break;
 
       for (const contato of data.data) {
+        const blingId = String(contato.id);
+        let email = ((contato.email as string) || "").trim();
+        let telefone = ((contato.celular as string) || (contato.fone as string) || "").trim();
+        let cpf = ((contato.cpf_cnpj as string) || "").trim();
+        let cidade: string | undefined;
+        let estado: string | undefined;
+        let cep: string | undefined;
+        let dataNasc: string | undefined;
+        let dadosRaw = contato;
+
+        // Se a lista não trouxe email, busca detalhe individual (tem email, endereço, etc.)
+        if (!email) {
+          try {
+            const detail = await rateLimitedGet<{ data: Record<string, unknown> }>(
+              `${BLING_API}/contatos/${blingId}`,
+              token
+            );
+            const d = detail.data;
+            if (d) {
+              email = ((d.email as string) || (d.emailNotaFiscal as string) || "").trim();
+              telefone = telefone || ((d.celular as string) || (d.telefone as string) || "").trim();
+              cpf = cpf || ((d.numeroDocumento as string) || "").trim();
+              const endGeral = (d.endereco as Record<string, Record<string, string>> | undefined)?.geral;
+              cidade = endGeral?.municipio;
+              estado = endGeral?.uf;
+              cep = endGeral?.cep;
+              const dn = (d.dadosAdicionais as Record<string, string> | undefined)?.dataNascimento;
+              dataNasc = dn && dn !== "0000-00-00" ? dn : undefined;
+              dadosRaw = d;
+            }
+          } catch (detailErr: unknown) {
+            // Se falhar o detalhe, segue com dados da lista
+            const msg = detailErr instanceof Error ? detailErr.message : "Erro";
+            logger.warn("Bling incrementalSync: erro ao buscar detalhe do contato", { blingId, error: msg });
+          }
+        }
+
         const customer = await upsertCustomer({
           nome: contato.nome as string,
-          email: (contato.email as string) || undefined,
-          telefone: (contato.celular as string) || (contato.fone as string) || undefined,
-          cpf: (contato.cpf_cnpj as string) || undefined,
+          email: email || undefined,
+          telefone: telefone || undefined,
+          cpf: cpf || undefined,
           canal_origem: "bling",
-          bling_id: String(contato.id),
+          bling_id: blingId,
+          cidade,
+          estado,
+          cep,
+          data_nasc: dataNasc,
         });
 
         await query(
           `INSERT INTO sync.bling_customers (bling_id, customer_id, dados_raw, ultima_sync)
            VALUES ($1, $2, $3, NOW())
            ON CONFLICT (bling_id) DO UPDATE SET customer_id = $2, dados_raw = $3, ultima_sync = NOW()`,
-          [String(contato.id), customer.id, JSON.stringify(contato)]
+          [blingId, customer.id, JSON.stringify(dadosRaw)]
         );
 
         customers++;

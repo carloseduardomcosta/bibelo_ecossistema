@@ -106,4 +106,6 @@ Para histórico completo e atualizado, usar `git log --oneline`.
 - 57f9f2f fix: auditoria completa dos fluxos automáticos — 8 correções
 - ce946f9 test: 44 novos testes — fluxos + briefing + segurança (74 total)
 - 8559cf9 sec: fix XSS stored em nomes de fluxo — strip HTML tags
+- f74a502 feat: campanha personalizada — wizard com categorias, público e preview
+- 74e276b fix: seleção individual de produtos + público "Todos com email"
 - 00b4f88 feat: portal Briefing Diário + email automático às 7h BRT
