@@ -1,0 +1,102 @@
+# Histórico de Commits — BibelôCRM
+
+Para histórico completo e atualizado, usar `git log --oneline`.
+
+## Commits principais (ordem cronológica)
+
+- 88a8c59 estrutura inicial + docker-compose + CI/CD
+- 2c85f7d setup.sh completo do VPS
+- e1b5125 migration 001 — 17 tabelas — 355 linhas
+- fe02a9e API base — server, auth, health, db, logger
+- b689892 Frontend React — Vite + splash screen
+- 00aed94 fix package-lock + Dockerfile npm install
+- 56c5e3b fix healthcheck API + compose frontend
+- e72f147 package-lock frontend + Dockerfile server.js
+- 5f352ce fix: copia server.js no Dockerfile do frontend
+- e605b5b feat: customers, analytics, Bling sync, NuvemShop webhooks, BullMQ queues
+- a049d41 docs: documenta infraestrutura completa — firewall, Nginx, SSL, Docker, DNS
+- c4f5d83 feat: frontend login Google OAuth, layout sidebar, rotas protegidas
+- cf61c7a feat: dashboard com KPIs reais, gráfico receita mensal e segmentos
+- 48cf9d3 feat: lista de clientes paginada + perfil completo com score e timeline
+- 96fa2f8 feat: rotas CRUD campanhas + templates com disparo e soft delete
+- 074e41c feat: rotas sync status, sync manual Bling e OAuth callback
+- eddcf14 feat: página Sync com painel Bling/NuvemShop, botões sync e logs
+- 6ed9dbe feat: módulo ERP — produtos, estoque e lucratividade com sync Bling
+- 1df46c4 feat: dashboard CEO com insights, comparativos e alertas
+- 7d99f36 feat: filtro de período no Dashboard (7d, 15d, 30d, 3m, 6m, 1a)
+- 3d955a6 feat: estoque com alertas de reposição + página campanhas funcional
+- 9c5e980 feat: página Segmentos + fix upsert clientes por bling_id
+- 9640bed feat: módulo financeiro completo — fluxo de caixa, despesas fixas, simulador
+- 455f6f8 feat: módulo NF de entrada — upload XML, parse, contabilização
+- 6a08d46 refactor: Bling como fonte da verdade para receitas
+- 8e54e61 feat: dashboard com fluxo de caixa e dados dinâmicos por período
+- c4bc1c0 feat: página Vendas — formas de pagamento + NF-e emitidas do Bling
+- b5eafe1 feat: Contas a Pagar do Bling
+- c7bd130 feat: integração Resend ativa — disparo real de campanhas
+- 35f677a fix: auditoria completa — acentos pt-BR, filtros de período, ProdutoPerfil
+- 8eb833c feat: UX — toasts, busca global (Ctrl+K), export CSV
+- 48dd871 fix: sync contatos busca detalhe do Bling (email, endereço, CPF)
+- c1a8457 feat: Pipeline kanban + Campanhas completas com templates e Resend
+- d691ceb feat: 5 templates de email com branding Papelaria Bibelô
+- f3ddbf6 feat: template dinâmico de novidades — produtos das NFs no email
+- 06856ba feat: template novidades com fotos dos produtos e link por item
+- b2e228a feat: relatórios financeiros, sync contas a pagar, webhook Bling, NF atualiza custo produto
+- a489fb4 fix: ajusta mapeamento de eventos do Bling webhook (order.*, stock.*)
+- c710ff3 feat: integração NuvemShop completa — OAuth2, sync, webhooks, frontend
+- 31464ea docs: NuvemShop em produção — store 7290881 conectada, 8 webhooks ativos
+- ad07679 feat: motor de fluxos automáticos — carrinho abandonado, pós-compra, boas-vindas, reativação
+- 078a1e8 feat: carrinho abandonado com recovery_url NuvemShop + templates de email ricos
+- 2a0187b fix: normaliza formato de evento NuvemShop (order.created → order/created)
+- 5b19a4c fix: sanitiza tags do Resend (remove acentos/espaços)
+- 34a9b74 fix: recovery_url real do checkout NuvemShop no email de carrinho abandonado
+- 7e10a8e feat: templates de automação com branding Bibelô + recovery_url corrigida
+- 41fa4f5 feat: remetente "Papelaria Bibelô" + 12 templates premium com branding
+- e0408c7 feat: avaliação pós-entrega — webhook order/fulfilled + email 12h após delivered
+- b1be7d1 feat: caça-leads — popup de captura com cupom BIBELO10 para NuvemShop
+- 93a508a feat: popup VIP 10% OFF com captura de WhatsApp + email + nome
+- da4c5d3 fix: CORS cross-origin para popup na NuvemShop + headers de segurança
+- e005d5c fix: popup não fecha ao clicar fora — só pelo X ou preenchendo
+- 526bc6f feat: página Marketing no frontend — automações, leads, fluxos, KPIs
+- 2239a18 feat: tracking comportamental + exit-intent + aba Atividade no frontend
+- 77dc6c4 fix: tracking aceita sendBeacon (text/plain) + popup não repete
+- 079a97d feat: "visitou mas não comprou" + funil do site no frontend
+- 70a2edf fix: tracking extrai produto do DOM/meta tags em vez de LD+JSON
+- 5006970 feat: adiciona logo clicável nos templates de email
+- 392a607 fix: logo dos emails servida via webhook (sem Cloudflare Access)
+- aabe5fe fix: cor dos templates de email para rosa oficial #fe68c4
+- 923fa62 feat: geolocalização visitantes, auditoria gaps, botão WhatsApp produto, Dashboard melhorias
+- be0a7d2 feat: funil de leads completo — score engajamento, pipeline auto, sino notificações, drip nutrição
+- 5addbc1 fix: padroniza templates de email — design único, footer correto, HTTPS imagens
+- c2957c6 sec: pentest completo — auto-admin, SQL injection, XSS, IP spoof, CSP, HSTS, idempotency
+- 65a6a40 fix: filtra tráfego interno do tracking — só clientes reais na Atividade
+- ec2e0b9 feat: melhora lista de leads — busca, filtros, ordenação e paginação
+- e3668e4 feat: melhora página Clientes — KPIs, filtros, ordenação, visual renovado
+- 550a1b2 docs: atualiza CLAUDE.md — rotas, commits, página Clientes e Leads
+- e893017 feat: opt-out de email LGPD — descadastro 1-click, filtro em campanhas e fluxos
+- d11e2d9 feat: verificação de email para leads — cupom só após confirmar (anti-fake)
+- 6662186 fix: normaliza email lowercase na captura de leads + sanitiza nome contra XSS
+- d4ca1ac docs: atualiza CLAUDE.md — opt-out LGPD, verificação email leads, rotas, integrações
+- 481d9c7 fix: auditoria tracking — IP real, geolocalização, upsert case-insensitive, merge duplicados
+- d0d565c feat: página de links própria (substitui Linktree) + UTM tracking completo
+- 3a28546 feat: novo design página de links — Nunito, banner loja, animações, formulário
+- 85b27c1 fix: página de links — remove cupom, visual padrão templates Bibelô, Timbó/SC
+- 262ba1e feat: menu.papelariabibelo.com.br — subdomínio dedicado para página de links
+- dfe57ec fix: logo usa path relativo na página de links
+- 13850e7 feat: formulário de cadastro no menu + bio atualizada
+- 012e928 feat: pagina Pedidos — lista completa de compras Bling com filtros e detalhe
+- 7b9fe21 feat: detalhe do pedido com itens, custo NF e lucro por produto
+- e26a4f4 fix: sync Bling busca detalhe dos pedidos (itens + valor real)
+- 465f22f sec: auditoria segurança — SQL injection, XSS, rate limit + protocolo no CLAUDE.md
+- d89aa30 feat: testes automatizados — Vitest + Supertest, 30 testes de integração
+- 5d1051e docs: atualiza CLAUDE.md — sessão completa: tracking, menu, UTM, formulário
+- fffe8b5 sec+fix: auditoria completa — segurança (6 fixes), UX (6 fixes), banco (vacuum + scores)
+- 7e70883 docs: atualiza CLAUDE.md — auditoria completa, segurança, testes, menu
+- 31e2a55 feat: inteligência de fluxos + Google Reviews + popup inteligente
+- 0cbe856 fix: adapta Google Reviews para Places API (New) + configura credenciais
+- bdd14a7 feat: widget de reviews Google para NuvemShop + fotos do local
+- b5e84ec fix: widget reviews só aparece na home page
+- bcc861e feat: widget Google Reviews NuvemShop — carrossel, fotos clientes, CORS fix
+- 4438950 sec: auditoria completa — 22 fixes (7 critical, 15 high/medium)
+- 1fda0cd refactor+fix: segunda rodada code review — 20 fixes medium/low
+- 01d92d1 fix: bloqueia cupom para clientes existentes + popup 15s para ler mensagem
+- 4a0abb4 docs: atualiza CLAUDE.md — code review completo, commits, instrução /review
