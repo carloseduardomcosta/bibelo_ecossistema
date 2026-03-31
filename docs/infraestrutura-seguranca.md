@@ -1,6 +1,6 @@
 # BibelôCRM — Infraestrutura & Segurança
 
-> Última atualização: 26/03/2026
+> Última atualização: 31/03/2026
 
 ---
 
@@ -142,20 +142,33 @@ Domínio: `papelariabibelo.com.br`
 | A | sublimacao | 185.173.111.171 | Sublimação |
 | CNAME | inmail | inmail.tiendanube.net | NuvemShop |
 
-### E-mail (Edrone)
+### E-mail (Resend + Hostinger)
 
-| Tipo | Nome | Destino |
-|------|------|---------|
-| CNAME | edrone._domainkey | c797f0-797f21.mf-settings.com |
-| CNAME | edrone-mail | dda8f0-da8f55.mf-settings.com |
-| CNAME | click | tracking.mf-settings.com |
-| CNAME | sms | edrn.io |
+| Tipo | Nome | Destino | Notas |
+|------|------|---------|-------|
+| TXT | resend._domainkey | (chave DKIM Resend) | DKIM para Resend |
+| TXT | scph0226._domainkey | (chave DKIM Hostinger) | DKIM para Hostinger |
+
+> Registros antigos da Edrone (edrone._domainkey, edrone-mail, click, sms) podem ser removidos.
 
 ### SPF
 
 ```
-v=spf1 include:_spf.mail.hostinger.com include:amazonses.com ~all
+v=spf1 include:_spf.mail.hostinger.com include:send.resend.com -all
 ```
+
+- `_spf.mail.hostinger.com` — email corporativo (contato@)
+- `send.resend.com` — email marketing (marketing@) via Resend
+- `-all` — rejeita servidores não autorizados (hardfail)
+
+### DMARC
+
+```
+v=DMARC1; p=quarantine; rua=mailto:contato@papelariabibelo.com.br
+```
+
+- `p=quarantine` — emails que falham SPF/DKIM vão para spam
+- Relatórios de abuso enviados para `contato@papelariabibelo.com.br`
 
 ---
 
