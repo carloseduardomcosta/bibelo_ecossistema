@@ -100,3 +100,4 @@ Para histórico completo e atualizado, usar `git log --oneline`.
 - 1fda0cd refactor+fix: segunda rodada code review — 20 fixes medium/low
 - 01d92d1 fix: bloqueia cupom para clientes existentes + popup 15s para ler mensagem
 - 4a0abb4 docs: atualiza CLAUDE.md — code review completo, commits, instrução /review
+- 9a039ce refactor: reduz CLAUDE.md de 48k→10k chars + cria /briefing skill
