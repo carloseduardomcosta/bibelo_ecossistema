@@ -120,6 +120,27 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
   const { nome, telefone, popup_id, visitor_id, pagina } = parsed.data;
   const email = parsed.data.email.toLowerCase().trim();
 
+  // ── Bloqueia clientes existentes que já compraram ──────────
+  const clienteExistente = await queryOne<{ id: string; total_pedidos: string }>(
+    `SELECT c.id, (
+       (SELECT COUNT(*) FROM sync.bling_orders bo WHERE bo.customer_id = c.id)
+       + (SELECT COUNT(*) FROM sync.nuvemshop_orders no2 WHERE no2.customer_id = c.id)
+     )::text AS total_pedidos
+     FROM crm.customers c
+     WHERE LOWER(c.email) = $1`,
+    [email]
+  );
+
+  if (clienteExistente && parseInt(clienteExistente.total_pedidos, 10) > 0) {
+    logger.info("Lead bloqueado — cliente já tem compras", { email, customerId: clienteExistente.id });
+    res.json({
+      ok: true,
+      verificacao: "cliente_existente",
+      mensagem: "Você já é nossa cliente! Obrigado por fazer parte da família Bibelô. Fique de olho nas nossas novidades por e-mail!"
+    });
+    return;
+  }
+
   // Busca cupom do popup
   let cupom: string | null = null;
   if (popup_id) {
@@ -253,6 +274,22 @@ leadsRouter.get("/confirm", publicLimiter, async (req: Request, res: Response) =
     return;
   }
 
+  // ── Bloqueia cupom para clientes que já compraram ──────────
+  if (lead.customer_id) {
+    const pedidos = await queryOne<{ total: string }>(
+      `SELECT (
+         (SELECT COUNT(*) FROM sync.bling_orders WHERE customer_id = $1)
+         + (SELECT COUNT(*) FROM sync.nuvemshop_orders WHERE customer_id = $1)
+       )::text AS total`,
+      [lead.customer_id]
+    );
+    if (pedidos && parseInt(pedidos.total, 10) > 0) {
+      logger.info("Confirmação bloqueada — cliente já tem compras", { email, customerId: lead.customer_id });
+      res.send(paginaClienteExistente(email));
+      return;
+    }
+  }
+
   // Marca como verificado (idempotente)
   if (!lead.email_verificado) {
     await query(
@@ -305,6 +342,38 @@ function paginaCupomVerificado(email: string, cupom: string | null): string {
       </div>
       <p style="color:#777;font-size:13px;margin:0 0 20px;line-height:1.5;">
         Use no checkout da nossa loja para ganhar <strong>${desconto}</strong> de desconto na sua compra!
+      </p>
+      <a href="https://www.papelariabibelo.com.br" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:14px 36px;border-radius:30px;text-decoration:none;font-weight:700;font-size:15px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
+        Ir para a loja
+      </a>
+    </div>
+    <div style="padding:16px;border-top:1px solid #f0e0f0;">
+      <p style="color:#ccc;font-size:11px;margin:0;">Papelaria Bibelô · papelariabibelo.com.br</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function paginaClienteExistente(_email: string): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Você já é nossa cliente! - Papelaria Bibelô</title>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;600;700&display=swap" rel="stylesheet"></head>
+<body style="margin:0;padding:0;background:#f5f0f2;font-family:Jost,Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+  <div style="background:#fff;border-radius:20px;padding:0;max-width:440px;width:90%;text-align:center;box-shadow:0 8px 30px rgba(254,104,196,0.15);overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#fe68c4,#ff8fd3);padding:28px 20px;">
+      <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" width="56" height="56" style="width:56px;height:56px;border-radius:50%;border:3px solid #fff;" />
+    </div>
+    <div style="padding:30px 24px 20px;">
+      <div style="font-size:40px;margin:0 0 12px;">💕</div>
+      <h1 style="color:#333;font-size:22px;margin:0 0 8px;font-weight:700;">Você já faz parte da família!</h1>
+      <p style="color:#666;font-size:15px;margin:0 0 20px;line-height:1.5;">
+        Este cupom é exclusivo para novos clientes. Mas não se preocupe — preparamos ofertas especiais para quem já compra com a gente!
+      </p>
+      <p style="color:#777;font-size:13px;margin:0 0 20px;line-height:1.5;">
+        Fique de olho no seu e-mail para promoções exclusivas de clientes VIP.
       </p>
       <a href="https://www.papelariabibelo.com.br" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:14px 36px;border-radius:30px;text-decoration:none;font-weight:700;font-size:15px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
         Ir para a loja

@@ -202,7 +202,10 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
         success.style.display = 'block';
         document.getElementById('bibelo-popup-msg').textContent = data.mensagem || 'Verifique seu e-mail!';
 
-        if (data.verificacao === 'ja_verificado') {
+        if (data.verificacao === 'cliente_existente') {
+          document.getElementById('bibelo-popup-emoji').textContent = '\\uD83D\\uDC95';
+          document.getElementById('bibelo-popup-submsg').textContent = 'Fique de olho no seu e-mail para promo\\u00E7\\u00F5es VIP!';
+        } else if (data.verificacao === 'ja_verificado') {
           document.getElementById('bibelo-popup-emoji').textContent = '\\u2705';
           document.getElementById('bibelo-popup-submsg').textContent = 'Seu cupom j\\u00E1 foi enviado anteriormente.';
         } else {
@@ -211,8 +214,8 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
         setCookie(COOKIE_NAME, '1', COOKIE_DAYS);
         setCookie('_bibelo_lead', '1', 365); // Marca como lead — popup não aparece mais
 
-        // Fecha sozinho após 6 segundos
-        setTimeout(closePopup, 6000);
+        // Fecha sozinho após 15 segundos (tempo suficiente para ler)
+        setTimeout(closePopup, 15000);
       })
       .catch(function() {
         btn.textContent = 'Tente novamente';
