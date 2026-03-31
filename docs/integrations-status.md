@@ -25,7 +25,7 @@
 | Avaliação Pós-Entrega | ✅ produção | webhook order/fulfilled → email 12h após entrega |
 | Caça-Leads (Popup) | ✅ produção | popup JS via GTM, captura email+WhatsApp, verificação email obrigatória |
 | Opt-out Email (LGPD) | ✅ produção | descadastro 1-click, campanhas e fluxos respeitam opt-out |
-| Evolution WhatsApp | ⏳ pendente | aguardando configuração |
+| Chatwoot (multi-canal) | 📋 planejado | WhatsApp + Instagram DM via Meta Cloud API oficial — docs/whatsapp-oficial-chatwoot.md |
 | Tracking Comportamental | ✅ produção | page_view, product_view, add_to_cart, search, checkout — script JS via GTM |
 | Geolocalização | ✅ produção | geoip-lite (MaxMind offline), IP real → cidade/estado/país |
 | Score de Leads | ✅ produção | engajamento (popup +15, views +3, cart +10, emails +3) |

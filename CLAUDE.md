@@ -25,7 +25,8 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 | Containers | Docker + Docker Compose |
 | Proxy | Nginx + SSL Let's Encrypt |
 | E-mail | Resend SDK |
-| WhatsApp | Evolution API (self-hosted) |
+| WhatsApp | Meta Cloud API + Chatwoot (planejado) |
+| Atendimento | Chatwoot self-hosted (planejado) |
 | Deploy | GitHub Actions → rsync → VPS Hostinger |
 
 ---
@@ -203,8 +204,13 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 - Plano grátis: 3.000/mês. Remetente: `Papelaria Bibelô <marketing@papelariabibelo.com.br>`
 - 14 templates no banco
 
-### Evolution API (WhatsApp) — pendente
-- Container `bibelo_whatsapp`, URL: http://evolution:8080, instância: bibelocrm
+### Chatwoot + Meta Cloud API (WhatsApp + Instagram) — planejado
+- Plano completo: `docs/whatsapp-oficial-chatwoot.md`
+- Chatwoot self-hosted em chat.papelariabibelo.com.br
+- WhatsApp via Meta Cloud API oficial (sem risco de ban)
+- Instagram DM via Instagram Messaging API
+- BibelôCRM envia templates via Chatwoot REST API
+- Custo estimado: ~R$ 105/mês (mensagens Meta)
 
 ---
 
@@ -221,6 +227,7 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 | `docs/bling-api-openapi.json` | OpenAPI 3.0 spec completo (1MB) |
 | `docs/nuvemshop-api-erp-guide.md` | Guia completo NuvemShop API |
 | `docs/whatsapp-estrategia.md` | Estratégia WhatsApp Business |
+| `docs/whatsapp-oficial-chatwoot.md` | Plano completo: Chatwoot + Meta Cloud API + Instagram |
 | `docs/pentest-report.md` | Relatório do pentest de segurança |
 
 ---
