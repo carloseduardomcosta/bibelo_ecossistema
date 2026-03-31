@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Mail, Phone, MapPin, Instagram, Calendar, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Mail, Phone, MapPin, Instagram, Calendar, TrendingUp, MailX, MailCheck } from 'lucide-react';
 import api from '../lib/api';
+import { useToast } from '../components/Toast';
 import { formatCurrency } from '../lib/format';
 
 interface CustomerFull {
@@ -18,6 +19,8 @@ interface CustomerFull {
   cep?: string;
   bling_id?: string;
   nuvemshop_id?: string;
+  email_optout?: boolean;
+  email_optout_em?: string;
   criado_em: string;
   score?: {
     score: number;
@@ -54,10 +57,26 @@ const TIPO_LABELS: Record<string, { label: string; color: string }> = {
 
 export default function ClientePerfil() {
   const { id } = useParams<{ id: string }>();
+  const { success, error: showError } = useToast();
   const [cliente, setCliente] = useState<CustomerFull | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [reativando, setReativando] = useState(false);
+
+  const reativarEmail = async () => {
+    if (!cliente || !id) return;
+    setReativando(true);
+    try {
+      await api.post(`/customers/${id}/reativar-email`);
+      setCliente({ ...cliente, email_optout: false, email_optout_em: undefined });
+      success('Email reativado com sucesso');
+    } catch {
+      showError('Erro ao reativar email');
+    } finally {
+      setReativando(false);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -127,6 +146,30 @@ export default function ClientePerfil() {
           </div>
         )}
       </div>
+
+      {/* Banner opt-out */}
+      {cliente.email_optout && (
+        <div className="flex items-center justify-between gap-4 p-4 bg-red-400/10 border border-red-400/20 rounded-xl mb-4">
+          <div className="flex items-center gap-3">
+            <MailX size={20} className="text-red-400 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-red-400">Email descadastrado (opt-out)</p>
+              <p className="text-xs text-bibelo-muted mt-0.5">
+                Solicitou descadastro em {cliente.email_optout_em ? formatDate(cliente.email_optout_em) : 'data desconhecida'}.
+                Nenhum email de marketing sera enviado.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={reativarEmail}
+            disabled={reativando}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-lg text-xs font-medium hover:bg-emerald-400 transition-colors shrink-0 disabled:opacity-50"
+          >
+            <MailCheck size={14} />
+            {reativando ? 'Reativando...' : 'Reativar email'}
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Info Card */}

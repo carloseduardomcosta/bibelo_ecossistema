@@ -222,6 +222,42 @@ customersRouter.put("/:id", async (req: Request, res: Response) => {
   res.json(updated);
 });
 
+// ── POST /api/customers/:id/reativar-email — reverter opt-out ──
+
+customersRouter.post("/:id/reativar-email", async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const customer = await queryOne<{ id: string; email: string | null; email_optout: boolean; email_optout_em: string | null }>(
+    "SELECT id, email, email_optout, email_optout_em FROM crm.customers WHERE id = $1",
+    [id]
+  );
+
+  if (!customer) {
+    res.status(404).json({ error: "Cliente não encontrado" });
+    return;
+  }
+
+  if (!customer.email_optout) {
+    res.json({ message: "Cliente já está ativo para emails", email_optout: false });
+    return;
+  }
+
+  await query(
+    "UPDATE crm.customers SET email_optout = false, email_optout_em = NULL WHERE id = $1",
+    [id]
+  );
+
+  // Registra na timeline para auditoria
+  await query(
+    `INSERT INTO crm.interactions (customer_id, tipo, canal, descricao, metadata)
+     VALUES ($1, 'sistema', 'email', 'Email reativado pelo admin', $2)`,
+    [id, JSON.stringify({ reativado_por: req.user?.email, optout_anterior: customer.email_optout_em })]
+  );
+
+  logger.info("Email reativado pelo admin", { customerId: id, user: req.user?.email, optout_anterior: customer.email_optout_em });
+  res.json({ message: "Email reativado com sucesso", email_optout: false });
+});
+
 // ── GET /api/customers/:id/timeline ────────────────────────────
 
 customersRouter.get("/:id/timeline", async (req: Request, res: Response) => {
