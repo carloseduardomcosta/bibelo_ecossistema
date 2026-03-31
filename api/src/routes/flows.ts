@@ -67,9 +67,14 @@ flowsRouter.get("/:id", async (req: Request, res: Response) => {
 
 // ── POST /api/flows — criar fluxo ────────────────────────────
 
+// Sanitiza HTML em strings (anti-XSS stored)
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]*>/g, "").trim();
+}
+
 const createSchema = z.object({
-  nome: z.string().min(3).max(100),
-  descricao: z.string().optional(),
+  nome: z.string().min(3).max(100).transform(stripHtml),
+  descricao: z.string().optional().transform((v) => v ? stripHtml(v) : v),
   gatilho: z.enum(["order.first", "order.paid", "order.abandoned", "customer.created", "customer.inactive"]),
   gatilho_config: z.record(z.unknown()).optional(),
   steps: z.array(z.object({
@@ -102,8 +107,8 @@ flowsRouter.post("/", async (req: Request, res: Response) => {
 // ── PUT /api/flows/:id — atualizar fluxo ──────────────────────
 
 const updateSchema = z.object({
-  nome: z.string().min(3).max(100).optional(),
-  descricao: z.string().optional(),
+  nome: z.string().min(3).max(100).transform(stripHtml).optional(),
+  descricao: z.string().optional().transform((v) => v ? stripHtml(v) : v),
   gatilho_config: z.record(z.unknown()).optional(),
   steps: z.array(z.object({
     tipo: z.enum(["email", "whatsapp", "wait", "condicao"]),

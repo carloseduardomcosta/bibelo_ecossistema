@@ -270,18 +270,19 @@ describe("triggerFlow — validações", () => {
 // ── Testes de segurança nos fluxos ─────────────────────────────
 
 describe("Segurança — flows API", () => {
-  it("PUT /api/flows/:id aceita string (XSS sanitizado pelo frontend/React)", async () => {
-    // Backend armazena texto puro — React escapa automaticamente na renderização
-    // Aqui verificamos que a rota não crashou e retornou resposta válida
+  it("PUT /api/flows/:id sanitiza XSS no nome (strip HTML tags)", async () => {
     const flow = await queryOne<{ id: string; nome: string }>("SELECT id, nome FROM marketing.flows LIMIT 1");
     if (!flow) return;
 
-    const xssPayload = '<script>alert("xss")</script>';
+    const xssPayload = '<script>alert("xss")</script>Nome Limpo';
     const res = await request(app)
       .put(`/api/flows/${flow.id}`)
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ nome: xssPayload });
     expect(res.status).toBe(200);
+    // Backend strip HTML tags — não deve conter <script>
+    expect(res.body.nome).not.toContain("<script>");
+    expect(res.body.nome).toContain("Nome Limpo");
 
     // Restaura nome original
     await request(app)
