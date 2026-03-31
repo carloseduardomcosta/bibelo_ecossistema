@@ -44,8 +44,10 @@ Cliente (WhatsApp / Instagram DM / Chat no site)
 2. **Verificação do negócio** — CNPJ 63.961.764/0001-63 + comprovante endereço (2-5 dias úteis)
 3. **Facebook App** tipo "Business" em developers.facebook.com
 4. **Produto WhatsApp** adicionado ao app
-5. **Número dedicado** — não pode ser o mesmo do WhatsApp pessoal/Business App
-   - Opção: usar novo número OU migrar o (47) 9 3386-2514
+5. **Número dedicado NOVO** — comprar chip novo só para a API/Chatwoot
+   - Decisão: manter o (47) 9 3386-2514 no WhatsApp Business App (grupo VIP 115 membros, catálogo, atendimento pessoal)
+   - Meta não permite mesmo número no app + API simultaneamente
+   - Número atual fica no celular, número novo fica no Chatwoot
 6. **Display name** = "Papelaria Bibelô" (precisa refletir o negócio real)
 7. **Two-Factor Authentication** no Facebook — obrigatório
 
