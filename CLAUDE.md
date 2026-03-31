@@ -228,6 +228,7 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 | `docs/nuvemshop-api-erp-guide.md` | Guia completo NuvemShop API |
 | `docs/whatsapp-estrategia.md` | Estratégia WhatsApp Business |
 | `docs/whatsapp-oficial-chatwoot.md` | Plano completo: Chatwoot + Meta Cloud API + Instagram |
+| `docs/ecommerce-proprio.md` | Arquitetura e-commerce próprio: Next.js + Medusa.js + Mercado Pago + Melhor Envio |
 | `docs/pentest-report.md` | Relatório do pentest de segurança |
 
 ---

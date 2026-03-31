@@ -35,4 +35,7 @@
 | Testes Automatizados | ✅ produção | Vitest + Supertest, 30 testes integração |
 | Google Reviews | ✅ produção | Places API (New), cache DB 6h, widget JS NuvemShop via GTM |
 | Inteligência de Fluxos | ✅ produção | pula step cupom se lead já comprou, reativação só com pedido |
+| E-commerce próprio | 📋 backlog | Next.js + Medusa.js, substitui NuvemShop — docs/ecommerce-proprio.md |
+| Mercado Pago | 📋 backlog | Payment provider Medusa — PIX, cartão, boleto |
+| Melhor Envio | 📋 backlog | Fulfillment provider Medusa — cálculo frete, etiquetas, rastreio |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |
