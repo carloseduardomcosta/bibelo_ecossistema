@@ -28,6 +28,7 @@ import { trackingScriptRouter } from "./routes/tracking-script";
 import { emailRouter }           from "./routes/email";
 import { linksRouter }           from "./routes/links";
 import { reviewsWidgetRouter }   from "./routes/reviews-widget";
+import { briefingRouter }        from "./routes/briefing";
 import { ordersRouter }          from "./routes/orders";
 import { nuvemshopWebhookRouter } from "./integrations/nuvemshop/webhook";
 import { blingWebhookRouter }     from "./integrations/bling/webhook";
@@ -84,6 +85,7 @@ app.use("/api/products", productsRouter);
 app.use("/api/financeiro", financeiroRouter);
 app.use("/api/contas-pagar", contasPagarRouter);
 app.use("/api/financeiro/nf-entrada", nfEntradaRouter);
+app.use("/api/briefing", briefingRouter);
 app.use("/api/sync", syncRouter);
 app.use("/api",      syncRouter);  // /api/auth/bling e /api/auth/bling/callback
 app.use("/api/leads", leadsRouter);

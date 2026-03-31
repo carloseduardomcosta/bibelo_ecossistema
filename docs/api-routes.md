@@ -97,6 +97,10 @@ Referência completa de todos os endpoints.
 - `GET  /api/orders/stats` — KPIs: total, receita, ticket médio, físico/online, variação
 - `GET  /api/orders/:id` — detalhe com itens e parcelas de pagamento
 
+### Briefing Diário
+- `GET  /api/briefing?horas=24` — gera briefing completo (site, leads, vendas, automações, syncs, alertas)
+- `POST /api/briefing/enviar` — envia briefing das últimas 24h por email ao admin
+
 ### Busca Global
 - `GET  /api/search?q=texto` — busca em clientes, produtos, lançamentos e NFs
 

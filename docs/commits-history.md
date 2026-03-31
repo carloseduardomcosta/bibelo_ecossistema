@@ -101,3 +101,4 @@ Para histórico completo e atualizado, usar `git log --oneline`.
 - 01d92d1 fix: bloqueia cupom para clientes existentes + popup 15s para ler mensagem
 - 4a0abb4 docs: atualiza CLAUDE.md — code review completo, commits, instrução /review
 - 9a039ce refactor: reduz CLAUDE.md de 48k→10k chars + cria /briefing skill
+- ee482fb fix: corrige queries do skill /briefing com nomes reais das colunas

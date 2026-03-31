@@ -21,6 +21,7 @@ import {
   Kanban,
   Megaphone,
   Sparkles,
+  Newspaper,
   RefreshCw,
   LogOut,
   Menu,
@@ -50,6 +51,7 @@ const navGroups: NavGroup[] = [
     label: '',
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+      { to: '/briefing', label: 'Briefing', icon: Newspaper },
     ],
   },
   {

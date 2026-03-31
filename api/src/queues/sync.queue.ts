@@ -4,6 +4,7 @@ import { incrementalSync } from "../integrations/bling/sync";
 import { calculateScore } from "../services/customer.service";
 import { triggerFlow } from "../services/flow.service";
 import { refreshReviewsCache } from "../integrations/google/reviews";
+import { enviarBriefingEmail } from "../routes/briefing";
 import { query, queryOne } from "../db";
 
 // ── Redis connection ───────────────────────────────────────────
@@ -100,6 +101,12 @@ export const syncWorker = new Worker(
           break;
         }
 
+        case "briefing-diario": {
+          await enviarBriefingEmail();
+          result = { processed: 1 };
+          break;
+        }
+
         case "cleanup-old-data": {
           const tracking = await query(
             "DELETE FROM crm.tracking_events WHERE criado_em < NOW() - INTERVAL '90 days'"
@@ -181,7 +188,12 @@ export async function registerScheduledJobs(): Promise<void> {
     repeat: { pattern: "0 4 * * *" },
   });
 
-  logger.info("Jobs agendados registrados: bling-sync (30min), scores (2h), google-reviews (6h), cleanup (4h)");
+  // Briefing diário: 7h BRT = 10h UTC
+  await syncQueue.add("briefing-diario", {}, {
+    repeat: { pattern: "0 10 * * *" },
+  });
+
+  logger.info("Jobs agendados registrados: bling-sync (30min), scores (2h), google-reviews (6h), cleanup (4h), briefing (7h BRT)");
 }
 
 // ── Event listeners ────────────────────────────────────────────
