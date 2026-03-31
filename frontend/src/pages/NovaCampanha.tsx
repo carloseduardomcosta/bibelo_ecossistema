@@ -16,6 +16,7 @@ interface Categoria {
 }
 
 interface Produto {
+  id?: string;
   nome: string;
   preco: number;
   estoque: number;
@@ -32,7 +33,8 @@ interface Destinatario {
 
 type Publico = 'todos' | 'nunca_contatados' | 'manual';
 
-const STEPS = ['Categorias', 'Produtos', 'Público', 'Preview', 'Enviar'];
+const STEPS = ['Selecionar', 'Produtos', 'Público', 'Preview', 'Enviar'];
+type SelecaoTab = 'categorias' | 'produtos';
 
 export default function NovaCampanha() {
   const navigate = useNavigate();
@@ -41,12 +43,20 @@ export default function NovaCampanha() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  // Step 1: Categorias
+  // Step 0: Seleção (categorias + produtos individuais)
+  const [selecaoTab, setSelecaoTab] = useState<SelecaoTab>('categorias');
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [catSelecionadas, setCatSelecionadas] = useState<string[]>([]);
   const [catSearch, setCatSearch] = useState('');
+  const [maxPorCat, setMaxPorCat] = useState(2);
 
-  // Step 2: Produtos preview
+  // Produtos individuais
+  const [produtoBusca, setProdutoBusca] = useState('');
+  const [produtosDisponiveis, setProdutosDisponiveis] = useState<Produto[]>([]);
+  const [produtosSelecionados, setProdutosSelecionados] = useState<Produto[]>([]);
+  const [buscandoProdutos, setBuscandoProdutos] = useState(false);
+
+  // Step 1: Produtos preview (resultado final)
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [limiteProdutos, setLimiteProdutos] = useState(6);
 
@@ -77,16 +87,43 @@ export default function NovaCampanha() {
     );
   };
 
-  // Gerar preview (step 1→2 ou 2→3)
+  // Buscar produtos individuais
+  const buscarProdutos = async (search: string) => {
+    if (search.length < 2) { setProdutosDisponiveis([]); return; }
+    setBuscandoProdutos(true);
+    try {
+      const { data } = await api.get(`/campaigns/produtos?search=${encodeURIComponent(search)}&limit=20`);
+      setProdutosDisponiveis(data);
+    } catch { /* ignore */ }
+    setBuscandoProdutos(false);
+  };
+
+  // Debounce busca
+  useEffect(() => {
+    const t = setTimeout(() => { if (produtoBusca.length >= 2) buscarProdutos(produtoBusca); }, 400);
+    return () => clearTimeout(t);
+  }, [produtoBusca]);
+
+  const toggleProduto = (p: Produto) => {
+    setProdutosSelecionados((prev) => {
+      const exists = prev.find((x) => x.id === p.id);
+      if (exists) return prev.filter((x) => x.id !== p.id);
+      return [...prev, p];
+    });
+  };
+
+  // Gerar preview (step 0→1)
   const gerarPreview = async () => {
-    if (catSelecionadas.length === 0) {
-      showError('Selecione pelo menos uma categoria');
+    if (catSelecionadas.length === 0 && produtosSelecionados.length === 0) {
+      showError('Selecione pelo menos uma categoria ou um produto');
       return;
     }
     setLoading(true);
     try {
       const { data } = await api.post('/campaigns/gerar-personalizada', {
         categorias: catSelecionadas,
+        produto_ids: produtosSelecionados.map((p) => p.id).filter(Boolean),
+        max_por_categoria: maxPorCat,
         limite_produtos: limiteProdutos,
         publico,
         customer_ids: publico === 'manual' ? destSelecionados : undefined,
@@ -107,7 +144,7 @@ export default function NovaCampanha() {
   // Avançar step
   const avancar = async () => {
     if (step === 0) {
-      if (catSelecionadas.length === 0) { showError('Selecione pelo menos uma categoria'); return; }
+      if (catSelecionadas.length === 0 && produtosSelecionados.length === 0) { showError('Selecione pelo menos uma categoria ou um produto'); return; }
       await gerarPreview();
       setStep(1);
     } else if (step === 1) {
@@ -119,6 +156,8 @@ export default function NovaCampanha() {
       try {
         const { data } = await api.post('/campaigns/gerar-personalizada', {
           categorias: catSelecionadas,
+          produto_ids: produtosSelecionados.map((p) => p.id).filter(Boolean),
+          max_por_categoria: maxPorCat,
           limite_produtos: limiteProdutos,
           publico: 'manual',
           customer_ids: destSelecionados,
@@ -219,72 +258,155 @@ export default function NovaCampanha() {
         ))}
       </div>
 
-      {/* Step 0: Categorias */}
+      {/* Step 0: Selecionar (Categorias + Produtos individuais) */}
       {step === 0 && (
-        <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-6">
-          <h2 className="text-sm font-bold text-bibelo-text mb-1 flex items-center gap-2">
-            <Package size={16} className="text-bibelo-primary" />
-            Selecione as categorias de produto
-          </h2>
-          <p className="text-xs text-bibelo-muted mb-4">Escolha uma ou mais categorias para montar o email com produtos em estoque</p>
-
-          <div className="relative mb-4">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-bibelo-muted" />
-            <input
-              value={catSearch}
-              onChange={(e) => setCatSearch(e.target.value)}
-              placeholder="Buscar categoria..."
-              className="w-full pl-9 pr-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none focus:border-bibelo-primary"
-            />
+        <div className="space-y-4">
+          {/* Tabs */}
+          <div className="flex gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1">
+            <button
+              onClick={() => setSelecaoTab('categorias')}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                selecaoTab === 'categorias' ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text'
+              }`}
+            >
+              <Package size={14} /> Por categoria
+            </button>
+            <button
+              onClick={() => setSelecaoTab('produtos')}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                selecaoTab === 'produtos' ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text'
+              }`}
+            >
+              <Sparkles size={14} /> Produto individual
+            </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-80 overflow-y-auto">
-            {catsFiltradas.map((c) => {
-              const sel = catSelecionadas.includes(c.categoria);
-              return (
-                <button
-                  key={c.categoria}
-                  onClick={() => toggleCat(c.categoria)}
-                  className={`text-left p-3 rounded-lg border transition-colors ${
-                    sel
-                      ? 'border-bibelo-primary bg-bibelo-primary/10'
-                      : 'border-bibelo-border hover:border-bibelo-primary/40'
-                  }`}
-                >
-                  <p className={`text-sm font-medium ${sel ? 'text-bibelo-primary' : 'text-bibelo-text'}`}>
-                    {c.categoria}
-                  </p>
-                  <p className="text-[11px] text-bibelo-muted mt-0.5">
-                    {c.em_estoque} produtos · {formatCurrency(c.preco_medio)} medio
-                  </p>
-                </button>
-              );
-            })}
-          </div>
+          {/* Tab: Categorias */}
+          {selecaoTab === 'categorias' && (
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-6">
+              <p className="text-xs text-bibelo-muted mb-4">Escolha categorias — max {maxPorCat} produtos de cada aparecerão no email</p>
 
-          {catSelecionadas.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-1.5">
-              {catSelecionadas.map((c) => (
-                <span key={c} className="inline-flex items-center gap-1 px-2.5 py-1 bg-bibelo-primary/10 text-bibelo-primary text-xs rounded-full font-medium">
-                  {c}
-                  <button onClick={() => toggleCat(c)}><X size={12} /></button>
-                </span>
-              ))}
+              <div className="relative mb-4">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-bibelo-muted" />
+                <input
+                  value={catSearch}
+                  onChange={(e) => setCatSearch(e.target.value)}
+                  placeholder="Buscar categoria..."
+                  className="w-full pl-9 pr-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none focus:border-bibelo-primary"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-72 overflow-y-auto">
+                {catsFiltradas.map((c) => {
+                  const sel = catSelecionadas.includes(c.categoria);
+                  return (
+                    <button
+                      key={c.categoria}
+                      onClick={() => toggleCat(c.categoria)}
+                      className={`text-left p-3 rounded-lg border transition-colors ${
+                        sel ? 'border-bibelo-primary bg-bibelo-primary/10' : 'border-bibelo-border hover:border-bibelo-primary/40'
+                      }`}
+                    >
+                      <p className={`text-sm font-medium ${sel ? 'text-bibelo-primary' : 'text-bibelo-text'}`}>{c.categoria}</p>
+                      <p className="text-[11px] text-bibelo-muted mt-0.5">{c.em_estoque} produtos · {formatCurrency(c.preco_medio)} medio</p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-bibelo-muted">Max por categoria:</label>
+                  <select value={maxPorCat} onChange={(e) => setMaxPorCat(Number(e.target.value))} className="bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-1.5 text-sm text-bibelo-text">
+                    {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-bibelo-muted">Total no email:</label>
+                  <select value={limiteProdutos} onChange={(e) => setLimiteProdutos(Number(e.target.value))} className="bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-1.5 text-sm text-bibelo-text">
+                    {[4, 6, 8, 10, 12].map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+              </div>
             </div>
           )}
 
-          <div className="mt-4 flex items-center gap-3">
-            <label className="text-xs text-bibelo-muted">Produtos no email:</label>
-            <select
-              value={limiteProdutos}
-              onChange={(e) => setLimiteProdutos(Number(e.target.value))}
-              className="bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-1.5 text-sm text-bibelo-text"
-            >
-              {[4, 6, 8, 10, 12].map((n) => (
-                <option key={n} value={n}>{n} produtos</option>
-              ))}
-            </select>
-          </div>
+          {/* Tab: Produtos individuais */}
+          {selecaoTab === 'produtos' && (
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-6">
+              <p className="text-xs text-bibelo-muted mb-4">Busque e selecione produtos específicos para o email</p>
+
+              <div className="relative mb-4">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-bibelo-muted" />
+                <input
+                  value={produtoBusca}
+                  onChange={(e) => setProdutoBusca(e.target.value)}
+                  placeholder="Buscar produto (ex: perfume, caneta, kit)..."
+                  className="w-full pl-9 pr-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none focus:border-bibelo-primary"
+                />
+              </div>
+
+              {buscandoProdutos && <p className="text-xs text-bibelo-muted py-2">Buscando...</p>}
+
+              {produtosDisponiveis.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-72 overflow-y-auto mb-4">
+                  {produtosDisponiveis.map((p) => {
+                    const sel = produtosSelecionados.some((x) => x.id === p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => toggleProduto(p)}
+                        className={`text-left rounded-lg border overflow-hidden transition-colors ${
+                          sel ? 'border-bibelo-primary ring-2 ring-bibelo-primary/30' : 'border-bibelo-border hover:border-bibelo-primary/40'
+                        }`}
+                      >
+                        {p.img ? (
+                          <img src={p.img} alt={p.nome} className="w-full aspect-square object-cover" />
+                        ) : (
+                          <div className="w-full aspect-square bg-gradient-to-br from-pink-100 to-yellow-50 flex items-center justify-center text-2xl">🎀</div>
+                        )}
+                        <div className="p-2">
+                          <p className="text-[11px] font-medium text-bibelo-text line-clamp-2">{p.nome}</p>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-xs font-bold text-bibelo-text">{formatCurrency(p.preco)}</span>
+                            {sel && <Check size={12} className="text-bibelo-primary" />}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-bibelo-muted">Total no email:</label>
+                <select value={limiteProdutos} onChange={(e) => setLimiteProdutos(Number(e.target.value))} className="bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-1.5 text-sm text-bibelo-text">
+                  {[4, 6, 8, 10, 12].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Seleção atual (resumo) */}
+          {(catSelecionadas.length > 0 || produtosSelecionados.length > 0) && (
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
+              <p className="text-xs font-bold text-bibelo-muted mb-2">Selecionado:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {catSelecionadas.map((c) => (
+                  <span key={c} className="inline-flex items-center gap-1 px-2.5 py-1 bg-bibelo-primary/10 text-bibelo-primary text-xs rounded-full font-medium">
+                    {c}
+                    <button onClick={() => toggleCat(c)}><X size={12} /></button>
+                  </span>
+                ))}
+                {produtosSelecionados.map((p) => (
+                  <span key={p.id} className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-400/10 text-emerald-400 text-xs rounded-full font-medium">
+                    {p.nome.length > 30 ? p.nome.slice(0, 30) + '...' : p.nome}
+                    <button onClick={() => toggleProduto(p)}><X size={12} /></button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -346,6 +468,8 @@ export default function NovaCampanha() {
                     try {
                       const { data } = await api.post('/campaigns/gerar-personalizada', {
                         categorias: catSelecionadas,
+                        produto_ids: produtosSelecionados.map((p) => p.id).filter(Boolean),
+                        max_por_categoria: maxPorCat,
                         limite_produtos: limiteProdutos,
                         publico: opt.value,
                       });
@@ -532,7 +656,7 @@ export default function NovaCampanha() {
 
           <button
             onClick={avancar}
-            disabled={loading || (step === 0 && catSelecionadas.length === 0) || (step === 2 && destSelecionados.length === 0)}
+            disabled={loading || (step === 0 && catSelecionadas.length === 0 && produtosSelecionados.length === 0) || (step === 2 && destSelecionados.length === 0)}
             className="flex items-center gap-2 px-5 py-2.5 bg-bibelo-primary text-white rounded-lg text-sm font-medium hover:bg-bibelo-primary/90 transition-colors disabled:opacity-50"
           >
             {loading ? 'Carregando...' : step === 3 ? 'Ir para envio' : 'Continuar'}

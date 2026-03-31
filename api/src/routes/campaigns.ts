@@ -448,10 +448,74 @@ campaignsRouter.get("/categorias", async (_req: Request, res: Response) => {
   })));
 });
 
+// ── GET /api/campaigns/produtos — busca produtos em estoque para seleção individual ──
+
+const produtosSearchSchema = z.object({
+  search: z.string().optional(),
+  categoria: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+campaignsRouter.get("/produtos", async (req: Request, res: Response) => {
+  const parse = produtosSearchSchema.safeParse(req.query);
+  if (!parse.success) {
+    res.status(400).json({ error: "Parâmetros inválidos" });
+    return;
+  }
+
+  const { search, categoria, limit } = parse.data;
+  const conditions = ["np.estoque > 0"];
+  const params: unknown[] = [];
+  let idx = 1;
+
+  if (search) {
+    conditions.push(`LOWER(np.nome) LIKE '%' || LOWER($${idx}) || '%'`);
+    params.push(search);
+    idx++;
+  }
+  if (categoria) {
+    conditions.push(`COALESCE(bp.categoria, 'OUTROS') = $${idx}`);
+    params.push(categoria);
+    idx++;
+  }
+
+  params.push(limit);
+
+  const produtos = await query<{
+    id: string; nome: string; preco: string; estoque: number;
+    img: string | null; url: string | null; categoria: string | null;
+  }>(
+    `SELECT DISTINCT ON (SPLIT_PART(np.nome, ' Cor:', 1))
+       np.id::text, np.nome, np.preco::text, np.estoque,
+       np.imagens->>0 AS img,
+       np.dados_raw->>'canonical_url' AS url,
+       bp.categoria
+     FROM sync.nuvemshop_products np
+     LEFT JOIN sync.bling_products bp ON bp.sku = np.sku
+       OR LOWER(bp.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
+     WHERE ${conditions.join(" AND ")}
+     ORDER BY SPLIT_PART(np.nome, ' Cor:', 1), np.dados_raw->>'created_at' DESC NULLS LAST
+     LIMIT $${idx}`,
+    params
+  );
+
+  res.json(produtos.map((p) => ({
+    id: p.id,
+    nome: p.nome,
+    preco: Number(p.preco),
+    estoque: p.estoque,
+    img: p.img,
+    url: p.url,
+    categoria: p.categoria,
+  })));
+});
+
 // ── POST /api/campaigns/gerar-personalizada — preview com categorias + público ──
 
 const gerarPersonalizadaSchema = z.object({
-  categorias: z.array(z.string()).min(1),
+  categorias: z.array(z.string()).default([]),
+  produto_ids: z.array(z.string()).default([]),
+  max_por_categoria: z.number().int().min(1).max(4).default(2),
   limite_produtos: z.number().int().min(1).max(12).default(6),
   publico: z.enum(["todos", "nunca_contatados", "segmento", "manual"]),
   segmento: z.string().optional(),
@@ -465,48 +529,81 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
     return;
   }
 
-  const { categorias, limite_produtos, publico, segmento, customer_ids } = parse.data;
+  const { categorias, produto_ids, max_por_categoria, limite_produtos, publico, segmento, customer_ids } = parse.data;
 
-  // 1. Busca produtos nas categorias selecionadas
-  const catParams = categorias.map((_, i) => `$${i + 2}`).join(", ");
-  const produtos = await query<{
+  if (categorias.length === 0 && produto_ids.length === 0) {
+    res.status(400).json({ error: "Selecione pelo menos uma categoria ou um produto" });
+    return;
+  }
+
+  // 1. Busca produtos: individuais + por categoria (max N por categoria, mais recentes)
+  let produtos: Array<{
     nome: string; preco: string; estoque: number;
     img: string | null; url: string | null; categoria: string | null;
-    data_recente: string | null;
-  }>(
-    `SELECT * FROM (
-       SELECT DISTINCT ON (SPLIT_PART(np.nome, ' Cor:', 1))
-         SPLIT_PART(np.nome, ' Cor:', 1) AS nome,
-         np.preco::text, np.estoque,
+  }> = [];
+
+  // Produtos selecionados individualmente
+  if (produto_ids.length > 0) {
+    const idParams = produto_ids.map((_, i) => `$${i + 1}`).join(", ");
+    const manuais = await query<{
+      nome: string; preco: string; estoque: number;
+      img: string | null; url: string | null; categoria: string | null;
+    }>(
+      `SELECT np.nome, np.preco::text, np.estoque,
          np.imagens->>0 AS img,
          np.dados_raw->>'canonical_url' AS url,
-         bp.categoria,
-         GREATEST(
-           np.dados_raw->>'created_at',
-           (SELECT MAX(ne.data_emissao)::text FROM financeiro.notas_entrada_itens ni
-            JOIN financeiro.notas_entrada ne ON ne.id = ni.nota_id
-            WHERE ne.status != 'cancelada'
-              AND (ni.codigo_produto = np.sku OR LOWER(ni.descricao) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%')
-           )
-         ) AS data_recente
+         bp.categoria
        FROM sync.nuvemshop_products np
        LEFT JOIN sync.bling_products bp ON bp.sku = np.sku
          OR LOWER(bp.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
-       WHERE np.estoque > 0
-         AND COALESCE(bp.categoria, 'OUTROS') IN (${catParams})
-       ORDER BY SPLIT_PART(np.nome, ' Cor:', 1), GREATEST(
-         np.dados_raw->>'created_at',
-         (SELECT MAX(ne.data_emissao)::text FROM financeiro.notas_entrada_itens ni
-          JOIN financeiro.notas_entrada ne ON ne.id = ni.nota_id
-          WHERE ne.status != 'cancelada'
-            AND (ni.codigo_produto = np.sku OR LOWER(ni.descricao) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%')
-         )
-       ) DESC NULLS LAST
-     ) sub
-     ORDER BY sub.data_recente DESC NULLS LAST
-     LIMIT $1`,
-    [limite_produtos, ...categorias]
-  );
+       WHERE np.id IN (${idParams}) AND np.estoque > 0`,
+      produto_ids
+    );
+    produtos.push(...manuais);
+  }
+
+  // Produtos por categoria (max_por_categoria cada, mais recentes, dedup variante Cor:)
+  if (categorias.length > 0) {
+    const catParams = categorias.map((_, i) => `$${i + 2}`).join(", ");
+    const porCategoria = await query<{
+      nome: string; preco: string; estoque: number;
+      img: string | null; url: string | null; categoria: string | null;
+      rn: string;
+    }>(
+      `SELECT * FROM (
+         SELECT DISTINCT ON (SPLIT_PART(np.nome, ' Cor:', 1))
+           np.nome, np.preco::text, np.estoque,
+           np.imagens->>0 AS img,
+           np.dados_raw->>'canonical_url' AS url,
+           bp.categoria,
+           np.dados_raw->>'created_at' AS criado_ns,
+           ROW_NUMBER() OVER (
+             PARTITION BY COALESCE(bp.categoria, 'OUTROS')
+             ORDER BY np.dados_raw->>'created_at' DESC NULLS LAST
+           )::text AS rn
+         FROM sync.nuvemshop_products np
+         LEFT JOIN sync.bling_products bp ON bp.sku = np.sku
+           OR LOWER(bp.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
+         WHERE np.estoque > 0
+           AND COALESCE(bp.categoria, 'OUTROS') IN (${catParams})
+         ORDER BY SPLIT_PART(np.nome, ' Cor:', 1), np.dados_raw->>'created_at' DESC NULLS LAST
+       ) sub
+       WHERE sub.rn::int <= $1
+       ORDER BY sub.criado_ns DESC NULLS LAST`,
+      [max_por_categoria, ...categorias]
+    );
+    // Evita duplicatas com os manuais
+    const nomesJa = new Set(produtos.map((p) => p.nome));
+    for (const p of porCategoria) {
+      if (!nomesJa.has(p.nome)) {
+        produtos.push(p);
+        nomesJa.add(p.nome);
+      }
+    }
+  }
+
+  // Limita total
+  produtos = produtos.slice(0, limite_produtos);
 
   if (produtos.length === 0) {
     res.status(404).json({ error: "Nenhum produto em estoque nas categorias selecionadas" });
