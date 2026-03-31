@@ -34,7 +34,7 @@ export function gerarTokenDescadastro(email: string): string {
 
 export function gerarLinkDescadastro(email: string): string {
   const token = gerarTokenDescadastro(email);
-  const base = process.env.WEBHOOK_URL || "https://webhook.papelariabibelo.com.br";
+  const base = process.env.APP_URL || "https://crm.papelariabibelo.com.br";
   return `${base}/api/email/unsubscribe?email=${encodeURIComponent(email)}&token=${token}`;
 }
 

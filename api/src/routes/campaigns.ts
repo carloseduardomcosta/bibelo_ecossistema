@@ -472,19 +472,38 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
   const produtos = await query<{
     nome: string; preco: string; estoque: number;
     img: string | null; url: string | null; categoria: string | null;
+    data_recente: string | null;
   }>(
-    `SELECT DISTINCT ON (SPLIT_PART(np.nome, ' Cor:', 1))
-       SPLIT_PART(np.nome, ' Cor:', 1) AS nome,
-       np.preco::text, np.estoque,
-       np.imagens->>0 AS img,
-       np.dados_raw->>'canonical_url' AS url,
-       bp.categoria
-     FROM sync.nuvemshop_products np
-     LEFT JOIN sync.bling_products bp ON bp.sku = np.sku
-       OR LOWER(bp.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
-     WHERE np.estoque > 0
-       AND COALESCE(bp.categoria, 'OUTROS') IN (${catParams})
-     ORDER BY SPLIT_PART(np.nome, ' Cor:', 1), np.estoque DESC, np.preco DESC
+    `SELECT * FROM (
+       SELECT DISTINCT ON (SPLIT_PART(np.nome, ' Cor:', 1))
+         SPLIT_PART(np.nome, ' Cor:', 1) AS nome,
+         np.preco::text, np.estoque,
+         np.imagens->>0 AS img,
+         np.dados_raw->>'canonical_url' AS url,
+         bp.categoria,
+         GREATEST(
+           np.dados_raw->>'created_at',
+           (SELECT MAX(ne.data_emissao)::text FROM financeiro.notas_entrada_itens ni
+            JOIN financeiro.notas_entrada ne ON ne.id = ni.nota_id
+            WHERE ne.status != 'cancelada'
+              AND (ni.codigo_produto = np.sku OR LOWER(ni.descricao) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%')
+           )
+         ) AS data_recente
+       FROM sync.nuvemshop_products np
+       LEFT JOIN sync.bling_products bp ON bp.sku = np.sku
+         OR LOWER(bp.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
+       WHERE np.estoque > 0
+         AND COALESCE(bp.categoria, 'OUTROS') IN (${catParams})
+       ORDER BY SPLIT_PART(np.nome, ' Cor:', 1), GREATEST(
+         np.dados_raw->>'created_at',
+         (SELECT MAX(ne.data_emissao)::text FROM financeiro.notas_entrada_itens ni
+          JOIN financeiro.notas_entrada ne ON ne.id = ni.nota_id
+          WHERE ne.status != 'cancelada'
+            AND (ni.codigo_produto = np.sku OR LOWER(ni.descricao) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%')
+         )
+       ) DESC NULLS LAST
+     ) sub
+     ORDER BY sub.data_recente DESC NULLS LAST
      LIMIT $1`,
     [limite_produtos, ...categorias]
   );
