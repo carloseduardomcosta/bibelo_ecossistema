@@ -16,6 +16,7 @@ export interface CustomerData {
   cidade?: string;
   estado?: string;
   cep?: string;
+  tipo?: string;
 }
 
 export interface Customer {
@@ -54,6 +55,14 @@ export interface CustomerScore {
 // ── Upsert por email ou bling_id ────────────────────────────────
 
 export async function upsertCustomer(dados: CustomerData): Promise<Customer> {
+  // Classificação automática: CNPJ (>11 dígitos) = fornecedor
+  if (dados.cpf && !dados.tipo) {
+    const docDigits = dados.cpf.replace(/\D/g, "");
+    if (docDigits.length > 11) {
+      dados.tipo = "fornecedor";
+    }
+  }
+
   // Busca existente por bling_id, nuvemshop_id ou email
   let existing: Customer | null = null;
 

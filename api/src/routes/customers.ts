@@ -55,7 +55,7 @@ customersRouter.get("/", async (req: Request, res: Response) => {
   const { page, limit, search, segmento, canal_origem, contato, cidade, ordenar } = parse.data;
   const offset = (page - 1) * limit;
 
-  const conditions: string[] = ["c.ativo = true"];
+  const conditions: string[] = ["c.ativo = true", "COALESCE(c.tipo, 'cliente') = 'cliente'"];
   const params: unknown[] = [];
   let idx = 1;
 
@@ -156,7 +156,7 @@ customersRouter.get("/stats", async (_req: Request, res: Response) => {
        COALESCE(ROUND(AVG(cs.score), 0)::text, '0') AS score_medio
      FROM crm.customers c
      LEFT JOIN crm.customer_scores cs ON cs.customer_id = c.id
-     WHERE c.ativo = true`
+     WHERE c.ativo = true AND COALESCE(c.tipo, 'cliente') = 'cliente'`
   );
   res.json(stats);
 });
