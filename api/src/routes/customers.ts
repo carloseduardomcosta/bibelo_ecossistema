@@ -38,6 +38,8 @@ const listQuerySchema = z.object({
   search: z.string().optional(),
   segmento: z.string().optional(),
   canal_origem: z.string().optional(),
+  contato: z.enum(["com_email", "sem_email", "com_telefone", "sem_telefone"]).optional(),
+  cidade: z.string().optional(),
   ordenar: z.enum(["recentes", "nome", "score", "score_desc"]).default("recentes"),
 });
 
@@ -50,7 +52,7 @@ customersRouter.get("/", async (req: Request, res: Response) => {
     return;
   }
 
-  const { page, limit, search, segmento, canal_origem, ordenar } = parse.data;
+  const { page, limit, search, segmento, canal_origem, contato, cidade, ordenar } = parse.data;
   const offset = (page - 1) * limit;
 
   const conditions: string[] = ["c.ativo = true"];
@@ -72,6 +74,22 @@ customersRouter.get("/", async (req: Request, res: Response) => {
   if (segmento) {
     conditions.push(`cs.segmento = $${idx}`);
     params.push(segmento);
+    idx++;
+  }
+
+  if (contato === "com_email") {
+    conditions.push("c.email IS NOT NULL AND c.email != ''");
+  } else if (contato === "sem_email") {
+    conditions.push("(c.email IS NULL OR c.email = '')");
+  } else if (contato === "com_telefone") {
+    conditions.push("c.telefone IS NOT NULL AND c.telefone != ''");
+  } else if (contato === "sem_telefone") {
+    conditions.push("(c.telefone IS NULL OR c.telefone = '')");
+  }
+
+  if (cidade) {
+    conditions.push(`LOWER(c.cidade) = LOWER($${idx})`);
+    params.push(cidade);
     idx++;
   }
 
@@ -111,6 +129,17 @@ customersRouter.get("/", async (req: Request, res: Response) => {
       pages: Math.ceil(total / limit),
     },
   });
+});
+
+// ── GET /api/customers/cidades — cidades disponíveis para filtro ──
+
+customersRouter.get("/cidades", async (_req: Request, res: Response) => {
+  const cidades = await query<{ cidade: string; total: string }>(
+    `SELECT cidade, COUNT(*)::text as total FROM crm.customers
+     WHERE ativo = true AND cidade IS NOT NULL AND cidade != ''
+     GROUP BY cidade ORDER BY COUNT(*) DESC LIMIT 50`
+  );
+  res.json(cidades);
 });
 
 // ── GET /api/customers/stats — KPIs rápidos ───────────────────

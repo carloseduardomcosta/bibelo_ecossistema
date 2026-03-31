@@ -128,6 +128,9 @@ export default function Clientes() {
   const [searchInput, setSearchInput] = useState('');
   const [segmento, setSegmento] = useState('');
   const [canal, setCanal] = useState('');
+  const [contato, setContato] = useState('');
+  const [cidade, setCidade] = useState('');
+  const [cidades, setCidades] = useState<Array<{ cidade: string; total: string }>>([]);
   const [ordenar, setOrdenar] = useState<'recentes' | 'nome' | 'score_desc'>('recentes');
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -139,6 +142,8 @@ export default function Clientes() {
       if (search) params.search = search;
       if (segmento) params.segmento = segmento;
       if (canal) params.canal_origem = canal;
+      if (contato) params.contato = contato;
+      if (cidade) params.cidade = cidade;
       const { data } = await api.get('/customers', { params });
       setClientes(data.data);
       setPagination(data.pagination);
@@ -147,7 +152,7 @@ export default function Clientes() {
     } finally {
       setLoading(false);
     }
-  }, [search, segmento, canal, ordenar]);
+  }, [search, segmento, canal, contato, cidade, ordenar]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -158,6 +163,7 @@ export default function Clientes() {
 
   useEffect(() => { fetchClientes(1); }, [fetchClientes]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
+  useEffect(() => { api.get('/customers/cidades').then((r) => setCidades(r.data)).catch(() => {}); }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -263,6 +269,34 @@ export default function Clientes() {
           </div>
 
           <div className="relative">
+            <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-bibelo-muted pointer-events-none" />
+            <select
+              value={contato}
+              onChange={(e) => setContato(e.target.value)}
+              className="pl-9 pr-8 py-2 bg-bibelo-card border border-bibelo-border rounded-lg text-sm text-bibelo-text appearance-none cursor-pointer focus:outline-none focus:border-pink-400/50 transition-colors"
+            >
+              <option value="">Contato</option>
+              <option value="com_email">Com email</option>
+              <option value="sem_email">Sem email</option>
+              <option value="com_telefone">Com telefone</option>
+              <option value="sem_telefone">Sem telefone</option>
+            </select>
+          </div>
+
+          {cidades.length > 0 && (
+            <select
+              value={cidade}
+              onChange={(e) => setCidade(e.target.value)}
+              className="px-3 py-2 bg-bibelo-card border border-bibelo-border rounded-lg text-sm text-bibelo-text appearance-none cursor-pointer focus:outline-none focus:border-pink-400/50 transition-colors"
+            >
+              <option value="">Cidade</option>
+              {cidades.map((c) => (
+                <option key={c.cidade} value={c.cidade}>{c.cidade} ({c.total})</option>
+              ))}
+            </select>
+          )}
+
+          <div className="relative">
             <ArrowUpDown size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-bibelo-muted pointer-events-none" />
             <select
               value={ordenar}
@@ -278,7 +312,7 @@ export default function Clientes() {
       </div>
 
       {/* Filtros ativos */}
-      {(search || segmento || canal) && (
+      {(search || segmento || canal || contato || cidade) && (
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <span className="text-[10px] text-bibelo-muted uppercase tracking-wider">Filtros:</span>
           {search && (
@@ -296,8 +330,18 @@ export default function Clientes() {
               {CANAL_LABELS[canal] || canal} &times;
             </button>
           )}
+          {contato && (
+            <button onClick={() => setContato('')} className="flex items-center gap-1 px-2 py-0.5 bg-emerald-400/10 text-emerald-400 rounded-full text-[11px] font-medium hover:bg-emerald-400/20 transition-colors">
+              {{ com_email: 'Com email', sem_email: 'Sem email', com_telefone: 'Com telefone', sem_telefone: 'Sem telefone' }[contato]} &times;
+            </button>
+          )}
+          {cidade && (
+            <button onClick={() => setCidade('')} className="flex items-center gap-1 px-2 py-0.5 bg-blue-400/10 text-blue-400 rounded-full text-[11px] font-medium hover:bg-blue-400/20 transition-colors">
+              {cidade} &times;
+            </button>
+          )}
           <button
-            onClick={() => { setSearch(''); setSearchInput(''); setSegmento(''); setCanal(''); }}
+            onClick={() => { setSearch(''); setSearchInput(''); setSegmento(''); setCanal(''); setContato(''); setCidade(''); }}
             className="text-[11px] text-bibelo-muted hover:text-pink-400 transition-colors underline"
           >
             Limpar tudo
