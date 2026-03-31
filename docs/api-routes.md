@@ -101,6 +101,12 @@ Referência completa de todos os endpoints.
 - `GET  /api/briefing?horas=24` — gera briefing completo (site, leads, vendas, automações, syncs, alertas)
 - `POST /api/briefing/enviar` — envia briefing das últimas 24h por email ao admin
 
+### Campanhas Personalizadas
+- `GET  /api/campaigns/categorias` — lista categorias de produto com estoque para multi-select
+- `POST /api/campaigns/gerar-personalizada` — gera email HTML com produtos das categorias selecionadas + lista destinatários
+- `POST /api/campaigns/enviar-personalizada` — dispara campanha personalizada para clientes selecionados via Resend
+- `GET  /api/campaigns/gerar-reengajamento?customer_id=X` — gera email personalizado baseado no histórico de compra do cliente
+
 ### Busca Global
 - `GET  /api/search?q=texto` — busca em clientes, produtos, lançamentos e NFs
 

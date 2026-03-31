@@ -212,7 +212,10 @@ export default function Campanhas() {
 
       {tab === 'campanhas' ? (
         <>
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end gap-2 mb-4">
+            <button onClick={() => window.location.href = '/campanhas/nova'} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-400 transition-colors">
+              <Sparkles size={16} /> Campanha Personalizada
+            </button>
             <button onClick={() => setShowCampModal(true)} className="flex items-center gap-2 px-4 py-2 bg-bibelo-primary text-white rounded-lg text-sm font-medium hover:bg-bibelo-primary/80 transition-colors">
               <Plus size={16} /> Nova Campanha
             </button>

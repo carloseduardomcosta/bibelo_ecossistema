@@ -26,6 +26,7 @@ import Pipeline from './pages/Pipeline';
 import Relatorios from './pages/Relatorios';
 import MarketingPage from './pages/Marketing';
 import Briefing from './pages/Briefing';
+import NovaCampanha from './pages/NovaCampanha';
 import { ToastProvider } from './components/Toast';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
@@ -80,6 +81,7 @@ export default function App() {
               <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/segmentos" element={<Segmentos />} />
               <Route path="/campanhas" element={<Campanhas />} />
+              <Route path="/campanhas/nova" element={<NovaCampanha />} />
               <Route path="/marketing" element={<MarketingPage />} />
               <Route path="/financeiro" element={<Financeiro />} />
               <Route path="/relatorios" element={<Relatorios />} />

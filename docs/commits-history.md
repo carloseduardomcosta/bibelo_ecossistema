@@ -103,3 +103,7 @@ Para histórico completo e atualizado, usar `git log --oneline`.
 - 9a039ce refactor: reduz CLAUDE.md de 48k→10k chars + cria /briefing skill
 - ee482fb fix: corrige queries do skill /briefing com nomes reais das colunas
 - 00b4f88 feat: portal Briefing Diário + email automático às 7h BRT
+- 57f9f2f fix: auditoria completa dos fluxos automáticos — 8 correções
+- ce946f9 test: 44 novos testes — fluxos + briefing + segurança (74 total)
+- 8559cf9 sec: fix XSS stored em nomes de fluxo — strip HTML tags
+- 00b4f88 feat: portal Briefing Diário + email automático às 7h BRT
