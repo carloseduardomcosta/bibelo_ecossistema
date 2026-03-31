@@ -45,6 +45,44 @@ export async function triggerFlow(
 
   if (flows.length === 0) return [];
 
+  // Busca dados do cliente antes de disparar — valida email e opt-out
+  const customer = await queryOne<{ email: string | null; email_optout: boolean }>(
+    "SELECT email, email_optout FROM crm.customers WHERE id = $1",
+    [customerId]
+  );
+
+  if (!customer) {
+    logger.warn("triggerFlow: cliente não encontrado", { customerId, gatilho });
+    return [];
+  }
+
+  // LGPD: não cria execução se cliente fez opt-out de email
+  if (customer.email_optout) {
+    logger.info("triggerFlow: cliente fez opt-out, fluxo não criado", { customerId, gatilho });
+    return [];
+  }
+
+  // Não cria fluxo se cliente não tem email (todos os fluxos dependem de email por ora)
+  if (!customer.email) {
+    logger.info("triggerFlow: cliente sem email, fluxo não criado", { customerId, gatilho });
+    return [];
+  }
+
+  // Rate limit: max 1 email por 12h por cliente (across all flows)
+  const recentEmail = await queryOne<{ id: string }>(
+    `SELECT fse.id FROM marketing.flow_step_executions fse
+     JOIN marketing.flow_executions fe ON fe.id = fse.execution_id
+     WHERE fe.customer_id = $1 AND fse.tipo = 'email' AND fse.status = 'concluido'
+       AND fse.executado_em > NOW() - INTERVAL '12 hours'
+     LIMIT 1`,
+    [customerId]
+  );
+
+  if (recentEmail) {
+    logger.info("triggerFlow: cliente recebeu email há menos de 12h, fluxo adiado", { customerId, gatilho });
+    return [];
+  }
+
   const executionIds: string[] = [];
 
   for (const flow of flows) {
@@ -55,17 +93,40 @@ export async function triggerFlow(
       logger.error("Fluxo com steps inválidos", { flowId: flow.id });
       continue;
     }
+
+    // Filtra steps de whatsapp (ainda não implementado)
+    steps = steps.filter((s) => s.tipo !== "whatsapp");
+    if (steps.length === 0) {
+      logger.warn("Fluxo sem steps válidos após filtrar whatsapp", { flowId: flow.id });
+      continue;
+    }
+
     const firstStep = steps[0] as FlowStep | undefined;
 
     // Calcula quando executar o primeiro step
     const delayMs = Math.max((firstStep?.delay_horas || 0), 0) * 3600 * 1000;
     const proximoStepEm = new Date(Date.now() + delayMs);
 
-    // INSERT atômico com ON CONFLICT — previne race condition de webhooks simultâneos
+    // Janela temporal: permite re-engajamento após 90 dias (em vez de UNIQUE lifetime)
+    const existing = await queryOne<{ id: string; status: string; iniciado_em: string }>(
+      `SELECT id, status, iniciado_em FROM marketing.flow_executions
+       WHERE flow_id = $1 AND customer_id = $2
+       ORDER BY iniciado_em DESC LIMIT 1`,
+      [flow.id, customerId]
+    );
+
+    if (existing) {
+      const daysSince = (Date.now() - new Date(existing.iniciado_em).getTime()) / (1000 * 86400);
+      if (daysSince < 90) {
+        logger.info("Fluxo já executado nos últimos 90 dias", { flowId: flow.id, customerId, daysSince: Math.round(daysSince) });
+        continue;
+      }
+    }
+
+    // INSERT — sem ON CONFLICT, pois já validamos janela acima
     const execution = await queryOne<{ id: string }>(
       `INSERT INTO marketing.flow_executions (flow_id, customer_id, step_atual, status, metadata, proximo_step_em)
        VALUES ($1, $2, 0, 'ativo', $3, $4)
-       ON CONFLICT (flow_id, customer_id) DO NOTHING
        RETURNING id`,
       [flow.id, customerId, JSON.stringify(metadata), proximoStepEm]
     );
@@ -216,6 +277,31 @@ export async function executeStep(executionId: string): Promise<boolean> {
     logger.error("Erro ao executar step do fluxo", {
       executionId, stepIndex: execution.step_atual, error: message,
     });
+
+    // Retry 1x para steps de email (erros temporários do Resend)
+    if (currentStep.tipo === "email") {
+      const stepExec = await queryOne<{ resultado: unknown }>(
+        `SELECT resultado FROM marketing.flow_step_executions WHERE execution_id = $1 AND step_index = $2`,
+        [executionId, execution.step_atual]
+      );
+      const prevResult = stepExec?.resultado as Record<string, unknown> | null;
+      const alreadyRetried = prevResult && (prevResult as Record<string, unknown>).retried;
+
+      if (!alreadyRetried) {
+        logger.info("Retry de email em 5s", { executionId, stepIndex: execution.step_atual });
+        await query(
+          `UPDATE marketing.flow_step_executions SET status = 'pendente', resultado = '{"retried":true}'::jsonb
+           WHERE execution_id = $1 AND step_index = $2`,
+          [executionId, execution.step_atual]
+        );
+        // Reagenda para 5 minutos
+        await query(
+          `UPDATE marketing.flow_executions SET proximo_step_em = NOW() + INTERVAL '5 minutes' WHERE id = $1`,
+          [executionId]
+        );
+        return false;
+      }
+    }
 
     await query(
       `UPDATE marketing.flow_step_executions SET status = 'erro', resultado = $3
@@ -876,6 +962,12 @@ function getFlowSubject(templateName: string, nome: string): string {
 // ── Processar steps prontos (chamado pelo worker) ──────────────
 
 export async function processReadySteps(): Promise<number> {
+  // Cleanup: execuções travadas em 'executando' há mais de 30 min → volta para 'ativo'
+  await query(
+    `UPDATE marketing.flow_executions SET status = 'ativo'
+     WHERE status = 'executando' AND proximo_step_em < NOW() - INTERVAL '30 minutes'`
+  );
+
   // Lock atômico: marca como 'executando' e retorna IDs — previne workers concorrentes
   const executions = await query<{ id: string }>(
     `UPDATE marketing.flow_executions
@@ -960,13 +1052,12 @@ export async function checkAbandonedCarts(): Promise<number> {
 
     if (executionIds.length > 0) {
       triggered++;
+      // Só marca como notificado se o fluxo foi efetivamente criado
+      await query(
+        "UPDATE marketing.pedidos_pendentes SET notificado = true WHERE id = $1",
+        [cart.id]
+      );
     }
-
-    // Marca como notificado mesmo se não havia fluxo ativo
-    await query(
-      "UPDATE marketing.pedidos_pendentes SET notificado = true WHERE id = $1",
-      [cart.id]
-    );
   }
 
   logger.info("Carrinhos abandonados verificados", { total: abandoned.length, triggered });
