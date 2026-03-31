@@ -688,6 +688,8 @@ Bling ERP (PDV físico + NF-e) ──────┘
 - b5e84ec fix: widget reviews só aparece na home page
 - bcc861e feat: widget Google Reviews NuvemShop — carrossel, fotos clientes, CORS fix
 - 4438950 sec: auditoria completa — 22 fixes (7 critical, 15 high/medium)
+- 1fda0cd refactor+fix: segunda rodada code review — 20 fixes medium/low
+- 4438950 sec: auditoria completa — 22 fixes (7 critical, 15 high/medium)
 - xxxxxxx fix: bloqueia cupom para clientes existentes + popup 15s para ler mensagem
 
 
@@ -787,4 +789,4 @@ Ao final: lista priorizada (Critical primeiro) + recomendações arquiteturais d
 ---
 
 *BibelôCRM — Ecossistema Bibelô 🎀*
-*Última atualização: 31 de Março de 2026 — Bloqueia cupom para clientes existentes (verifica pedidos Bling+NuvemShop), popup 15s, página "Você já faz parte da família!"*
+*Última atualização: 31 de Março de 2026 — Code review completo: 42 fixes (SQL injection, XSS, race conditions, HMAC, timeouts, whitelists, dark theme, DRY 19 arquivos, Error Boundary, cleanup jobs, DB indexes)*
