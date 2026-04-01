@@ -169,3 +169,13 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - BullMQ: job "medusa-sync-products" a cada 30min (5min após Bling sync)
   - Rota manual: POST /api/sync/medusa
   - 373 produtos sincronizados (180 publicados, 193 draft)
+- d5802c2 feat: integrações Mercado Pago Pix + Bling sync + Melhor Envio OAuth2
+  - Melhor Envio: OAuth2 autorizado, token salvo em sync.sync_state
+  - Callback OAuth2: medusa/src/api/callbacks/melhorenvio/route.ts
+  - Endpoint interno CRM: POST/GET /api/internal/melhorenvio-token
+- bce6171 feat: Melhor Envio fulfillment provider — frete calculado no checkout
+  - Módulo medusa/src/modules/melhorenvio/ (service + index)
+  - Calcula frete via API Melhor Envio (POST /me/shipment/calculate)
+  - Token OAuth2 via CRM API interna (cache 10min)
+  - Shipping options PAC + SEDEX (price_type=calculated)
+  - Testado: Timbó/SC → SP — PAC R$23,72 / SEDEX R$34,88
