@@ -34,5 +34,19 @@ export default defineConfig({
         ],
       },
     },
+    {
+      resolve: "@medusajs/medusa/fulfillment",
+      options: {
+        providers: [
+          {
+            resolve: "./src/modules/melhorenvio",
+            id: "melhorenvio",
+            options: {
+              storeOriginCep: process.env.STORE_CEP || "89093880",
+            },
+          },
+        ],
+      },
+    },
   ],
 });

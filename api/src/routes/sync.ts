@@ -243,6 +243,27 @@ syncRouter.post("/internal/melhorenvio-token", async (req: Request, res: Respons
   }
 });
 
+// GET token (chamado pelo Medusa fulfillment provider — rede Docker interna)
+syncRouter.get("/internal/melhorenvio-token", async (_req: Request, res: Response) => {
+  try {
+    const row = await queryOne<{ ultimo_id: string }>(
+      "SELECT ultimo_id FROM sync.sync_state WHERE fonte = 'melhorenvio'"
+    );
+
+    if (!row?.ultimo_id) {
+      res.status(404).json({ error: "Token Melhor Envio não encontrado" });
+      return;
+    }
+
+    const tokenData = JSON.parse(row.ultimo_id);
+    res.json({ access_token: tokenData.access_token });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro ao buscar token";
+    logger.error("Melhor Envio: erro ao buscar token", { error: message });
+    res.status(500).json({ error: message });
+  }
+});
+
 // ══════════════════════════════════════════════════════════════
 // BLING
 // ══════════════════════════════════════════════════════════════
