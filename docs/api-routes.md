@@ -159,3 +159,12 @@ Referência completa de todos os endpoints.
 ### Webhooks (validação HMAC)
 - `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop + dispara fluxos automáticos
 - `POST /api/webhooks/bling` — recebe eventos do Bling (contatos, pedidos, estoque)
+
+---
+
+## Medusa.js (e-commerce) — porta 9000
+
+O Medusa.js v2 roda como serviço separado no Docker Compose, na porta **9000**.
+Possui seu próprio PostgreSQL (medusa_db) e banco de dados independente.
+Admin dashboard desabilitado temporariamente. API REST e Store API disponíveis via Medusa padrão.
+Não compartilha rotas com a API do BibelôCRM — integração futura via webhooks/API.

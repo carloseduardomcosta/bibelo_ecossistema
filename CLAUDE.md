@@ -27,6 +27,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 | E-mail | Resend SDK |
 | WhatsApp | Meta Cloud API + Chatwoot (planejado) |
 | Atendimento | Chatwoot self-hosted (planejado) |
+| E-commerce | Medusa.js v2 (porta 9000) + Next.js storefront |
 | Deploy | GitHub Actions → rsync → VPS Hostinger |
 
 ---
@@ -49,6 +50,8 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   ├── components/              ← Layout, ProtectedRoute, Toast, GlobalSearch
 │   ├── hooks/                   ← useCustomers, useCampaigns etc
 │   └── lib/                     ← api.ts (Axios), auth.tsx, format.ts, export.ts
+├── medusa/                      ← Medusa.js v2 (e-commerce, porta 9000)
+├── storefront/                  ← Next.js storefront (porta 8001)
 ├── db/migrations/               ← SQL em ordem numérica
 ├── scripts/                     ← setup.sh, backup.sh, test.sh
 ├── docs/                        ← API routes, infra, Bling/NuvemShop docs, commits
@@ -265,7 +268,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 31 de Março de 2026 — briefing, campanha personalizada, fluxos corrigidos, 74 testes, filtros clientes*
+*Última atualização: 1 de Abril de 2026 — Medusa.js v2 integrado, 12 fixes segurança/qualidade, storefront Next.js, migration 017 indexes*
 
 ---
 

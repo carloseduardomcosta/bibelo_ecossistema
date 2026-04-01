@@ -121,3 +121,22 @@ Para histórico completo e atualizado, usar `git log --oneline`.
 - bef1a30 fix: sync incremental Bling busca detalhe quando email vazio
 - 8f25010 feat: detalhe da campanha — modal com destinatários e KPIs
 - b5d456a fix: botão Ver na campanha concluída
+- aeb780f feat: estrutura base e-commerce — Medusa.js + Next.js storefront (homolog)
+- 1789f15 feat: Medusa.js v2 integrado ao ecossistema Bibelô
+  - Medusa.js v2 Dockerfile multi-stage com build otimizado
+  - PostgreSQL sem SSL (rede interna Docker), admin desabilitado temp.
+  - Migrations automáticas, admin user criado
+  - 12 correções de segurança e qualidade:
+    - Removidos fallbacks hardcoded (JWT_SECRET, ADMIN_EMAIL, Medusa secrets)
+    - XSS fix nos templates de email (Resend + flow.service)
+    - Race condition fix em leads (INSERT ON CONFLICT)
+    - Rate limiting concurrency-safe (Bling + NuvemShop mutex)
+    - Graceful shutdown BullMQ workers
+    - rawBody validation nos webhooks Bling/NuvemShop
+    - Erros silenciosos (.catch(() => {})) substituídos por logging
+    - Storefront Dockerfile com non-root user + npm ci
+    - Frontend: token refresh, useMemo, debounce, AbortController
+    - 11 empty catch blocks corrigidos no frontend
+    - Layout AbortController para race conditions
+    - Migration 017: indexes de performance (9 indexes)
+    - N+1 fix na listagem de fluxos (LEFT JOIN + FILTER)
