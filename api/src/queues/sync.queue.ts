@@ -1,6 +1,7 @@
 import { Queue, Worker } from "bullmq";
 import { logger } from "../utils/logger";
 import { incrementalSync } from "../integrations/bling/sync";
+import { syncBlingToMedusa } from "../integrations/medusa/sync";
 import { calculateScore } from "../services/customer.service";
 import { triggerFlow } from "../services/flow.service";
 import { refreshReviewsCache } from "../integrations/google/reviews";
@@ -42,6 +43,17 @@ export const syncWorker = new Worker(
         case "bling-sync-incremental": {
           const syncResult = await incrementalSync();
           result = { ...syncResult };
+          break;
+        }
+
+        case "medusa-sync-products": {
+          const medusaResult = await syncBlingToMedusa();
+          result = {
+            processed: medusaResult.created + medusaResult.updated,
+            created: medusaResult.created,
+            updated: medusaResult.updated,
+            errors: medusaResult.errors,
+          };
           break;
         }
 
@@ -176,6 +188,11 @@ export async function registerScheduledJobs(): Promise<void> {
   // Recálculo de scores: diário às 2h
   await syncQueue.add("score-recalculation", {}, {
     repeat: { pattern: "0 2 * * *" },
+  });
+
+  // Medusa sync produtos: a cada 30 minutos (5min após Bling sync)
+  await syncQueue.add("medusa-sync-products", {}, {
+    repeat: { pattern: "5,35 * * * *" },
   });
 
   // Google Reviews refresh: diário às 6h

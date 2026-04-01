@@ -186,6 +186,24 @@ syncRouter.post("/nuvemshop", authMiddleware, async (_req: Request, res: Respons
 });
 
 // ══════════════════════════════════════════════════════════════
+// MEDUSA
+// ══════════════════════════════════════════════════════════════
+
+syncRouter.post("/medusa", authMiddleware, async (_req: Request, res: Response) => {
+  const { syncBlingToMedusa } = await import("../integrations/medusa/sync");
+  logger.info("Sync Medusa manual iniciado");
+  res.json({ message: "Sync Medusa iniciado em background. Acompanhe pelos logs." });
+
+  try {
+    const result = await syncBlingToMedusa();
+    logger.info("Sync Medusa manual finalizado", { ...result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro na sincronização";
+    logger.error("Sync Medusa manual falhou", { error: message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 // BLING
 // ══════════════════════════════════════════════════════════════
 

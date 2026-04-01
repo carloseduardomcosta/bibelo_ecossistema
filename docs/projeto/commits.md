@@ -160,3 +160,12 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Fluxo completo testado: cart → item → frete → payment session → MP order
   - Fix email payer: context.customer > data.payer_email > fallback
   - Fix webhook: data.id via query string (formato order) + body (formato payment)
+- feat: Fase 3A — Sync Bling → Medusa (produtos + estoque)
+  - Novo módulo: api/src/integrations/medusa/sync.ts
+  - Lê sync.bling_products + sync.bling_stock → cria/atualiza no Medusa via Admin API
+  - Dedup por SKU: existente → update, novo → create
+  - Estoque > 0 → published, sem estoque → draft
+  - Handle único: nome + SKU (resolve variantes com mesmo nome)
+  - BullMQ: job "medusa-sync-products" a cada 30min (5min após Bling sync)
+  - Rota manual: POST /api/sync/medusa
+  - 373 produtos sincronizados (180 publicados, 193 draft)

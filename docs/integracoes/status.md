@@ -35,7 +35,8 @@
 | Testes Automatizados | ✅ produção | Vitest + Supertest, 30 testes integração |
 | Google Reviews | ✅ produção | Places API (New), cache DB 6h, widget JS NuvemShop via GTM |
 | Inteligência de Fluxos | ✅ produção | pula step cupom se lead já comprou, reativação só com pedido |
-| Medusa.js v2 | 🔧 em desenvolvimento | porta 9000, Dockerfile multi-stage, migrations automáticas, admin desabilitado temp. |
+| Medusa.js v2 | ✅ produção | porta 9000, Admin Dashboard ativo, 373 produtos sincronizados do Bling, Pix integrado |
+| Sync Bling → Medusa | ✅ produção | CRM como hub: sync.bling_products → Medusa Admin API, BullMQ 30min, dedup SKU, estoque → published/draft |
 | Next.js Storefront | 🔧 em desenvolvimento | porta 8001, integrado com Medusa.js v2 |
 | Mercado Pago Pix | ✅ produção | Payment provider Medusa v2 — API Orders (Checkout Transparente), webhook HMAC validado, Nginx+SSL em api.papelariabibelo.com.br |
 | Melhor Envio | 📋 backlog | Fulfillment provider Medusa — cálculo frete, etiquetas, rastreio |
