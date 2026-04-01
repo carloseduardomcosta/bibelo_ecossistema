@@ -158,7 +158,7 @@ Motor headless e-commerce — sem UI própria, só API REST + Admin.
 
 ### Chatwoot (atendimento)
 
-- Widget de chat no site (já planejado em `docs/whatsapp-oficial-chatwoot.md`)
+- Widget de chat no site (já planejado em `docs/integracoes/whatsapp-chatwoot.md`)
 - WhatsApp + Instagram DM no mesmo painel
 - Integração com CRM (timeline do cliente)
 

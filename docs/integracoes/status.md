@@ -6,7 +6,7 @@
 |-----------|--------|-------------|
 | PostgreSQL | ✅ produção | 25 tabelas, 4 schemas (crm, marketing, sync, financeiro) |
 | Redis | ✅ produção | cache + filas BullMQ |
-| Nginx + SSL | ✅ produção | crm.papelariabibelo.com.br |
+| Nginx + SSL | ✅ produção | crm.papelariabibelo.com.br, api.papelariabibelo.com.br (SSL até 2026-06-30) |
 | API Node.js | ✅ produção | /health respondendo |
 | Google OAuth2 | ✅ produção | login exclusivo via Google Sign-In |
 | Módulo Financeiro | ✅ produção | fluxo de caixa, despesas fixas, simulador, embalagens |
@@ -25,7 +25,7 @@
 | Avaliação Pós-Entrega | ✅ produção | webhook order/fulfilled → email 12h após entrega |
 | Caça-Leads (Popup) | ✅ produção | popup JS via GTM, captura email+WhatsApp, verificação email obrigatória |
 | Opt-out Email (LGPD) | ✅ produção | descadastro 1-click, campanhas e fluxos respeitam opt-out |
-| Chatwoot (multi-canal) | 📋 planejado | WhatsApp + Instagram DM via Meta Cloud API oficial — docs/whatsapp-oficial-chatwoot.md |
+| Chatwoot (multi-canal) | 📋 planejado | WhatsApp + Instagram DM via Meta Cloud API oficial — docs/integracoes/whatsapp-chatwoot.md |
 | Tracking Comportamental | ✅ produção | page_view, product_view, add_to_cart, search, checkout — script JS via GTM |
 | Geolocalização | ✅ produção | geoip-lite (MaxMind offline), IP real → cidade/estado/país |
 | Score de Leads | ✅ produção | engajamento (popup +15, views +3, cart +10, emails +3) |
@@ -37,6 +37,6 @@
 | Inteligência de Fluxos | ✅ produção | pula step cupom se lead já comprou, reativação só com pedido |
 | Medusa.js v2 | 🔧 em desenvolvimento | porta 9000, Dockerfile multi-stage, migrations automáticas, admin desabilitado temp. |
 | Next.js Storefront | 🔧 em desenvolvimento | porta 8001, integrado com Medusa.js v2 |
-| Mercado Pago | 📋 backlog | Payment provider Medusa — PIX, cartão, boleto |
+| Mercado Pago | 🔧 em desenvolvimento | Payment provider Medusa — webhook em api.papelariabibelo.com.br/webhooks/mercadopago (ativo, validando HMAC) |
 | Melhor Envio | 📋 backlog | Fulfillment provider Medusa — cálculo frete, etiquetas, rastreio |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |

@@ -1,7 +1,7 @@
 # Bling ERP API v3 — Referência
 
 Documentação extraída em 27/03/2026.
-OpenAPI spec completo: `docs/bling-api-openapi.json`
+OpenAPI spec completo: `docs/integracoes/bling-openapi.json`
 
 ---
 

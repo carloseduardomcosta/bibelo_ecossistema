@@ -280,7 +280,7 @@ CARLOS (navegador)                  DESENVOLVIMENTO (código)
 
 ## Referências
 
-- Documentação API completa: `docs/nuvemshop-api-erp-guide.md`
+- Documentação API completa: `docs/integracoes/nuvemshop-guia.md`
 - Portal de parceiros: https://partners.nuvemshop.com.br
 - Loja demo: https://partners.nuvemshop.com.br/stores/create?type=demo
 - Endpoint token: https://www.nuvemshop.com/apps/authorize/token

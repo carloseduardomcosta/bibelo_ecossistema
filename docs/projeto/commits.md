@@ -140,3 +140,4 @@ Para histórico completo e atualizado, usar `git log --oneline`.
     - Layout AbortController para race conditions
     - Migration 017: indexes de performance (9 indexes)
     - N+1 fix na listagem de fluxos (LEFT JOIN + FILTER)
+- 0acf658 docs: atualiza documentação — sessão 01/04

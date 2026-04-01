@@ -38,7 +38,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 /opt/bibelocrm/
 ├── api/src/
 │   ├── server.ts               ← entrada principal
-│   ├── routes/                  ← 18 arquivos de rotas (ver docs/api-routes.md)
+│   ├── routes/                  ← 18 arquivos de rotas (ver docs/api/rotas.md)
 │   ├── services/                ← customer.service.ts, flow.service.ts
 │   ├── integrations/            ← bling/, nuvemshop/, resend/, google/, whatsapp/
 │   ├── queues/                  ← sync.queue.ts, flow.queue.ts (BullMQ)
@@ -54,7 +54,13 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 ├── storefront/                  ← Next.js storefront (porta 8001)
 ├── db/migrations/               ← SQL em ordem numérica
 ├── scripts/                     ← setup.sh, backup.sh, test.sh
-├── docs/                        ← API routes, infra, Bling/NuvemShop docs, commits
+├── docs/
+│   ├── api/                     ← rotas da API
+│   ├── integracoes/             ← Bling, NuvemShop, WhatsApp, status
+│   ├── infra/                   ← segurança, pentest, DNS
+│   ├── ecommerce/               ← Medusa, storefront, imagens
+│   ├── projeto/                 ← roadmap, commits, auditoria
+│   └── financeiro/              ← planilhas importadas
 ├── docker-compose.yml
 ├── .env                         ← NUNCA commitar
 └── CLAUDE.md                    ← este arquivo
@@ -89,7 +95,7 @@ Ficam em `/opt/bibelocrm/.env` — nunca commitar. Ver `.env.example` para todos
 
 ## Rotas da API
 
-Referência completa em **`docs/api-routes.md`** (~120 endpoints).
+Referência completa em **`docs/api/rotas.md`** (~120 endpoints).
 
 Resumo: auth (Google OAuth), customers CRUD + timeline + reativar-email, analytics, campaigns + templates + personalizada (wizard), sync (Bling/NuvemShop), products, financeiro (20+ endpoints), NF entrada, orders, search, tracking, leads, flows, links, briefing diário, webhooks.
 
@@ -190,7 +196,7 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 ## Integrações externas
 
 ### Bling ERP v3
-- Docs: `docs/bling-api-openapi.json` + `docs/bling-api-referencia.md`
+- Docs: `docs/integracoes/bling-openapi.json` + `docs/integracoes/bling-referencia.md`
 - OAuth2 tokens em `sync.sync_state`. Sync incremental 30min via BullMQ.
 - **Rate limit: 3 req/s** — delay 350ms, retry em 429
 - Lista de produtos NÃO traz categoria. Lista de pedidos NÃO traz itens. Estoques EXIGE `idsProdutos[]` (lotes de 50).
@@ -208,7 +214,7 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 - 14 templates no banco
 
 ### Chatwoot + Meta Cloud API (WhatsApp + Instagram) — planejado
-- Plano completo: `docs/whatsapp-oficial-chatwoot.md`
+- Plano completo: `docs/integracoes/whatsapp-chatwoot.md`
 - Chatwoot self-hosted em chat.papelariabibelo.com.br
 - WhatsApp via Meta Cloud API oficial (sem risco de ban)
 - Instagram DM via Instagram Messaging API
@@ -219,29 +225,56 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 
 ## Documentação complementar
 
+### `docs/api/`
 | Arquivo | Conteúdo |
 |---------|----------|
-| `docs/api-routes.md` | Referência completa de todos os endpoints (~120 rotas) |
-| `docs/commits-history.md` | Histórico de commits do projeto |
-| `docs/integrations-status.md` | Tabela de status de todas as integrações |
-| `docs/roadmap-fases.md` | Roadmap por fases do projeto |
-| `docs/infraestrutura-seguranca.md` | Firewall, Nginx, SSL, Docker, DNS |
-| `docs/bling-api-referencia.md` | Resumo da API Bling v3 |
-| `docs/bling-api-openapi.json` | OpenAPI 3.0 spec completo (1MB) |
-| `docs/nuvemshop-api-erp-guide.md` | Guia completo NuvemShop API |
-| `docs/whatsapp-estrategia.md` | Estratégia WhatsApp Business |
-| `docs/whatsapp-oficial-chatwoot.md` | Plano completo: Chatwoot + Meta Cloud API + Instagram |
-| `docs/ecommerce-proprio.md` | Arquitetura e-commerce próprio: Next.js + Medusa.js + Mercado Pago + Melhor Envio |
-| `docs/pentest-report.md` | Relatório do pentest de segurança |
+| `rotas.md` | Referência completa de todos os endpoints (~120 rotas) |
+
+### `docs/integracoes/`
+| Arquivo | Conteúdo |
+|---------|----------|
+| `status.md` | Tabela de status de todas as integrações |
+| `visao-geral.md` | Visão geral das integrações do ecossistema |
+| `bling-referencia.md` | Resumo da API Bling v3 |
+| `bling-openapi.json` | OpenAPI 3.0 spec completo (1MB) |
+| `nuvemshop-guia.md` | Guia completo NuvemShop API |
+| `nuvemshop-setup.md` | Passo a passo para criar app NuvemShop |
+| `whatsapp-estrategia.md` | Estratégia WhatsApp Business |
+| `whatsapp-chatwoot.md` | Plano completo: Chatwoot + Meta Cloud API + Instagram |
+
+### `docs/ecommerce/`
+| Arquivo | Conteúdo |
+|---------|----------|
+| `arquitetura.md` | Arquitetura e-commerce: Next.js + Medusa.js + Mercado Pago + Melhor Envio |
+| `padrao-imagens.md` | Padrão de imagens para produtos |
+
+### `docs/infra/`
+| Arquivo | Conteúdo |
+|---------|----------|
+| `seguranca.md` | Firewall, Nginx, SSL, Docker, DNS |
+| `pentest.md` | Relatório do pentest de segurança |
+| `dns-import.txt` | Registros DNS importados do Cloudflare |
+
+### `docs/projeto/`
+| Arquivo | Conteúdo |
+|---------|----------|
+| `roadmap.md` | Roadmap por fases do projeto |
+| `commits.md` | Histórico de commits do projeto |
+| `auditoria.md` | Auditoria de gaps e melhorias |
+
+### `docs/financeiro/`
+| Arquivo | Conteúdo |
+|---------|----------|
+| `importsmacedo/` | Planilhas importadas (custos, fluxo de caixa) |
 
 ---
 
 ## Protocolo de atualização deste arquivo
 
 Ao concluir tarefas que modifiquem o projeto, atualizar:
-1. Novos commits → `docs/commits-history.md`
-2. Novas rotas → `docs/api-routes.md`
-3. Mudanças de integração → `docs/integrations-status.md`
+1. Novos commits → `docs/projeto/commits.md`
+2. Novas rotas → `docs/api/rotas.md`
+3. Mudanças de integração → `docs/integracoes/status.md`
 4. Estrutura de diretórios — se novos arquivos/pastas relevantes
 5. Data de última atualização no rodapé
 
@@ -268,7 +301,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 1 de Abril de 2026 — Medusa.js v2 integrado, 12 fixes segurança/qualidade, storefront Next.js, migration 017 indexes*
+*Última atualização: 1 de Abril de 2026 — api.papelariabibelo.com.br ativo (DNS + SSL + Nginx), docs reorganizados em subpastas, Medusa.js v2 integrado*
 
 ---
 
@@ -279,3 +312,124 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 @/mnt/skills/public/docx/SKILL.md
 @/mnt/skills/public/pptx/SKILL.md
 @.claude/skills/bibelo-design.md
+---
+
+## Medusa.js v2 — Guia operacional completo
+
+### Contexto
+- Versão: @medusajs/medusa 2.13.5 + @medusajs/utils 2.13.5
+- Container: bibelo_medusa → porta interna 9000
+- Acesso externo: https://api.papelariabibelo.com.br → Nginx → localhost:9000
+- Admin: DESABILITADO (admin: { disable: true }) — bug ADMIN_RELATIVE_OUTPUT_DIR undefined na versão atual
+- Demora ~90s para ficar healthy após subir
+
+### Estrutura de arquivos no container de produção
+O Dockerfile copia apenas:
+- .medusa/         → build output do framework
+- node_modules/    → dependências (1228 pacotes, NÃO ignorar no .dockerignore)
+- package.json
+- medusa-config.ts
+- tsconfig.json
+- dist/            → módulos customizados compilados (src/ compilado)
+
+CRÍTICO: Custom modules (src/modules/) precisam ser copiados via dist/
+O medusa build NÃO copia custom modules para .medusa/server/
+Sempre adicionar no Dockerfile stage production:
+COPY --from=builder --chown=medusa:medusa /app/dist ./dist
+
+### .dockerignore obrigatório
+```
+.git
+.env
+*.log
+.medusa
+```
+NÃO ignorar node_modules — evita npm ci dentro do Docker (25+ min)
+
+### Dockerfile padrão validado
+```dockerfile
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY . .
+RUN DATABASE_URL=postgres://x:x@localhost/x \
+    REDIS_URL=redis://localhost:6379 \
+    STORE_CORS=http://localhost \
+    ADMIN_CORS=http://localhost \
+    AUTH_CORS=http://localhost \
+    ./node_modules/.bin/medusa build
+
+FROM node:20-alpine AS production
+WORKDIR /app
+RUN addgroup -S medusa && adduser -S medusa -G medusa
+COPY --from=builder --chown=medusa:medusa /app/.medusa ./.medusa
+COPY --from=builder --chown=medusa:medusa /app/node_modules ./node_modules
+COPY --from=builder --chown=medusa:medusa /app/package.json ./
+COPY --from=builder --chown=medusa:medusa /app/medusa-config.ts ./
+COPY --from=builder --chown=medusa:medusa /app/tsconfig.json ./
+COPY --from=builder --chown=medusa:medusa /app/dist ./dist
+RUN node -e "const fs=require('fs');const f='/app/node_modules/@medusajs/utils/dist/index.js';const c=fs.readFileSync(f,'utf8');if(!c.includes('ADMIN_RELATIVE_OUTPUT_DIR')){fs.appendFileSync(f,'\nexports.ADMIN_RELATIVE_OUTPUT_DIR=\".medusa/client\";\n');}"
+USER medusa
+ENV NODE_ENV=production
+EXPOSE 9000
+HEALTHCHECK --interval=30s --timeout=10s --retries=5 --start-period=90s \
+  CMD node -e "require('http').get('http://localhost:9000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+CMD ["sh", "-c", "npx medusa db:migrate && npx medusa start"]
+```
+
+### Regras de build — NUNCA violar
+- NUNCA usar --no-cache → demora 25+ minutos
+- SEMPRE usar DOCKER_BUILDKIT=1
+- NUNCA rodar npm ci dentro do Docker
+- Timeout mínimo 15 minutos em qualquer build
+- Comando correto: DOCKER_BUILDKIT=1 docker compose build medusa
+
+### DATABASE_URL obrigatório
+Sempre com ?sslmode=disable — Postgres interno não tem SSL:
+DATABASE_URL: postgresql://${DB_USER}:${DB_PASS}@postgres:5432/medusa_db?sslmode=disable
+
+### Nginx — roteamento obrigatório
+O Medusa só é acessível externamente via Nginx.
+Webhooks externos (MP, Bling) chegam em api.papelariabibelo.com.br → Nginx → localhost:9000
+Antes de qualquer teste de webhook externo, verificar:
+nginx -t && grep -r "9000" /etc/nginx/sites-enabled/
+
+### Módulos customizados
+Path no medusa-config.ts: "./dist/src/modules/NOME"
+NÃO usar "./src/modules/NOME" — src/ não existe no container de produção
+Após criar qualquer módulo novo → rebuild obrigatório
+
+### Comandos do dia a dia
+```bash
+# Health check
+curl -s http://localhost:9000/health
+
+# Logs em tempo real
+docker compose logs -f medusa --tail=30
+
+# Rebuild correto
+DOCKER_BUILDKIT=1 docker compose build medusa && docker compose up -d medusa
+
+# Aguardar health após rebuild
+for i in $(seq 1 24); do sleep 5; S=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/health 2>/dev/null); echo "$i: $S"; [ "$S" = "200" ] && echo "OK" && break; done
+
+# Criar admin user
+docker compose exec medusa npx medusa user -e EMAIL -p SENHA
+
+# Migrations manuais
+docker compose exec medusa npx medusa db:migrate
+
+# Testar webhook local
+curl -v -X POST http://localhost:9000/webhooks/mercadopago \
+  -H "Content-Type: application/json" \
+  -d '{"type":"payment","data":{"id":"123"}}'
+```
+
+### Problemas conhecidos e soluções
+| Problema | Causa | Solução |
+|---|---|---|
+| Cannot find module './src/modules/X' | dist/ não copiado para container | Adicionar COPY dist/ no Dockerfile |
+| ADMIN_RELATIVE_OUTPUT_DIR undefined | Bug versão 2.13.5 | Patch no utils/dist/index.js + admin: disable: true |
+| ENOTEMPTY no npm install | node_modules corrompido | rm -rf node_modules package-lock.json && npm install |
+| Connection refused porta 9000 | Container caiu ou ainda subindo | Aguardar 90s, verificar logs |
+| 404 em webhook externo | Nginx sem bloco para api.papelariabibelo.com.br | Criar site no Nginx + certbot SSL |
+| npm ci demora 25+ min | Baixando 1228 pacotes do zero | Não ignorar node_modules no .dockerignore |
