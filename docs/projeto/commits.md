@@ -151,3 +151,12 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Dockerfile: `COPY dist/src → src` para módulos customizados no container
   - Nginx: `api.papelariabibelo.com.br` → localhost:9000 (SSL + DNS-only Cloudflare)
   - Webhook testado e validado pelo simulador do Mercado Pago (200 OK)
+- e2cd344 feat: Mercado Pago Pix + Admin Dashboard — Medusa v2
+- f4b5838 fix: email do payer + webhook HMAC para orders — Mercado Pago
+  - Admin Dashboard habilitado (Vite build → dist/public/admin)
+  - Região Brasil + BRL + payment provider Pix configurados
+  - Stock Location "Loja Timbó" + fulfillment set + service zone
+  - Produto teste: Lápis Sparkle R$ 59,90
+  - Fluxo completo testado: cart → item → frete → payment session → MP order
+  - Fix email payer: context.customer > data.payer_email > fallback
+  - Fix webhook: data.id via query string (formato order) + body (formato payment)
