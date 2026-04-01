@@ -1,6 +1,10 @@
 /**
  * Webhook Mercado Pago — /webhooks/mercadopago
  * Valida HMAC com timingSafeEqual antes de processar
+ *
+ * O MP envia webhooks em 2 formatos:
+ * - Antigo (payment): data.id no body JSON
+ * - Novo (order): data.id na query string + body com detalhes
  */
 
 import crypto from "crypto"
@@ -19,12 +23,21 @@ export const POST = async (
     return
   }
 
-  // Headers do Mercado Pago
   const xSignature = req.headers["x-signature"] as string
   const xRequestId = req.headers["x-request-id"] as string
 
   const body = req.body as any
-  const dataId = body?.data?.id?.toString() || ""
+  const query = req.query as any
+
+  // data.id: body (formato antigo) ou query string (formato novo/order)
+  const dataId =
+    body?.data?.id?.toString() ||
+    query?.["data.id"]?.toString() ||
+    ""
+
+  // type: body ou query string
+  const type = body?.type || query?.type || ""
+  const action = body?.action || ""
 
   // Validar HMAC
   if (!xSignature) {
@@ -35,62 +48,30 @@ export const POST = async (
 
   const isValid = validateMPWebhook(xSignature, xRequestId, dataId, webhookSecret)
   if (!isValid) {
-    logger.error("MercadoPago webhook: assinatura HMAC inválida")
+    logger.error(
+      `MercadoPago webhook HMAC inválida: type=${type} dataId=${dataId} xRequestId=${xRequestId}`
+    )
     res.status(401).json({ error: "assinatura inválida" })
     return
   }
 
-  const type = body?.type
-  const action = body?.action
-  const resourceId = body?.data?.id
-
   logger.info(
-    `MercadoPago webhook recebido: type=${type} action=${action} id=${resourceId}`
+    `MercadoPago webhook recebido: type=${type} action=${action} id=${dataId}`
   )
 
-  // Processar via Payment Module do Medusa
   try {
-    const paymentModuleService = req.scope.resolve("payment") as any
+    const mpToken = process.env.MP_ACCESS_TOKEN
+    if (!mpToken) {
+      logger.error("MercadoPago webhook: MP_ACCESS_TOKEN não configurado")
+      res.status(500).json({ error: "token não configurado" })
+      return
+    }
 
-    if (type === "payment" && resourceId) {
-      // Consultar o pagamento na API do MP
-      const mpToken = process.env.MP_ACCESS_TOKEN
-      if (!mpToken) {
-        logger.error("MercadoPago webhook: MP_ACCESS_TOKEN não configurado")
-        res.status(500).json({ error: "token não configurado" })
-        return
-      }
-
-      const paymentRes = await fetch(
-        `https://api.mercadopago.com/v1/payments/${resourceId}`,
-        {
-          headers: { Authorization: `Bearer ${mpToken}` },
-        }
-      )
-
-      if (!paymentRes.ok) {
-        logger.error(`MercadoPago webhook: erro ao consultar payment ${resourceId}: ${paymentRes.status}`)
-        // Retorna 200 para o MP não reenviar — pagamento pode ser fictício (teste) ou expirado
-        res.status(200).json({ received: true, warning: "pagamento não encontrado" })
-        return
-      }
-
-      const payment = await paymentRes.json()
-      const externalRef = payment.external_reference
-
-      logger.info(
-        `MercadoPago payment ${resourceId}: status=${payment.status} ref=${externalRef}`
-      )
-
-      // Emitir evento para o Medusa processar
-      const eventBus = req.scope.resolve("event_bus") as any
-      await eventBus.emit("mercadopago.payment_updated", {
-        mp_payment_id: resourceId,
-        status: payment.status,
-        external_reference: externalRef,
-        amount: payment.transaction_amount,
-        payer_email: payment.payer?.email,
-      })
+    // Processar por tipo de webhook
+    if (type === "payment" && dataId) {
+      await processPaymentWebhook(logger, mpToken, dataId, req)
+    } else if (type === "order" && dataId) {
+      await processOrderWebhook(logger, mpToken, dataId, req)
     }
 
     res.status(200).json({ received: true })
@@ -100,9 +81,77 @@ export const POST = async (
   }
 }
 
+async function processPaymentWebhook(
+  logger: any,
+  mpToken: string,
+  paymentId: string,
+  req: MedusaRequest
+) {
+  const paymentRes = await fetch(
+    `https://api.mercadopago.com/v1/payments/${paymentId}`,
+    { headers: { Authorization: `Bearer ${mpToken}` } }
+  )
+
+  if (!paymentRes.ok) {
+    logger.error(
+      `MercadoPago webhook: erro ao consultar payment ${paymentId}: ${paymentRes.status}`
+    )
+    return
+  }
+
+  const payment = await paymentRes.json()
+  logger.info(
+    `MercadoPago payment ${paymentId}: status=${payment.status} ref=${payment.external_reference}`
+  )
+
+  const eventBus = req.scope.resolve("event_bus") as any
+  await eventBus.emit("mercadopago.payment_updated", {
+    mp_payment_id: paymentId,
+    status: payment.status,
+    external_reference: payment.external_reference,
+    amount: payment.transaction_amount,
+    payer_email: payment.payer?.email,
+  })
+}
+
+async function processOrderWebhook(
+  logger: any,
+  mpToken: string,
+  orderId: string,
+  req: MedusaRequest
+) {
+  const orderRes = await fetch(
+    `https://api.mercadopago.com/v1/orders/${orderId}`,
+    { headers: { Authorization: `Bearer ${mpToken}` } }
+  )
+
+  if (!orderRes.ok) {
+    logger.error(
+      `MercadoPago webhook: erro ao consultar order ${orderId}: ${orderRes.status}`
+    )
+    return
+  }
+
+  const order = await orderRes.json()
+  logger.info(
+    `MercadoPago order ${orderId}: status=${order.status} ref=${order.external_reference}`
+  )
+
+  // Se a order foi processada (paga), emitir evento
+  if (order.status === "processed") {
+    const eventBus = req.scope.resolve("event_bus") as any
+    await eventBus.emit("mercadopago.order_paid", {
+      mp_order_id: orderId,
+      status: order.status,
+      external_reference: order.external_reference,
+      total_amount: order.total_amount,
+    })
+  }
+}
+
 /**
  * Validação HMAC do webhook Mercado Pago
- * Conforme documentação: docs/Docs Integracoes bibelo.md
+ * Conforme documentação oficial
  */
 function validateMPWebhook(
   xSignature: string,

@@ -114,15 +114,21 @@ class MercadoPagoProviderService extends AbstractPaymentProvider<MercadoPagoOpti
   async initiatePayment(
     input: InitiatePaymentInput
   ): Promise<InitiatePaymentOutput> {
-    const { amount, currency_code, context } = input
+    const { amount, currency_code, context, data } = input
     const numAmount = Number(amount)
 
     const sessionId = (context as any)?.session_id || `${Date.now()}`
     const externalRef = `BIBELO-${sessionId}`
+
+    // Email: context.customer (logged in) > data.payer_email (storefront) > fallback
     const payerEmail =
-      (context as any)?.email ||
       (context as any)?.customer?.email ||
-      "comprador@email.com"
+      (data as any)?.payer_email ||
+      "comprador@testuser.com"
+
+    this.logger_.info(
+      `MercadoPago Pix: email=${payerEmail} ref=${externalRef} amount=${this.toMPAmount(numAmount)}`
+    )
 
     const orderBody: MPOrderRequest = {
       type: "online",
