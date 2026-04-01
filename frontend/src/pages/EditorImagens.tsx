@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Download, Trash2, Settings2, Loader2, Search,
   CheckCircle2, AlertTriangle, ArrowRight, FileImage,
-  ZoomIn, X, UploadCloud, Store, Send, Package,
+  ZoomIn, X, UploadCloud, Store, Send, Package, CloudDownload,
 } from 'lucide-react';
 import api from '../lib/api';
 
@@ -47,6 +47,21 @@ interface SendBlingResult {
   blingProductId: number;
   imagesCount: number;
   images: Array<{ link: string; fileName: string }>;
+}
+
+interface BlingApiProduct {
+  id: number;
+  nome: string;
+  codigo: string;
+  preco: number;
+  situacao: string;
+  imagemURL: string | null;
+}
+
+interface BlingProductImages {
+  blingId: number;
+  nome: string;
+  imagens: Array<{ url: string; tipo: string }>;
 }
 
 // ── Presets ────────────────────────────────────────────────
@@ -95,10 +110,83 @@ export default function EditorImagens() {
   const [sendingBling, setSendingBling] = useState(false);
   const [showBlingPanel, setShowBlingPanel] = useState(false);
 
+  // Buscar do Bling (novo painel)
+  const [showBlingBrowser, setShowBlingBrowser] = useState(false);
+  const [blingApiProducts, setBlingApiProducts] = useState<BlingApiProduct[]>([]);
+  const [blingApiLoading, setBlingApiLoading] = useState(false);
+  const [blingApiSearch, setBlingApiSearch] = useState('');
+  const [blingApiPage, setBlingApiPage] = useState(1);
+  const [blingProductImages, setBlingProductImages] = useState<BlingProductImages | null>(null);
+  const [importingImage, setImportingImage] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const blingApiTimeout = useRef<ReturnType<typeof setTimeout>>();
 
-  // ── Buscar produtos Bling ────────────────────────────────
+  // ── Buscar produtos da API Bling (com imagens reais) ─────
+  const fetchBlingApiProducts = useCallback(async (search: string, page: number) => {
+    setBlingApiLoading(true);
+    try {
+      const resp = await api.get<{ products: BlingApiProduct[]; page: number }>('/images/bling-products-api', {
+        params: { search: search || undefined, page },
+      });
+      setBlingApiProducts(resp.data.products);
+    } catch {
+      setBlingApiProducts([]);
+    } finally {
+      setBlingApiLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!showBlingBrowser) return;
+    if (blingApiTimeout.current) clearTimeout(blingApiTimeout.current);
+    blingApiTimeout.current = setTimeout(() => fetchBlingApiProducts(blingApiSearch, blingApiPage), 400);
+    return () => { if (blingApiTimeout.current) clearTimeout(blingApiTimeout.current); };
+  }, [blingApiSearch, blingApiPage, showBlingBrowser, fetchBlingApiProducts]);
+
+  // ── Buscar imagens de um produto específico ──────────────
+  const fetchProductImages = async (productId: number) => {
+    setBlingApiLoading(true);
+    try {
+      const resp = await api.get<BlingProductImages>(`/images/bling-product/${productId}/images`);
+      setBlingProductImages(resp.data);
+    } catch {
+      setError('Erro ao buscar imagens do produto no Bling');
+    } finally {
+      setBlingApiLoading(false);
+    }
+  };
+
+  // ── Importar imagem do Bling para o editor ───────────────
+  const importBlingImage = async (url: string, productName: string) => {
+    setImportingImage(true);
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('Falha ao baixar imagem');
+      const blob = await resp.blob();
+      const ext = blob.type.includes('png') ? '.png' : blob.type.includes('webp') ? '.webp' : '.jpg';
+      const safeName = productName.replace(/[^a-zA-Z0-9À-ü ]/g, '').trim().replace(/\s+/g, '_');
+      const file = new File([blob], `${safeName}${ext}`, { type: blob.type });
+
+      const newImage: ImageFile = {
+        id: `${Date.now()}_bling_${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        preview: URL.createObjectURL(blob),
+        name: file.name,
+        size: file.size,
+      };
+      setImages(prev => [...prev, newImage]);
+      setResults(null);
+      setSuccess(`Imagem "${productName}" importada do Bling`);
+    } catch {
+      setError('Erro ao importar imagem do Bling — a URL pode ter expirado');
+    } finally {
+      setImportingImage(false);
+    }
+  };
+
+  // ── Buscar produtos Bling (painel de envio) ──────────────
   useEffect(() => {
     if (!showBlingPanel) return;
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
@@ -312,6 +400,154 @@ export default function EditorImagens() {
           onChange={e => { addFiles(e.target.files); e.target.value = ''; }}
         />
       </div>
+
+      {/* Botão Buscar do Bling */}
+      <div className="flex justify-center">
+        <button
+          onClick={() => { setShowBlingBrowser(!showBlingBrowser); setBlingProductImages(null); }}
+          className={`flex items-center gap-2 px-5 py-3 rounded-lg font-medium transition-all shadow-sm border ${
+            showBlingBrowser
+              ? 'bg-amber-500 text-white border-amber-500'
+              : 'bg-white text-bibelo-text border-bibelo-border hover:border-amber-400 hover:bg-amber-50'
+          }`}
+        >
+          <CloudDownload className="w-5 h-5" />
+          {showBlingBrowser ? 'Fechar navegador Bling' : 'Buscar imagens do Bling'}
+        </button>
+      </div>
+
+      {/* Painel: Buscar imagens do Bling */}
+      {showBlingBrowser && (
+        <div className="bg-amber-50 rounded-xl border border-amber-200 p-5">
+          <h2 className="font-semibold text-bibelo-text flex items-center gap-2 mb-2">
+            <Package className="w-5 h-5 text-amber-600" />
+            Buscar imagens do Bling
+          </h2>
+          <p className="text-sm text-bibelo-muted mb-4">
+            Navegue pelos produtos do Bling e importe as fotos para converter.
+          </p>
+
+          {/* Busca */}
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-bibelo-muted" />
+            <input
+              type="text"
+              value={blingApiSearch}
+              onChange={e => { setBlingApiSearch(e.target.value); setBlingApiPage(1); }}
+              placeholder="Buscar produto por nome ou código..."
+              className="w-full pl-10 pr-4 py-2.5 border border-amber-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
+          </div>
+
+          {/* Detalhe de imagens de um produto */}
+          {blingProductImages ? (
+            <div>
+              <button
+                onClick={() => setBlingProductImages(null)}
+                className="text-sm text-amber-600 hover:text-amber-700 mb-3 flex items-center gap-1"
+              >
+                ← Voltar aos produtos
+              </button>
+              <div className="bg-white rounded-lg border border-amber-200 p-4">
+                <h3 className="font-medium text-bibelo-text mb-1">{blingProductImages.nome}</h3>
+                <p className="text-xs text-bibelo-muted mb-3">Bling ID: {blingProductImages.blingId}</p>
+
+                {blingProductImages.imagens.length === 0 ? (
+                  <p className="text-sm text-bibelo-muted py-4 text-center">Este produto não tem imagens no Bling</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {blingProductImages.imagens.map((img, i) => (
+                      <div key={i} className="relative group">
+                        <img
+                          src={img.url}
+                          alt={`Imagem ${i + 1}`}
+                          className="w-full aspect-square object-contain rounded-lg border border-gray-200 bg-white"
+                          onError={e => { (e.target as HTMLImageElement).src = ''; (e.target as HTMLImageElement).alt = 'Erro ao carregar'; }}
+                        />
+                        <button
+                          onClick={() => importBlingImage(img.url, blingProductImages.nome)}
+                          disabled={importingImage}
+                          className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors rounded-lg flex items-center justify-center"
+                        >
+                          <span className="bg-white text-bibelo-text px-3 py-1.5 rounded-lg text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity shadow-lg flex items-center gap-1">
+                            {importingImage ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                            Importar
+                          </span>
+                        </button>
+                        <span className="absolute top-1 right-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                          {img.tipo}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Lista de produtos */}
+              <div className="max-h-80 overflow-y-auto border border-amber-200 rounded-lg bg-white divide-y divide-gray-100">
+                {blingApiLoading ? (
+                  <div className="p-6 text-center text-bibelo-muted flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Buscando produtos no Bling...
+                  </div>
+                ) : blingApiProducts.length === 0 ? (
+                  <div className="p-6 text-center text-bibelo-muted text-sm">Nenhum produto encontrado</div>
+                ) : (
+                  blingApiProducts.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => fetchProductImages(p.id)}
+                      className="w-full text-left px-4 py-3 hover:bg-amber-50 transition-colors flex items-center gap-3"
+                    >
+                      {p.imagemURL ? (
+                        <img
+                          src={p.imagemURL}
+                          alt=""
+                          className="w-12 h-12 rounded object-cover border border-gray-200 bg-white flex-shrink-0"
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded bg-gray-100 flex items-center justify-center flex-shrink-0">
+                          <Package className="w-5 h-5 text-gray-400" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-bibelo-text truncate">{p.nome}</p>
+                        <p className="text-xs text-bibelo-muted">
+                          {p.codigo ? `SKU: ${p.codigo}` : 'Sem SKU'}
+                          {p.preco ? ` · R$ ${Number(p.preco).toFixed(2)}` : ''}
+                          {p.imagemURL ? ' · 📷 Com foto' : ' · Sem foto'}
+                        </p>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-bibelo-muted flex-shrink-0" />
+                    </button>
+                  ))
+                )}
+              </div>
+
+              {/* Paginação */}
+              <div className="flex items-center justify-between mt-3">
+                <button
+                  onClick={() => setBlingApiPage(p => Math.max(1, p - 1))}
+                  disabled={blingApiPage <= 1 || blingApiLoading}
+                  className="px-3 py-1.5 text-sm border border-amber-300 rounded-lg disabled:opacity-40 hover:bg-amber-100 transition-colors"
+                >
+                  ← Anterior
+                </button>
+                <span className="text-sm text-bibelo-muted">Página {blingApiPage}</span>
+                <button
+                  onClick={() => setBlingApiPage(p => p + 1)}
+                  disabled={blingApiProducts.length < 20 || blingApiLoading}
+                  className="px-3 py-1.5 text-sm border border-amber-300 rounded-lg disabled:opacity-40 hover:bg-amber-100 transition-colors"
+                >
+                  Próxima →
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Imagens adicionadas */}
       {images.length > 0 && (

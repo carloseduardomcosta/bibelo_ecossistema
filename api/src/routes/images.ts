@@ -500,3 +500,81 @@ imagesRouter.get("/bling-products", async (req: Request, res: Response) => {
 
   res.json({ products: rows });
 });
+
+// ── GET /api/images/bling-product/:id/images — busca imagens reais da API Bling ─
+imagesRouter.get("/bling-product/:id/images", async (req: Request, res: Response) => {
+  const blingId = req.params.id;
+  if (!/^\d+$/.test(blingId)) {
+    res.status(400).json({ error: "ID inválido" });
+    return;
+  }
+
+  try {
+    const token = await getValidToken();
+
+    const { data } = await (await import("axios")).default.get(
+      `${BLING_API}/produtos/${blingId}`,
+      { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 },
+    );
+
+    const produto = data.data;
+    const internas = produto.midia?.imagens?.internas || [];
+    const externas = produto.midia?.imagens?.externas || [];
+
+    res.json({
+      blingId: produto.id,
+      nome: produto.nome,
+      codigo: produto.codigo,
+      preco: produto.preco,
+      imagens: [
+        ...internas.map((img: { link: string }) => ({ url: img.link, tipo: "interna" })),
+        ...externas.map((img: { link: string }) => ({ url: img.link, tipo: "externa" })),
+      ],
+    });
+  } catch (err: unknown) {
+    const axiosErr = err as { response?: { status?: number; data?: unknown }; message?: string };
+    logger.error("Erro ao buscar imagens do Bling", { blingId, error: axiosErr.message });
+    res.status(502).json({ error: "Erro ao buscar produto no Bling" });
+  }
+});
+
+// ── GET /api/images/bling-products-api — busca produtos direto da API Bling (com imagens) ─
+imagesRouter.get("/bling-products-api", async (req: Request, res: Response) => {
+  const search = z.string().optional().parse(req.query.search);
+  const page = z.coerce.number().int().min(1).default(1).parse(req.query.page || 1);
+
+  try {
+    const token = await getValidToken();
+    const axios = (await import("axios")).default;
+
+    let url = `${BLING_API}/produtos?pagina=${page}&limite=20`;
+    // Bling não tem filtro de busca por nome na API — filtramos localmente
+    const { data } = await axios.get(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000,
+    });
+
+    let produtos = (data.data || []).map((p: any) => ({
+      id: p.id,
+      nome: p.nome,
+      codigo: p.codigo,
+      preco: p.preco,
+      situacao: p.situacao,
+      imagemURL: p.imagemURL || null,
+    }));
+
+    // Filtro local se houver busca
+    if (search) {
+      const s = search.toLowerCase();
+      produtos = produtos.filter((p: any) =>
+        p.nome?.toLowerCase().includes(s) || p.codigo?.toLowerCase().includes(s)
+      );
+    }
+
+    res.json({ products: produtos, page });
+  } catch (err: unknown) {
+    const axiosErr = err as { response?: { status?: number; data?: unknown }; message?: string };
+    logger.error("Erro ao buscar produtos na API Bling", { error: axiosErr.message });
+    res.status(502).json({ error: "Erro ao buscar produtos no Bling" });
+  }
+});
