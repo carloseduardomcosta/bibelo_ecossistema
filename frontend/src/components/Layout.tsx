@@ -12,6 +12,7 @@ import {
   TrendingUp,
   ShoppingBag,
   ShoppingCart,
+  ImagePlus,
   Wallet,
   CalendarClock,
   Calculator,
@@ -70,6 +71,7 @@ const navGroups: NavGroup[] = [
       { to: '/lucratividade', label: 'Lucratividade', icon: TrendingUp },
       { to: '/pedidos', label: 'Pedidos', icon: ShoppingCart },
       { to: '/vendas', label: 'Vendas', icon: ShoppingBag },
+      { to: '/editor-imagens', label: 'Editor Imagens', icon: ImagePlus },
     ],
   },
   {

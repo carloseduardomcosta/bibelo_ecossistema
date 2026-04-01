@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@react-oauth/google": "^0.13.4",
+    "@types/sharp": "^0.31.1",
     "axios": "^1.6.5",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.1.1",
@@ -33,6 +34,7 @@
     "pg": "^8.11.3",
     "redis": "^4.6.12",
     "resend": "^2.1.0",
+    "sharp": "^0.34.5",
     "winston": "^3.11.0",
     "zod": "^3.22.4"
   },

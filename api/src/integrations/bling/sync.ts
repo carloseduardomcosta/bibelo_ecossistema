@@ -67,6 +67,43 @@ export async function rateLimitedGet<T>(url: string, token: string): Promise<T> 
   throw new Error("Bling rateLimitedGet: max retries exceeded");
 }
 
+export async function rateLimitedPatch<T>(url: string, token: string, body: unknown): Promise<T> {
+  const MAX_RETRIES = 3;
+  const BACKOFF = [5000, 10000, 20000];
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const wait = blingPending;
+    let releaseLock!: () => void;
+    blingPending = new Promise<void>((r) => { releaseLock = r; });
+    await wait;
+
+    try {
+      const { data } = await axios.patch<T>(url, body, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      });
+      setTimeout(() => releaseLock(), 350);
+      return data;
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { status?: number; headers?: Record<string, string>; data?: unknown } };
+      if (axiosErr.response?.status === 429 && attempt < MAX_RETRIES) {
+        const retryAfter = parseInt(axiosErr.response.headers?.["retry-after"] || "0", 10);
+        const waitMs = retryAfter > 0 ? retryAfter * 1000 : BACKOFF[attempt];
+        logger.warn(`Bling rate limit 429 (PATCH): tentativa ${attempt + 1}/${MAX_RETRIES}, aguardando ${waitMs}ms`);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        releaseLock();
+        continue;
+      }
+      setTimeout(() => releaseLock(), 350);
+      throw err;
+    }
+  }
+  throw new Error("Bling rateLimitedPatch: max retries exceeded");
+}
+
 // ── Sync Customers ─────────────────────────────────────────────
 
 export async function syncCustomers(): Promise<number> {

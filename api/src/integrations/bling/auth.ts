@@ -2,7 +2,7 @@ import axios from "axios";
 import { query, queryOne } from "../../db";
 import { logger } from "../../utils/logger";
 
-const BLING_API = "https://api.bling.com.br/Api/v3";
+export const BLING_API = "https://api.bling.com.br/Api/v3";
 const BLING_AUTH = "https://bling.com.br/Api/v3/oauth";
 
 interface BlingTokens {
@@ -144,4 +144,3 @@ export async function getValidToken(): Promise<string> {
   return stored.access_token;
 }
 
-export { BLING_API };

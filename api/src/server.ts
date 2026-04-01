@@ -30,6 +30,7 @@ import { linksRouter }           from "./routes/links";
 import { reviewsWidgetRouter }   from "./routes/reviews-widget";
 import { briefingRouter }        from "./routes/briefing";
 import { ordersRouter }          from "./routes/orders";
+import { imagesRouter, imagesPublicRouter } from "./routes/images";
 import { nuvemshopWebhookRouter } from "./integrations/nuvemshop/webhook";
 import { blingWebhookRouter }     from "./integrations/bling/webhook";
 import { registerScheduledJobs, closeSyncQueue } from "./queues/sync.queue";
@@ -96,6 +97,8 @@ app.use("/api/links", linksRouter);   // página de links + redirect com trackin
 app.use("/api/reviews", reviewsWidgetRouter); // widget reviews público + script JS
 app.use("/api/email", emailRouter);  // público: descadastro 1-click (LGPD)
 app.use("/api/orders", ordersRouter);
+app.use("/api/images", imagesPublicRouter); // serve imagens sem auth (antes do auth router)
+app.use("/api/images", imagesRouter);
 app.use("/api/webhooks/nuvemshop", nuvemshopWebhookRouter);
 app.use("/api/webhooks/bling", blingWebhookRouter);
 
