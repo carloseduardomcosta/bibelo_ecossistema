@@ -538,6 +538,35 @@ imagesRouter.get("/bling-product/:id/images", async (req: Request, res: Response
   }
 });
 
+// ── GET /api/images/proxy — proxy para baixar imagem externa (evita CORS do S3 Bling) ─
+imagesRouter.get("/proxy", async (req: Request, res: Response) => {
+  const url = z.string().url().parse(req.query.url);
+
+  // Só permite domínios confiáveis (Bling S3)
+  const allowed = ["orgbling.s3.amazonaws.com", "bling.com.br"];
+  const parsed = new URL(url);
+  if (!allowed.some(d => parsed.hostname.endsWith(d))) {
+    res.status(403).json({ error: "Domínio não permitido" });
+    return;
+  }
+
+  try {
+    const axios = (await import("axios")).default;
+    const imgResp = await axios.get(url, {
+      responseType: "arraybuffer",
+      timeout: 15000,
+    });
+
+    const contentType = imgResp.headers["content-type"] || "image/jpeg";
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "private, max-age=600");
+    res.send(Buffer.from(imgResp.data));
+  } catch (err) {
+    logger.error("Erro ao fazer proxy de imagem", { url: url.substring(0, 80) });
+    res.status(502).json({ error: "Erro ao baixar imagem" });
+  }
+});
+
 // ── GET /api/images/bling-products-api — busca produtos direto da API Bling (com imagens) ─
 imagesRouter.get("/bling-products-api", async (req: Request, res: Response) => {
   const search = z.string().optional().parse(req.query.search);

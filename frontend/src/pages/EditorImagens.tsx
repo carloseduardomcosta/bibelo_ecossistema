@@ -115,7 +115,6 @@ export default function EditorImagens() {
   const [blingApiProducts, setBlingApiProducts] = useState<BlingApiProduct[]>([]);
   const [blingApiLoading, setBlingApiLoading] = useState(false);
   const [blingApiSearch, setBlingApiSearch] = useState('');
-  const [blingApiPage, setBlingApiPage] = useState(1);
   const [blingProductImages, setBlingProductImages] = useState<BlingProductImages | null>(null);
   const [importingImage, setImportingImage] = useState(false);
 
@@ -123,14 +122,22 @@ export default function EditorImagens() {
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
   const blingApiTimeout = useRef<ReturnType<typeof setTimeout>>();
 
-  // ── Buscar produtos da API Bling (com imagens reais) ─────
-  const fetchBlingApiProducts = useCallback(async (search: string, page: number) => {
+  // ── Buscar produtos do banco local (todos os 373+, busca real) ─
+  const fetchBlingApiProducts = useCallback(async (search: string) => {
     setBlingApiLoading(true);
     try {
-      const resp = await api.get<{ products: BlingApiProduct[]; page: number }>('/images/bling-products-api', {
-        params: { search: search || undefined, page },
+      const resp = await api.get<{ products: BlingProduct[] }>('/images/bling-products', {
+        params: { search: search || undefined },
       });
-      setBlingApiProducts(resp.data.products);
+      // Mapear para o formato BlingApiProduct
+      setBlingApiProducts(resp.data.products.map((p: any) => ({
+        id: p.bling_id,
+        nome: p.nome,
+        codigo: p.sku,
+        preco: p.preco_venda,
+        situacao: 'A',
+        imagemURL: null,
+      })));
     } catch {
       setBlingApiProducts([]);
     } finally {
@@ -141,9 +148,9 @@ export default function EditorImagens() {
   useEffect(() => {
     if (!showBlingBrowser) return;
     if (blingApiTimeout.current) clearTimeout(blingApiTimeout.current);
-    blingApiTimeout.current = setTimeout(() => fetchBlingApiProducts(blingApiSearch, blingApiPage), 400);
+    blingApiTimeout.current = setTimeout(() => fetchBlingApiProducts(blingApiSearch), 400);
     return () => { if (blingApiTimeout.current) clearTimeout(blingApiTimeout.current); };
-  }, [blingApiSearch, blingApiPage, showBlingBrowser, fetchBlingApiProducts]);
+  }, [blingApiSearch, showBlingBrowser, fetchBlingApiProducts]);
 
   // ── Buscar imagens de um produto específico ──────────────
   const fetchProductImages = async (productId: number) => {
@@ -162,9 +169,13 @@ export default function EditorImagens() {
   const importBlingImage = async (url: string, productName: string) => {
     setImportingImage(true);
     try {
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error('Falha ao baixar imagem');
-      const blob = await resp.blob();
+      // Usa proxy do backend para evitar CORS do S3 Bling
+      const resp = await api.get('/images/proxy', {
+        params: { url },
+        responseType: 'blob',
+        timeout: 30000,
+      });
+      const blob = resp.data as Blob;
       const ext = blob.type.includes('png') ? '.png' : blob.type.includes('webp') ? '.webp' : '.jpg';
       const safeName = productName.replace(/[^a-zA-Z0-9À-ü ]/g, '').trim().replace(/\s+/g, '_');
       const file = new File([blob], `${safeName}${ext}`, { type: blob.type });
@@ -407,8 +418,8 @@ export default function EditorImagens() {
           onClick={() => { setShowBlingBrowser(!showBlingBrowser); setBlingProductImages(null); }}
           className={`flex items-center gap-2 px-5 py-3 rounded-lg font-medium transition-all shadow-sm border ${
             showBlingBrowser
-              ? 'bg-amber-500 text-white border-amber-500'
-              : 'bg-white text-bibelo-text border-bibelo-border hover:border-amber-400 hover:bg-amber-50'
+              ? 'bg-bibelo-primary text-white border-bibelo-primary'
+              : 'bg-bibelo-card text-bibelo-text border-bibelo-border hover:border-bibelo-primary'
           }`}
         >
           <CloudDownload className="w-5 h-5" />
@@ -418,13 +429,13 @@ export default function EditorImagens() {
 
       {/* Painel: Buscar imagens do Bling */}
       {showBlingBrowser && (
-        <div className="bg-amber-50 rounded-xl border border-amber-200 p-5">
+        <div className="bg-bibelo-card rounded-xl border border-bibelo-border p-5">
           <h2 className="font-semibold text-bibelo-text flex items-center gap-2 mb-2">
-            <Package className="w-5 h-5 text-amber-600" />
+            <Package className="w-5 h-5 text-bibelo-primary" />
             Buscar imagens do Bling
           </h2>
           <p className="text-sm text-bibelo-muted mb-4">
-            Navegue pelos produtos do Bling e importe as fotos para converter.
+            Busque por nome ou SKU e importe as fotos para converter.
           </p>
 
           {/* Busca */}
@@ -433,9 +444,9 @@ export default function EditorImagens() {
             <input
               type="text"
               value={blingApiSearch}
-              onChange={e => { setBlingApiSearch(e.target.value); setBlingApiPage(1); }}
-              placeholder="Buscar produto por nome ou código..."
-              className="w-full pl-10 pr-4 py-2.5 border border-amber-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+              onChange={e => setBlingApiSearch(e.target.value)}
+              placeholder="Buscar produto por nome ou SKU..."
+              className="w-full pl-10 pr-4 py-2.5 border border-bibelo-border rounded-lg text-sm bg-bibelo-bg text-bibelo-text placeholder:text-bibelo-muted focus:outline-none focus:ring-2 focus:ring-bibelo-primary"
             />
           </div>
 
@@ -444,11 +455,11 @@ export default function EditorImagens() {
             <div>
               <button
                 onClick={() => setBlingProductImages(null)}
-                className="text-sm text-amber-600 hover:text-amber-700 mb-3 flex items-center gap-1"
+                className="text-sm text-bibelo-primary hover:text-bibelo-primary-hover mb-3 flex items-center gap-1"
               >
                 ← Voltar aos produtos
               </button>
-              <div className="bg-white rounded-lg border border-amber-200 p-4">
+              <div className="bg-bibelo-bg rounded-lg border border-bibelo-border p-4">
                 <h3 className="font-medium text-bibelo-text mb-1">{blingProductImages.nome}</h3>
                 <p className="text-xs text-bibelo-muted mb-3">Bling ID: {blingProductImages.blingId}</p>
 
@@ -461,20 +472,20 @@ export default function EditorImagens() {
                         <img
                           src={img.url}
                           alt={`Imagem ${i + 1}`}
-                          className="w-full aspect-square object-contain rounded-lg border border-gray-200 bg-white"
-                          onError={e => { (e.target as HTMLImageElement).src = ''; (e.target as HTMLImageElement).alt = 'Erro ao carregar'; }}
+                          className="w-full aspect-square object-contain rounded-lg border border-bibelo-border bg-bibelo-card"
+                          onError={e => { (e.target as HTMLImageElement).src = ''; (e.target as HTMLImageElement).alt = 'Erro'; }}
                         />
                         <button
                           onClick={() => importBlingImage(img.url, blingProductImages.nome)}
                           disabled={importingImage}
-                          className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors rounded-lg flex items-center justify-center"
+                          className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-colors rounded-lg flex items-center justify-center"
                         >
-                          <span className="bg-white text-bibelo-text px-3 py-1.5 rounded-lg text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity shadow-lg flex items-center gap-1">
+                          <span className="bg-bibelo-primary text-white px-3 py-1.5 rounded-lg text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity shadow-lg flex items-center gap-1">
                             {importingImage ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
                             Importar
                           </span>
                         </button>
-                        <span className="absolute top-1 right-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                        <span className="absolute top-1 right-1 text-xs bg-bibelo-primary/20 text-bibelo-primary px-1.5 py-0.5 rounded">
                           {img.tipo}
                         </span>
                       </div>
@@ -484,67 +495,37 @@ export default function EditorImagens() {
               </div>
             </div>
           ) : (
-            <>
-              {/* Lista de produtos */}
-              <div className="max-h-80 overflow-y-auto border border-amber-200 rounded-lg bg-white divide-y divide-gray-100">
-                {blingApiLoading ? (
-                  <div className="p-6 text-center text-bibelo-muted flex items-center justify-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Buscando produtos no Bling...
-                  </div>
-                ) : blingApiProducts.length === 0 ? (
-                  <div className="p-6 text-center text-bibelo-muted text-sm">Nenhum produto encontrado</div>
-                ) : (
-                  blingApiProducts.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => fetchProductImages(p.id)}
-                      className="w-full text-left px-4 py-3 hover:bg-amber-50 transition-colors flex items-center gap-3"
-                    >
-                      {p.imagemURL ? (
-                        <img
-                          src={p.imagemURL}
-                          alt=""
-                          className="w-12 h-12 rounded object-cover border border-gray-200 bg-white flex-shrink-0"
-                          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded bg-gray-100 flex items-center justify-center flex-shrink-0">
-                          <Package className="w-5 h-5 text-gray-400" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-bibelo-text truncate">{p.nome}</p>
-                        <p className="text-xs text-bibelo-muted">
-                          {p.codigo ? `SKU: ${p.codigo}` : 'Sem SKU'}
-                          {p.preco ? ` · R$ ${Number(p.preco).toFixed(2)}` : ''}
-                          {p.imagemURL ? ' · 📷 Com foto' : ' · Sem foto'}
-                        </p>
-                      </div>
-                      <ArrowRight className="w-4 h-4 text-bibelo-muted flex-shrink-0" />
-                    </button>
-                  ))
-                )}
-              </div>
-
-              {/* Paginação */}
-              <div className="flex items-center justify-between mt-3">
-                <button
-                  onClick={() => setBlingApiPage(p => Math.max(1, p - 1))}
-                  disabled={blingApiPage <= 1 || blingApiLoading}
-                  className="px-3 py-1.5 text-sm border border-amber-300 rounded-lg disabled:opacity-40 hover:bg-amber-100 transition-colors"
-                >
-                  ← Anterior
-                </button>
-                <span className="text-sm text-bibelo-muted">Página {blingApiPage}</span>
-                <button
-                  onClick={() => setBlingApiPage(p => p + 1)}
-                  disabled={blingApiProducts.length < 20 || blingApiLoading}
-                  className="px-3 py-1.5 text-sm border border-amber-300 rounded-lg disabled:opacity-40 hover:bg-amber-100 transition-colors"
-                >
-                  Próxima →
-                </button>
-              </div>
-            </>
+            <div className="max-h-80 overflow-y-auto border border-bibelo-border rounded-lg bg-bibelo-bg divide-y divide-bibelo-border">
+              {blingApiLoading ? (
+                <div className="p-6 text-center text-bibelo-muted flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Buscando produtos...
+                </div>
+              ) : blingApiProducts.length === 0 ? (
+                <div className="p-6 text-center text-bibelo-muted text-sm">
+                  {blingApiSearch ? 'Nenhum produto encontrado' : 'Digite para buscar produtos'}
+                </div>
+              ) : (
+                blingApiProducts.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => fetchProductImages(p.id)}
+                    className="w-full text-left px-4 py-3 hover:bg-bibelo-card transition-colors flex items-center gap-3"
+                  >
+                    <div className="w-10 h-10 rounded bg-bibelo-card flex items-center justify-center flex-shrink-0 border border-bibelo-border">
+                      <Package className="w-4 h-4 text-bibelo-muted" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-bibelo-text truncate">{p.nome}</p>
+                      <p className="text-xs text-bibelo-muted">
+                        {p.codigo ? `SKU: ${p.codigo}` : 'Sem SKU'}
+                        {p.preco ? ` · R$ ${Number(p.preco).toFixed(2)}` : ''}
+                      </p>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-bibelo-muted flex-shrink-0" />
+                  </button>
+                ))
+              )}
+            </div>
           )}
         </div>
       )}
@@ -552,7 +533,7 @@ export default function EditorImagens() {
       {/* Imagens adicionadas */}
       {images.length > 0 && (
         <>
-          <div className="bg-white rounded-xl border border-bibelo-border p-4">
+          <div className="bg-bibelo-card rounded-xl border border-bibelo-border p-4">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold text-bibelo-text">
                 {images.length} {images.length === 1 ? 'imagem' : 'imagens'} selecionada{images.length > 1 ? 's' : ''}
@@ -579,7 +560,7 @@ export default function EditorImagens() {
           </div>
 
           {/* Configurações */}
-          <div className="bg-white rounded-xl border border-bibelo-border p-5">
+          <div className="bg-bibelo-card rounded-xl border border-bibelo-border p-5">
             <h2 className="font-semibold text-bibelo-text flex items-center gap-2 mb-4">
               <Settings2 className="w-5 h-5" />
               Configurações de conversão
@@ -595,7 +576,7 @@ export default function EditorImagens() {
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-all ${
                       selectedPresets.includes(p.key)
                         ? 'bg-bibelo-primary text-white border-bibelo-primary shadow-sm'
-                        : 'bg-white text-bibelo-text border-bibelo-border hover:border-bibelo-primary'
+                        : 'bg-bibelo-card text-bibelo-text border-bibelo-border hover:border-bibelo-primary'
                     }`}
                   >
                     <Store className="w-4 h-4" />
@@ -607,7 +588,7 @@ export default function EditorImagens() {
             </div>
 
             {selectedPresets.includes('custom') && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 p-4 bg-gray-50 rounded-lg">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 p-4 bg-bibelo-bg rounded-lg">
                 <div>
                   <label className="text-xs font-medium text-bibelo-muted block mb-1">Largura (px)</label>
                   <input type="number" value={customWidth} onChange={e => setCustomWidth(Number(e.target.value))} min={100} max={4000} className="w-full px-3 py-2 border border-bibelo-border rounded-lg text-sm" />
@@ -667,8 +648,8 @@ export default function EditorImagens() {
                 onClick={() => setShowBlingPanel(!showBlingPanel)}
                 className={`flex items-center gap-2 px-5 py-3 rounded-lg font-medium transition-all shadow-sm border ${
                   showBlingPanel
-                    ? 'bg-amber-500 text-white border-amber-500'
-                    : 'bg-white text-bibelo-text border-bibelo-border hover:border-amber-400'
+                    ? 'bg-bibelo-primary text-white border-bibelo-primary'
+                    : 'bg-bibelo-card text-bibelo-text border-bibelo-border hover:border-bibelo-primary'
                 }`}
               >
                 <Send className="w-5 h-5" />
@@ -679,9 +660,9 @@ export default function EditorImagens() {
 
           {/* ═══ Painel Bling ═══ */}
           {showBlingPanel && (
-            <div className="bg-amber-50 rounded-xl border border-amber-200 p-5">
+            <div className="bg-bibelo-card rounded-xl border border-bibelo-border p-5">
               <h2 className="font-semibold text-bibelo-text flex items-center gap-2 mb-4">
-                <Package className="w-5 h-5 text-amber-600" />
+                <Package className="w-5 h-5 text-bibelo-primary" />
                 Enviar imagens ao Bling
               </h2>
               <p className="text-sm text-bibelo-muted mb-4">
@@ -696,13 +677,13 @@ export default function EditorImagens() {
                   value={blingSearch}
                   onChange={e => setBlingSearch(e.target.value)}
                   placeholder="Buscar produto por nome ou SKU..."
-                  className="w-full pl-10 pr-4 py-2.5 border border-amber-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="w-full pl-10 pr-4 py-2.5 border border-bibelo-border rounded-lg text-sm bg-bibelo-bg text-bibelo-text focus:outline-none focus:ring-2 focus:ring-bibelo-primary"
                 />
               </div>
 
               {/* Produto selecionado */}
               {selectedProduct && (
-                <div className="mb-4 p-3 bg-white border border-amber-300 rounded-lg flex items-center justify-between">
+                <div className="mb-4 p-3 bg-bibelo-bg border border-bibelo-border rounded-lg flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="w-5 h-5 text-green-500" />
                     <div>
@@ -721,7 +702,7 @@ export default function EditorImagens() {
 
               {/* Lista de produtos */}
               {!selectedProduct && (
-                <div className="max-h-64 overflow-y-auto border border-amber-200 rounded-lg bg-white divide-y divide-gray-100">
+                <div className="max-h-64 overflow-y-auto border border-bibelo-border rounded-lg bg-bibelo-bg divide-y divide-bibelo-border">
                   {blingLoading ? (
                     <div className="p-4 text-center text-bibelo-muted flex items-center justify-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" /> Buscando...
@@ -733,7 +714,7 @@ export default function EditorImagens() {
                       <button
                         key={p.bling_id}
                         onClick={() => setSelectedProduct(p)}
-                        className="w-full text-left px-4 py-3 hover:bg-amber-50 transition-colors flex items-center gap-3"
+                        className="w-full text-left px-4 py-3 hover:bg-bibelo-card transition-colors flex items-center gap-3"
                       >
                         {p.imagens ? (
                           <img
@@ -741,11 +722,11 @@ export default function EditorImagens() {
                               ? JSON.parse(p.imagens)[0]?.link || ''
                               : ''}
                             alt=""
-                            className="w-10 h-10 rounded object-cover border border-gray-200"
+                            className="w-10 h-10 rounded object-cover border border-bibelo-border"
                             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
                           />
                         ) : (
-                          <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center">
+                          <div className="w-10 h-10 rounded bg-bibelo-border/50 flex items-center justify-center">
                             <Package className="w-5 h-5 text-gray-400" />
                           </div>
                         )}
@@ -767,7 +748,7 @@ export default function EditorImagens() {
                 <button
                   onClick={sendToBling}
                   disabled={sendingBling}
-                  className="mt-4 flex items-center gap-2 px-6 py-3 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                  className="mt-4 flex items-center gap-2 px-6 py-3 bg-bibelo-primary text-white rounded-lg font-medium hover:bg-bibelo-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                 >
                   {sendingBling ? (
                     <><Loader2 className="w-5 h-5 animate-spin" /> Enviando ao Bling...</>
@@ -799,7 +780,7 @@ export default function EditorImagens() {
 
       {/* Resultados da conversão */}
       {results && (
-        <div className="bg-white rounded-xl border border-bibelo-border p-5">
+        <div className="bg-bibelo-card rounded-xl border border-bibelo-border p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <CheckCircle2 className="w-6 h-6 text-green-500" />
@@ -825,7 +806,7 @@ export default function EditorImagens() {
                 {r.format !== 'erro' ? (
                   <>
                     <div className="relative cursor-pointer group" onClick={() => setPreviewIdx(idx)}>
-                      <img src={r.data} alt={r.originalName} className="w-full aspect-square object-contain bg-gray-50" />
+                      <img src={r.data} alt={r.originalName} className="w-full aspect-square object-contain bg-bibelo-bg" />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
                         <ZoomIn className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
@@ -837,7 +818,7 @@ export default function EditorImagens() {
                           {formatBytes(r.originalSize)} → {formatBytes(r.convertedSize)}
                           <span className="ml-1 text-green-600 font-medium">({compressionPercent(r.originalSize, r.convertedSize)})</span>
                         </div>
-                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded font-mono">{r.width}×{r.height}</span>
+                        <span className="text-xs bg-bibelo-border/50 px-2 py-0.5 rounded font-mono">{r.width}×{r.height}</span>
                       </div>
                       <button onClick={() => downloadOne(r)} className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 bg-bibelo-primary text-white rounded-lg text-sm hover:bg-bibelo-primary/90 transition-colors">
                         <Download className="w-4 h-4" /> Baixar .{r.format}
@@ -878,15 +859,15 @@ export default function EditorImagens() {
             { name: 'Loja Própria', desc: 'Medusa aceita JPG/PNG/WEBP. Maior resolução possível.', size: '1200×1200', format: 'PNG' },
             { name: 'Bling', desc: 'Aceita imagem via URL. O editor converte e envia automaticamente.', size: 'Quadrado', format: 'JPG/PNG' },
           ].map(mp => (
-            <div key={mp.name} className="bg-white rounded-xl border border-bibelo-border p-4">
+            <div key={mp.name} className="bg-bibelo-card rounded-xl border border-bibelo-border p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Store className="w-5 h-5 text-bibelo-primary" />
                 <h3 className="font-semibold text-bibelo-text">{mp.name}</h3>
               </div>
               <p className="text-sm text-bibelo-muted mb-3">{mp.desc}</p>
               <div className="flex gap-2">
-                <span className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">{mp.size}</span>
-                <span className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">{mp.format}</span>
+                <span className="text-xs bg-bibelo-border/50 px-2 py-1 rounded font-mono">{mp.size}</span>
+                <span className="text-xs bg-bibelo-border/50 px-2 py-1 rounded font-mono">{mp.format}</span>
               </div>
             </div>
           ))}
