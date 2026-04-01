@@ -117,6 +117,10 @@ services:
       ADMIN_CORS:    ${MEDUSA_ADMIN_CORS:-http://localhost:9000,https://api.papelariabibelo.com.br}
       AUTH_CORS:     ${MEDUSA_AUTH_CORS:-http://localhost:8000,https://papelariabibelo.com.br}
       PORT:          "9000"
+      MP_ACCESS_TOKEN:    ${MP_ACCESS_TOKEN}
+      MP_WEBHOOK_SECRET:  ${MP_WEBHOOK_SECRET}
+      MP_PUBLIC_KEY:      ${MP_PUBLIC_KEY}
+      MP_SANDBOX:         ${MP_SANDBOX:-true}
     ports:
       - "127.0.0.1:9000:9000"
     depends_on:

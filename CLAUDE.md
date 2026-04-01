@@ -433,3 +433,19 @@ curl -v -X POST http://localhost:9000/webhooks/mercadopago \
 | Connection refused porta 9000 | Container caiu ou ainda subindo | Aguardar 90s, verificar logs |
 | 404 em webhook externo | Nginx sem bloco para api.papelariabibelo.com.br | Criar site no Nginx + certbot SSL |
 | npm ci demora 25+ min | Baixando 1228 pacotes do zero | Não ignorar node_modules no .dockerignore |
+
+### Admin Dashboard — status da investigação
+- ADMIN_RELATIVE_OUTPUT_DIR: patch funcionando, retorna ".medusa/client" ✅
+- index.html existe em /app/.medusa/client/index.html ✅
+- Erro persiste: rootDirectory em runtime pode não ser /app
+- Investigando: qual valor de rootDirectory o `npx medusa start` usa
+- Possível causa: CWD diferente de /app quando medusa start é chamado via CMD sh -c
+- Tentativa de fix pendente: garantir que rootDirectory = /app
+
+### Admin Dashboard — RESOLVIDO em 01/04/2026
+Causa: admin-bundler usa ADMIN_RELATIVE_OUTPUT_DIR = "./public/admin"
+       (de @medusajs/medusa/dist/utils/admin-consts.js, NÃO do @medusajs/utils)
+Solução no Dockerfile stage production:
+  COPY --from=builder --chown=medusa:medusa /app/.medusa/client ./public/admin
+Acesso: http://localhost:9000/app (via SSH tunnel)
+Admin user: contato@papelariabibelo.com.br

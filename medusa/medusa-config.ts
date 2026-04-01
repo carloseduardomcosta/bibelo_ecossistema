@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv } from "@medusajs/framework/utils";
+import { defineConfig, loadEnv, Modules } from "@medusajs/framework/utils";
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd());
 
@@ -15,6 +15,24 @@ export default defineConfig({
     },
   },
   admin: {
-    disable: true,
+    backendUrl: process.env.MEDUSA_BACKEND_URL || "https://api.papelariabibelo.com.br",
   },
+  modules: [
+    {
+      resolve: "@medusajs/medusa/payment",
+      options: {
+        providers: [
+          {
+            resolve: "./src/modules/mercadopago",
+            id: "mercadopago",
+            options: {
+              accessToken: process.env.MP_ACCESS_TOKEN!,
+              webhookSecret: process.env.MP_WEBHOOK_SECRET!,
+              sandbox: process.env.MP_SANDBOX === "true",
+            },
+          },
+        ],
+      },
+    },
+  ],
 });

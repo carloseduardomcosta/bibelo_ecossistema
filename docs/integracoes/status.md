@@ -37,6 +37,6 @@
 | Inteligência de Fluxos | ✅ produção | pula step cupom se lead já comprou, reativação só com pedido |
 | Medusa.js v2 | 🔧 em desenvolvimento | porta 9000, Dockerfile multi-stage, migrations automáticas, admin desabilitado temp. |
 | Next.js Storefront | 🔧 em desenvolvimento | porta 8001, integrado com Medusa.js v2 |
-| Mercado Pago | 🔧 em desenvolvimento | Payment provider Medusa — webhook em api.papelariabibelo.com.br/webhooks/mercadopago (ativo, validando HMAC) |
+| Mercado Pago Pix | ✅ produção | Payment provider Medusa v2 — API Orders (Checkout Transparente), webhook HMAC validado, Nginx+SSL em api.papelariabibelo.com.br |
 | Melhor Envio | 📋 backlog | Fulfillment provider Medusa — cálculo frete, etiquetas, rastreio |
 | Uptime Kuma | ⏳ pendente | container não subiu ainda |

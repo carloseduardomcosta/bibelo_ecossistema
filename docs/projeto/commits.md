@@ -141,3 +141,13 @@ Para histórico completo e atualizado, usar `git log --oneline`.
     - Migration 017: indexes de performance (9 indexes)
     - N+1 fix na listagem de fluxos (LEFT JOIN + FILTER)
 - 0acf658 docs: atualiza documentação — sessão 01/04
+- feat: Mercado Pago Pix — payment provider Medusa v2
+  - Módulo `src/modules/mercadopago/` (service + types + index)
+  - API Orders v1 (Checkout Transparente 2025) — Pix como bank_transfer
+  - Webhook `POST /webhooks/mercadopago` com validação HMAC (x-signature + timingSafeEqual)
+  - Idempotência via `X-Idempotency-Key` em chamadas de criação
+  - Registrado em `medusa-config.ts` como payment provider
+  - Env vars `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `MP_PUBLIC_KEY` no docker-compose
+  - Dockerfile: `COPY dist/src → src` para módulos customizados no container
+  - Nginx: `api.papelariabibelo.com.br` → localhost:9000 (SSL + DNS-only Cloudflare)
+  - Webhook testado e validado pelo simulador do Mercado Pago (200 OK)

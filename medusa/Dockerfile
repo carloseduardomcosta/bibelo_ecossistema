@@ -16,6 +16,8 @@ COPY --from=builder --chown=medusa:medusa /app/node_modules ./node_modules
 COPY --from=builder --chown=medusa:medusa /app/package.json ./
 COPY --from=builder --chown=medusa:medusa /app/medusa-config.ts ./
 COPY --from=builder --chown=medusa:medusa /app/tsconfig.json ./
+COPY --from=builder --chown=medusa:medusa /app/dist/src ./src
+COPY --from=builder --chown=medusa:medusa /app/dist/public/admin ./public/admin
 USER medusa
 ENV NODE_ENV=production
 EXPOSE 9000

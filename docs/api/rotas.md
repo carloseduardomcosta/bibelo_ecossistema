@@ -165,6 +165,18 @@ Referência completa de todos os endpoints.
 ## Medusa.js (e-commerce) — porta 9000
 
 O Medusa.js v2 roda como serviço separado no Docker Compose, na porta **9000**.
+Acesso externo: `https://api.papelariabibelo.com.br` (Nginx + SSL, DNS-only Cloudflare).
 Possui seu próprio PostgreSQL (medusa_db) e banco de dados independente.
 Admin dashboard desabilitado temporariamente. API REST e Store API disponíveis via Medusa padrão.
-Não compartilha rotas com a API do BibelôCRM — integração futura via webhooks/API.
+
+### Rotas customizadas do Medusa
+- `POST /webhooks/mercadopago` — webhook Mercado Pago (validação HMAC x-signature + timingSafeEqual)
+
+### Payment Provider: Mercado Pago Pix
+- Módulo: `src/modules/mercadopago/` (compilado em `dist/src/modules/mercadopago/`)
+- API: Checkout Transparente via API Orders v1 (2025)
+- Métodos: Pix (bank_transfer) — cartão e boleto em fases futuras
+- Credenciais: `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `MP_PUBLIC_KEY` no .env
+- Webhook URL (MP): `https://api.papelariabibelo.com.br/webhooks/mercadopago`
+- Eventos: Pagamentos + Order
+- Idempotência: `X-Idempotency-Key` em todas as chamadas de criação
