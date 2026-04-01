@@ -117,7 +117,7 @@ export default function NfEntrada() {
     try {
       const { data } = await api.get('/financeiro/nf-entrada/resumo/geral');
       setResumo(data);
-    } catch {}
+    } catch (err) { console.error('Erro ao buscar resumo NF entrada:', err); }
   }, []);
 
   const fetchNotas = useCallback(async (page: number) => {
@@ -144,7 +144,7 @@ export default function NfEntrada() {
     try {
       const { data } = await api.get(`/financeiro/nf-entrada/${id}`);
       setDetalhe(data);
-    } catch {}
+    } catch (err) { console.error('Erro ao buscar detalhe NF entrada:', err); }
     finally { setLoadingDetalhe(false); }
   };
 

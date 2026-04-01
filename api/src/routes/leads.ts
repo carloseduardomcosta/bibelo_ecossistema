@@ -27,7 +27,10 @@ const publicLimiter = rateLimit({
 // ── Token HMAC para verificação de email (sem banco) ─────────
 
 function getSecret(): string {
-  return process.env.JWT_SECRET || "bibelo-verify-fallback";
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET não definido — configure no .env antes de iniciar o servidor.");
+  }
+  return process.env.JWT_SECRET;
 }
 
 function gerarTokenVerificacao(email: string): string {
@@ -157,29 +160,6 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
     );
   }
 
-  // Verifica se lead já existe
-  const existing = await queryOne<{ id: string; customer_id: string | null; email_verificado: boolean; cupom: string | null }>(
-    "SELECT id, customer_id, email_verificado, cupom FROM marketing.leads WHERE email = $1",
-    [email]
-  );
-
-  if (existing && existing.email_verificado) {
-    // Já verificado — não entrega cupom de novo
-    res.json({ ok: true, verificacao: "ja_verificado", mensagem: "Você já está cadastrada! Verifique seu e-mail para o cupom." });
-    return;
-  }
-
-  if (existing && !existing.email_verificado) {
-    // Ainda não confirmou — reenvia email de verificação
-    try {
-      await enviarEmailVerificacao(email, existing.cupom || cupom, nome || null);
-    } catch (err) {
-      logger.warn("Falha ao reenviar verificação", { email, error: String(err) });
-    }
-    res.json({ ok: true, verificacao: "pendente", mensagem: "Reenviamos o e-mail de confirmação! Verifique sua caixa de entrada." });
-    return;
-  }
-
   // Cria ou vincula cliente no CRM
   const customer = await upsertCustomer({
     nome: nome || email.split("@")[0],
@@ -188,12 +168,31 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
     canal_origem: "popup",
   });
 
-  // Salva lead
-  await query(
+  // Insere lead atomicamente — ON CONFLICT evita race condition (TOCTOU)
+  const insertResult = await queryOne<{ id: string; cupom: string | null; email_verificado: boolean; ja_existia: boolean }>(
     `INSERT INTO marketing.leads (email, nome, telefone, fonte, popup_id, cupom, visitor_id, pagina, customer_id)
-     VALUES ($1, $2, $3, 'popup', $4, $5, $6, $7, $8)`,
+     VALUES ($1, $2, $3, 'popup', $4, $5, $6, $7, $8)
+     ON CONFLICT (email) DO UPDATE SET email = marketing.leads.email
+     RETURNING id, cupom, email_verificado, (xmax <> 0) AS ja_existia`,
     [email, nome || null, telefone || null, popup_id || null, cupom, visitor_id || null, pagina || null, customer.id]
   );
+
+  if (insertResult?.ja_existia) {
+    if (insertResult.email_verificado) {
+      // Já verificado — não entrega cupom de novo
+      res.json({ ok: true, verificacao: "ja_verificado", mensagem: "Você já está cadastrada! Verifique seu e-mail para o cupom." });
+      return;
+    }
+
+    // Ainda não confirmou — reenvia email de verificação
+    try {
+      await enviarEmailVerificacao(email, insertResult.cupom || cupom, nome || null);
+    } catch (err) {
+      logger.warn("Falha ao reenviar verificação", { email, error: String(err) });
+    }
+    res.json({ ok: true, verificacao: "pendente", mensagem: "Reenviamos o e-mail de confirmação! Verifique sua caixa de entrada." });
+    return;
+  }
 
   // Vincula visitor_id ao customer (fecha o loop de atribuição)
   if (visitor_id) {

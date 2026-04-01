@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
@@ -117,6 +117,11 @@ export default function Dashboard() {
   }, [periodo]);
 
   const periodoLabel = PERIODOS.find(p => p.value === periodo)?.label || periodo;
+
+  const chartData = useMemo(
+    () => revenue.map(r => ({ ...r, mes_label: formatMonth(r.mes) })),
+    [revenue],
+  );
 
   return (
     <div>
@@ -303,7 +308,7 @@ export default function Dashboard() {
                 <div className="h-64 flex items-center justify-center text-bibelo-muted">Sem dados</div>
               ) : (
                 <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={revenue.map(r => ({ ...r, mes_label: formatMonth(r.mes) }))}>
+                  <BarChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3A" />
                     <XAxis dataKey="mes_label" stroke="#64748B" fontSize={12} />
                     <YAxis tickFormatter={(v) => `R$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} stroke="#64748B" fontSize={12} width={55} />

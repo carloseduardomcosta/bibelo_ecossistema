@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, ChevronLeft, ChevronRight, Package, ArrowUpDown, Download } from 'lucide-react';
 import api from '../lib/api';
@@ -77,7 +77,7 @@ export default function Produtos() {
     else { setSortCol(col); setSortDir(col === 'nome' ? 'asc' : 'desc'); }
   };
 
-  const filteredAndSorted = [...produtos]
+  const filteredAndSorted = useMemo(() => [...produtos]
     .filter((p) => {
       if (estoqueFilter === 'sem') return p.estoque_total === 0;
       if (estoqueFilter === 'baixo') return p.estoque_total > 0 && p.estoque_total <= 5;
@@ -89,7 +89,7 @@ export default function Produtos() {
       const vb = b[sortCol];
       if (typeof va === 'string') return sortDir === 'asc' ? va.localeCompare(vb as string) : (vb as string).localeCompare(va);
       return sortDir === 'asc' ? (va as number) - (vb as number) : (vb as number) - (va as number);
-    });
+    }), [produtos, estoqueFilter, sortCol, sortDir]);
 
   const SortHeader = ({ col, children }: { col: typeof sortCol; children: React.ReactNode }) => (
     <th

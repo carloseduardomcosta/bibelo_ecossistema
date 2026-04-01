@@ -3,6 +3,11 @@ import { queryOne, query } from "../../db";
 import { logger } from "../../utils/logger";
 import { gerarLinkDescadastro } from "../../routes/email";
 
+// ── Sanitização HTML (anti-XSS em templates de email) ──────────
+function escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
 // ── Client (inicializa só se tiver API key, cached) ─────────────
 
 let cachedClient: Resend | null = null;
@@ -138,9 +143,12 @@ export async function sendCampaignEmails(campaignId: string): Promise<{ sent: nu
     try {
       // Substitui variáveis no template (inclui link de descadastro LGPD)
       const unsubLink = gerarLinkDescadastro(send.email);
+      const nomeSeguro = escHtml(send.nome || "Cliente");
+      const emailSeguro = escHtml(send.email);
+
       const html = (template.html || "")
-        .replace(/\{\{nome\}\}/g, send.nome || "Cliente")
-        .replace(/\{\{email\}\}/g, send.email)
+        .replace(/\{\{nome\}\}/g, nomeSeguro)
+        .replace(/\{\{email\}\}/g, emailSeguro)
         .replace(/\{\{unsub_link\}\}/g, unsubLink);
 
       const subject = (template.assunto || campaign.nome)

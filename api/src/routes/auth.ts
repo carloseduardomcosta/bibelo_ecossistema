@@ -51,7 +51,12 @@ authRouter.post("/google", async (req: Request, res: Response) => {
   if (!user) {
     // Primeiro login — cria conta como viewer inativo (admin ativa manualmente)
     // Exceção: email do dono do projeto é auto-aprovado como admin
-    const adminEmail = process.env.ADMIN_EMAIL || "carloseduardocostatj@gmail.com";
+    const adminEmail = process.env.ADMIN_EMAIL;
+    if (!adminEmail) {
+      logger.error("ADMIN_EMAIL não definido no .env");
+      res.status(500).json({ error: "Configuração do servidor incompleta" });
+      return;
+    }
     const isOwner = email === adminEmail;
     const papel = isOwner ? "admin" : "viewer";
     const ativo = isOwner;
@@ -128,7 +133,7 @@ authRouter.post("/logout", authMiddleware, async (req: Request, res: Response) =
     await query(
       "DELETE FROM public.sessions WHERE refresh_token = $1",
       [token]
-    ).catch(() => {});
+    ).catch((err) => { logger.warn("Falha ao deletar sessão no logout", { error: String(err) }); });
   }
   res.json({ message: "Logout realizado" });
 });

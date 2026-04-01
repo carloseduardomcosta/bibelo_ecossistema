@@ -4,6 +4,11 @@ import { sendEmail } from "../integrations/resend/email";
 import { getNuvemShopToken, nsRequest } from "../integrations/nuvemshop/auth";
 import { gerarLinkDescadastro } from "../routes/email";
 
+// ── Sanitização HTML (anti-XSS em templates de email) ──────────
+function escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
 // ── Types ──────────────────────────────────────────────────────
 
 interface FlowStep {
@@ -422,7 +427,8 @@ async function executeEmailStep(
 
   // Usa template do banco (marketing.templates)
   const recoveryUrl = (metadata.recovery_url as string) || "";
-  const vars: Record<string, string> = {
+  // Variáveis para HTML (escapadas) e texto plano (sem escape)
+  const rawVars: Record<string, string> = {
     nome: customer.nome || "Cliente",
     email: customer.email,
     valor: formatBRL(metadata.valor),
@@ -434,20 +440,26 @@ async function executeEmailStep(
     cupom: String(metadata.cupom || ""),
     produto: String(metadata.resource_nome || ""),
   };
+  // URLs e valores numéricos não precisam escape; nomes e textos sim
+  const htmlSafeKeys = new Set(["nome", "email", "produto", "itens"]);
+  const vars: Record<string, string> = {};
+  for (const [k, v] of Object.entries(rawVars)) {
+    vars[k] = htmlSafeKeys.has(k) ? escHtml(v) : v;
+  }
 
   let html = template.html || "";
   let subject = template.assunto || step.template || "";
   for (const [key, val] of Object.entries(vars)) {
     const regex = new RegExp(`\\{\\{${key}\\}\\}`, "g");
     html = html.replace(regex, val);
-    subject = subject.replace(regex, val);
+    subject = subject.replace(regex, rawVars[key]); // subject usa valor sem escape HTML
   }
 
   const result = await sendEmail({
     to: customer.email,
     subject,
     html,
-    text: template.texto ? Object.entries(vars).reduce((t, [k, v]) => t.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v), template.texto) : undefined,
+    text: template.texto ? Object.entries(rawVars).reduce((t, [k, v]) => t.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v), template.texto) : undefined,
     tags: [
       { name: "flow", value: "true" },
       { name: "template_id", value: template.id },

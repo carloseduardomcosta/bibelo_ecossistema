@@ -68,7 +68,7 @@ export default function Pipeline() {
     try {
       const { data } = await api.get('/deals/kanban');
       setData(data);
-    } catch {}
+    } catch (err) { console.error('Erro ao buscar kanban:', err); }
     finally { setLoading(false); }
   }, []);
 

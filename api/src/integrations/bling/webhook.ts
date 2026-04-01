@@ -47,8 +47,14 @@ function blingWebhookAuth(req: Request, res: Response, next: () => void): void {
     return;
   }
 
-  const rawBody = (req as any).rawBody?.toString() || JSON.stringify(req.body);
-  if (!validateBlingHMAC(rawBody, signature)) {
+  const rawBodyBuf = (req as any).rawBody;
+  if (!rawBodyBuf) {
+    logger.warn("Bling webhook: rawBody ausente — não é possível validar HMAC com segurança");
+    res.status(400).json({ error: "Corpo da requisição não disponível para validação" });
+    return;
+  }
+
+  if (!validateBlingHMAC(rawBodyBuf.toString(), signature)) {
     logger.warn("Bling webhook: HMAC inválido");
     res.status(401).json({ error: "Assinatura inválida" });
     return;

@@ -1,0 +1,4 @@
+.env
+.env.*
+.medusa
+dist

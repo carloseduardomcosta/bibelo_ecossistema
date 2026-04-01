@@ -81,16 +81,19 @@ export default function ClientePerfil() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    Promise.all([
+    Promise.allSettled([
       api.get(`/customers/${id}`),
       api.get(`/customers/${id}/timeline`),
     ])
       .then(([custRes, timeRes]) => {
-        setCliente(custRes.data);
-        setTimeline(timeRes.data.data);
-      })
-      .catch((err) => {
-        if (err.response?.status === 404) setNotFound(true);
+        if (custRes.status === 'fulfilled') {
+          setCliente(custRes.value.data);
+        } else {
+          if (custRes.reason?.response?.status === 404) setNotFound(true);
+        }
+        if (timeRes.status === 'fulfilled') {
+          setTimeline(timeRes.value.data.data);
+        }
       })
       .finally(() => setLoading(false));
   }, [id]);

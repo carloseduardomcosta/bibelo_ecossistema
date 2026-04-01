@@ -134,7 +134,7 @@ export default function Campanhas() {
     try {
       const { data } = await api.get('/templates');
       setTemplates(data.data);
-    } catch {}
+    } catch (err) { console.error('Erro ao buscar templates:', err); }
     finally { setLoadingTpl(false); }
   }, []);
 

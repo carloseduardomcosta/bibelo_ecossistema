@@ -266,3 +266,13 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 
 *BibelôCRM — Ecossistema Bibelô*
 *Última atualização: 31 de Março de 2026 — briefing, campanha personalizada, fluxos corrigidos, 74 testes, filtros clientes*
+
+---
+
+## Skills ativas
+
+@/mnt/skills/organization/secure-dev/SKILL.md
+@/mnt/skills/public/frontend-design/SKILL.md
+@/mnt/skills/public/docx/SKILL.md
+@/mnt/skills/public/pptx/SKILL.md
+@.claude/skills/bibelo-design.md

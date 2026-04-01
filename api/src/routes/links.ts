@@ -105,7 +105,7 @@ linksRouter.get("/go/:slug", limiter, async (req: Request, res: Response) => {
       (req.headers["user-agent"] || "").slice(0, 500),
       (req.headers["referer"] || "").slice(0, 500),
     ]
-  ).catch(() => {}); // fire-and-forget
+  ).catch((err) => { logger.warn("Falha ao registrar clique no link", { slug, error: String(err) }); }); // fire-and-forget
 
   // Monta URL com UTM se aplicável
   let destino = link.url;

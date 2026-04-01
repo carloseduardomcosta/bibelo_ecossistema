@@ -86,7 +86,7 @@ export const flowWorker = new Worker(
         `INSERT INTO sync.sync_logs (fonte, tipo, status, registros, erro)
          VALUES ('flow-engine', $1, 'erro', 0, $2)`,
         [job.name, message]
-      ).catch(() => {});
+      ).catch((err) => { logger.warn("Falha ao registrar erro no sync_logs (flow)", { job: job.name, error: String(err) }); });
 
       logger.error("Flow job falhou", { name: job.name, duration, error: message });
       throw err;
@@ -136,3 +136,12 @@ flowWorker.on("failed", (job, err) => {
 flowWorker.on("completed", (job) => {
   logger.info("Flow job completado", { name: job.name, id: job.id });
 });
+
+// ── Graceful shutdown ─────────────────────────────────────────
+
+export async function closeFlowQueue(): Promise<void> {
+  logger.info("Encerrando flow worker e queue...");
+  await flowWorker.close();
+  await flowQueue.close();
+  logger.info("Flow worker e queue encerrados");
+}

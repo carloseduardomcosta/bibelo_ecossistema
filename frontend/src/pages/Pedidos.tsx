@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Search, ChevronLeft, ChevronRight, ShoppingCart, Download,
@@ -178,13 +178,20 @@ export default function Pedidos() {
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); setSearch(searchInput); };
 
+  const detailAbortRef = useRef<AbortController>();
+
   const openDetail = async (id: string) => {
+    detailAbortRef.current?.abort();
+    const controller = new AbortController();
+    detailAbortRef.current = controller;
     setDetailLoading(true);
     setDetail(null);
     try {
-      const { data } = await api.get(`/orders/${id}`);
+      const { data } = await api.get(`/orders/${id}`, { signal: controller.signal });
       setDetail(data);
-    } catch { /* */ }
+    } catch (err: any) {
+      if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
+    }
     finally { setDetailLoading(false); }
   };
 

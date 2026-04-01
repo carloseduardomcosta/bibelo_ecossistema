@@ -202,11 +202,11 @@ function NotificationBell() {
   const [resumo, setResumo] = useState({ atrasados: 0, vence_em_breve: 0, pagos: 0, pendentes: 0, total: 0 });
   const ref = useRef<HTMLDivElement>(null);
 
-  const fetchAlertas = useCallback(async () => {
+  const fetchAlertas = useCallback(async (signal?: AbortSignal) => {
     try {
       const [finResp, leadsResp] = await Promise.all([
-        api.get('/financeiro/despesas-fixas/alertas'),
-        api.get('/leads?limit=5'),
+        api.get('/financeiro/despesas-fixas/alertas', { signal }),
+        api.get('/leads?limit=5', { signal }),
       ]);
       setAlertas(finResp.data.data.filter((d: Notificacao) => d.alerta !== 'pago'));
       setResumo(finResp.data.resumo);
@@ -216,15 +216,27 @@ function NotificationBell() {
         return ms < 72 * 3600 * 1000;
       });
       setLeads(recentes);
-    } catch {}
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError' && (err as Error).name !== 'CanceledError') {
+        console.error('Erro ao buscar notificações:', err);
+      }
+    }
   }, []);
 
-  useEffect(() => { fetchAlertas(); }, [fetchAlertas]);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchAlertas(controller.signal);
+    return () => controller.abort();
+  }, [fetchAlertas]);
 
   // Refresh a cada 2 min
   useEffect(() => {
-    const interval = setInterval(fetchAlertas, 2 * 60 * 1000);
-    return () => clearInterval(interval);
+    const controller = new AbortController();
+    const interval = setInterval(() => fetchAlertas(controller.signal), 2 * 60 * 1000);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
   }, [fetchAlertas]);
 
   // Fechar dropdown ao clicar fora

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Search, ChevronLeft, ChevronRight, Users, Download, Mail,
@@ -165,8 +165,20 @@ export default function Clientes() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { api.get('/customers/cidades').then((r) => setCidades(r.data)).catch(() => {}); }, []);
 
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  // Debounce: atualiza busca 300ms após parar de digitar
+  useEffect(() => {
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      setSearch(searchInput);
+    }, 300);
+    return () => clearTimeout(searchTimer.current);
+  }, [searchInput]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    clearTimeout(searchTimer.current);
     setSearch(searchInput);
   };
 

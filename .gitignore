@@ -21,3 +21,15 @@ Thumbs.db
 .vscode/settings.json
 .idea/
 coverage/
+
+# Medusa
+.medusa/
+
+# Storefront (Next.js)
+storefront/.next/
+storefront/.yarn/
+storefront/node_modules/
+
+# Package locks (subprojetos)
+medusa/package-lock.json
+storefront/yarn.lock

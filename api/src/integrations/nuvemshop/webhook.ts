@@ -41,8 +41,14 @@ function webhookAuth(req: Request, res: Response, next: () => void): void {
     return;
   }
 
-  const rawBody = (req as any).rawBody?.toString() || JSON.stringify(req.body);
-  if (!validateHMAC(rawBody, signature)) {
+  const rawBodyBuf = (req as any).rawBody;
+  if (!rawBodyBuf) {
+    logger.warn("NuvemShop webhook: rawBody ausente — não é possível validar HMAC com segurança");
+    res.status(400).json({ error: "Corpo da requisição não disponível para validação" });
+    return;
+  }
+
+  if (!validateHMAC(rawBodyBuf.toString(), signature)) {
     logger.warn("NuvemShop webhook: HMAC inválido");
     res.status(401).json({ error: "Assinatura inválida" });
     return;

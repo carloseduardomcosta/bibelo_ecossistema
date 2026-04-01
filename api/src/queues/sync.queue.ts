@@ -150,7 +150,7 @@ export const syncWorker = new Worker(
         `INSERT INTO sync.sync_logs (fonte, tipo, status, registros, erro)
          VALUES ('queue', $1, 'erro', 0, $2)`,
         [job.name, message]
-      ).catch(() => {});
+      ).catch((err) => { logger.warn("Falha ao registrar erro no sync_logs (sync)", { job: job.name, error: String(err) }); });
 
       logger.error("Job falhou", { name: job.name, duration, error: message });
       throw err;
@@ -205,3 +205,12 @@ syncWorker.on("failed", (job, err) => {
 syncWorker.on("completed", (job) => {
   logger.info("Job completado", { name: job.name, id: job.id });
 });
+
+// ── Graceful shutdown ─────────────────────────────────────────
+
+export async function closeSyncQueue(): Promise<void> {
+  logger.info("Encerrando sync worker e queue...");
+  await syncWorker.close();
+  await syncQueue.close();
+  logger.info("Sync worker e queue encerrados");
+}

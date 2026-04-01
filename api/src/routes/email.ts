@@ -23,9 +23,9 @@ export const emailRouter = Router();
 
 function getSecret(): string {
   if (!process.env.JWT_SECRET) {
-    logger.warn("JWT_SECRET não definido — usando fallback para HMAC de descadastro. Configure JWT_SECRET no .env.");
+    throw new Error("JWT_SECRET não definido — configure no .env antes de iniciar o servidor.");
   }
-  return process.env.JWT_SECRET || "bibelo-unsub-fallback-k8x2m9pq4w7z1n6v3j5t0r8y";
+  return process.env.JWT_SECRET;
 }
 
 export function gerarTokenDescadastro(email: string): string {

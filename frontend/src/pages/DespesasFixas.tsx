@@ -76,14 +76,14 @@ export default function DespesasFixas() {
       const { data } = await api.get('/financeiro/despesas-fixas/alertas');
       setAlertas(data.data);
       setResumo(data.resumo);
-    } catch {}
+    } catch (err) { console.error('Erro ao buscar alertas de despesas fixas:', err); }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchAlertas(); }, [fetchAlertas]);
 
   useEffect(() => {
-    api.get('/financeiro/categorias').then(({ data }) => setCategorias(data.data.filter((c: Categoria) => c.tipo === 'despesa'))).catch(() => {});
+    api.get('/financeiro/categorias').then(({ data }) => setCategorias(data.data.filter((c: Categoria) => c.tipo === 'despesa'))).catch((err) => { console.error('Erro ao buscar categorias:', err); });
   }, []);
 
   const fetchPagamentos = useCallback(async () => {
@@ -97,7 +97,7 @@ export default function DespesasFixas() {
         alerta: r.status === 'pago' ? 'pago' : 'pendente',
       }));
       setAlertas(items);
-    } catch {}
+    } catch (err) { console.error('Erro ao buscar pagamentos:', err); }
     finally { setLoading(false); }
   }, [mesNavegacao]);
 
@@ -148,7 +148,7 @@ export default function DespesasFixas() {
       setShowModal(false);
       setFormData({ descricao: '', categoria_id: '', valor: '', dia_vencimento: '', observacoes: '' });
       fetchAlertas();
-    } catch {}
+    } catch (err) { console.error('Erro ao salvar despesa fixa:', err); }
     finally { setSaving(false); }
   };
 

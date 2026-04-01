@@ -217,7 +217,7 @@ export default function Marketing() {
           setLeadStats(leadsStatsRes.data);
           setLeads(leadsRes.data.leads);
         }
-      } catch {}
+      } catch (err) { console.error('Erro ao atualizar dados de marketing:', err); }
     }, 30000);
     return () => clearInterval(interval);
   }, [tab]);
@@ -227,7 +227,7 @@ export default function Marketing() {
       const { data } = await api.get(`/flows/${flowId}`);
       setExecutions(data.executions || []);
       setSelectedFlow(flowId);
-    } catch {}
+    } catch (err) { console.error('Erro ao buscar detalhe do fluxo:', err); }
   };
 
   if (loading) {
@@ -488,7 +488,7 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
     try {
       await api.post(`/flows/${flowId}/toggle`);
       onRefresh();
-    } catch {}
+    } catch (err) { console.error('Erro ao alternar status do fluxo:', err); }
   };
 
   return (

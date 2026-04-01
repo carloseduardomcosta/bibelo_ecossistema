@@ -25,8 +25,9 @@ function classifyCanal(lojaId: number | undefined | null): string {
 }
 
 // ── Rate limit: max 3 req/s (Bling v3) ─────────────────────────
+// Mutex baseado em promise — garante serialização mesmo com chamadas concorrentes
 
-let lastRequestTime = 0;
+let blingPending: Promise<void> = Promise.resolve();
 
 export async function rateLimitedGet<T>(url: string, token: string): Promise<T> {
   const MAX_RETRIES = 3;
@@ -34,18 +35,18 @@ export async function rateLimitedGet<T>(url: string, token: string): Promise<T> 
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     // Garante intervalo mínimo de 350ms entre requests (≈2.8 req/s, margem segura)
-    const now = Date.now();
-    const elapsed = now - lastRequestTime;
-    if (elapsed < 350) {
-      await new Promise((resolve) => setTimeout(resolve, 350 - elapsed));
-    }
-    lastRequestTime = Date.now();
+    // Cada chamada espera a anterior terminar + delay, evitando race conditions
+    const wait = blingPending;
+    let releaseLock!: () => void;
+    blingPending = new Promise<void>((r) => { releaseLock = r; });
+    await wait;
 
     try {
       const { data } = await axios.get<T>(url, {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 15000,
       });
+      setTimeout(() => releaseLock(), 350);
       return data;
     } catch (err: unknown) {
       const axiosErr = err as { response?: { status?: number; headers?: Record<string, string> } };
@@ -54,9 +55,11 @@ export async function rateLimitedGet<T>(url: string, token: string): Promise<T> 
         const waitMs = retryAfter > 0 ? retryAfter * 1000 : BACKOFF[attempt];
         logger.warn(`Bling rate limit 429: tentativa ${attempt + 1}/${MAX_RETRIES}, aguardando ${waitMs}ms`);
         await new Promise((resolve) => setTimeout(resolve, waitMs));
-        lastRequestTime = Date.now();
+        // Lock já será re-adquirido no próximo loop iteration
+        releaseLock();
         continue;
       }
+      setTimeout(() => releaseLock(), 350);
       throw err;
     }
   }

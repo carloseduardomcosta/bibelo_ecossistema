@@ -73,8 +73,9 @@ export async function getNuvemShopToken(): Promise<NuvemShopToken | null> {
 }
 
 // ── Rate limiter NuvemShop (2 req/s) ──────────────────────────
+// Mutex baseado em promise — garante serialização mesmo com chamadas concorrentes
 
-let lastNsRequest = 0;
+let nsPending: Promise<void> = Promise.resolve();
 
 export async function nsRequest<T>(
   method: "get" | "post" | "put" | "delete" | "patch",
@@ -83,14 +84,11 @@ export async function nsRequest<T>(
   body?: unknown
 ): Promise<T> {
   // Garante intervalo mínimo de 520ms (≈1.9 req/s, margem segura)
-  // Atualiza timestamp ANTES do await para ser concurrency-safe
-  const now = Date.now();
-  const elapsed = now - lastNsRequest;
-  const delay = elapsed < 520 ? 520 - elapsed : 0;
-  lastNsRequest = now + delay; // optimistic update — concurrent callers see this immediately
-  if (delay > 0) {
-    await new Promise((resolve) => setTimeout(resolve, delay));
-  }
+  // Cada chamada espera a anterior terminar + delay, evitando race conditions
+  const wait = nsPending;
+  let releaseLock!: () => void;
+  nsPending = new Promise<void>((r) => { releaseLock = r; });
+  await wait;
 
   const url = `${NS_API_BASE}/${token.store_id}/${path}`;
 
@@ -106,6 +104,7 @@ export async function nsRequest<T>(
       },
       timeout: 15000,
     });
+    setTimeout(() => releaseLock(), 520);
     return data;
   } catch (err: unknown) {
     const axiosErr = err as { response?: { status?: number; headers?: Record<string, string> } };
@@ -113,20 +112,26 @@ export async function nsRequest<T>(
       const reset = parseInt(axiosErr.response.headers?.["x-rate-limit-reset"] || "5000", 10);
       logger.warn("NuvemShop rate limit 429: aguardando", { reset });
       await new Promise((resolve) => setTimeout(resolve, Math.min(reset, 30000)));
-      lastNsRequest = Date.now();
-      const { data } = await axios({
-        method,
-        url,
-        data: body,
-        headers: {
-          "Authentication": `bearer ${token.access_token}`,
-          "User-Agent": `BibeloCRM (${NS_APP_ID})`,
-          "Content-Type": "application/json",
-        },
-        timeout: 15000,
-      });
-      return data;
+      try {
+        const { data } = await axios({
+          method,
+          url,
+          data: body,
+          headers: {
+            "Authentication": `bearer ${token.access_token}`,
+            "User-Agent": `BibeloCRM (${NS_APP_ID})`,
+            "Content-Type": "application/json",
+          },
+          timeout: 15000,
+        });
+        setTimeout(() => releaseLock(), 520);
+        return data;
+      } catch (retryErr) {
+        setTimeout(() => releaseLock(), 520);
+        throw retryErr;
+      }
     }
+    setTimeout(() => releaseLock(), 520);
     throw err;
   }
 }

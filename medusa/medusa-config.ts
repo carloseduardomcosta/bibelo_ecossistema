@@ -10,11 +10,11 @@ export default defineConfig({
       storeCors: process.env.STORE_CORS!,
       adminCors: process.env.ADMIN_CORS!,
       authCors: process.env.AUTH_CORS!,
-      jwtSecret: process.env.JWT_SECRET || "medusa-jwt-secret-change-me",
-      cookieSecret: process.env.COOKIE_SECRET || "medusa-cookie-secret-change-me",
+      jwtSecret: process.env.JWT_SECRET!,
+      cookieSecret: process.env.COOKIE_SECRET!,
     },
   },
   admin: {
-    disable: false,
+    disable: true,
   },
 });

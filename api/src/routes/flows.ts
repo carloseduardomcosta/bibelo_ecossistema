@@ -29,10 +29,18 @@ flowsRouter.get("/stats/overview", async (_req: Request, res: Response) => {
 flowsRouter.get("/", async (_req: Request, res: Response) => {
   const flows = await query<Record<string, unknown>>(
     `SELECT f.*,
-       (SELECT COUNT(*) FROM marketing.flow_executions fe WHERE fe.flow_id = f.id AND fe.status = 'ativo') AS execucoes_ativas,
-       (SELECT COUNT(*) FROM marketing.flow_executions fe WHERE fe.flow_id = f.id AND fe.status = 'concluido') AS execucoes_concluidas,
-       (SELECT COUNT(*) FROM marketing.flow_executions fe WHERE fe.flow_id = f.id AND fe.status = 'erro') AS execucoes_erro
+       COALESCE(ec.ativo, 0) AS execucoes_ativas,
+       COALESCE(ec.concluido, 0) AS execucoes_concluidas,
+       COALESCE(ec.erro, 0) AS execucoes_erro
      FROM marketing.flows f
+     LEFT JOIN (
+       SELECT flow_id,
+         COUNT(*) FILTER (WHERE status = 'ativo') AS ativo,
+         COUNT(*) FILTER (WHERE status = 'concluido') AS concluido,
+         COUNT(*) FILTER (WHERE status = 'erro') AS erro
+       FROM marketing.flow_executions
+       GROUP BY flow_id
+     ) ec ON ec.flow_id = f.id
      ORDER BY f.ativo DESC, f.criado_em DESC`
   );
 

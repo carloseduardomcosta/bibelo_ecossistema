@@ -55,7 +55,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    api.post('/auth/logout').catch(() => {});
+    api.post('/auth/logout').catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn('[BibelôCRM] Falha ao notificar logout no servidor:', err?.message || err);
+    });
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     setUser(null);

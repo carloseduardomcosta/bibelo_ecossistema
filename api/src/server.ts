@@ -6,7 +6,7 @@ import rateLimit from "express-rate-limit";
 import "express-async-errors";
 
 import { logger } from "./utils/logger";
-import { dbConnect } from "./db";
+import { dbConnect, db } from "./db";
 import { healthRouter } from "./routes/health";
 import { authRouter }   from "./routes/auth";
 import { customersRouter } from "./routes/customers";
@@ -32,8 +32,8 @@ import { briefingRouter }        from "./routes/briefing";
 import { ordersRouter }          from "./routes/orders";
 import { nuvemshopWebhookRouter } from "./integrations/nuvemshop/webhook";
 import { blingWebhookRouter }     from "./integrations/bling/webhook";
-import { registerScheduledJobs } from "./queues/sync.queue";
-import { registerFlowJobs }      from "./queues/flow.queue";
+import { registerScheduledJobs, closeSyncQueue } from "./queues/sync.queue";
+import { registerFlowJobs, closeFlowQueue }      from "./queues/flow.queue";
 
 const app  = express();
 const PORT = Number(process.env.API_PORT) || 4000;
@@ -118,10 +118,36 @@ async function start(): Promise<void> {
   await dbConnect();
   await registerScheduledJobs();
   await registerFlowJobs();
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     logger.info(`BibelôCRM API rodando na porta ${PORT}`);
     logger.info(`Ambiente: ${process.env.NODE_ENV}`);
   });
+
+  // ── Graceful shutdown ───────────────────────────────────────
+  const shutdown = async (signal: string) => {
+    logger.info(`Recebido ${signal} — iniciando shutdown graceful...`);
+    server.close(() => {
+      logger.info("Servidor HTTP encerrado");
+    });
+    try {
+      await Promise.all([closeSyncQueue(), closeFlowQueue()]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      logger.error("Erro ao encerrar filas", { error: msg });
+    }
+    try {
+      await db.end();
+      logger.info("Pool PostgreSQL encerrado");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      logger.error("Erro ao encerrar pool PostgreSQL", { error: msg });
+    }
+    logger.info("Shutdown graceful concluído");
+    process.exit(0);
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 const isTest = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
