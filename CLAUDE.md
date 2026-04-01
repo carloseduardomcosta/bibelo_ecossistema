@@ -97,7 +97,7 @@ Ficam em `/opt/bibelocrm/.env` — nunca commitar. Ver `.env.example` para todos
 
 Referência completa em **`docs/api/rotas.md`** (~120 endpoints).
 
-Resumo: auth (Google OAuth), customers CRUD + timeline + reativar-email, analytics, campaigns + templates + personalizada (wizard), sync (Bling/NuvemShop), products, financeiro (20+ endpoints), NF entrada, orders, search, tracking, leads, flows, links, briefing diário, webhooks.
+Resumo: auth (Google OAuth), customers CRUD + timeline + reativar-email, analytics, campaigns + templates + personalizada (wizard), sync (Bling/NuvemShop), products, financeiro (20+ endpoints), NF entrada, orders, search, tracking, leads, flows, links, briefing diário, webhooks, images (editor + envio Bling).
 
 Endpoints públicos (sem auth): `/health`, auth/google, tracking (event/identify/bibelo.js), leads (capture/confirm/popup.js/config/view), email/unsubscribe, links, webhooks, images/serve/:id.
 
@@ -167,9 +167,40 @@ bash scripts/test.sh                          # todos
 bash scripts/test.sh src/routes/leads.test.ts  # específico
 ```
 
-30 testes: health (1), email (6), leads (14), orders (9).
+57 testes: health (1), email (6), leads (14), orders (9), images (27).
 
 Regras: endpoint público → testes de input, token, XSS. Protegido → 401 + resposta válida. Limpar dados no `afterAll`. Sem mocks de DB.
+
+---
+
+## Editor de Imagens para Marketplaces
+
+Ferramenta integrada para converter e enviar imagens de produtos para múltiplas plataformas.
+
+### Fluxo: Foto distribuidor → Bling
+1. Upload WEBP/JPG/PNG no editor (drag-and-drop, até 50 imagens)
+2. Sharp converte: redimensiona quadrado, fundo branco, formato/qualidade por preset
+3. Seleciona produto Bling por nome/SKU
+4. "Enviar ao Bling" → imagem salva em URL pública temporária → PATCH /produtos/{id} com `imagensURL`
+5. Bling baixa, processa, armazena no S3 interno. URL temporária expira em 1h.
+
+### Presets
+| Preset | Dimensão | Formato | Qualidade |
+|--------|----------|---------|-----------|
+| Shopee | 1000×1000 | JPG | 90 |
+| NuvemShop | 1024×1024 | JPG | 92 |
+| Loja Própria | 1200×1200 | PNG | 95 |
+| Instagram | 1080×1080 | JPG | 95 |
+
+### Arquivos
+- Backend: `api/src/routes/images.ts` — conversão, serve, envio Bling
+- Frontend: `frontend/src/pages/EditorImagens.tsx`
+- Testes: `api/src/routes/images.test.ts` (27 testes)
+- Nginx: `api.papelariabibelo.com.br` tem bloco `/api/images/serve/` → porta 4000
+
+### Segurança da rota pública `/api/images/serve/:id`
+- Rate limit 60 req/min, regex whitelist, path traversal bloqueado
+- IDs aleatórios (crypto.randomBytes), auto-cleanup 1h, X-Content-Type-Options: nosniff
 
 ---
 
