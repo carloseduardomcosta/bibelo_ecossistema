@@ -264,6 +264,135 @@ syncRouter.get("/internal/melhorenvio-token", async (_req: Request, res: Respons
   }
 });
 
+// Recebe pedido do Medusa e cria no Bling (rede Docker interna)
+syncRouter.post("/internal/medusa-order", async (req: Request, res: Response) => {
+  const order = req.body;
+
+  if (!order?.medusa_order_id || !order?.items?.length) {
+    res.status(400).json({ error: "medusa_order_id e items obrigatórios" });
+    return;
+  }
+
+  try {
+    const { getValidToken, BLING_API } = await import("../integrations/bling/auth");
+    const { rateLimitedGet } = await import("../integrations/bling/sync");
+    const axios = (await import("axios")).default;
+    const token = await getValidToken();
+
+    const addr = order.shipping_address || {};
+    const numero = `MDS-${order.display_id || Date.now()}`;
+    const dataHoje = new Date().toISOString().split("T")[0];
+
+    // Buscar ou criar contato no Bling pelo email
+    let contatoId: number | undefined;
+    if (order.email) {
+      await new Promise(r => setTimeout(r, 350)); // rate limit
+      try {
+        const searchRes = await axios.get(
+          `${BLING_API}/contatos?pesquisa=${encodeURIComponent(order.email)}&limite=1`,
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
+        );
+        contatoId = searchRes.data?.data?.[0]?.id;
+      } catch { /* contato não encontrado */ }
+
+      if (!contatoId) {
+        await new Promise(r => setTimeout(r, 350));
+        try {
+          const nome = [addr.first_name, addr.last_name].filter(Boolean).join(" ") || "Cliente Loja Online";
+          const createRes = await axios.post(
+            `${BLING_API}/contatos`,
+            {
+              nome,
+              tipo: "F",
+              fantasia: nome,
+              email: order.email,
+              telefone: addr.phone || "",
+              endereco: {
+                endereco: addr.address_1 || "",
+                numero: "",
+                bairro: "",
+                municipio: addr.city || "",
+                uf: addr.province || "",
+                cep: (addr.postal_code || "").replace(/\D/g, ""),
+                pais: "Brasil",
+              },
+            },
+            { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, timeout: 15000 }
+          );
+          contatoId = createRes.data?.data?.id;
+          logger.info(`Medusa → Bling: contato criado id=${contatoId}`);
+        } catch (err: any) {
+          logger.warn(`Medusa → Bling: erro ao criar contato: ${err?.response?.data ? JSON.stringify(err.response.data) : err.message}`);
+        }
+      }
+    }
+
+    const blingOrder: Record<string, unknown> = {
+      numero,
+      data: dataHoje,
+      contato: contatoId ? { id: contatoId } : {
+        nome: [addr.first_name, addr.last_name].filter(Boolean).join(" ") || "Cliente Loja Online",
+        tipoPessoa: "F",
+      },
+      itens: order.items.map((item: any) => ({
+        codigo: item.sku || "",
+        descricao: item.title || "",
+        quantidade: item.quantity || 1,
+        valor: (item.unit_price || 0) / 100,
+        desconto: 0,
+      })),
+      parcelas: [
+        {
+          valor: (order.total || 0) / 100,
+          dataVencimento: dataHoje,
+        },
+      ],
+      transporte: {
+        fretePorConta: 0,
+        transportadora: order.shipping_method || "Melhor Envio",
+      },
+    };
+
+    // Criar pedido no Bling
+    const blingRes = await axios.post(
+      `${BLING_API}/pedidos/vendas`,
+      blingOrder,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      }
+    );
+
+    const blingId = blingRes.data?.data?.id;
+    logger.info(`Medusa → Bling: pedido ${numero} criado (bling_id=${blingId})`);
+
+    // Salvar referência no banco
+    await query(
+      `INSERT INTO sync.bling_orders (bling_id, numero, valor, status, canal, itens, criado_bling)
+       VALUES ($1, $2, $3, 'em_aberto', 'medusa', $4, NOW())
+       ON CONFLICT (bling_id) DO NOTHING`,
+      [
+        String(blingId),
+        numero,
+        (order.total || 0) / 100,
+        JSON.stringify(order.items),
+      ]
+    );
+
+    res.json({ ok: true, bling_order_id: blingId, numero });
+  } catch (err: unknown) {
+    const axiosErr = err as any;
+    const message = axiosErr?.response?.data
+      ? JSON.stringify(axiosErr.response.data)
+      : (err instanceof Error ? err.message : "Erro ao criar pedido no Bling");
+    logger.error("Medusa → Bling: erro ao criar pedido", { error: message });
+    res.status(502).json({ error: message });
+  }
+});
+
 // ══════════════════════════════════════════════════════════════
 // BLING
 // ══════════════════════════════════════════════════════════════

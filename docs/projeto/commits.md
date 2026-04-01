@@ -179,3 +179,10 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Token OAuth2 via CRM API interna (cache 10min)
   - Shipping options PAC + SEDEX (price_type=calculated)
   - Testado: Timbó/SC → SP — PAC R$23,72 / SEDEX R$34,88
+- feat: Fase 4 — Medusa → Bling (criar pedido após pagamento)
+  - Subscriber medusa/src/subscribers/order-placed.ts (evento order.placed)
+  - Endpoint CRM: POST /api/internal/medusa-order
+  - Busca/cria contato no Bling por email antes de criar pedido
+  - Pedido criado no Bling com itens, parcelas, transporte
+  - Webhook Bling order.created confirmou o fluxo bidirecional
+  - Testado: MDS-1001 → bling_id=25460327672
