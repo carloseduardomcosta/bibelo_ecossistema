@@ -204,6 +204,46 @@ syncRouter.post("/medusa", authMiddleware, async (_req: Request, res: Response) 
 });
 
 // ══════════════════════════════════════════════════════════════
+// MELHOR ENVIO
+// ══════════════════════════════════════════════════════════════
+
+// Endpoint interno (chamado pelo Medusa callback OAuth2) — sem auth (rede Docker interna)
+syncRouter.post("/internal/melhorenvio-token", async (req: Request, res: Response) => {
+  const { access_token, refresh_token, expires_in } = req.body;
+
+  if (!access_token || !refresh_token) {
+    res.status(400).json({ error: "access_token e refresh_token obrigatórios" });
+    return;
+  }
+
+  try {
+    const tokenData = JSON.stringify({
+      access_token,
+      refresh_token,
+      expires_in: expires_in || 2592000,
+      expires_at: new Date(Date.now() + (expires_in || 2592000) * 1000).toISOString(),
+      connected_at: new Date().toISOString(),
+    });
+
+    await query(
+      `INSERT INTO sync.sync_state (fonte, ultimo_id, ultima_sync)
+       VALUES ('melhorenvio', $1, NOW())
+       ON CONFLICT (fonte) DO UPDATE SET
+         ultimo_id = $1,
+         ultima_sync = NOW()`,
+      [tokenData]
+    );
+
+    logger.info("Melhor Envio: token salvo no sync_state");
+    res.json({ ok: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro ao salvar token";
+    logger.error("Melhor Envio: erro ao salvar token", { error: message });
+    res.status(500).json({ error: message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 // BLING
 // ══════════════════════════════════════════════════════════════
 

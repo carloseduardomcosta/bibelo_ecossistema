@@ -121,6 +121,10 @@ services:
       MP_WEBHOOK_SECRET:  ${MP_WEBHOOK_SECRET}
       MP_PUBLIC_KEY:      ${MP_PUBLIC_KEY}
       MP_SANDBOX:         ${MP_SANDBOX:-true}
+      ME_CLIENT_ID:       ${ME_CLIENT_ID}
+      ME_CLIENT_SECRET:   ${ME_CLIENT_SECRET}
+      ME_REDIRECT_URI:    ${ME_REDIRECT_URI}
+      ME_SANDBOX:         ${ME_SANDBOX:-false}
     ports:
       - "127.0.0.1:9000:9000"
     depends_on:
