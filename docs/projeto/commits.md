@@ -205,3 +205,10 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Testado: cart ME criado com sucesso (PAC R$24,13, protocolo ORD-202604131711118)
   - Checkout real desativado para teste (debita saldo ME)
   - Pedidos NuvemShop continuam pelo fluxo Bling nativo
+- fix: dark mode + busca global + proxy CORS no editor de imagens
+- feat: navegador de imagens Bling — busca e importa fotos direto da API
+- feat: substituir imagens no Bling — flag replaceAll limpa antes de enviar
+  - Descoberto: `PATCH imagensURL: []` limpa todas as imagens internas do Bling
+  - Backend: dois PATCHs sequenciais (limpa + envia novas) quando replaceAll=true
+  - Frontend: preview das imagens atuais ao selecionar produto, toggle "Substituir"
+  - Botão muda cor (amber) quando vai substituir, mensagem de sucesso diferenciada

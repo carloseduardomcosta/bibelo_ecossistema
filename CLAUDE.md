@@ -180,9 +180,16 @@ Ferramenta integrada para converter e enviar imagens de produtos para múltiplas
 ### Fluxo: Foto distribuidor → Bling
 1. Upload WEBP/JPG/PNG no editor (drag-and-drop, até 50 imagens)
 2. Sharp converte: redimensiona quadrado, fundo branco, formato/qualidade por preset
-3. Seleciona produto Bling por nome/SKU
-4. "Enviar ao Bling" → imagem salva em URL pública temporária → PATCH /produtos/{id} com `imagensURL`
-5. Bling baixa, processa, armazena no S3 interno. URL temporária expira em 1h.
+3. Seleciona produto Bling por nome/SKU — preview das imagens atuais é exibido
+4. Toggle "Substituir imagens existentes" (ativo por padrão) — limpa antes de enviar
+5. "Enviar ao Bling" → imagem salva em URL pública temporária → PATCH /produtos/{id} com `imagensURL`
+6. Bling baixa, processa, armazena no S3 interno. URL temporária expira em 1h.
+
+### Comportamento da API Bling para imagens
+- `PATCH imagensURL: [{link}]` → **ADICIONA** às imagens existentes (não substitui)
+- `PATCH imagensURL: []` → **LIMPA TODAS** as imagens do produto
+- Para substituir: primeiro PATCH com `[]`, depois PATCH com as novas URLs (flag `replaceAll`)
+- Campos `internas` e `externas` são readOnly — ignorados no PATCH
 
 ### Presets
 | Preset | Dimensão | Formato | Qualidade |

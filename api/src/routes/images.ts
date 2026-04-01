@@ -434,6 +434,20 @@ imagesRouter.post(
     try {
       const token = await getValidToken();
 
+      // Se replaceAll, primeiro limpar todas as imagens existentes
+      if (opts.replaceAll) {
+        await rateLimitedPatch<{ data: unknown }>(
+          `${BLING_API}/produtos/${opts.blingProductId}`,
+          token,
+          { midia: { imagens: { imagensURL: [] } } },
+        );
+        logger.info("Imagens anteriores removidas do Bling", {
+          blingProductId: opts.blingProductId,
+        });
+        // Aguardar Bling processar a remoção antes de enviar as novas
+        await new Promise(r => setTimeout(r, 1000));
+      }
+
       const blingBody: Record<string, unknown> = {
         midia: {
           imagens: {
@@ -451,12 +465,14 @@ imagesRouter.post(
       logger.info("Imagens enviadas ao Bling", {
         blingProductId: opts.blingProductId,
         qtd: imageUrls.length,
+        replaceAll: !!opts.replaceAll,
       });
 
       res.json({
         success: true,
         blingProductId: opts.blingProductId,
         imagesCount: imageUrls.length,
+        replaced: !!opts.replaceAll,
         images: imageUrls,
         blingResponse: result,
       });

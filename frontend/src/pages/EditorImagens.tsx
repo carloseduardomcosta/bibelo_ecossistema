@@ -110,6 +110,10 @@ export default function EditorImagens() {
   const [sendingBling, setSendingBling] = useState(false);
   const [showBlingPanel, setShowBlingPanel] = useState(false);
 
+  const [replaceAll, setReplaceAll] = useState(true);
+  const [selectedProductImages, setSelectedProductImages] = useState<Array<{ url: string; tipo: string }>>([]);
+  const [loadingProductImages, setLoadingProductImages] = useState(false);
+
   // Buscar do Bling (novo painel)
   const [showBlingBrowser, setShowBlingBrowser] = useState(false);
   const [blingApiProducts, setBlingApiProducts] = useState<BlingApiProduct[]>([]);
@@ -196,6 +200,20 @@ export default function EditorImagens() {
       setImportingImage(false);
     }
   };
+
+  // ── Buscar imagens do produto selecionado (painel de envio) ──
+  const fetchSelectedProductImages = useCallback(async (blingId: number) => {
+    setLoadingProductImages(true);
+    setSelectedProductImages([]);
+    try {
+      const resp = await api.get<BlingProductImages>(`/images/bling-product/${blingId}/images`);
+      setSelectedProductImages(resp.data.imagens || []);
+    } catch {
+      setSelectedProductImages([]);
+    } finally {
+      setLoadingProductImages(false);
+    }
+  }, []);
 
   // ── Buscar produtos Bling (painel de envio) ──────────────
   useEffect(() => {
@@ -327,6 +345,7 @@ export default function EditorImagens() {
     formData.append('preset', selectedPresets[0] || 'shopee');
     formData.append('background', background);
     formData.append('fit', fit);
+    if (replaceAll) formData.append('replaceAll', 'true');
 
     if (selectedPresets[0] === 'custom') {
       formData.append('width', String(customWidth));
@@ -340,9 +359,12 @@ export default function EditorImagens() {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 120000,
       });
+      const action = replaceAll ? 'substituída(s)' : 'adicionada(s)';
       setSuccess(
-        `${resp.data.imagesCount} imagem(ns) enviada(s) ao Bling para "${selectedProduct.nome}" (ID: ${resp.data.blingProductId})`
+        `${resp.data.imagesCount} imagem(ns) ${action} no Bling para "${selectedProduct.nome}" (ID: ${resp.data.blingProductId})`
       );
+      // Atualizar preview das imagens do produto
+      if (selectedProduct) fetchSelectedProductImages(selectedProduct.bling_id);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Erro ao enviar ao Bling');
     } finally {
@@ -683,20 +705,69 @@ export default function EditorImagens() {
 
               {/* Produto selecionado */}
               {selectedProduct && (
-                <div className="mb-4 p-3 bg-bibelo-bg border border-bibelo-border rounded-lg flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <div className="mb-4 space-y-3">
+                  <div className="p-3 bg-bibelo-bg border border-bibelo-border rounded-lg flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="w-5 h-5 text-green-500" />
+                      <div>
+                        <p className="text-sm font-medium text-bibelo-text">{selectedProduct.nome}</p>
+                        <p className="text-xs text-bibelo-muted">
+                          SKU: {selectedProduct.sku || '—'} | Bling ID: {selectedProduct.bling_id}
+                          {selectedProduct.preco_venda ? ` | R$ ${Number(selectedProduct.preco_venda).toFixed(2)}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <button onClick={() => { setSelectedProduct(null); setSelectedProductImages([]); }} className="text-bibelo-muted hover:text-red-500">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Imagens atuais do produto no Bling */}
+                  {loadingProductImages ? (
+                    <div className="flex items-center gap-2 text-sm text-bibelo-muted px-1">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Carregando imagens atuais do Bling...
+                    </div>
+                  ) : selectedProductImages.length > 0 ? (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-2">
+                        {selectedProductImages.length} imagem(ns) existente(s) no Bling:
+                      </p>
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {selectedProductImages.map((img, i) => (
+                          <img
+                            key={i}
+                            src={`/api/images/proxy?url=${encodeURIComponent(img.url)}`}
+                            alt={`Atual ${i + 1}`}
+                            className="w-16 h-16 rounded border border-amber-200 dark:border-amber-700 object-contain bg-white flex-shrink-0"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-bibelo-muted px-1">Nenhuma imagem existente no Bling</p>
+                  )}
+
+                  {/* Toggle substituir */}
+                  <label className="flex items-center gap-3 cursor-pointer px-1">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={replaceAll}
+                        onChange={e => setReplaceAll(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-10 h-5 bg-gray-300 dark:bg-gray-600 rounded-full peer-checked:bg-bibelo-primary transition-colors" />
+                      <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-5 transition-transform" />
+                    </div>
                     <div>
-                      <p className="text-sm font-medium text-bibelo-text">{selectedProduct.nome}</p>
+                      <span className="text-sm font-medium text-bibelo-text">Substituir imagens existentes</span>
                       <p className="text-xs text-bibelo-muted">
-                        SKU: {selectedProduct.sku || '—'} | Bling ID: {selectedProduct.bling_id}
-                        {selectedProduct.preco_venda ? ` | R$ ${Number(selectedProduct.preco_venda).toFixed(2)}` : ''}
+                        {replaceAll
+                          ? 'Remove as imagens antigas antes de enviar as novas'
+                          : 'Adiciona as novas imagens sem remover as existentes'}
                       </p>
                     </div>
-                  </div>
-                  <button onClick={() => setSelectedProduct(null)} className="text-bibelo-muted hover:text-red-500">
-                    <X className="w-4 h-4" />
-                  </button>
+                  </label>
                 </div>
               )}
 
@@ -713,7 +784,7 @@ export default function EditorImagens() {
                     blingProducts.map(p => (
                       <button
                         key={p.bling_id}
-                        onClick={() => setSelectedProduct(p)}
+                        onClick={() => { setSelectedProduct(p); fetchSelectedProductImages(p.bling_id); }}
                         className="w-full text-left px-4 py-3 hover:bg-bibelo-card transition-colors flex items-center gap-3"
                       >
                         {p.imagens ? (
@@ -748,10 +819,16 @@ export default function EditorImagens() {
                 <button
                   onClick={sendToBling}
                   disabled={sendingBling}
-                  className="mt-4 flex items-center gap-2 px-6 py-3 bg-bibelo-primary text-white rounded-lg font-medium hover:bg-bibelo-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                  className={`mt-4 flex items-center gap-2 px-6 py-3 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
+                    replaceAll && selectedProductImages.length > 0
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-bibelo-primary hover:bg-bibelo-primary-hover'
+                  }`}
                 >
                   {sendingBling ? (
                     <><Loader2 className="w-5 h-5 animate-spin" /> Enviando ao Bling...</>
+                  ) : replaceAll && selectedProductImages.length > 0 ? (
+                    <><Send className="w-5 h-5" /> Substituir por {images.length} nova(s) imagem(ns)</>
                   ) : (
                     <><Send className="w-5 h-5" /> Enviar {images.length} imagem(ns) ao Bling</>
                   )}

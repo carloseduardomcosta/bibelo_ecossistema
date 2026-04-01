@@ -161,7 +161,7 @@ Referência completa de todos os endpoints.
 - `GET  /api/images/presets` — lista presets disponíveis (Shopee, NuvemShop, Loja Própria, Instagram, Custom)
 - `POST /api/images/convert` — converte 1-50 imagens (multipart). Params: preset, width, height, format, quality, background, fit. Retorna base64
 - `POST /api/images/info` — metadata de 1 imagem (formato, dimensões, alpha, DPI)
-- `POST /api/images/send-bling` — converte + salva em URL pública + envia ao Bling via PATCH /produtos/{id}. Params: blingProductId, preset, etc
+- `POST /api/images/send-bling` — converte + salva em URL pública + envia ao Bling via PATCH /produtos/{id}. Params: blingProductId, preset, replaceAll (limpa imagens existentes antes de enviar), etc
 - `GET  /api/images/bling-products` — busca produtos Bling por nome/SKU para seleção no editor
 
 ### Webhooks (validação HMAC)
