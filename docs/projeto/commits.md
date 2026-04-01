@@ -198,3 +198,10 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - 27 testes automatizados (Vitest): auth, conversão, batch, transparência, metadata, segurança, Bling
   - Página EditorImagens no frontend com drag-and-drop, busca de produtos, envio direto
   - Nginx: bloco /api/images/serve/ em api.papelariabibelo.com.br → bypass Cloudflare Access
+- feat: Fase 5 — Melhor Envio automático (etiqueta após pagamento, só Medusa)
+  - Service: api/src/integrations/melhorenvio/shipping.ts (cart → checkout → generate → print)
+  - Integrado no endpoint POST /api/internal/medusa-order (após criar pedido no Bling)
+  - Dados da loja origem via env vars (STORE_CPF, STORE_CNPJ, STORE_CEP)
+  - Testado: cart ME criado com sucesso (PAC R$24,13, protocolo ORD-202604131711118)
+  - Checkout real desativado para teste (debita saldo ME)
+  - Pedidos NuvemShop continuam pelo fluxo Bling nativo

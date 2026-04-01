@@ -382,7 +382,32 @@ syncRouter.post("/internal/medusa-order", async (req: Request, res: Response) =>
       ]
     );
 
+    // Gerar etiqueta Melhor Envio em background (não bloqueia response)
     res.json({ ok: true, bling_order_id: blingId, numero });
+
+    // Após responder, tentar gerar etiqueta
+    if (order.shipping_address?.postal_code) {
+      try {
+        const { createShippingLabel } = await import("../integrations/melhorenvio/shipping");
+        const labelResult = await createShippingLabel({
+          numero,
+          email: order.email || "",
+          total: order.total || 0,
+          items: order.items,
+          shipping_address: order.shipping_address,
+          shipping_service: order.shipping_service || "pac",
+        });
+        logger.info(
+          `Medusa → ME: etiqueta ${numero} gerada (cart=${labelResult.me_cart_id} label=${labelResult.label_url})`
+        );
+      } catch (labelErr: any) {
+        // Etiqueta falhou mas pedido no Bling foi criado — log e segue
+        logger.warn(
+          `Medusa → ME: etiqueta ${numero} falhou: ${labelErr.message}. Pedido Bling OK.`
+        );
+      }
+    }
+    return;
   } catch (err: unknown) {
     const axiosErr = err as any;
     const message = axiosErr?.response?.data
