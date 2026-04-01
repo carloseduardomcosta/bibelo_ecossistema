@@ -5,6 +5,7 @@ import sharp from "sharp";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import rateLimit from "express-rate-limit";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { getValidToken, BLING_API } from "../integrations/bling/auth";
@@ -267,17 +268,41 @@ imagesRouter.post(
 
 // ── GET /api/images/serve/:id — serve imagem temporária ─────
 // Rota SEM authMiddleware — registrada separadamente no server.ts
+// Segurança:
+//   1. Rate limit próprio (60 req/min por IP)
+//   2. Regex whitelist no ID (só alfanuméricos + _ . -)
+//   3. Extensão validada contra whitelist (.jpg/.png/.webp)
+//   4. Path traversal impossível (regex bloqueia / e ..)
+//   5. Resolve path e verifica que está dentro do SERVE_DIR
+//   6. Auto-cleanup: imagens expiram em 1h
+//   7. Sem listagem de diretório — só acesso por ID exato
+
+const serveRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Muitas requisições — tente novamente em 1 minuto" },
+});
+
 export const imagesPublicRouter = Router();
 
-imagesPublicRouter.get("/serve/:id", (req: Request, res: Response) => {
+imagesPublicRouter.get("/serve/:id", serveRateLimit, (req: Request, res: Response) => {
   const { id } = req.params;
-  // Sanitizar: só aceitar [a-zA-Z0-9_.-]
-  if (!/^[a-zA-Z0-9_.-]+$/.test(id)) {
+
+  // 1. Whitelist de caracteres (bloqueia path traversal, null bytes, etc)
+  if (!/^[a-zA-Z0-9_-]+\.(jpg|jpeg|png|webp)$/.test(id)) {
     res.status(400).json({ error: "ID inválido" });
     return;
   }
 
-  const filePath = path.join(SERVE_DIR, id);
+  // 2. Resolver path e garantir que está dentro do diretório esperado
+  const filePath = path.resolve(SERVE_DIR, id);
+  if (!filePath.startsWith(path.resolve(SERVE_DIR))) {
+    res.status(400).json({ error: "Caminho inválido" });
+    return;
+  }
+
   if (!fs.existsSync(filePath)) {
     res.status(404).json({ error: "Imagem não encontrada ou expirada" });
     return;
@@ -290,8 +315,17 @@ imagesPublicRouter.get("/serve/:id", (req: Request, res: Response) => {
     ".png": "image/png",
     ".webp": "image/webp",
   };
-  res.setHeader("Content-Type", mimeMap[ext] || "application/octet-stream");
+
+  // 3. Content-Type seguro (só imagens)
+  const contentType = mimeMap[ext];
+  if (!contentType) {
+    res.status(400).json({ error: "Formato não permitido" });
+    return;
+  }
+
+  res.setHeader("Content-Type", contentType);
   res.setHeader("Cache-Control", "public, max-age=3600");
+  res.setHeader("X-Content-Type-Options", "nosniff");
   fs.createReadStream(filePath).pipe(res);
 });
 
@@ -343,7 +377,9 @@ imagesRouter.post(
       b: parseInt(background.slice(5, 7), 16),
     };
 
-    const baseUrl = process.env.APP_PUBLIC_URL || process.env.APP_URL || "https://api.papelariabibelo.com.br";
+    // URL pública acessível externamente (sem Cloudflare Access)
+    // api.papelariabibelo.com.br tem bloco Nginx para /api/images/serve/ → porta 4000
+    const baseUrl = process.env.IMAGES_PUBLIC_URL || "https://api.papelariabibelo.com.br";
 
     // 1. Converter e salvar cada imagem em disco com URL pública
     const imageUrls: Array<{ link: string; fileName: string }> = [];

@@ -186,3 +186,15 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Pedido criado no Bling com itens, parcelas, transporte
   - Webhook Bling order.created confirmou o fluxo bidirecional
   - Testado: MDS-1001 → bling_id=25460327672
+- feat: Editor de Imagens para Marketplaces + envio automático ao Bling
+  - Nova rota /api/images — conversão, serve público, envio ao Bling
+  - Sharp: WEBP/PNG/JPG → formato padronizado por marketplace
+  - Presets: Shopee (1000x1000 JPG), NuvemShop (1024x1024), Loja Própria (1200x1200 PNG), Instagram (1080x1080)
+  - Fundo branco automático, remoção de transparência, mozjpeg otimizado
+  - rateLimitedPatch() no Bling sync (PATCH /produtos/{id} com rate limit + retry)
+  - URL pública via api.papelariabibelo.com.br/api/images/serve/ (Nginx → porta 4000)
+  - Bling processa: baixa imagem da URL, armazena no S3 interno
+  - Teste real: "1 Bloquinho Adesivado postit" (ID 16621982131) — imagem cadastrada com sucesso
+  - 27 testes automatizados (Vitest): auth, conversão, batch, transparência, metadata, segurança, Bling
+  - Página EditorImagens no frontend com drag-and-drop, busca de produtos, envio direto
+  - Nginx: bloco /api/images/serve/ em api.papelariabibelo.com.br → bypass Cloudflare Access

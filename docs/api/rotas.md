@@ -7,6 +7,7 @@ Referência completa de todos os endpoints.
 ## Públicas (sem auth)
 - `GET  /health` — status da API e banco
 - `POST /api/auth/google` — recebe credential Google, retorna accessToken + refreshToken
+- `GET  /api/images/serve/:id` — serve imagem temporária convertida (público, sem auth — usado pelo Bling para puxar imagens)
 
 ## Protegidas (Bearer JWT obrigatório)
 
@@ -155,6 +156,13 @@ Referência completa de todos os endpoints.
 - `GET  /api/links/formulario` — formulário de cadastro (nome, email, WhatsApp)
 - `POST /api/links/lead` — captura lead do formulário, cria customer + deal, notifica admin
 - `GET  /api/links/stats` — stats de cliques por link (últimos 30 dias)
+
+### Imagens (Editor de Imagens para Marketplaces)
+- `GET  /api/images/presets` — lista presets disponíveis (Shopee, NuvemShop, Loja Própria, Instagram, Custom)
+- `POST /api/images/convert` — converte 1-50 imagens (multipart). Params: preset, width, height, format, quality, background, fit. Retorna base64
+- `POST /api/images/info` — metadata de 1 imagem (formato, dimensões, alpha, DPI)
+- `POST /api/images/send-bling` — converte + salva em URL pública + envia ao Bling via PATCH /produtos/{id}. Params: blingProductId, preset, etc
+- `GET  /api/images/bling-products` — busca produtos Bling por nome/SKU para seleção no editor
 
 ### Webhooks (validação HMAC)
 - `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop + dispara fluxos automáticos
