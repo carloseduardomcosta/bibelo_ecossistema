@@ -1,6 +1,6 @@
 import { getBaseURL } from "@lib/util/env"
 import { Metadata } from "next"
-import { Cormorant_Garamond, DM_Sans } from "next/font/google"
+import { Cormorant_Garamond, Jost } from "next/font/google"
 import "styles/globals.css"
 
 const cormorant = Cormorant_Garamond({
@@ -10,7 +10,7 @@ const cormorant = Cormorant_Garamond({
   display: "swap",
 })
 
-const dmSans = DM_Sans({
+const jost = Jost({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-sans",
@@ -29,7 +29,7 @@ export default function RootLayout(props: { children: React.ReactNode }) {
     <html
       lang="pt-BR"
       data-mode="light"
-      className={`${cormorant.variable} ${dmSans.variable}`}
+      className={`${cormorant.variable} ${jost.variable}`}
     >
       <body>
         <main className="relative">{props.children}</main>

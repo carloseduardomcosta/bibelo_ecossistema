@@ -3,29 +3,39 @@ import LocalizedClientLink from "@modules/common/components/localized-client-lin
 
 const Hero = () => {
   return (
-    <div className="h-[75vh] w-full border-b border-bibelo-blush relative bg-bibelo-cream">
-      <div className="absolute inset-0 z-10 flex flex-col justify-center items-center text-center small:p-32 gap-6">
-        <span>
+    <div className="w-full border-b border-bibelo-rosa relative bg-bibelo-rosa">
+      <div className="content-container py-16 small:py-24 flex flex-col small:flex-row items-center gap-8">
+        {/* Text content */}
+        <div className="flex-1 text-center small:text-left">
           <Heading
             level="h1"
-            className="text-4xl leading-tight text-bibelo-bark font-heading font-semibold tracking-wide"
+            className="text-4xl small:text-5xl leading-tight text-bibelo-dark font-heading font-semibold tracking-wide"
           >
-            Papelaria com curadoria especial
+            Papelaria com{" "}
+            <span className="text-bibelo-pink">curadoria especial</span>
           </Heading>
-          <Text className="text-xl leading-8 text-bibelo-rose mt-4 max-w-xl mx-auto">
+          <Text className="text-lg leading-7 text-bibelo-dark/70 mt-4 max-w-lg">
             Agendas, cadernos e acessórios que fazem do seu dia a dia algo
             especial
           </Text>
-        </span>
-        <LocalizedClientLink href="/store">
-          <Button
-            variant="primary"
-            size="large"
-            className="mt-4"
-          >
-            Conheça nossa loja
-          </Button>
-        </LocalizedClientLink>
+          <div className="mt-8">
+            <LocalizedClientLink href="/store">
+              <Button
+                variant="primary"
+                size="large"
+                className="bg-bibelo-pink hover:bg-[#e050a8] text-white border-none px-8"
+              >
+                Conheça nossa loja
+              </Button>
+            </LocalizedClientLink>
+          </div>
+        </div>
+        {/* Placeholder for hero image */}
+        <div className="flex-1 hidden small:flex justify-center">
+          <div className="w-80 h-80 rounded-full bg-white/50 flex items-center justify-center">
+            <span className="text-6xl">✨</span>
+          </div>
+        </div>
       </div>
     </div>
   )

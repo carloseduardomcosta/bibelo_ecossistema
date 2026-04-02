@@ -1,6 +1,6 @@
 # Bibelo Design System
 
-Paleta: cream #FAF7F2, blush #EDD5C5, rose #C9896A, bark #3D2B1F
-Fontes: Cormorant Garamond (títulos) + DM Sans (corpo)
-Tom: papelaria premium, minimalista, feminino sem ser infantil
-Nunca: cores frias, fontes sem serifa genéricas, layouts simétricos
+Paleta oficial: pink #fe68c4, rosa #ffe5ec, amarelo #fff7c1, dark #2d2d2d
+Fontes: Cormorant Garamond (títulos grandes) + Jost (corpo, botões, labels)
+Tom: papelaria premium, feminino vibrante, curadoria especial
+Nunca: cores frias, fontes genéricas, layouts simétricos

@@ -63,7 +63,7 @@ const CartTotals: React.FC<CartTotalsProps> = ({ totals }) => {
           </span>
         </div>
       </div>
-      <div className="h-px w-full border-b border-bibelo-blush my-4" />
+      <div className="h-px w-full border-b border-bibelo-rosa my-4" />
       <div className="flex items-center justify-between text-ui-fg-base mb-2 txt-medium ">
         <span>Total</span>
         <span
@@ -74,7 +74,7 @@ const CartTotals: React.FC<CartTotalsProps> = ({ totals }) => {
           {convertToLocale({ amount: total ?? 0, currency_code })}
         </span>
       </div>
-      <div className="h-px w-full border-b border-bibelo-blush mt-4" />
+      <div className="h-px w-full border-b border-bibelo-rosa mt-4" />
     </div>
   )
 }

@@ -35,10 +35,10 @@ module.exports = {
           90: "#111827",
         },
         bibelo: {
-          cream: "#FAF7F2",
-          blush: "#EDD5C5",
-          rose:  "#C9896A",
-          bark:  "#3D2B1F",
+          pink:    "#fe68c4",
+          rosa:    "#ffe5ec",
+          amarelo: "#fff7c1",
+          dark:    "#2d2d2d",
         },
       },
       borderRadius: {
@@ -67,7 +67,7 @@ module.exports = {
       fontFamily: {
         sans: [
           "var(--font-sans)",
-          "DM Sans",
+          "Jost",
           "-apple-system",
           "BlinkMacSystemFont",
           "sans-serif",
