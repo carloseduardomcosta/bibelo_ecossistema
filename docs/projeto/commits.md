@@ -263,3 +263,41 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - .dockerignore, check-env-variables.js copiado no runner
   - Publishable key + região Brasil (BRL) + imagens Bling em remotePatterns
   - Container bibelo_storefront: porta 8000, 156 páginas estáticas geradas
+- feat: tracking de email (Resend webhook) + motor condicional de fluxos + fluxos inteligentes
+  - Migration 020: tabela marketing.email_events — armazena cada evento individual (open/click/bounce/delivered)
+  - Webhook Resend atualizado: registra TODOS os eventos (não só primeiro open/click)
+  - Webhook agora rastreia emails de campanhas E de fluxos (fallback para flow_step_executions)
+  - Novo endpoint GET /api/campaigns/email-events?hours=48 — retorna interações recentes
+  - NotificationBell atualizado — exibe opens/clicks/bounces no sino com ícones
+  - Migration 021: index JSONB em flow_step_executions.resultado->>'messageId' + composite index em email_events
+  - Motor condicional de fluxos: FlowStep com campos condicao, ref_step, parametros, sim, nao, proximo
+  - Função evaluateCondition() com 7 tipos: email_aberto, email_clicado, comprou, visitou_site, viu_produto, abandonou_cart, score_minimo
+  - advanceFlow() agora suporta branching (targetIndex) e goto (proximo)
+  - Validação Zod atualizada com campos condicionais + checks de integridade
+  - Novos trigger types no Zod: lead.captured, lead.cart_abandoned, product.interested, order.delivered
+  - 3 fluxos inteligentes com branching (substituem os lineares):
+    - Carrinho abandonado inteligente (12 steps, 5 condições)
+    - Nutrição de lead inteligente (12 steps, 4 condições)
+    - Reativação inteligente (10 steps, 4 condições)
+  - 6 novos templates de email: carrinho reenvio, cupom recuperação, lead FOMO VIP, convite VIP, cupom exclusivo, reativação cupom
+- feat: Storefront Fase 2 — cores oficiais Bibelô + menu profissional
+  - Paleta oficial: pink #fe68c4, rosa #ffe5ec, amarelo #fff7c1 (consistente com NuvemShop)
+  - Fonte Jost (corpo) + Cormorant Garamond (títulos) via next/font
+  - Override 30+ CSS vars do Medusa UI com cores oficiais
+  - Top bar amarelo: frete grátis R$199, Timbó/SC, WhatsApp
+  - Mega menu categorias: 48 categorias em 6 grupos + sidebar coleções
+  - Dropdown de conta: login/cadastro ou menu logado (pedidos, endereços, sair)
+  - Carrinho ícone SVG + badge numérico pink
+  - Hero rosa com "curadoria especial" em pink + CTA
+  - Footer amarelo com logo Cormorant
+  - Side menu mobile atualizado (fundo branco, texto legível)
+  - Design skill atualizado com paleta oficial
+- test: 306 testes automatizados — bateria massiva de integração
+  - 12 novos arquivos de teste: auth, customers, campaigns, analytics, sync, products, search, tracking, webhooks, email-events, links, security
+  - De 77 para 306 testes (4x)
+  - security.test.ts: 43 testes (SQL injection, XSS, path traversal, headers, JWT, 13 endpoints auth)
+  - flows.test.ts: 38 testes (CRUD, trigger, dedup, branching condicional)
+  - tracking.test.ts: 26 testes (events, identify, bibelo.js, timeline, funnel)
+  - Todos os 18 suites passando em 23s
+  - Fix: XSS no nome de lead (strip HTML tags na captura)
+  - Fix: import lazy do @imgly/background-removal-node (sharp não crashar testes)

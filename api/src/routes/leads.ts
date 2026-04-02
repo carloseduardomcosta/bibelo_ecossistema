@@ -120,7 +120,9 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
     return;
   }
 
-  const { nome, telefone, popup_id, visitor_id, pagina } = parsed.data;
+  const rawNome = parsed.data.nome;
+  const nome = rawNome ? rawNome.replace(/<[^>]*>/g, "").trim() : undefined;
+  const { telefone, popup_id, visitor_id, pagina } = parsed.data;
   const email = parsed.data.email.toLowerCase().trim();
 
   // ── Bloqueia clientes existentes que já compraram ──────────

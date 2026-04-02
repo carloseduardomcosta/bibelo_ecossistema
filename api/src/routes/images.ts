@@ -10,12 +10,11 @@ import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { getValidToken, BLING_API } from "../integrations/bling/auth";
 import { rateLimitedPatch } from "../integrations/bling/sync";
-import { removeBackground } from "@imgly/background-removal-node";
-
 export const imagesRouter = Router();
 
 // ── Remoção de fundo com IA (ONNX local) ─────────────────
 async function removeBg(inputBuffer: Buffer): Promise<Buffer> {
+  const { removeBackground } = await import("@imgly/background-removal-node");
   const blob = new Blob([inputBuffer], { type: "image/png" });
   const result = await removeBackground(blob, {
     output: { format: "image/png" },

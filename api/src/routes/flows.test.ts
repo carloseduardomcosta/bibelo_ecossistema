@@ -337,3 +337,255 @@ describe("Segurança — flows API", () => {
     expect([201, 400]).toContain(res.status);
   });
 });
+
+// ── Testes do motor condicional — validação de steps ─────────────
+
+describe("Condicionais — validação de steps", () => {
+  const auth = () => ({ Authorization: `Bearer ${adminToken()}` });
+  const base = { gatilho: "order.abandoned" as const, ativo: false };
+
+  it("cria fluxo com condição válida (email_aberto)", async () => {
+    const res = await request(app)
+      .post("/api/flows")
+      .set(auth())
+      .send({
+        ...base,
+        nome: `${FLOW_TEST_PREFIX}cond-valida`,
+        steps: [
+          { tipo: "email", template: "Teste", delay_horas: 0 },
+          { tipo: "wait", delay_horas: 12 },
+          { tipo: "condicao", delay_horas: 0, condicao: "email_aberto", ref_step: 0, sim: 3, nao: 4 },
+          { tipo: "email", template: "Abriu", delay_horas: 0 },
+          { tipo: "email", template: "Não abriu", delay_horas: 0 },
+        ],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.steps).toHaveLength(5);
+    expect(res.body.steps[2].condicao).toBe("email_aberto");
+    createdFlowIds.push(res.body.id);
+  });
+
+  it("cria fluxo com condição comprou e sim=-1 (completar fluxo)", async () => {
+    const res = await request(app)
+      .post("/api/flows")
+      .set(auth())
+      .send({
+        ...base,
+        nome: `${FLOW_TEST_PREFIX}cond-comprou`,
+        steps: [
+          { tipo: "email", template: "Teste", delay_horas: 0 },
+          { tipo: "condicao", delay_horas: 0, condicao: "comprou", sim: -1, nao: 2 },
+          { tipo: "email", template: "Não comprou", delay_horas: 0 },
+        ],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.steps[1].sim).toBe(-1);
+    createdFlowIds.push(res.body.id);
+  });
+
+  it("cria fluxo com proximo (goto/convergência)", async () => {
+    const res = await request(app)
+      .post("/api/flows")
+      .set(auth())
+      .send({
+        ...base,
+        nome: `${FLOW_TEST_PREFIX}cond-proximo`,
+        steps: [
+          { tipo: "email", template: "Teste", delay_horas: 0 },
+          { tipo: "condicao", delay_horas: 0, condicao: "visitou_site", sim: 2, nao: 3 },
+          { tipo: "email", template: "Visitou", delay_horas: 0, proximo: 4 },
+          { tipo: "email", template: "Não visitou", delay_horas: 0 },
+          { tipo: "wait", delay_horas: 24 },
+        ],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.steps[2].proximo).toBe(4);
+    createdFlowIds.push(res.body.id);
+  });
+
+  it("rejeita condição sem campo condicao", async () => {
+    const res = await request(app)
+      .post("/api/flows")
+      .set(auth())
+      .send({
+        ...base,
+        nome: `${FLOW_TEST_PREFIX}cond-sem-tipo`,
+        steps: [
+          { tipo: "email", template: "Teste", delay_horas: 0 },
+          { tipo: "condicao", delay_horas: 0, sim: 0, nao: -1 },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("condicao");
+  });
+
+  it("rejeita condição sem sim/nao", async () => {
+    const res = await request(app)
+      .post("/api/flows")
+      .set(auth())
+      .send({
+        ...base,
+        nome: `${FLOW_TEST_PREFIX}cond-sem-sim-nao`,
+        steps: [
+          { tipo: "email", template: "Teste", delay_horas: 0 },
+          { tipo: "condicao", delay_horas: 0, condicao: "comprou" },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("sim");
+  });
+
+  it("rejeita email_aberto sem ref_step", async () => {
+    const res = await request(app)
+      .post("/api/flows")
+      .set(auth())
+      .send({
+        ...base,
+        nome: `${FLOW_TEST_PREFIX}cond-sem-ref`,
+        steps: [
+          { tipo: "email", template: "Teste", delay_horas: 0 },
+          { tipo: "condicao", delay_horas: 0, condicao: "email_aberto", sim: 0, nao: -1 },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("ref_step");
+  });
+
+  it("rejeita ref_step apontando para step não-email", async () => {
+    const res = await request(app)
+      .post("/api/flows")
+      .set(auth())
+      .send({
+        ...base,
+        nome: `${FLOW_TEST_PREFIX}cond-ref-wait`,
+        steps: [
+          { tipo: "wait", delay_horas: 12 },
+          { tipo: "condicao", delay_horas: 0, condicao: "email_aberto", ref_step: 0, sim: -1, nao: -1 },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("email");
+  });
+
+  it("rejeita ref_step apontando para step futuro", async () => {
+    const res = await request(app)
+      .post("/api/flows")
+      .set(auth())
+      .send({
+        ...base,
+        nome: `${FLOW_TEST_PREFIX}cond-ref-futuro`,
+        steps: [
+          { tipo: "condicao", delay_horas: 0, condicao: "email_aberto", ref_step: 1, sim: -1, nao: -1 },
+          { tipo: "email", template: "Teste", delay_horas: 0 },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("anterior");
+  });
+
+  it("rejeita condição apontando para si mesma (loop)", async () => {
+    const res = await request(app)
+      .post("/api/flows")
+      .set(auth())
+      .send({
+        ...base,
+        nome: `${FLOW_TEST_PREFIX}cond-loop`,
+        steps: [
+          { tipo: "email", template: "Teste", delay_horas: 0 },
+          { tipo: "condicao", delay_horas: 0, condicao: "comprou", sim: -1, nao: 1 },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("si mesma");
+  });
+
+  it("rejeita sim/nao fora dos limites", async () => {
+    const res = await request(app)
+      .post("/api/flows")
+      .set(auth())
+      .send({
+        ...base,
+        nome: `${FLOW_TEST_PREFIX}cond-oob`,
+        steps: [
+          { tipo: "email", template: "Teste", delay_horas: 0 },
+          { tipo: "condicao", delay_horas: 0, condicao: "comprou", sim: 99, nao: -1 },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("limites");
+  });
+
+  it("rejeita proximo fora dos limites", async () => {
+    const res = await request(app)
+      .post("/api/flows")
+      .set(auth())
+      .send({
+        ...base,
+        nome: `${FLOW_TEST_PREFIX}cond-proximo-oob`,
+        steps: [
+          { tipo: "email", template: "Teste", delay_horas: 0, proximo: 50 },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("proximo");
+  });
+
+  it("rejeita proximo apontando para si mesmo", async () => {
+    const res = await request(app)
+      .post("/api/flows")
+      .set(auth())
+      .send({
+        ...base,
+        nome: `${FLOW_TEST_PREFIX}cond-proximo-self`,
+        steps: [
+          { tipo: "email", template: "Teste", delay_horas: 0, proximo: 0 },
+          { tipo: "email", template: "Teste2", delay_horas: 0 },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("si mesmo");
+  });
+
+  it("aceita todos os 7 tipos de condição válidos", async () => {
+    const condicoes = [
+      "email_aberto", "email_clicado", "comprou", "visitou_site",
+      "viu_produto", "abandonou_cart", "score_minimo",
+    ];
+    for (const cond of condicoes) {
+      const needsRef = cond === "email_aberto" || cond === "email_clicado";
+      const steps: Record<string, unknown>[] = [
+        { tipo: "email", template: "Teste", delay_horas: 0 },
+        {
+          tipo: "condicao", delay_horas: 0, condicao: cond, sim: -1, nao: 0,
+          ...(needsRef ? { ref_step: 0 } : {}),
+          ...(cond === "score_minimo" ? { parametros: { minimo: 50 } } : {}),
+        },
+      ];
+      const res = await request(app)
+        .post("/api/flows")
+        .set(auth())
+        .send({ ...base, nome: `${FLOW_TEST_PREFIX}cond-${cond}`, steps });
+      expect(res.status).toBe(201);
+      createdFlowIds.push(res.body.id);
+    }
+  });
+
+  it("aceita todos os gatilhos novos", async () => {
+    const gatilhos = [
+      "lead.captured", "lead.cart_abandoned", "product.interested", "order.delivered",
+    ];
+    for (const g of gatilhos) {
+      const res = await request(app)
+        .post("/api/flows")
+        .set(auth())
+        .send({
+          nome: `${FLOW_TEST_PREFIX}gatilho-${g.replace(".", "-")}`,
+          gatilho: g,
+          steps: [{ tipo: "email", template: "Teste", delay_horas: 0 }],
+          ativo: false,
+        });
+      expect(res.status).toBe(201);
+      createdFlowIds.push(res.body.id);
+    }
+  });
+});
