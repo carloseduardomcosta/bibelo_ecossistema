@@ -254,6 +254,64 @@ flowsRouter.post("/:id/toggle", async (req: Request, res: Response) => {
   res.json(flow);
 });
 
+// ── GET /api/flows/:id/step-stats — estatísticas por step ─────
+
+flowsRouter.get("/:id/step-stats", async (req: Request, res: Response) => {
+  const flowId = req.params.id;
+
+  // Stats de execução por step
+  const stepStats = await query<{
+    step_index: number;
+    tipo: string;
+    total: string;
+    concluidos: string;
+    erros: string;
+    ignorados: string;
+    resultado_agg: Record<string, unknown>;
+  }>(
+    `SELECT
+       fse.step_index,
+       fse.tipo,
+       COUNT(*)::text AS total,
+       COUNT(*) FILTER (WHERE fse.status = 'concluido')::text AS concluidos,
+       COUNT(*) FILTER (WHERE fse.status = 'erro')::text AS erros,
+       COUNT(*) FILTER (WHERE fse.status = 'ignorado')::text AS ignorados,
+       jsonb_build_object(
+         'passed_true', COUNT(*) FILTER (WHERE (fse.resultado->>'passed')::boolean = true),
+         'passed_false', COUNT(*) FILTER (WHERE (fse.resultado->>'passed')::boolean = false),
+         'emails_enviados', COUNT(*) FILTER (WHERE fse.resultado->>'messageId' IS NOT NULL)
+       ) AS resultado_agg
+     FROM marketing.flow_step_executions fse
+     JOIN marketing.flow_executions fe ON fe.id = fse.execution_id
+     WHERE fe.flow_id = $1
+     GROUP BY fse.step_index, fse.tipo
+     ORDER BY fse.step_index`,
+    [flowId],
+  );
+
+  // Templates usados nos steps de email
+  const flow = await queryOne<{ steps: Array<{ tipo: string; template?: string }> }>(
+    "SELECT steps FROM marketing.flows WHERE id = $1",
+    [flowId],
+  );
+
+  const templates: Record<number, { nome: string; assunto: string }> = {};
+  if (flow) {
+    const steps = typeof flow.steps === "string" ? JSON.parse(flow.steps) : flow.steps;
+    for (let i = 0; i < steps.length; i++) {
+      if (steps[i].tipo === "email" && steps[i].template) {
+        const tpl = await queryOne<{ nome: string; assunto: string }>(
+          "SELECT nome, assunto FROM marketing.templates WHERE nome ILIKE $1 AND ativo = true LIMIT 1",
+          [`%${steps[i].template}%`],
+        );
+        if (tpl) templates[i] = tpl;
+      }
+    }
+  }
+
+  res.json({ step_stats: stepStats, templates });
+});
+
 // ── GET /api/flows/:id/executions/:execId — detalhe execução ──
 
 flowsRouter.get("/:id/executions/:execId", async (req: Request, res: Response) => {

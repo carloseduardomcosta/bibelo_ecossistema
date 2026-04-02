@@ -824,7 +824,7 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
 
             {/* Visualização do fluxo */}
             <div className="mb-6 p-4 bg-bibelo-bg rounded-xl max-h-[500px] overflow-y-auto">
-              <FlowVisualizer steps={parseSteps(selected.steps) as Array<{ tipo: 'email' | 'whatsapp' | 'wait' | 'condicao'; template?: string; delay_horas: number; condicao?: string; ref_step?: number; sim?: number; nao?: number; proximo?: number }>} gatilho={selected.gatilho} />
+              <FlowVisualizer steps={parseSteps(selected.steps) as Array<{ tipo: 'email' | 'whatsapp' | 'wait' | 'condicao'; template?: string; delay_horas: number; condicao?: string; ref_step?: number; sim?: number; nao?: number; proximo?: number }>} gatilho={selected.gatilho} flowId={selected.id} />
             </div>
 
             {/* Stats */}
