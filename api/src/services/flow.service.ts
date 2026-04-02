@@ -2,7 +2,7 @@ import { query, queryOne } from "../db";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../integrations/resend/email";
 import { getNuvemShopToken, nsRequest } from "../integrations/nuvemshop/auth";
-import { gerarLinkDescadastro } from "../routes/email";
+import { gerarLinkDescadastro, proxyImageUrl } from "../routes/email";
 
 import crypto from "crypto";
 
@@ -663,6 +663,7 @@ async function executeEmailStep(
     prazo: String(metadata.prazo || ""),
     cupom: cupomFinal,
     produto: String(metadata.resource_nome || ""),
+    senha_temp: String(metadata.senha_temp || ""),
   };
   // URLs e valores numéricos não precisam escape; nomes e textos sim
   const htmlSafeKeys = new Set(["nome", "email", "produto", "itens"]);
@@ -755,7 +756,8 @@ function safeImageUrl(url: string | undefined | null): string {
   let safe = url.trim();
   // Força HTTPS (Gmail bloqueia HTTP em emails)
   safe = safe.replace(/^http:\/\//i, "https://");
-  return safe;
+  // Passa pelo proxy do nosso domínio (evita bloqueio de imagens de CDN externo)
+  return proxyImageUrl(safe);
 }
 
 // ── Email context: email do destinatário para link de descadastro ──

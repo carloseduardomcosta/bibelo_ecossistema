@@ -19,12 +19,19 @@ export const leadsRouter = Router();
 
 // ── NuvemShop: criar conta do cliente + cupom de frete ─────────
 
-async function criarContaNuvemShop(nome: string, email: string, telefone?: string): Promise<{ ns_customer_id: number | null }> {
+function gerarSenhaTemporaria(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let senha = "Bib";
+  for (let i = 0; i < 5; i++) senha += chars[Math.floor(Math.random() * chars.length)];
+  return senha + "!";
+}
+
+async function criarContaNuvemShop(nome: string, email: string, telefone?: string): Promise<{ ns_customer_id: number | null; senha: string | null }> {
   try {
     const token = await getNuvemShopToken();
     if (!token) {
       logger.warn("NuvemShop: token não disponível — conta não criada", { email });
-      return { ns_customer_id: null };
+      return { ns_customer_id: null, senha: null };
     }
 
     // Verifica se já existe na NuvemShop (API retorna 404 quando 0 resultados)
@@ -32,28 +39,29 @@ async function criarContaNuvemShop(nome: string, email: string, telefone?: strin
       const existing = await nsRequest<Array<{ id: number }>>("get", `customers?q=${encodeURIComponent(email)}`, token);
       if (existing && existing.length > 0) {
         logger.info("NuvemShop: cliente já existe", { email, ns_id: existing[0].id });
-        return { ns_customer_id: existing[0].id };
+        return { ns_customer_id: existing[0].id, senha: null };
       }
     } catch (searchErr) {
-      // 404 = sem resultados, seguir para criar
       const axErr = searchErr as { response?: { status?: number } };
       if (axErr.response?.status !== 404) throw searchErr;
     }
 
-    // Cria conta na NuvemShop
+    // Gera senha temporária e cria conta
+    const senha = gerarSenhaTemporaria();
     const nsCustomer = await nsRequest<{ id: number }>("post", "customers", token, {
       name: nome,
       email,
       phone: telefone || "",
-      send_email_invite: true,
+      password: senha,
+      send_email_invite: false,
     });
 
     logger.info("NuvemShop: conta criada via popup", { email, ns_customer_id: nsCustomer.id });
-    return { ns_customer_id: nsCustomer.id };
+    return { ns_customer_id: nsCustomer.id, senha };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error("NuvemShop: erro ao criar conta", { email, error: msg });
-    return { ns_customer_id: null };
+    return { ns_customer_id: null, senha: null };
   }
 }
 
@@ -310,13 +318,20 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
 
   // ── NuvemShop: criar conta + garantir cupom (background, não bloqueia resposta) ──
   criarContaNuvemShop(nome || email.split("@")[0], email, telefone || undefined)
-    .then(({ ns_customer_id }) => {
+    .then(({ ns_customer_id, senha }) => {
       if (ns_customer_id) {
-        // Atualiza nuvemshop_id no CRM
         query(
           "UPDATE crm.customers SET nuvemshop_id = $2 WHERE id = $1 AND nuvemshop_id IS NULL",
           [customer.id, String(ns_customer_id)]
         ).catch(() => {});
+      }
+      // Salvar senha temporária no lead para incluir no email de boas-vindas
+      if (senha) {
+        query(
+          `UPDATE marketing.leads SET senha_temp = $2 WHERE email = $1`,
+          [email, senha]
+        ).catch(() => {});
+        logger.info("Senha temporária gerada para conta NuvemShop", { email });
       }
     })
     .catch(() => {});
@@ -395,26 +410,36 @@ leadsRouter.get("/confirm", publicLimiter, async (req: Request, res: Response) =
 
     // Agora sim dispara o fluxo de boas-vindas (só para email verificado)
     if (lead.customer_id) {
+      // Buscar senha temporária se existir
+      const leadData = await queryOne<{ senha_temp: string | null }>(
+        "SELECT senha_temp FROM marketing.leads WHERE id = $1", [lead.id]
+      );
       await triggerFlow("lead.captured", lead.customer_id, {
         email,
         nome: lead.nome || email.split("@")[0],
         cupom: lead.cupom || "",
         fonte: "popup",
+        senha_temp: leadData?.senha_temp || "",
       });
     }
 
     logger.info("Lead verificou email", { email, leadId: lead.id, customerId: lead.customer_id });
   }
 
-  // Mostra página com o cupom
-  res.send(paginaCupomVerificado(email, lead.cupom));
+  // Mostra página com o cupom + dados de login
+  const leadFinal = await queryOne<{ senha_temp: string | null }>(
+    "SELECT senha_temp FROM marketing.leads WHERE id = $1", [lead.id]
+  );
+  res.send(paginaCupomVerificado(email, lead.cupom, leadFinal?.senha_temp || null));
 });
 
 // ── Páginas HTML de verificação ──────────────────────────────
 
-function paginaCupomVerificado(email: string, cupom: string | null): string {
+function paginaCupomVerificado(email: string, cupom: string | null, senhaTemp?: string | null): string {
   const cupomCode = esc(cupom || "CLUBEBIBELO");
   const isClube = cupom === "CLUBEBIBELO";
+  const emailSafe = esc(email);
+  const senhaSafe = senhaTemp ? esc(senhaTemp) : null;
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -447,7 +472,14 @@ function paginaCupomVerificado(email: string, cupom: string | null): string {
         <p style="margin:0 0 4px;font-size:13px;color:#555;">🎁 Mimo surpresa em toda compra</p>
         <p style="margin:0;font-size:13px;color:#555;">✨ Novidades em primeira mão</p>
       </div>` : ""}
-      <a href="https://www.papelariabibelo.com.br" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:15px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);font-family:Jost,sans-serif;">
+      ${senhaSafe ? `
+      <div style="background:#f0f0f0;border-radius:10px;padding:14px 16px;margin:0 0 20px;text-align:left;">
+        <p style="margin:0 0 8px;font-size:13px;color:#2d2d2d;font-weight:600;">🔐 Sua conta na loja:</p>
+        <p style="margin:0 0 4px;font-size:13px;color:#555;">E-mail: <strong>${emailSafe}</strong></p>
+        <p style="margin:0 0 8px;font-size:13px;color:#555;">Senha: <strong>${senhaSafe}</strong></p>
+        <p style="margin:0;font-size:11px;color:#999;">Troque a senha no primeiro acesso. <a href="https://www.papelariabibelo.com.br/account/reset" style="color:#fe68c4;text-decoration:none;">Esqueci minha senha</a></p>
+      </div>` : ""}
+      <a href="https://www.papelariabibelo.com.br/novidades" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:15px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);font-family:Jost,sans-serif;">
         ${isClube ? "Começar a comprar" : "Ir para a loja"}
       </a>
       ${isClube ? `<div style="margin-top:16px;">

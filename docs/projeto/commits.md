@@ -301,3 +301,15 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Todos os 18 suites passando em 23s
   - Fix: XSS no nome de lead (strip HTML tags na captura)
   - Fix: import lazy do @imgly/background-removal-node (sharp não crashar testes)
+- feat: cupons únicos + senha NuvemShop + grupo VIP + padronização templates + fluxos inteligentes
+  - Cupons únicos por lead: gerarCupomUnico() cria BIB-NOME-XXXX via NuvemShop API (max_uses:1, first_consumer_purchase:true, expiry automático)
+  - 3 cenários de cupom: carrinho abandonado (5%, 24h), nutrição lead (10%, 48h), reativação (10%, 7d)
+  - Coluna nuvemshop_orders.cupom — webhook salva qual cupom foi usado no pedido
+  - Senha temporária NuvemShop: gera BibXXXXX! ao criar conta, inclui no email de boas-vindas + página de confirmação + link recuperação
+  - Proxy de imagens nos fluxos: proxyImageUrl() agora aplicado em emails de fluxos (antes só campanhas). Cache de 7d → 30d.
+  - Link grupo VIP (menu.papelariabibelo.com.br/api/links/go/grupo-vip) integrado em: popup sucesso, página confirmação, 5 templates
+  - Padronização de 21 templates: logo, Cormorant Garamond título, gradiente header, divisor. "Clube Bibelô" só no lead boas-vindas.
+  - CTAs atualizados para /novidades em 5 templates + página de confirmação
+  - 6 novos templates: Carrinho reenvio, Cupom recuperação carrinho, Lead FOMO grupo VIP, Lead convite VIP, Lead cupom exclusivo, Reativação cupom
+  - 6 fluxos inteligentes com branching: Carrinho abandonado (12 steps), Nutrição lead (12 steps), Reativação (10 steps), Produto visitado (10 steps), Lead quente (10 steps), Pós-compra (8 steps)
+  - 11 novos testes condicionais cobrindo todos os caminhos de branching (carrinho 5, nutrição 3, reativação 3)

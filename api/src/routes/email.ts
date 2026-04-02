@@ -207,7 +207,7 @@ emailRouter.get("/img/:hash", imgProxyLimiter, async (req: Request, res: Respons
       ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif",
     };
     res.setHeader("Content-Type", mimeMap[ext] || "image/jpeg");
-    res.setHeader("Cache-Control", "public, max-age=604800"); // 7 dias
+    res.setHeader("Cache-Control", "public, max-age=2592000"); // 30 dias
     res.setHeader("X-Content-Type-Options", "nosniff");
     fs.createReadStream(filePath).pipe(res);
     return;

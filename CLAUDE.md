@@ -77,7 +77,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 `templates`, `campaigns`, `campaign_sends`, `flows`, `flow_executions`, `flow_step_executions`, `pedidos_pendentes`, `leads`, `popup_config`, `email_events`
 
 ### sync
-`bling_orders`, `bling_customers`, `nuvemshop_orders`, `sync_logs`, `sync_state`
+`bling_orders`, `bling_customers`, `nuvemshop_orders` (coluna `cupom` para tracking), `sync_logs`, `sync_state`
 
 ### financeiro
 `categorias`, `lancamentos`, `despesas_fixas`, `despesas_fixas_pagamentos`, `custos_embalagem`, `kits_embalagem`, `kit_itens`, `canais_venda`, `notas_entrada`, `notas_entrada_itens`
@@ -145,14 +145,17 @@ Toda comunicação **DEVE ser em português brasileiro (pt-BR)**. Commits, mensa
 
 ### Regras de negócio (emails e fluxos)
 - Motor condicional: steps tipo "condicao" avaliam 7 tipos (email_aberto, email_clicado, comprou, visitou_site, viu_produto, abandonou_cart, score_minimo) e fazem branching (sim/nao → targetIndex)
-- 3 fluxos inteligentes com branching: carrinho abandonado (12 steps), nutrição de lead (12 steps), reativação (10 steps)
+- 6 fluxos inteligentes com branching: carrinho abandonado (12 steps), nutrição lead (12 steps), reativação (10 steps), produto visitado (10 steps), lead quente (10 steps), pós-compra (8 steps)
+- Cupons únicos por lead: gerarCupomUnico() cria BIB-NOME-XXXX na NuvemShop API (max_uses:1, first_consumer_purchase:true, expiry automático)
+- 3 cenários de cupom: carrinho abandonado (5%, 24h), nutrição lead (10%, 48h), reativação (10%, 7d)
 - triggerFlow nunca re-executa (ignora se já existe execução)
 - Reativação só para quem tem pelo menos 1 pedido
 - Testes de email: SEMPRE em `carloseduardocostatj@gmail.com`
 - Captura de lead vincula visitor_id ao customer
 - Cada email de fluxo registra interação em `crm.interactions`
-- Cupom só para novos clientes (sem pedidos Bling + NuvemShop)
+- Cupom único por lead (BIB-NOME-XXXX via NuvemShop API, max_uses:1, first_consumer_purchase:true)
 - Cupom só após verificação de email (HMAC link)
+- Senha temporária NuvemShop (BibXXXXX!) gerada na criação de conta, incluída no email + página de confirmação
 - Opt-out LGPD respeitado em campanhas e fluxos
 - Descadastro notifica o admin por email
 - IP real via `X-Forwarded-For` (proxy Docker 172.21.x)
@@ -169,7 +172,7 @@ bash scripts/test.sh                          # todos
 bash scripts/test.sh src/routes/leads.test.ts  # específico
 ```
 
-57 testes: health (1), email (6), leads (14), orders (9), images (27).
+306+ testes: 18 suites cobrindo health, email, leads, orders, images, auth, customers, campaigns, analytics, sync, products, search, tracking, webhooks, email-events, links, security, flows (incluindo 11 testes condicionais de branching).
 
 Regras: endpoint público → testes de input, token, XSS. Protegido → 401 + resposta válida. Limpar dados no `afterAll`. Sem mocks de DB.
 
@@ -255,10 +258,12 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 - **Rate limit: 2 req/s** (burst 40, leaky bucket)
 - 9 webhooks em `webhook.papelariabibelo.com.br`
 - HMAC: `x-linkedstore-hmac-sha256` com `client_secret`
+- Customer API: criação de conta com senha temporária (BibXXXXX!), link recuperação de senha
+- Coupons API: gerarCupomUnico() cria cupons descartáveis (max_uses:1, first_consumer_purchase:true)
 
 ### Resend (e-mail)
 - Plano grátis: 3.000/mês. Remetente: `Papelaria Bibelô <marketing@papelariabibelo.com.br>`
-- 20 templates no banco (14 originais + 6 novos: carrinho reenvio, cupom recuperação, FOMO VIP, convite VIP, cupom exclusivo, reativação cupom)
+- 21 templates no banco (padronizados: logo, Cormorant Garamond, gradiente header, divisor)
 - **Webhook**: `POST /api/webhooks/resend` — recebe open/click/delivered/bounced/complained
   - Signing secret: env `RESEND_WEBHOOK_SECRET` (Svix HMAC)
   - Registra cada evento em `marketing.email_events` (migration 020)
@@ -266,7 +271,7 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
   - Atualiza `campaign_sends.aberto_em/clicado_em` + totais da campanha
   - Spam complaint → opt-out automático (LGPD)
   - Endpoint `GET /api/campaigns/email-events?hours=48` — interações recentes para NotificationBell
-- **Proxy de imagens**: `/api/email/img/:hash` — cacheia imagens NuvemShop pelo nosso domínio
+- **Proxy de imagens**: `/api/email/img/:hash` — cacheia imagens NuvemShop pelo nosso domínio (cache 30d). Usado em campanhas E fluxos automáticos (proxyImageUrl).
 - **Redirect WhatsApp**: `/api/email/wa` — evita wa.me direto nos emails (spam filter)
 
 ### Chatwoot + Meta Cloud API (WhatsApp + Instagram) — planejado
@@ -357,7 +362,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 2 de Abril de 2026 — motor condicional de fluxos, tracking de email (email_events), 6 novos templates, 3 fluxos inteligentes com branching*
+*Última atualização: 2 de Abril de 2026 — 21 templates padronizados, 6 fluxos inteligentes com branching, cupons únicos NuvemShop, senha temporária, proxy imagens em fluxos (cache 30d), grupo VIP integrado*
 
 ---
 
