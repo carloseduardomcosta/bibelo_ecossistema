@@ -323,3 +323,26 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - 5 templates redundantes desativados (Boas-vindas x3, Novidades do Mes, Volta as Aulas) — 16 ativos
   - Template "Novidades da Semana" reescrito com design premium + produtos_grid
   - Template "Promocao Especial" reescrito com design urgencia + produtos_grid
+- fix: remover criação automática de conta NuvemShop no lead capture
+  - Removida criarContaNuvemShop() e gerarSenhaTemporaria() — cliente cria conta no checkout
+  - Removida senha_temp da página de confirmação, triggerFlow e flow.service
+  - Template "Lead boas-vindas clube" limpo no banco (bloco login/senha removido)
+  - Cupom CLUBEBIBELO mantido, fluxo de verificação de email mantido
+- design: melhoria layout e UX storefront Bibelô
+  - Hero com grid 2x2 product cards + CTA WhatsApp (lado direito)
+  - Navbar: 6 categorias horizontais (pills) + dropdown "Mais" com mega menu
+  - Nova seção: strip de benefícios (frete grátis, Pix, Timbó/SC, Grupo VIP)
+  - Nova seção: category pills clicáveis (6 categorias em destaque)
+  - Nova seção: banner Grupo VIP WhatsApp (fundo escuro, CTA verde)
+  - Product rail: grid 4 colunas, max 8 produtos
+  - Product cards: badge % OFF, marca acima do nome, aspect-ratio 1:1
+  - Thumbnail: fallback rosa com inicial do produto (sem imagem quebrada)
+  - Price: preço antigo menor/muted, preço atual bold pink quando desconto
+  - Footer: descrição da loja, ícones Instagram/WhatsApp, selos pagamento (Pix, Visa, MC, Boleto)
+  - Cores mantidas 100% — zero alteração na paleta
+- feat: tracking inteligente NuvemShop + dashboard Marketing enriquecido
+  - bibelo.js: detecção de categorias por slug direto (não só /categorias/slug)
+  - bibelo.js: páginas de conta, cleanTitle(), isKnownPath(), resource_nome no carrinho
+  - Marketing.tsx: helpers extractPagePath, slugToName, trafficSource, pageLabel
+  - Exibição enriquecida de eventos de tracking no dashboard
+  - Novos testes condicionais de fluxo

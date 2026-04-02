@@ -156,7 +156,7 @@ Toda comunicação **DEVE ser em português brasileiro (pt-BR)**. Commits, mensa
 - Cada email de fluxo registra interação em `crm.interactions`
 - Cupom único por lead (BIB-NOME-XXXX via NuvemShop API, max_uses:1, first_consumer_purchase:true)
 - Cupom só após verificação de email (HMAC link)
-- Senha temporária NuvemShop (BibXXXXX!) gerada na criação de conta, incluída no email + página de confirmação
+- Cliente cria conta no checkout (sem criação automática de conta NuvemShop)
 - Opt-out LGPD respeitado em campanhas e fluxos
 - Descadastro notifica o admin por email
 - IP real via `X-Forwarded-For` (proxy Docker 172.21.x)
@@ -372,7 +372,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 2 de Abril de 2026 — Uptime Kuma ativo (11 monitores, 2 canais alerta), 16 templates ativos (5 redundantes desativados), 6 fluxos inteligentes com branching, cupons únicos NuvemShop*
+*Última atualização: 2 de Abril de 2026 — Storefront redesign (hero, nav, benefícios, VIP banner, cards, footer), conta NuvemShop removida (cliente cria no checkout), tracking inteligente NuvemShop*
 
 ---
 
