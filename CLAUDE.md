@@ -185,6 +185,13 @@ Ferramenta integrada para converter e enviar imagens de produtos para múltiplas
 5. "Enviar ao Bling" → imagem salva em URL pública temporária → PATCH /produtos/{id} com `imagensURL`
 6. Bling baixa, processa, armazena no S3 interno. URL temporária expira em 1h.
 
+### Remoção de fundo (IA local)
+- Lib: `@imgly/background-removal-node` (ONNX, modelo U2Net, roda no servidor)
+- Dockerfile API: `node:20-slim` (Debian) — necessário para onnxruntime (glibc)
+- Tempo: ~10s por imagem de produto real
+- Toggle no frontend: "Remover fundo (IA)" nas configurações de conversão
+- Fluxo: upload → remove fundo → resize/formato/fundo branco → envia
+
 ### Comportamento da API Bling para imagens
 - `PATCH imagensURL: [{link}]` → **ADICIONA** às imagens existentes (não substitui)
 - `PATCH imagensURL: []` → **LIMPA TODAS** as imagens do produto

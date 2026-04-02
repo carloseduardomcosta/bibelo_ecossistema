@@ -13,6 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@imgly/background-removal-node": "^1.4.5",
     "@react-oauth/google": "^0.13.4",
     "@types/sharp": "^0.31.1",
     "axios": "^1.6.5",

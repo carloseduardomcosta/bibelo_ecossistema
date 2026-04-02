@@ -212,3 +212,8 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Backend: dois PATCHs sequenciais (limpa + envia novas) quando replaceAll=true
   - Frontend: preview das imagens atuais ao selecionar produto, toggle "Substituir"
   - Botão muda cor (amber) quando vai substituir, mensagem de sucesso diferenciada
+- feat: remoção de fundo com IA no editor de imagens
+  - Lib: @imgly/background-removal-node (ONNX U2Net, local, sem API externa)
+  - Dockerfile API migrado de Alpine para Debian slim (onnxruntime precisa glibc)
+  - Toggle "Remover fundo (IA)" nas configurações de conversão
+  - Integrado em convert e send-bling, ~10s por imagem, timeout 5min

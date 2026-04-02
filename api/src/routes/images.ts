@@ -10,8 +10,18 @@ import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { getValidToken, BLING_API } from "../integrations/bling/auth";
 import { rateLimitedPatch } from "../integrations/bling/sync";
+import { removeBackground } from "@imgly/background-removal-node";
 
 export const imagesRouter = Router();
+
+// ── Remoção de fundo com IA (ONNX local) ─────────────────
+async function removeBg(inputBuffer: Buffer): Promise<Buffer> {
+  const blob = new Blob([inputBuffer], { type: "image/png" });
+  const result = await removeBackground(blob, {
+    output: { format: "image/png" },
+  });
+  return Buffer.from(await result.arrayBuffer());
+}
 
 // ── Diretório para imagens servidas publicamente ────────────
 const SERVE_DIR = path.resolve(process.cwd(), "uploads", "images-temp");
@@ -103,6 +113,7 @@ const convertSchema = z.object({
   quality: z.coerce.number().int().min(10).max(100).optional(),
   background: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   fit: z.enum(["contain", "cover", "fill"]).optional(),
+  removeBackground: z.coerce.boolean().optional(),
 });
 
 // ── GET /api/images/presets — lista presets disponíveis ────
@@ -160,14 +171,22 @@ imagesRouter.post(
 
     for (const file of files) {
       try {
-        let pipeline = sharp(file.buffer)
+        // 1. Remoção de fundo com IA (se solicitado)
+        let inputBuffer = file.buffer;
+        if (opts.removeBackground) {
+          logger.info("Removendo fundo da imagem", { file: file.originalname });
+          inputBuffer = await removeBg(file.buffer);
+        }
+
+        // 2. Pipeline Sharp: resize + formato
+        let pipeline = sharp(inputBuffer)
           .rotate() // auto-rotate EXIF
           .resize(width, height, {
             fit,
             background: { ...bg, alpha: 1 },
             withoutEnlargement: false,
           })
-          .flatten({ background: bg }); // remove transparência, aplica fundo
+          .flatten({ background: bg }); // aplica cor de fundo
 
         let output: Buffer;
         let mimeType: string;
@@ -190,9 +209,6 @@ imagesRouter.post(
         // Metadata da imagem convertida
         const meta = await sharp(output).metadata();
 
-        // Nome do arquivo sem extensão original
-        const baseName = file.originalname.replace(/\.[^.]+$/, "");
-
         results.push({
           originalName: file.originalname,
           originalSize: file.buffer.length,
@@ -209,6 +225,7 @@ imagesRouter.post(
           convertedSize: `${(output.length / 1024).toFixed(0)}KB`,
           dimensions: `${meta.width}x${meta.height}`,
           format: ext,
+          bgRemoved: !!opts.removeBackground,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Erro desconhecido";
@@ -343,6 +360,7 @@ const sendBlingSchema = z.object({
   background: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   fit: z.enum(["contain", "cover", "fill"]).optional(),
   replaceAll: z.coerce.boolean().optional(), // true = substituir todas as imagens
+  removeBackground: z.coerce.boolean().optional(), // true = remover fundo com IA
 });
 
 // ── POST /api/images/send-bling — converte e envia ao Bling ─
@@ -386,7 +404,15 @@ imagesRouter.post(
 
     for (const file of files) {
       try {
-        let pipeline = sharp(file.buffer)
+        // 1. Remoção de fundo com IA (se solicitado)
+        let inputBuffer = file.buffer;
+        if (opts.removeBackground) {
+          logger.info("Removendo fundo da imagem para Bling", { file: file.originalname });
+          inputBuffer = await removeBg(file.buffer);
+        }
+
+        // 2. Pipeline Sharp: resize + formato
+        let pipeline = sharp(inputBuffer)
           .rotate()
           .resize(width, height, {
             fit,
@@ -418,6 +444,7 @@ imagesRouter.post(
           original: file.originalname,
           publicUrl,
           size: `${(output.length / 1024).toFixed(0)}KB`,
+          bgRemoved: !!opts.removeBackground,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Erro desconhecido";

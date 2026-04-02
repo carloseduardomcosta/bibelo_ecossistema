@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Download, Trash2, Settings2, Loader2, Search,
   CheckCircle2, AlertTriangle, ArrowRight, FileImage,
-  ZoomIn, X, UploadCloud, Store, Send, Package, CloudDownload,
+  ZoomIn, X, UploadCloud, Store, Send, Package, CloudDownload, Eraser,
 } from 'lucide-react';
 import api from '../lib/api';
 
@@ -101,6 +101,7 @@ export default function EditorImagens() {
   const [customQuality, setCustomQuality] = useState(90);
   const [background, setBackground] = useState('#FFFFFF');
   const [fit, setFit] = useState<'contain' | 'cover' | 'fill'>('contain');
+  const [removeBackground, setRemoveBackground] = useState(false);
 
   // Bling
   const [blingSearch, setBlingSearch] = useState('');
@@ -316,11 +317,12 @@ export default function EditorImagens() {
 
     formData.append('background', background);
     formData.append('fit', fit);
+    if (removeBackground) formData.append('removeBackground', 'true');
 
     try {
       const resp = await api.post<ConvertResult>('/images/convert', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 120000,
+        timeout: 300000, // 5min — remoção de fundo com IA pode demorar
       });
       setResults(resp.data);
     } catch (err: any) {
@@ -346,6 +348,7 @@ export default function EditorImagens() {
     formData.append('background', background);
     formData.append('fit', fit);
     if (replaceAll) formData.append('replaceAll', 'true');
+    if (removeBackground) formData.append('removeBackground', 'true');
 
     if (selectedPresets[0] === 'custom') {
       formData.append('width', String(customWidth));
@@ -357,7 +360,7 @@ export default function EditorImagens() {
     try {
       const resp = await api.post<SendBlingResult>('/images/send-bling', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 120000,
+        timeout: 300000, // 5min — remoção de fundo com IA pode demorar
       });
       const action = replaceAll ? 'substituída(s)' : 'adicionada(s)';
       setSuccess(
@@ -651,6 +654,28 @@ export default function EditorImagens() {
                 </select>
               </div>
             </div>
+
+            {/* Remover fundo */}
+            <label className="mt-4 flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-bibelo-border hover:border-bibelo-primary transition-colors">
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={removeBackground}
+                  onChange={e => setRemoveBackground(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-10 h-5 bg-gray-300 dark:bg-gray-600 rounded-full peer-checked:bg-purple-500 transition-colors" />
+                <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-5 transition-transform" />
+              </div>
+              <Eraser className="w-5 h-5 text-purple-500" />
+              <div>
+                <span className="text-sm font-medium text-bibelo-text">Remover fundo (IA)</span>
+                <p className="text-xs text-bibelo-muted">
+                  Remove o fundo da imagem automaticamente com inteligência artificial. Ideal para fotos de produto com fundo colorido.
+                  {removeBackground && ' Pode levar ~10s por imagem.'}
+                </p>
+              </div>
+            </label>
 
             {/* Botões de ação */}
             <div className="mt-5 flex flex-wrap items-center gap-3">
