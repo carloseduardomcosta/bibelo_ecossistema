@@ -492,13 +492,13 @@ function paginaCupomVerificado(email: string, cupom: string | null, senhaTemp?: 
         <p style="margin:0 0 8px;font-size:13px;color:#2d2d2d;font-weight:600;">🔐 Sua conta na loja:</p>
         <p style="margin:0 0 4px;font-size:13px;color:#555;">E-mail: <strong>${emailSafe}</strong></p>
         <p style="margin:0 0 8px;font-size:13px;color:#555;">Senha: <strong>${senhaSafe}</strong></p>
-        <p style="margin:0;font-size:11px;color:#999;">Troque a senha no primeiro acesso. <a href="https://www.papelariabibelo.com.br/account/reset" style="color:#fe68c4;text-decoration:none;">Esqueci minha senha</a></p>
+        <p style="margin:0;font-size:11px;color:#999;">Troque a senha no primeiro acesso. <a href="https://www.papelariabibelo.com.br/account/reset?utm_source=email&amp;utm_medium=flow&amp;utm_campaign=confirmacao&amp;utm_content=reset_senha" style="color:#fe68c4;text-decoration:none;">Esqueci minha senha</a></p>
       </div>` : ""}
-      <a href="https://www.papelariabibelo.com.br/novidades" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:15px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);font-family:Jost,sans-serif;">
+      <a href="https://www.papelariabibelo.com.br/novidades?utm_source=email&amp;utm_medium=flow&amp;utm_campaign=confirmacao&amp;utm_content=cta_principal" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:15px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);font-family:Jost,sans-serif;">
         ${isClube ? "Começar a comprar" : "Ir para a loja"}
       </a>
       ${isClube ? `<div style="margin-top:16px;">
-        <a href="https://menu.papelariabibelo.com.br/api/links/go/grupo-vip" style="display:inline-block;background:#25D366;color:#fff;padding:12px 32px;border-radius:30px;text-decoration:none;font-weight:600;font-size:14px;font-family:Jost,sans-serif;">Entrar no Grupo VIP WhatsApp 💬</a>
+        <a href="https://menu.papelariabibelo.com.br/api/links/go/grupo-vip?utm_source=email&amp;utm_medium=flow&amp;utm_campaign=confirmacao&amp;utm_content=cta_grupo_vip" style="display:inline-block;background:#25D366;color:#fff;padding:12px 32px;border-radius:30px;text-decoration:none;font-weight:600;font-size:14px;font-family:Jost,sans-serif;">Entrar no Grupo VIP WhatsApp 💬</a>
       </div>` : ""}
     </div>
     <div style="padding:14px;border-top:1px solid #ffe5ec;background:#fafafa;">

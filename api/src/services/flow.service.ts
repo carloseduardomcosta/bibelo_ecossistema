@@ -623,7 +623,12 @@ async function executeEmailStep(
   }
 
   // Usa template do banco (marketing.templates)
-  const recoveryUrl = (metadata.recovery_url as string) || "";
+  // Adicionar UTMs ao recovery_url para rastreabilidade
+  const rawRecoveryUrl = (metadata.recovery_url as string) || "";
+  const tplSlug = (step.template || "email").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  const recoveryUrl = rawRecoveryUrl
+    ? `${rawRecoveryUrl}${rawRecoveryUrl.includes("?") ? "&" : "?"}utm_source=email&utm_medium=flow&utm_campaign=${tplSlug}&utm_content=cta_recovery`
+    : "";
 
   // ── Cupom único: gerar via NuvemShop API para templates de desconto ──
   const tplLower = (step.template || "").toLowerCase();
