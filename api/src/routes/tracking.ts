@@ -88,6 +88,13 @@ trackingRouter.post("/event", publicLimiter, async (req: Request, res: Response)
   const realIp = isDockerProxy(socketIp)
     ? (req.headers["x-forwarded-for"]?.toString().split(",")[0].trim() || socketIp)
     : socketIp;
+
+  // Ignora tráfego interno (admin) — não grava no banco
+  if (getInternalIps().includes(realIp)) {
+    res.json({ ok: true });
+    return;
+  }
+
   const geo = resolveGeo(realIp);
 
   await query(
@@ -191,7 +198,7 @@ trackingRouter.get("/timeline", authMiddleware, async (req: Request, res: Respon
   const events = await query<Record<string, unknown>>(
     `SELECT t.id, t.visitor_id, t.evento, t.pagina, t.pagina_tipo,
             t.resource_id, t.resource_nome, t.resource_preco, t.resource_imagem,
-            t.metadata, t.criado_em, t.geo_city, t.geo_region, t.geo_country,
+            t.metadata, t.referrer, t.ip, t.criado_em, t.geo_city, t.geo_region, t.geo_country,
             c.nome AS customer_nome, c.email AS customer_email
      FROM crm.tracking_events t
      LEFT JOIN crm.customers c ON c.id = t.customer_id

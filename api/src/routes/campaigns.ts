@@ -762,7 +762,8 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
     <div style="background:#f9f9f9;padding:20px 25px;text-align:center;border-top:1px solid #eee;">
       <p style="color:#999;font-size:12px;margin:0;">Papelaria Bibelô — Timbó/SC</p>
       <p style="color:#bbb;font-size:11px;margin:5px 0 0;"><a href="${linkBase}" style="color:#fe68c4;text-decoration:none;">papelariabibelo.com.br</a></p>
-      <p style="color:#ccc;font-size:10px;margin:10px 0 0;line-height:1.5;">Você recebeu este email porque é cliente da Papelaria Bibelô.<br><a href="{{unsub_link}}" style="color:#ccc;text-decoration:underline;">Não quero mais receber emails</a></p>
+      <p style="color:#ccc;font-size:10px;margin:8px 0 0;"><a href="https://www.papelariabibelo.com.br/politica-de-privacidade" style="color:#ccc;text-decoration:none;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso" style="color:#ccc;text-decoration:none;">Termos de Uso</a></p>
+      <p style="color:#ccc;font-size:10px;margin:6px 0 0;line-height:1.5;">Você recebeu este email porque é cliente da Papelaria Bibelô.<br><a href="{{unsub_link}}" style="color:#ccc;text-decoration:underline;">Não quero mais receber emails</a></p>
     </div>
   </div>
 </body></html>`;
@@ -1139,7 +1140,8 @@ campaignsRouter.get("/gerar-reengajamento", async (req: Request, res: Response) 
       <p style="color:#bbb;font-size:11px;margin:5px 0 0;">
         <a href="${linkBase}" style="color:#fe68c4;text-decoration:none;">papelariabibelo.com.br</a>
       </p>
-      <p style="color:#ccc;font-size:10px;margin:10px 0 0;line-height:1.5;">
+      <p style="color:#ccc;font-size:10px;margin:8px 0 0;"><a href="https://www.papelariabibelo.com.br/politica-de-privacidade" style="color:#ccc;text-decoration:none;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso" style="color:#ccc;text-decoration:none;">Termos de Uso</a></p>
+      <p style="color:#ccc;font-size:10px;margin:6px 0 0;line-height:1.5;">
         Você recebeu este email porque é cliente da Papelaria Bibelô.<br>
         <a href="${unsubLink}" style="color:#ccc;text-decoration:underline;">Não quero mais receber emails</a>
       </p>

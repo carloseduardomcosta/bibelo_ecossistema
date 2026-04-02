@@ -106,6 +106,12 @@ interface TrackingEvent {
   resource_imagem: string | null;
   customer_nome: string | null;
   customer_email: string | null;
+  metadata: Record<string, unknown> | null;
+  ip: string | null;
+  geo_city: string | null;
+  geo_region: string | null;
+  geo_country: string | null;
+  referrer: string | null;
   criado_em: string;
 }
 
@@ -1261,6 +1267,86 @@ const EVENTO_CONFIG: Record<string, { icon: typeof Eye; label: string; color: st
   checkout_start: { icon: ShoppingCart, label: 'Iniciou checkout', color: 'text-orange-400', bg: 'bg-orange-400/10' },
 };
 
+// ── Helpers para extrair contexto dos eventos ──────────────
+
+/** Extrai path legível da URL completa */
+function extractPagePath(url: string | null): string {
+  if (!url) return '';
+  try {
+    const u = new URL(url);
+    const path = decodeURIComponent(u.pathname).replace(/\/$/, '') || '/';
+    // Limpa query params longos (fbclid, etc)
+    const params = new URLSearchParams(u.search);
+    const meaningful: string[] = [];
+    params.forEach((v, k) => {
+      if (['q', 'search', 'mpage', 'Cor', 'page'].includes(k)) meaningful.push(`${k}=${v}`);
+    });
+    return meaningful.length > 0 ? `${path}?${meaningful.join('&')}` : path;
+  } catch { return ''; }
+}
+
+/** Formata nome de categoria a partir do slug: "bloco-de-anotacoes" → "Bloco de Anotações" */
+function slugToName(slug: string): string {
+  return slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+/** Extrai nome legível do path para page_view "other" */
+function pageLabel(ev: TrackingEvent): string | null {
+  // Se o bibelo.js já mandou resource_nome, usa
+  if (ev.resource_nome) return ev.resource_nome;
+  // Tenta extrair do path
+  const path = extractPagePath(ev.pagina);
+  if (!path || path === '/') return null;
+  const segments = path.replace(/^\/|\?.*$/g, '').split('/');
+  if (segments[0] === 'account') {
+    const map: Record<string, string> = { login: 'Login', register: 'Cadastro', reset: 'Recuperar Senha', orders: 'Meus Pedidos' };
+    return map[segments[1]] || 'Conta';
+  }
+  if (segments[0] === 'faq') return 'FAQ';
+  if (segments[0] === 'pages' || segments[0] === 'paginas') return slugToName(segments[1] || 'Página');
+  // Slug direto (provavelmente categoria)
+  return slugToName(segments[0]);
+}
+
+/** Extrai fonte/origem do referrer */
+function trafficSource(referrer: string | null, pagina: string | null): string | null {
+  // Verifica UTM na URL (fbclid = Facebook)
+  if (pagina) {
+    try {
+      const params = new URLSearchParams(new URL(pagina).search);
+      if (params.get('fbclid')) return 'Facebook';
+      if (params.get('gclid')) return 'Google Ads';
+      const src = params.get('utm_source');
+      if (src) return src.charAt(0).toUpperCase() + src.slice(1);
+    } catch { /* ignore */ }
+  }
+  if (!referrer) return 'Direto';
+  try {
+    const host = new URL(referrer).hostname.replace('www.', '');
+    if (host.includes('google')) return 'Google';
+    if (host.includes('facebook') || host.includes('fb.com')) return 'Facebook';
+    if (host.includes('instagram')) return 'Instagram';
+    if (host.includes('tiktok')) return 'TikTok';
+    if (host.includes('pinterest')) return 'Pinterest';
+    if (host.includes('bing')) return 'Bing';
+    if (host.includes('papelariabibelo')) return null; // navegação interna
+    return host;
+  } catch { return null; }
+}
+
+/** Cor do badge de source */
+function sourceColor(src: string): string {
+  const map: Record<string, string> = {
+    'Google': 'bg-blue-500/20 text-blue-300',
+    'Google Ads': 'bg-blue-500/20 text-blue-300',
+    'Facebook': 'bg-indigo-500/20 text-indigo-300',
+    'Instagram': 'bg-pink-500/20 text-pink-300',
+    'TikTok': 'bg-cyan-500/20 text-cyan-300',
+    'Direto': 'bg-gray-500/20 text-gray-400',
+  };
+  return map[src] || 'bg-violet-500/20 text-violet-300';
+}
+
 function AtividadeTab({ events, stats, funnel, onRefresh, lastUpdate }: {
   events: TrackingEvent[];
   stats: TrackingStats | null;
@@ -1362,6 +1448,11 @@ function AtividadeTab({ events, stats, funnel, onRefresh, lastUpdate }: {
                 const config = EVENTO_CONFIG[ev.evento] || { icon: Globe, label: ev.evento, color: 'text-bibelo-muted', bg: 'bg-bibelo-border' };
                 const Icon = config.icon;
                 const isIdentified = !!ev.customer_nome;
+                const label = pageLabel(ev);
+                const source = trafficSource(ev.referrer, ev.pagina);
+                const searchQuery = ev.evento === 'search' && ev.metadata ? String((ev.metadata as Record<string, unknown>).query || '') : '';
+                const geo = ev.geo_city && ev.geo_region ? `${ev.geo_city}/${ev.geo_region}` : ev.geo_region || null;
+                const path = extractPagePath(ev.pagina);
 
                 return (
                   <div key={ev.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-bibelo-bg transition-colors">
@@ -1369,15 +1460,19 @@ function AtividadeTab({ events, stats, funnel, onRefresh, lastUpdate }: {
                       <Icon size={16} className={config.color} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      {/* Linha 1: tipo do evento + badges */}
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-bibelo-text">{config.label}</span>
-                        {ev.pagina_tipo && (
+                        {ev.pagina_tipo && ev.pagina_tipo !== 'other' && (
                           <span className="text-[10px] px-1.5 py-0.5 bg-bibelo-border rounded text-bibelo-muted">{ev.pagina_tipo}</span>
+                        )}
+                        {source && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${sourceColor(source)}`}>{source}</span>
                         )}
                       </div>
 
                       {/* Produto visualizado / adicionado */}
-                      {ev.resource_nome && (
+                      {(ev.evento === 'product_view' || ev.evento === 'add_to_cart') && ev.resource_nome && (
                         <div className="flex items-center gap-2 mt-1.5">
                           {ev.resource_imagem && (
                             <img src={ev.resource_imagem} alt="" className="w-10 h-10 rounded-lg object-cover border border-bibelo-border" />
@@ -1393,14 +1488,49 @@ function AtividadeTab({ events, stats, funnel, onRefresh, lastUpdate }: {
                         </div>
                       )}
 
-                      {/* Quem */}
-                      <p className="text-xs text-bibelo-muted mt-1">
+                      {/* Categoria visitada */}
+                      {ev.evento === 'category_view' && ev.resource_nome && (
+                        <p className="text-xs font-medium text-violet-300 mt-1">{ev.resource_nome}</p>
+                      )}
+
+                      {/* Busca — mostra o que pesquisou */}
+                      {searchQuery && (
+                        <p className="text-xs mt-1">
+                          <span className="text-bibelo-muted">Pesquisou: </span>
+                          <span className="text-amber-300 font-medium">&ldquo;{searchQuery}&rdquo;</span>
+                        </p>
+                      )}
+
+                      {/* Página "other" — mostra label legível ou path */}
+                      {ev.evento === 'page_view' && ev.pagina_tipo !== 'home' && label && (
+                        <p className="text-xs text-bibelo-text/70 mt-0.5">{label}</p>
+                      )}
+
+                      {/* URL path (discreto) */}
+                      {path && path !== '/' && ev.evento !== 'search' && (
+                        <p className="text-[10px] text-bibelo-muted/50 mt-0.5 truncate" title={ev.pagina || ''}>{path}</p>
+                      )}
+
+                      {/* Quem + IP + onde + quando */}
+                      <p className="text-xs text-bibelo-muted mt-1 flex items-center gap-1 flex-wrap">
                         {isIdentified ? (
                           <span className="text-bibelo-text font-medium">{ev.customer_nome}</span>
                         ) : (
                           <span>Visitante anônimo</span>
                         )}
-                        <span className="mx-1">·</span>
+                        {ev.ip && (
+                          <>
+                            <span className="mx-0.5">·</span>
+                            <span className="font-mono text-[10px] text-bibelo-muted/70">{ev.ip}</span>
+                          </>
+                        )}
+                        {geo && (
+                          <>
+                            <span className="mx-0.5">·</span>
+                            <span>{geo}</span>
+                          </>
+                        )}
+                        <span className="mx-0.5">·</span>
                         <span>{timeAgo(ev.criado_em)}</span>
                       </p>
                     </div>

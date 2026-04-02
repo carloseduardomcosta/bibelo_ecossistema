@@ -114,6 +114,20 @@ trackingScriptRouter.get("/bibelo.js", (_req: Request, res: Response) => {
     }
   }
 
+  // ── Helpers de detecção NuvemShop ─────────────────────────
+  // Caminhos NuvemShop que NÃO são categorias
+  var KNOWN_PATHS = ['account', 'checkout', 'cart', 'carrinho', 'carrito', 'search', 'busca', 'produtos', 'products', 'faq', 'pages', 'paginas', 'nocache', 'comprar', 'post-purchase'];
+
+  function isKnownPath(firstSegment) {
+    return KNOWN_PATHS.indexOf(firstSegment) !== -1;
+  }
+
+  // Extrai título limpo da página (remove " - Papelaria Bibelô" etc.)
+  function cleanTitle() {
+    var t = document.title || '';
+    return t.split(/\\s*[-–|]\\s*/).slice(0, -1).join(' - ').trim() || t.trim();
+  }
+
   // ── Detectar tipo de página NuvemShop ───────────────────
   function detectPage() {
     var path = window.location.pathname;
@@ -133,7 +147,7 @@ trackingScriptRouter.get("/bibelo.js", (_req: Request, res: Response) => {
 
     // Carrinho
     if (path.includes('/cart') || path.includes('/carrito') || path.includes('/carrinho')) {
-      track('page_view', { pagina_tipo: 'cart' });
+      track('page_view', { pagina_tipo: 'cart', resource_nome: cleanTitle() });
       return;
     }
 
@@ -151,14 +165,65 @@ trackingScriptRouter.get("/bibelo.js", (_req: Request, res: Response) => {
       return;
     }
 
-    // Categoria — NuvemShop usa /categorias/slug ou slug direto
+    // Categoria — NuvemShop usa /categorias/slug OU slug direto
     if (path.match(/^\\/(categorias|categories)\\/[^/]+\\/?$/)) {
       detectCategory();
       return;
     }
 
-    // Outra página
-    track('page_view', { pagina_tipo: 'other' });
+    // Conta — login, cadastro, reset de senha
+    if (path.match(/^\\/account\\//)) {
+      var accName = cleanTitle() || path.split('/').filter(Boolean).pop() || 'Conta';
+      track('page_view', { pagina_tipo: 'other', resource_nome: accName, metadata: { secao: 'conta' } });
+      return;
+    }
+
+    // NuvemShop: slug direto pode ser categoria (ex: /novidades/, /caderno/, /caneta/)
+    // Detecta se é listagem de produtos (categoria) ou página estática
+    var segments = path.replace(/^\\/|\\/$|\\?.*$/g, '').split('/');
+    var firstSeg = segments[0];
+
+    if (firstSeg && !isKnownPath(firstSeg)) {
+      // Aguarda DOM e verifica se tem listagem de produtos (= categoria NuvemShop)
+      function checkCategory() {
+        var hasList = document.querySelector('.js-product-table, .js-product-list, [data-store=product-list-container], .category-body, .product-grid, .js-category-products, .product-list');
+        if (hasList) {
+          var catName = cleanTitle();
+          var catSlug = segments.join('/');
+          track('category_view', {
+            pagina_tipo: 'category',
+            resource_nome: catName || catSlug,
+            resource_id: catSlug
+          });
+        } else {
+          // Página estática (FAQ, institucional) ou categoria sem produtos visíveis ainda
+          // Checa og:type para ter certeza
+          var ogType = document.querySelector('meta[property="og:type"]');
+          var ogVal = ogType ? (ogType.getAttribute('content') || '').toLowerCase() : '';
+          if (ogVal === 'product.group' || ogVal === 'product') {
+            var catName2 = cleanTitle();
+            track('category_view', {
+              pagina_tipo: 'category',
+              resource_nome: catName2 || firstSeg,
+              resource_id: segments.join('/')
+            });
+          } else {
+            track('page_view', { pagina_tipo: 'other', resource_nome: cleanTitle() });
+          }
+        }
+      }
+
+      if (document.readyState === 'complete') {
+        checkCategory();
+      } else {
+        // NuvemShop renderiza via JS — esperar conteúdo carregar
+        setTimeout(checkCategory, 1500);
+      }
+      return;
+    }
+
+    // Outra página — envia título para contexto
+    track('page_view', { pagina_tipo: 'other', resource_nome: cleanTitle() });
   }
 
   // ── Detectar dados do produto ───────────────────────────

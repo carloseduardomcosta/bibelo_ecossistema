@@ -1,6 +1,7 @@
 import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import { query, queryOne } from "../db";
 import { triggerFlow, executeStep, processReadySteps } from "../services/flow.service";
+import { getNuvemShopToken, nsRequest } from "../integrations/nuvemshop/auth";
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -94,6 +95,23 @@ async function getStepsExecutados(executionId: string) {
 // ── Cleanup ─────────────────────────────────────────────────────
 
 afterAll(async () => {
+  // Limpar cupons BIB-* criados na NuvemShop durante os testes
+  try {
+    const token = await getNuvemShopToken();
+    if (token) {
+      const coupons = await nsRequest<Array<{ id: number; code: string }>>("get", "coupons?per_page=200", token);
+      const testCoupons = (coupons || []).filter(c => /^BIB-VITEST/i.test(c.code));
+      for (const c of testCoupons) {
+        await nsRequest("delete", `coupons/${c.id}`, token);
+      }
+      if (testCoupons.length > 0) {
+        console.log(`Cleanup: ${testCoupons.length} cupons de teste removidos da NuvemShop`);
+      }
+    }
+  } catch {
+    // NuvemShop indisponível nos testes — não falha o cleanup
+  }
+
   for (const fid of createdFlowIds) {
     await query("DELETE FROM marketing.flow_step_executions WHERE execution_id IN (SELECT id FROM marketing.flow_executions WHERE flow_id = $1)", [fid]);
     await query("DELETE FROM marketing.flow_executions WHERE flow_id = $1", [fid]);
