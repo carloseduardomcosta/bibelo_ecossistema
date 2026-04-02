@@ -257,6 +257,12 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 ### Resend (e-mail)
 - Plano grátis: 3.000/mês. Remetente: `Papelaria Bibelô <marketing@papelariabibelo.com.br>`
 - 14 templates no banco
+- **Webhook**: `POST /api/webhooks/resend` — recebe open/click/delivered/bounced/complained
+  - Signing secret: env `RESEND_WEBHOOK_SECRET` (Svix HMAC)
+  - Atualiza `campaign_sends.aberto_em/clicado_em` + totais da campanha
+  - Spam complaint → opt-out automático (LGPD)
+- **Proxy de imagens**: `/api/email/img/:hash` — cacheia imagens NuvemShop pelo nosso domínio
+- **Redirect WhatsApp**: `/api/email/wa` — evita wa.me direto nos emails (spam filter)
 
 ### Chatwoot + Meta Cloud API (WhatsApp + Instagram) — planejado
 - Plano completo: `docs/integracoes/whatsapp-chatwoot.md`

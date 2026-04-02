@@ -162,6 +162,13 @@ Referência completa de todos os endpoints.
 - `POST /api/images/convert` — converte 1-50 imagens (multipart). Params: preset, width, height, format, quality, background, fit, removeBackground (IA). Retorna base64
 - `POST /api/images/info` — metadata de 1 imagem (formato, dimensões, alpha, DPI)
 - `POST /api/images/send-bling` — converte + salva em URL pública + envia ao Bling via PATCH /produtos/{id}. Params: blingProductId, preset, replaceAll (limpa imagens existentes), removeBackground (IA), etc
+
+### Webhooks (público)
+- `POST /api/webhooks/resend` — recebe eventos Resend (open, click, delivered, bounced, complained). Valida assinatura Svix.
+
+### Email (público)
+- `GET /api/email/img/:hash` — proxy de imagens para emails (serve imagens NuvemShop/Bling cacheadas pelo nosso domínio)
+- `GET /api/email/wa` — redirect WhatsApp pelo nosso domínio (evita wa.me nos emails)
 - `GET  /api/images/bling-products` — busca produtos Bling por nome/SKU para seleção no editor
 
 ### Webhooks (validação HMAC)

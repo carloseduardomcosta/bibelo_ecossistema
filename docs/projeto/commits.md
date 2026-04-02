@@ -217,3 +217,22 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Dockerfile API migrado de Alpine para Debian slim (onnxruntime precisa glibc)
   - Toggle "Remover fundo (IA)" nas configurações de conversão
   - Integrado em convert e send-bling, ~10s por imagem, timeout 5min
+- feat: melhorias na interface de Automações (Marketing)
+  - Timeline de steps expandível nas execuções — mostra status, resultado, horário de cada step
+  - Barra de progresso visual (step 2/5) em cada execução
+  - Filtro de fluxos (Todos/Ativos/Inativos)
+  - Modal de confirmação ao desativar fluxo com execuções ativas
+  - KPI "Emails Hoje" no overview (24h, via flow_step_executions)
+  - Indicador "Atualizado HH:MM:SS" no header + polling 10s na aba Atividade
+  - Banner de erro global quando API falha
+  - Refatoração: helper parseSteps() elimina 4 duplicações
+- feat: webhook Resend para tracking de campanhas (open/click/bounce/spam)
+  - Endpoint POST /api/webhooks/resend com verificação Svix HMAC
+  - Atualiza campaign_sends.aberto_em/clicado_em + totais da campanha
+  - Bounce marca status, spam complaint ativa opt-out LGPD automático
+  - Migration 019: index em message_id para lookups rápidos
+  - Auto-refresh 15s no detalhe da campanha (frontend)
+- feat: proxy de imagens e links para emails (entregabilidade)
+  - Imagens NuvemShop servidas pelo nosso domínio via /api/email/img/:hash (cache 7d)
+  - Links WhatsApp via redirect /api/email/wa (evita domínio wa.me nos emails)
+  - Nginx: bloco /api/email/ no webhook subdomain
