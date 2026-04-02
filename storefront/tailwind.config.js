@@ -34,6 +34,12 @@ module.exports = {
           80: "#1F2937",
           90: "#111827",
         },
+        bibelo: {
+          cream: "#FAF7F2",
+          blush: "#EDD5C5",
+          rose:  "#C9896A",
+          bark:  "#3D2B1F",
+        },
       },
       borderRadius: {
         none: "0px",
@@ -60,14 +66,17 @@ module.exports = {
       },
       fontFamily: {
         sans: [
-          "Inter",
+          "var(--font-sans)",
+          "DM Sans",
           "-apple-system",
           "BlinkMacSystemFont",
-          "Segoe UI",
-          "Roboto",
-          "Helvetica Neue",
-          "Ubuntu",
           "sans-serif",
+        ],
+        heading: [
+          "var(--font-heading)",
+          "Cormorant Garamond",
+          "Georgia",
+          "serif",
         ],
       },
       keyframes: {

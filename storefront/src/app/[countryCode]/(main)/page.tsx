@@ -6,9 +6,9 @@ import { listCollections } from "@lib/data/collections"
 import { getRegion } from "@lib/data/regions"
 
 export const metadata: Metadata = {
-  title: "Medusa Next.js Starter Template",
+  title: "Papelaria Bibelô — Papelaria Artesanal com Curadoria Especial",
   description:
-    "A performant frontend ecommerce starter template with Next.js 15 and Medusa.",
+    "Descubra nossa seleção curada de papelaria artesanal, agendas, cadernos e acessórios de escrita.",
 }
 
 export default async function Home(props: {

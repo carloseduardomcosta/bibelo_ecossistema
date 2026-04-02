@@ -2,6 +2,71 @@
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 
+/* Bibelô Design System — override Medusa UI preset */
+:root {
+  /* Backgrounds */
+  --bg-base: #FAF7F2;
+  --bg-subtle: #FAF7F2;
+  --bg-component: #FFFFFF;
+  --bg-field: #FFFFFF;
+  --bg-field-hover: #FAF7F2;
+  --bg-interactive: #C9896A;
+  --bg-overlay: rgba(61, 43, 31, 0.5);
+  --bg-highlight: #EDD5C5;
+  --bg-highlight-hover: #e4c4ae;
+  --bg-switch-off: #EDD5C5;
+
+  /* Foreground / text */
+  --fg-base: #3D2B1F;
+  --fg-subtle: #6B5E54;
+  --fg-muted: #9B8E84;
+  --fg-disabled: #C4B9B0;
+  --fg-on-color: #FAF7F2;
+  --fg-on-inverted: #FAF7F2;
+  --fg-interactive: #C9896A;
+  --fg-interactive-hover: #A86F52;
+  --fg-error: #B54629;
+
+  /* Borders */
+  --border-base: #EDD5C5;
+  --border-strong: #C9896A;
+  --border-interactive: #C9896A;
+  --border-error: #B54629;
+  --border-loud: #3D2B1F;
+
+  /* Buttons */
+  --button-inverted: #3D2B1F;
+  --button-inverted-hover: #2A1D15;
+  --button-inverted-pressed: #1A110D;
+  --button-neutral: #FFFFFF;
+  --button-neutral-hover: #FAF7F2;
+  --button-neutral-pressed: #EDD5C5;
+  --button-danger: #B54629;
+
+  /* Tags */
+  --tag-neutral-bg: #EDD5C5;
+  --tag-neutral-bg-hover: #e4c4ae;
+  --tag-neutral-text: #3D2B1F;
+  --tag-neutral-icon: #6B5E54;
+  --tag-neutral-border: #EDD5C5;
+
+  /* Code */
+  --code-bg-base: #3D2B1F;
+  --code-fg-base: #FAF7F2;
+
+  /* Font families */
+  --font-family-sans: var(--font-sans), "DM Sans", sans-serif;
+
+  /* Focus ring */
+  --focus-ring: rgba(201, 137, 106, 0.5);
+}
+
+body {
+  font-family: var(--font-sans), "DM Sans", sans-serif;
+  background-color: #FAF7F2;
+  color: #3D2B1F;
+}
+
 @layer utilities {
   /* Chrome, Safari and Opera */
   .no-scrollbar::-webkit-scrollbar {
@@ -35,9 +100,9 @@
   select:-webkit-autofill,
   select:-webkit-autofill:hover,
   select:-webkit-autofill:focus {
-    border: 1px solid #212121;
-    -webkit-text-fill-color: #212121;
-    -webkit-box-shadow: 0 0 0px 1000px #fff inset;
+    border: 1px solid #3D2B1F;
+    -webkit-text-fill-color: #3D2B1F;
+    -webkit-box-shadow: 0 0 0px 1000px #FAF7F2 inset;
     transition: background-color 5000s ease-in-out 0s;
   }
 
@@ -55,7 +120,7 @@
   }
 
   .contrast-btn {
-    @apply px-4 py-2 border border-black rounded-full hover:bg-black hover:text-white transition-colors duration-200 ease-in;
+    @apply px-4 py-2 border border-bibelo-bark rounded-full hover:bg-bibelo-bark hover:text-bibelo-cream transition-colors duration-200 ease-in;
   }
 
   .text-xsmall-regular {

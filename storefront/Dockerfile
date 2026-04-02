@@ -2,12 +2,35 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json* yarn.lock* ./
-RUN npm ci
+# Corepack para Yarn 4
+RUN corepack enable && corepack prepare yarn@4.12.0 --activate
 
+# Copiar configs de dependência primeiro (cache de layer)
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY .yarn .yarn
+
+# Instalar dependências
+RUN yarn install --immutable
+
+# Copiar fonte
 COPY . .
-RUN npm run build
 
+# Build-time env vars (inlined pelo Next.js)
+ARG NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_MEDUSA_BACKEND_URL
+ARG NEXT_PUBLIC_BASE_URL
+ARG NEXT_PUBLIC_DEFAULT_REGION=br
+ARG MEDUSA_BACKEND_URL
+
+ENV NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY=$NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_MEDUSA_BACKEND_URL=$NEXT_PUBLIC_MEDUSA_BACKEND_URL
+ENV NEXT_PUBLIC_BASE_URL=$NEXT_PUBLIC_BASE_URL
+ENV NEXT_PUBLIC_DEFAULT_REGION=$NEXT_PUBLIC_DEFAULT_REGION
+ENV MEDUSA_BACKEND_URL=$MEDUSA_BACKEND_URL
+
+RUN yarn build
+
+# ── Runner ──────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 
 WORKDIR /app
@@ -23,12 +46,13 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/next.config.js* ./
+COPY --from=builder --chown=nextjs:nodejs /app/check-env-variables.js ./
 
 USER nextjs
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8000/ || exit 1
 
-CMD ["npm", "start"]
+CMD ["node_modules/.bin/next", "start", "-p", "8000"]

@@ -249,3 +249,17 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Imagens NuvemShop servidas pelo nosso domínio via /api/email/img/:hash (cache 7d)
   - Links WhatsApp via redirect /api/email/wa (evita domínio wa.me nos emails)
   - Nginx: bloco /api/email/ no webhook subdomain
+- feat: Storefront Fase 1 — locale pt-BR, design tokens, deploy Docker
+  - Fontes: Cormorant Garamond (títulos) + DM Sans (corpo) via next/font/google
+  - Paleta Bibelô: cream #FAF7F2, blush #EDD5C5, rose #C9896A, bark #3D2B1F
+  - Override 30+ CSS vars do @medusajs/ui-preset (bg, fg, border, button, tag)
+  - ~50 arquivos traduzidos para pt-BR: nav, footer, hero, carrinho, checkout, conta, pedidos
+  - Hero reescrito: "Papelaria com curadoria especial" + CTA "Conheça nossa loja"
+  - Money.ts locale pt-BR (R$ 29,90), Mercado Pago (Pix) no paymentInfoMap
+  - Dockerfile reescrito: Yarn 4.12 + next start direto (sem yarn workspace no runner)
+  - Docker compose: serviço storefront com build network:host (SSG acessa Medusa)
+  - CORS Medusa atualizado com homolog.papelariabibelo.com.br
+  - Nginx homolog ativado (HTTP, auth_basic, X-Robots-Tag noindex)
+  - .dockerignore, check-env-variables.js copiado no runner
+  - Publishable key + região Brasil (BRL) + imagens Bling em remotePatterns
+  - Container bibelo_storefront: porta 8000, 156 páginas estáticas geradas
