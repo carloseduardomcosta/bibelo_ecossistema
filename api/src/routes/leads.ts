@@ -8,6 +8,7 @@ import { triggerFlow } from "../services/flow.service";
 import { sendEmail } from "../integrations/resend/email";
 import { getNuvemShopToken, nsRequest } from "../integrations/nuvemshop/auth";
 import { authMiddleware } from "../middleware/auth";
+
 import rateLimit from "express-rate-limit";
 
 // ── Sanitização HTML (anti-XSS) ─────────────────────────────
@@ -17,53 +18,7 @@ function esc(s: string): string {
 
 export const leadsRouter = Router();
 
-// ── NuvemShop: criar conta do cliente + cupom de frete ─────────
-
-function gerarSenhaTemporaria(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  let senha = "Bib";
-  for (let i = 0; i < 5; i++) senha += chars[Math.floor(Math.random() * chars.length)];
-  return senha + "!";
-}
-
-async function criarContaNuvemShop(nome: string, email: string, telefone?: string): Promise<{ ns_customer_id: number | null; senha: string | null }> {
-  try {
-    const token = await getNuvemShopToken();
-    if (!token) {
-      logger.warn("NuvemShop: token não disponível — conta não criada", { email });
-      return { ns_customer_id: null, senha: null };
-    }
-
-    // Verifica se já existe na NuvemShop (API retorna 404 quando 0 resultados)
-    try {
-      const existing = await nsRequest<Array<{ id: number }>>("get", `customers?q=${encodeURIComponent(email)}`, token);
-      if (existing && existing.length > 0) {
-        logger.info("NuvemShop: cliente já existe", { email, ns_id: existing[0].id });
-        return { ns_customer_id: existing[0].id, senha: null };
-      }
-    } catch (searchErr) {
-      const axErr = searchErr as { response?: { status?: number } };
-      if (axErr.response?.status !== 404) throw searchErr;
-    }
-
-    // Gera senha temporária e cria conta
-    const senha = gerarSenhaTemporaria();
-    const nsCustomer = await nsRequest<{ id: number }>("post", "customers", token, {
-      name: nome,
-      email,
-      phone: telefone || "",
-      password: senha,
-      send_email_invite: false,
-    });
-
-    logger.info("NuvemShop: conta criada via popup", { email, ns_customer_id: nsCustomer.id });
-    return { ns_customer_id: nsCustomer.id, senha };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.error("NuvemShop: erro ao criar conta", { email, error: msg });
-    return { ns_customer_id: null, senha: null };
-  }
-}
+// ── NuvemShop: garantir cupom de frete ─────────────────────────
 
 async function garantirCupomFrete(): Promise<string | null> {
   try {
@@ -146,7 +101,7 @@ async function enviarEmailVerificacao(email: string, cupom: string | null, nome:
     html: `<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@400;500;600;700&display=swap');*{font-family:Jost,'Segoe UI',Arial,sans-serif;}</style>
+<style>*{font-family:Jost,'Segoe UI',Arial,sans-serif;}</style>
 </head>
 <body style="margin:0;padding:0;background:#ffe5ec;">
 <div style="max-width:600px;margin:0 auto;padding:20px 10px;">
@@ -183,6 +138,7 @@ async function enviarEmailVerificacao(email: string, cupom: string | null, nome:
     </div>
     <div style="padding:14px 30px;background:#fafafa;text-align:center;border-top:1px solid #ffe5ec;">
       <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibelô · <span style="color:#fe68c4;">papelariabibelo.com.br</span></p>
+      <p style="color:#ccc;font-size:10px;margin:4px 0 0;"><a href="https://www.papelariabibelo.com.br/politica-de-privacidade" style="color:#ccc;text-decoration:none;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso" style="color:#ccc;text-decoration:none;">Termos de Uso</a></p>
     </div>
   </div>
 </div>
@@ -331,25 +287,7 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
     logger.warn("Falha ao enviar verificação de lead", { email, error: String(err) });
   }
 
-  // ── NuvemShop: criar conta + garantir cupom (background, não bloqueia resposta) ──
-  criarContaNuvemShop(nome || email.split("@")[0], email, telefone || undefined)
-    .then(({ ns_customer_id, senha }) => {
-      if (ns_customer_id) {
-        query(
-          "UPDATE crm.customers SET nuvemshop_id = $2 WHERE id = $1 AND nuvemshop_id IS NULL",
-          [customer.id, String(ns_customer_id)]
-        ).catch(() => {});
-      }
-      // Salvar senha temporária no lead para incluir no email de boas-vindas
-      if (senha) {
-        query(
-          `UPDATE marketing.leads SET senha_temp = $2 WHERE email = $1`,
-          [email, senha]
-        ).catch(() => {});
-        logger.info("Senha temporária gerada para conta NuvemShop", { email });
-      }
-    })
-    .catch(() => {});
+  // ── NuvemShop: garantir cupom de frete (background) ──
   garantirCupomFrete().catch(() => {});
 
   logger.info("Lead capturado — aguardando verificação", { email, popup_id, cupom, customerId: customer.id });
@@ -425,41 +363,30 @@ leadsRouter.get("/confirm", publicLimiter, async (req: Request, res: Response) =
 
     // Agora sim dispara o fluxo de boas-vindas (só para email verificado)
     if (lead.customer_id) {
-      // Buscar senha temporária se existir
-      const leadData = await queryOne<{ senha_temp: string | null }>(
-        "SELECT senha_temp FROM marketing.leads WHERE id = $1", [lead.id]
-      );
       await triggerFlow("lead.captured", lead.customer_id, {
         email,
         nome: lead.nome || email.split("@")[0],
         cupom: lead.cupom || "",
         fonte: "popup",
-        senha_temp: leadData?.senha_temp || "",
       });
     }
 
     logger.info("Lead verificou email", { email, leadId: lead.id, customerId: lead.customer_id });
   }
 
-  // Mostra página com o cupom + dados de login
-  const leadFinal = await queryOne<{ senha_temp: string | null }>(
-    "SELECT senha_temp FROM marketing.leads WHERE id = $1", [lead.id]
-  );
-  res.send(paginaCupomVerificado(email, lead.cupom, leadFinal?.senha_temp || null));
+  // Mostra página com o cupom
+  res.send(paginaCupomVerificado(email, lead.cupom));
 });
 
 // ── Páginas HTML de verificação ──────────────────────────────
 
-function paginaCupomVerificado(email: string, cupom: string | null, senhaTemp?: string | null): string {
+function paginaCupomVerificado(email: string, cupom: string | null): string {
   const cupomCode = esc(cupom || "CLUBEBIBELO");
   const isClube = cupom === "CLUBEBIBELO";
-  const emailSafe = esc(email);
-  const senhaSafe = senhaTemp ? esc(senhaTemp) : null;
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${isClube ? "Bem-vinda ao Clube Bibelô!" : "Cupom Ativado"} - Papelaria Bibelô</title>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet"></head>
+<title>${isClube ? "Bem-vinda ao Clube Bibelô!" : "Cupom Ativado"} - Papelaria Bibelô</title></head>
 <body style="margin:0;padding:0;background:linear-gradient(160deg,#ffe5ec,#fff7c1);font-family:Jost,Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;">
   <div style="background:#fff;border-radius:20px;padding:0;max-width:440px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(254,104,196,0.2);overflow:hidden;">
     <div style="background:linear-gradient(135deg,#fe68c4,#f472b6);padding:32px 20px;">
@@ -467,7 +394,7 @@ function paginaCupomVerificado(email: string, cupom: string | null, senhaTemp?: 
     </div>
     <div style="padding:30px 28px 24px;">
       <div style="font-size:44px;margin:0 0 12px;">${isClube ? "🎀" : "🎉"}</div>
-      <h1 style="color:#2d2d2d;font-size:26px;margin:0 0 8px;font-weight:600;font-family:Cormorant Garamond,Georgia,serif;">${isClube ? "Bem-vinda ao Clube Bibelô!" : "E-mail confirmado!"}</h1>
+      <h1 style="color:#2d2d2d;font-size:26px;margin:0 0 8px;font-weight:600;font-family:'Cormorant Garamond',Georgia,serif;">${isClube ? "Bem-vinda ao Clube Bibelô!" : "E-mail confirmado!"}</h1>
       ${isClube ? `
       <p style="color:#666;font-size:15px;margin:0 0 20px;line-height:1.6;">
         Seu <strong style="color:#fe68c4;">frete grátis</strong> na 1ª compra acima de R$79 já está ativo! Use o cupom abaixo no checkout:
@@ -487,13 +414,6 @@ function paginaCupomVerificado(email: string, cupom: string | null, senhaTemp?: 
         <p style="margin:0 0 4px;font-size:13px;color:#555;">🎁 Mimo surpresa em toda compra</p>
         <p style="margin:0;font-size:13px;color:#555;">✨ Novidades em primeira mão</p>
       </div>` : ""}
-      ${senhaSafe ? `
-      <div style="background:#f0f0f0;border-radius:10px;padding:14px 16px;margin:0 0 20px;text-align:left;">
-        <p style="margin:0 0 8px;font-size:13px;color:#2d2d2d;font-weight:600;">🔐 Sua conta na loja:</p>
-        <p style="margin:0 0 4px;font-size:13px;color:#555;">E-mail: <strong>${emailSafe}</strong></p>
-        <p style="margin:0 0 8px;font-size:13px;color:#555;">Senha: <strong>${senhaSafe}</strong></p>
-        <p style="margin:0;font-size:11px;color:#999;">Troque a senha no primeiro acesso. <a href="https://www.papelariabibelo.com.br/account/reset?utm_source=email&amp;utm_medium=flow&amp;utm_campaign=confirmacao&amp;utm_content=reset_senha" style="color:#fe68c4;text-decoration:none;">Esqueci minha senha</a></p>
-      </div>` : ""}
       <a href="https://www.papelariabibelo.com.br/novidades?utm_source=email&amp;utm_medium=flow&amp;utm_campaign=confirmacao&amp;utm_content=cta_principal" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:15px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);font-family:Jost,sans-serif;">
         ${isClube ? "Começar a comprar" : "Ir para a loja"}
       </a>
@@ -503,6 +423,7 @@ function paginaCupomVerificado(email: string, cupom: string | null, senhaTemp?: 
     </div>
     <div style="padding:14px;border-top:1px solid #ffe5ec;background:#fafafa;">
       <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibelô · <span style="color:#fe68c4;">papelariabibelo.com.br</span></p>
+      <p style="color:#ccc;font-size:10px;margin:4px 0 0;"><a href="https://www.papelariabibelo.com.br/politica-de-privacidade" style="color:#ccc;text-decoration:none;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso" style="color:#ccc;text-decoration:none;">Termos de Uso</a></p>
     </div>
   </div>
 </body>

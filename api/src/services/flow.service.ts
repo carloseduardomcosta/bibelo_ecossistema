@@ -668,7 +668,6 @@ async function executeEmailStep(
     prazo: String(metadata.prazo || ""),
     cupom: cupomFinal,
     produto: String(metadata.resource_nome || ""),
-    senha_temp: String(metadata.senha_temp || ""),
   };
   // URLs e valores numéricos não precisam escape; nomes e textos sim
   const htmlSafeKeys = new Set(["nome", "email", "produto", "itens"]);
@@ -776,7 +775,7 @@ function emailWrapper(content: string, email?: string): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>@import url('https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap');*{font-family:Jost,'Segoe UI',Arial,sans-serif;}</style>
+<style>*{font-family:Jost,'Segoe UI',Arial,sans-serif;}</style>
 </head>
 <body style="margin:0;padding:0;background:#ffe5ec;">
 <div style="max-width:600px;margin:0 auto;padding:20px 10px;">
@@ -799,7 +798,8 @@ function emailWrapper(content: string, email?: string): string {
       <p style="color:#777;font-size:13px;margin:0;font-weight:500;">Papelaria Bibelô</p>
       <p style="color:#aaa;font-size:11px;margin:4px 0 0;">CNPJ 63.961.764/0001-63 · contato@papelariabibelo.com.br · (47) 9 3386-2514</p>
       <p style="margin:8px 0 0;"><a href="https://www.papelariabibelo.com.br" style="color:#fe68c4;text-decoration:none;font-size:12px;font-weight:500;">papelariabibelo.com.br</a> · <a href="https://instagram.com/papelariabibelo" style="color:#fe68c4;text-decoration:none;font-size:12px;">@papelariabibelo</a></p>
-      <p style="margin:10px 0 0;"><a href="${unsubLink}" style="color:#ccc;text-decoration:underline;font-size:10px;">Não quero mais receber emails</a></p>
+      <p style="margin:8px 0 0;"><a href="https://www.papelariabibelo.com.br/politica-de-privacidade" style="color:#ccc;text-decoration:none;font-size:10px;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso" style="color:#ccc;text-decoration:none;font-size:10px;">Termos de Uso</a></p>
+      <p style="margin:6px 0 0;"><a href="${unsubLink}" style="color:#ccc;text-decoration:underline;font-size:10px;">Não quero mais receber emails</a></p>
     </div>
   </div>
 </div>
