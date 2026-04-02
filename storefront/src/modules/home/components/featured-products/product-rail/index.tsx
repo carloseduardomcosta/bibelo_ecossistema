@@ -27,20 +27,21 @@ export default async function ProductRail({
   }
 
   return (
-    <div className="content-container py-12 small:py-24">
-      <div className="flex justify-between mb-8">
-        <Text className="txt-xlarge">{collection.title}</Text>
+    <div className="content-container py-8">
+      <div className="flex justify-between items-center mb-6">
+        <Text className="font-heading text-xl font-semibold text-bibelo-dark">
+          {collection.title}
+        </Text>
         <InteractiveLink href={`/collections/${collection.handle}`}>
           Ver todos
         </InteractiveLink>
       </div>
-      <ul className="grid grid-cols-2 small:grid-cols-3 gap-x-6 gap-y-24 small:gap-y-36">
-        {pricedProducts &&
-          pricedProducts.map((product) => (
-            <li key={product.id}>
-              <ProductPreview product={product} region={region} isFeatured />
-            </li>
-          ))}
+      <ul className="grid grid-cols-2 small:grid-cols-4 gap-4 small:gap-6">
+        {pricedProducts.slice(0, 8).map((product) => (
+          <li key={product.id}>
+            <ProductPreview product={product} region={region} isFeatured />
+          </li>
+        ))}
       </ul>
     </div>
   )
