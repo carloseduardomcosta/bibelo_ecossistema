@@ -28,6 +28,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 | WhatsApp | Meta Cloud API + Chatwoot (planejado) |
 | Atendimento | Chatwoot self-hosted (planejado) |
 | E-commerce | Medusa.js v2 (porta 9000) + Next.js storefront |
+| Monitoramento | Uptime Kuma em status.papelariabibelo.com.br |
 | Deploy | GitHub Actions → rsync → VPS Hostinger |
 
 ---
@@ -263,7 +264,7 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 
 ### Resend (e-mail)
 - Plano grátis: 3.000/mês. Remetente: `Papelaria Bibelô <marketing@papelariabibelo.com.br>`
-- 21 templates no banco (padronizados: logo, Cormorant Garamond, gradiente header, divisor)
+- 16 templates ativos no banco (padronizados: logo, Cormorant Garamond, gradiente header, divisor)
 - **Webhook**: `POST /api/webhooks/resend` — recebe open/click/delivered/bounced/complained
   - Signing secret: env `RESEND_WEBHOOK_SECRET` (Svix HMAC)
   - Registra cada evento em `marketing.email_events` (migration 020)
@@ -316,6 +317,15 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 | `pentest.md` | Relatório do pentest de segurança |
 | `dns-import.txt` | Registros DNS importados do Cloudflare |
 
+### Monitoramento — Uptime Kuma
+- URL: https://status.papelariabibelo.com.br
+- DNS: A record em Cloudflare (status.papelariabibelo.com.br → 187.77.254.241)
+- SSL: Let's Encrypt (expira 2026-07-01)
+- Nginx: `/etc/nginx/sites-enabled/status` → reverse proxy localhost:3001
+- **11 monitores**: API, Frontend, Medusa, Storefront, PostgreSQL, Redis + 5 externos (NuvemShop, Webhook, Menu, CRM, API Medusa)
+- **2 canais de alerta** via Resend SMTP: carloseduardocostatj@gmail.com + contato@papelariabibelo.com.br
+- Subject: `[Bibelo Status] {{NAME}} esta {{STATUS}}`
+
 ### `docs/projeto/`
 | Arquivo | Conteúdo |
 |---------|----------|
@@ -362,7 +372,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 2 de Abril de 2026 — 21 templates padronizados, 6 fluxos inteligentes com branching, cupons únicos NuvemShop, senha temporária, proxy imagens em fluxos (cache 30d), grupo VIP integrado*
+*Última atualização: 2 de Abril de 2026 — Uptime Kuma ativo (11 monitores, 2 canais alerta), 16 templates ativos (5 redundantes desativados), 6 fluxos inteligentes com branching, cupons únicos NuvemShop*
 
 ---
 

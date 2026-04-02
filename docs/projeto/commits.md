@@ -313,3 +313,13 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - 6 novos templates: Carrinho reenvio, Cupom recuperação carrinho, Lead FOMO grupo VIP, Lead convite VIP, Lead cupom exclusivo, Reativação cupom
   - 6 fluxos inteligentes com branching: Carrinho abandonado (12 steps), Nutrição lead (12 steps), Reativação (10 steps), Produto visitado (10 steps), Lead quente (10 steps), Pós-compra (8 steps)
   - 11 novos testes condicionais cobrindo todos os caminhos de branching (carrinho 5, nutrição 3, reativação 3)
+- feat: Uptime Kuma + limpeza de templates
+  - Uptime Kuma configurado em status.papelariabibelo.com.br
+  - DNS A record no Cloudflare (status.papelariabibelo.com.br → 187.77.254.241)
+  - SSL Let's Encrypt (expira 2026-07-01)
+  - Nginx reverse proxy em /etc/nginx/sites-enabled/status
+  - 11 monitores: API, Frontend, Medusa, Storefront, PostgreSQL, Redis + 5 externos (NuvemShop, Webhook, Menu, CRM, API Medusa)
+  - 2 canais de alerta via Resend SMTP: carloseduardocostatj@gmail.com + contato@papelariabibelo.com.br
+  - 5 templates redundantes desativados (Boas-vindas x3, Novidades do Mes, Volta as Aulas) — 16 ativos
+  - Template "Novidades da Semana" reescrito com design premium + produtos_grid
+  - Template "Promocao Especial" reescrito com design urgencia + produtos_grid
