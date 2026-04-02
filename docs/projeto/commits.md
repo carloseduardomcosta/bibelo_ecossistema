@@ -197,6 +197,19 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Teste real: "1 Bloquinho Adesivado postit" (ID 16621982131) — imagem cadastrada com sucesso
   - 27 testes automatizados (Vitest): auth, conversão, batch, transparência, metadata, segurança, Bling
   - Página EditorImagens no frontend com drag-and-drop, busca de produtos, envio direto
+- 5c6637b feat: remoção de fundo com IA no editor de imagens
+- 719e460 feat: substituir imagens no Bling — replaceAll limpa antes de enviar
+- 9dd2831 fix: dark mode + busca global + proxy CORS no editor de imagens
+- bccd9cf feat: Fase 0 — sync Bling → Medusa (categorias, imagens, estoque, coleções)
+  - Sync de 48 categorias Bling → Medusa (com formatação pt-BR)
+  - Tabela sync.bling_medusa_categories para mapeamento bling_id → medusa_id
+  - imagemURL do listing Bling propagada ao Medusa (313 produtos com imagem)
+  - updateMedusaProduct agora envia imagens e categorias (antes só criação)
+  - Inventory levels: 378 items, 183 com estoque > 0
+  - Coleções automáticas: Novidades, Mais Vendidos, Promoções
+  - Webhook product.* → busca detalhe Bling → upsert → sync Medusa (real-time)
+  - Documentação: requisitos-storefront, análise NuvemShop, bling-medusa-sync
+- 66d45ee feat: webhook Resend + dashboard de marketing aprimorado
   - Nginx: bloco /api/images/serve/ em api.papelariabibelo.com.br → bypass Cloudflare Access
 - feat: Fase 5 — Melhor Envio automático (etiqueta após pagamento, só Medusa)
   - Service: api/src/integrations/melhorenvio/shipping.ts (cart → checkout → generate → print)
