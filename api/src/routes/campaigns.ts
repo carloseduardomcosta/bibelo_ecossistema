@@ -1300,6 +1300,78 @@ campaignsRouter.get("/email-events", async (req: Request, res: Response) => {
   res.json({ events, resumo });
 });
 
+// ── GET /api/campaigns/cupons — cupons rastreáveis ──────────────
+
+campaignsRouter.get("/cupons", async (_req: Request, res: Response) => {
+  // Cupons gerados via fluxos (BIB-NOME-XXXX)
+  const cuponsFluxo = await query<{
+    cupom: string;
+    customer_nome: string;
+    customer_email: string;
+    flow_nome: string;
+    gerado_em: string;
+    usado: boolean;
+    pedido_numero: string | null;
+    pedido_valor: number | null;
+    usado_em: string | null;
+  }>(
+    `SELECT
+       fse.resultado->>'cupomGerado' AS cupom,
+       c.nome AS customer_nome,
+       c.email AS customer_email,
+       f.nome AS flow_nome,
+       fse.executado_em AS gerado_em,
+       (no2.cupom IS NOT NULL) AS usado,
+       no2.numero AS pedido_numero,
+       no2.valor AS pedido_valor,
+       no2.webhook_em AS usado_em
+     FROM marketing.flow_step_executions fse
+     JOIN marketing.flow_executions fe ON fe.id = fse.execution_id
+     JOIN crm.customers c ON c.id = fe.customer_id
+     JOIN marketing.flows f ON f.id = fe.flow_id
+     LEFT JOIN sync.nuvemshop_orders no2 ON no2.cupom = fse.resultado->>'cupomGerado' AND no2.customer_id = fe.customer_id
+     WHERE fse.resultado->>'cupomGerado' IS NOT NULL
+     ORDER BY fse.executado_em DESC
+     LIMIT 100`,
+  );
+
+  // Cupom compartilhado CLUBEBIBELO — leads que receberam
+  const leadsClube = await query<{
+    nome: string | null;
+    email: string;
+    cupom: string;
+    criado_em: string;
+    email_verificado: boolean;
+    usado: boolean;
+    pedido_valor: number | null;
+    usado_em: string | null;
+  }>(
+    `SELECT
+       l.nome, l.email, l.cupom, l.criado_em, l.email_verificado,
+       (no2.cupom IS NOT NULL) AS usado,
+       no2.valor AS pedido_valor,
+       no2.webhook_em AS usado_em
+     FROM marketing.leads l
+     LEFT JOIN crm.customers c ON c.id = l.customer_id
+     LEFT JOIN sync.nuvemshop_orders no2 ON no2.cupom = l.cupom AND no2.customer_id = c.id
+     WHERE l.cupom IS NOT NULL
+     ORDER BY l.criado_em DESC
+     LIMIT 100`,
+  );
+
+  // Resumo
+  const resumo = {
+    cupons_unicos_gerados: cuponsFluxo.length,
+    cupons_unicos_usados: cuponsFluxo.filter((c) => c.usado).length,
+    leads_com_cupom: leadsClube.length,
+    leads_que_usaram: leadsClube.filter((c) => c.usado).length,
+    receita_cupons: cuponsFluxo.filter((c) => c.usado).reduce((s, c) => s + (c.pedido_valor || 0), 0)
+      + leadsClube.filter((c) => c.usado).reduce((s, c) => s + (c.pedido_valor || 0), 0),
+  };
+
+  res.json({ cupons_fluxo: cuponsFluxo, leads_clube: leadsClube, resumo });
+});
+
 // ── GET /api/campaigns/:id — detalhes ───────────────────────────
 
 campaignsRouter.get("/:id", async (req: Request, res: Response) => {

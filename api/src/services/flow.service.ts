@@ -703,7 +703,7 @@ async function executeEmailStep(
     [customer.id, `Email automático: ${step.template || "genérico"}`, JSON.stringify({ messageId: result.id, templateId: template.id, assunto: subject })]
   );
 
-  return { sent: true, messageId: result.id, templateId: template.id };
+  return { sent: true, messageId: result.id, templateId: template.id, ...(isCupomDesconto && cupomFinal ? { cupomGerado: cupomFinal } : {}) };
 }
 
 // ── Executar step de WhatsApp ──────────────────────────────────

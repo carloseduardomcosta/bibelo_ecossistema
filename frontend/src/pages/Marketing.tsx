@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import api from '../lib/api';
 import { timeAgo } from '../lib/format';
+import FlowVisualizer from '../components/FlowVisualizer';
 
 // ── Interfaces ────────────────────────────────────────────────
 
@@ -171,7 +172,7 @@ const STEP_STATUS_COLORS: Record<string, { dot: string; text: string }> = {
 // ── Component ─────────────────────────────────────────────────
 
 export default function Marketing() {
-  const [tab, setTab] = useState<'overview' | 'fluxos' | 'leads' | 'atividade'>('overview');
+  const [tab, setTab] = useState<'overview' | 'fluxos' | 'leads' | 'atividade' | 'cupons'>('overview');
   const [flowStats, setFlowStats] = useState<FlowStats | null>(null);
   const [flows, setFlows] = useState<Flow[]>([]);
   const [leadStats, setLeadStats] = useState<LeadStats | null>(null);
@@ -286,7 +287,7 @@ export default function Marketing() {
           Atualizado {lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
         </span>
         <div className="flex items-center gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1">
-          {(['overview', 'atividade', 'fluxos', 'leads'] as const).map((t) => (
+          {(['overview', 'atividade', 'fluxos', 'leads', 'cupons'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -294,7 +295,7 @@ export default function Marketing() {
                 tab === t ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text'
               }`}
             >
-              {t === 'overview' ? 'Visão Geral' : t === 'atividade' ? 'Atividade' : t === 'fluxos' ? 'Fluxos' : 'Leads'}
+              {t === 'overview' ? 'Visão Geral' : t === 'atividade' ? 'Atividade' : t === 'fluxos' ? 'Fluxos' : t === 'leads' ? 'Leads' : 'Cupons'}
             </button>
           ))}
         </div>
@@ -313,6 +314,177 @@ export default function Marketing() {
       {tab === 'atividade' && <AtividadeTab events={trackingEvents} stats={trackingStats} funnel={funnel} onRefresh={fetchAll} lastUpdate={lastUpdate} />}
       {tab === 'fluxos' && <FluxosTab flows={flows} executions={executions} selectedFlow={selectedFlow} onFlowClick={fetchFlowDetail} onRefresh={fetchAll} />}
       {tab === 'leads' && <LeadsTab leadStats={leadStats} />}
+      {tab === 'cupons' && <CuponsTab />}
+    </div>
+  );
+}
+
+// ── Aba Cupons ──────────────────────────────────────────────────
+
+interface CupomFluxo {
+  cupom: string;
+  customer_nome: string;
+  customer_email: string;
+  flow_nome: string;
+  gerado_em: string;
+  usado: boolean;
+  pedido_numero: string | null;
+  pedido_valor: number | null;
+  usado_em: string | null;
+}
+
+interface LeadClube {
+  nome: string | null;
+  email: string;
+  cupom: string;
+  criado_em: string;
+  email_verificado: boolean;
+  usado: boolean;
+  pedido_valor: number | null;
+  usado_em: string | null;
+}
+
+interface CupomResumo {
+  cupons_unicos_gerados: number;
+  cupons_unicos_usados: number;
+  leads_com_cupom: number;
+  leads_que_usaram: number;
+  receita_cupons: number;
+}
+
+function CuponsTab() {
+  const [cuponsFluxo, setCuponsFluxo] = useState<CupomFluxo[]>([]);
+  const [leadsClube, setLeadsClube] = useState<LeadClube[]>([]);
+  const [resumo, setResumo] = useState<CupomResumo | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/campaigns/cupons').then((r) => {
+      setCuponsFluxo(r.data.cupons_fluxo || []);
+      setLeadsClube(r.data.leads_clube || []);
+      setResumo(r.data.resumo || null);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="text-center py-12 text-bibelo-muted">Carregando cupons...</div>;
+
+  return (
+    <div className="space-y-6">
+      {/* KPIs */}
+      {resumo && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {[
+            { label: 'Cupons únicos', value: resumo.cupons_unicos_gerados, sub: 'gerados via fluxos' },
+            { label: 'Usados', value: resumo.cupons_unicos_usados, sub: `${resumo.cupons_unicos_gerados > 0 ? Math.round(resumo.cupons_unicos_usados / resumo.cupons_unicos_gerados * 100) : 0}% conversão` },
+            { label: 'Leads Clube', value: resumo.leads_com_cupom, sub: 'com cupom CLUBEBIBELO' },
+            { label: 'Leads convertidos', value: resumo.leads_que_usaram, sub: `${resumo.leads_com_cupom > 0 ? Math.round(resumo.leads_que_usaram / resumo.leads_com_cupom * 100) : 0}% conversão` },
+            { label: 'Receita cupons', value: `R$ ${resumo.receita_cupons.toFixed(2).replace('.', ',')}`, sub: 'total atribuído' },
+          ].map((kpi) => (
+            <div key={kpi.label} className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
+              <p className="text-xs text-bibelo-muted font-medium">{kpi.label}</p>
+              <p className="text-xl font-bold text-bibelo-text mt-1">{kpi.value}</p>
+              <p className="text-[10px] text-bibelo-muted/60 mt-0.5">{kpi.sub}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Cupons únicos (de fluxos) */}
+      <div className="bg-bibelo-card border border-bibelo-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-bibelo-border flex items-center justify-between">
+          <h3 className="text-sm font-bold text-bibelo-text">Cupons Únicos (Fluxos Automáticos)</h3>
+          <span className="text-xs text-bibelo-muted">{cuponsFluxo.length} cupons</span>
+        </div>
+        {cuponsFluxo.length === 0 ? (
+          <div className="px-5 py-8 text-center text-bibelo-muted text-sm">
+            Nenhum cupom único gerado ainda. Eles são criados automaticamente quando os fluxos condicionais chegam no step de desconto.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-bibelo-border text-left text-xs text-bibelo-muted">
+                  <th className="px-4 py-2 font-medium">Cupom</th>
+                  <th className="px-4 py-2 font-medium">Cliente</th>
+                  <th className="px-4 py-2 font-medium">Fluxo</th>
+                  <th className="px-4 py-2 font-medium">Gerado em</th>
+                  <th className="px-4 py-2 font-medium">Status</th>
+                  <th className="px-4 py-2 font-medium">Pedido</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cuponsFluxo.map((c) => (
+                  <tr key={c.cupom} className="border-b border-bibelo-border/50 hover:bg-bibelo-border/20">
+                    <td className="px-4 py-2.5 font-mono font-bold text-bibelo-primary text-xs">{c.cupom}</td>
+                    <td className="px-4 py-2.5">
+                      <p className="font-medium text-bibelo-text">{c.customer_nome}</p>
+                      <p className="text-xs text-bibelo-muted">{c.customer_email}</p>
+                    </td>
+                    <td className="px-4 py-2.5 text-bibelo-muted">{c.flow_nome}</td>
+                    <td className="px-4 py-2.5 text-bibelo-muted">{timeAgo(c.gerado_em)}</td>
+                    <td className="px-4 py-2.5">
+                      {c.usado
+                        ? <span className="px-2 py-0.5 bg-emerald-400/10 text-emerald-400 rounded-full text-xs font-medium">Usado</span>
+                        : <span className="px-2 py-0.5 bg-amber-400/10 text-amber-400 rounded-full text-xs font-medium">Pendente</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-bibelo-muted">
+                      {c.usado ? `#${c.pedido_numero} · R$ ${(c.pedido_valor || 0).toFixed(2).replace('.', ',')}` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Leads Clube Bibelô */}
+      <div className="bg-bibelo-card border border-bibelo-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-bibelo-border flex items-center justify-between">
+          <h3 className="text-sm font-bold text-bibelo-text">Leads Clube Bibelô (CLUBEBIBELO)</h3>
+          <span className="text-xs text-bibelo-muted">{leadsClube.length} leads</span>
+        </div>
+        {leadsClube.length === 0 ? (
+          <div className="px-5 py-8 text-center text-bibelo-muted text-sm">Nenhum lead com cupom Clube ainda.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-bibelo-border text-left text-xs text-bibelo-muted">
+                  <th className="px-4 py-2 font-medium">Lead</th>
+                  <th className="px-4 py-2 font-medium">Cupom</th>
+                  <th className="px-4 py-2 font-medium">Cadastro</th>
+                  <th className="px-4 py-2 font-medium">Email</th>
+                  <th className="px-4 py-2 font-medium">Conversão</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leadsClube.map((l) => (
+                  <tr key={l.email} className="border-b border-bibelo-border/50 hover:bg-bibelo-border/20">
+                    <td className="px-4 py-2.5">
+                      <p className="font-medium text-bibelo-text">{l.nome || l.email.split('@')[0]}</p>
+                      <p className="text-xs text-bibelo-muted">{l.email}</p>
+                    </td>
+                    <td className="px-4 py-2.5 font-mono font-bold text-bibelo-primary text-xs">{l.cupom}</td>
+                    <td className="px-4 py-2.5 text-bibelo-muted">{timeAgo(l.criado_em)}</td>
+                    <td className="px-4 py-2.5">
+                      {l.email_verificado
+                        ? <span className="text-emerald-400 text-xs">✓ Verificado</span>
+                        : <span className="text-amber-400 text-xs">Pendente</span>}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {l.usado
+                        ? <span className="px-2 py-0.5 bg-emerald-400/10 text-emerald-400 rounded-full text-xs font-medium">Comprou · R$ {(l.pedido_valor || 0).toFixed(2).replace('.', ',')}</span>
+                        : <span className="text-bibelo-muted text-xs">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -650,20 +822,9 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
               </span>
             </div>
 
-            {/* Steps visuais */}
-            <div className="flex items-center gap-2 mb-6 p-4 bg-bibelo-bg rounded-xl overflow-x-auto">
-              {parseSteps(selected.steps).map((s, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  {i > 0 && <div className="w-8 h-px bg-bibelo-border" />}
-                  <div className="flex flex-col items-center gap-1 min-w-[80px]">
-                    <div className="w-10 h-10 rounded-xl bg-bibelo-card border border-bibelo-border flex items-center justify-center text-lg">
-                      {STEP_ICONS[s.tipo]}
-                    </div>
-                    <span className="text-[10px] text-bibelo-muted text-center leading-tight">{s.template || s.tipo}</span>
-                    {s.delay_horas > 0 && <span className="text-[10px] text-bibelo-muted/60">{s.delay_horas}h</span>}
-                  </div>
-                </div>
-              ))}
+            {/* Visualização do fluxo */}
+            <div className="mb-6 p-4 bg-bibelo-bg rounded-xl max-h-[500px] overflow-y-auto">
+              <FlowVisualizer steps={parseSteps(selected.steps) as Array<{ tipo: 'email' | 'whatsapp' | 'wait' | 'condicao'; template?: string; delay_horas: number; condicao?: string; ref_step?: number; sim?: number; nao?: number; proximo?: number }>} gatilho={selected.gatilho} />
             </div>
 
             {/* Stats */}

@@ -136,41 +136,56 @@ function gerarLinkVerificacao(email: string): string {
 
 async function enviarEmailVerificacao(email: string, cupom: string | null, nome: string | null): Promise<void> {
   const link = gerarLinkVerificacao(email);
-  const descontoTexto = cupom === "CLUBEBIBELO" ? "frete grátis" : cupom === "BIBELO10" ? "10% OFF" : "7% OFF";
+  const isClube = cupom === "CLUBEBIBELO";
+  const descontoTexto = isClube ? "frete grátis" : cupom === "BIBELO10" ? "10% OFF" : "7% OFF";
   const nomeDisplay = (nome || "Cliente").replace(/[<>"'&]/g, "");
 
   await sendEmail({
     to: email,
-    subject: `Confirme seu e-mail e ganhe ${descontoTexto}!`,
+    subject: isClube ? `🎀 ${nomeDisplay}, confirme e ative seu frete grátis!` : `Confirme seu e-mail e ganhe ${descontoTexto}!`,
     html: `<!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f5f0f2;font-family:'Segoe UI',Arial,sans-serif;">
-  <div style="max-width:500px;margin:0 auto;background:#fff;">
-    <div style="background:linear-gradient(135deg,#fe68c4,#ff8fd3);padding:30px 20px;text-align:center;">
-      <a href="https://www.papelariabibelo.com.br" style="text-decoration:none;">
-        <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" width="60" height="60" style="width:60px;height:60px;border-radius:50%;border:3px solid #fff;" />
-      </a>
-      <h1 style="color:#fff;margin:12px 0 0;font-size:22px;">Falta só um clique!</h1>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@400;500;600;700&display=swap');*{font-family:Jost,'Segoe UI',Arial,sans-serif;}</style>
+</head>
+<body style="margin:0;padding:0;background:#ffe5ec;">
+<div style="max-width:600px;margin:0 auto;padding:20px 10px;">
+  <div style="background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 20px 60px rgba(254,104,196,0.15);">
+    <div style="background:linear-gradient(160deg,#ffe5ec 0%,#fff7c1 50%,#ffe5ec 100%);padding:32px 30px;text-align:center;position:relative;overflow:hidden;">
+      <div style="position:absolute;top:-20px;right:-20px;width:80px;height:80px;background:rgba(254,104,196,0.06);border-radius:50%;"></div>
+      <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" width="52" height="52" style="width:52px;height:52px;border-radius:50%;border:2px solid rgba(254,104,196,0.3);margin-bottom:12px;" />
+      ${isClube ? '<div style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:5px 16px;border-radius:50px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">CLUBE BIBELÔ</div>' : ''}
+      <h1 style="color:#2d2d2d;margin:0 0 6px;font-size:26px;font-weight:600;font-family:Cormorant Garamond,Georgia,serif;line-height:1.2;">Falta só um clique!</h1>
+      <p style="color:#999;margin:0;font-size:13px;">Confirme seu e-mail para ${isClube ? 'ativar seus benefícios' : 'ganhar seu cupom'}</p>
     </div>
-    <div style="padding:30px 25px;text-align:center;">
+    <div style="height:3px;background:linear-gradient(90deg,#fe68c4,#f472b6,#fe68c4);"></div>
+    <div style="padding:32px 30px;text-align:center;">
       <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 8px;">
-        Oi, <strong>${nomeDisplay}</strong>!
+        Oi, <strong style="color:#fe68c4;">${nomeDisplay}</strong>! 👋
       </p>
-      <p style="color:#555;font-size:15px;line-height:1.6;margin:0 0 24px;">
-        Confirme seu e-mail para ${cupom === "CLUBEBIBELO" ? "ativar seu <strong style=\"color:#fe68c4;\">frete grátis</strong> na 1ª compra acima de R$79" : `receber seu cupom exclusivo de <strong style="color:#fe68c4;">${descontoTexto}</strong>`} na Papelaria Bibelô.
+      <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 24px;">
+        ${isClube
+          ? 'Confirme seu e-mail para ativar seu <strong style="color:#fe68c4;">frete grátis</strong> na 1ª compra acima de R$79 + acesso às novidades em primeira mão!'
+          : `Confirme seu e-mail para receber seu cupom exclusivo de <strong style="color:#fe68c4;">${descontoTexto}</strong> na Papelaria Bibelô.`}
       </p>
-      <a href="${link}" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:16px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
-        ${cupom === "CLUBEBIBELO" ? "Confirmar e ativar frete grátis" : "Confirmar e-mail e ganhar cupom"}
+      ${isClube ? `
+      <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:12px;padding:16px 20px;margin:0 0 24px;text-align:left;">
+        <p style="margin:0 0 6px;font-size:13px;color:#555;">🚚 Frete grátis acima de R$79</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#555;">🎁 Mimo surpresa em toda compra</p>
+        <p style="margin:0;font-size:13px;color:#555;">✨ Novidades antes de todo mundo</p>
+      </div>` : ''}
+      <a href="${link}" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:16px 44px;border-radius:50px;text-decoration:none;font-weight:600;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
+        ${isClube ? 'Confirmar e ativar frete grátis' : 'Confirmar e ganhar cupom'}
       </a>
-      <p style="color:#999;font-size:12px;margin:20px 0 0;">
+      <p style="color:#aaa;font-size:12px;margin:20px 0 0;">
         Se você não se cadastrou na Papelaria Bibelô, ignore este e-mail.
       </p>
     </div>
-    <div style="background:#f9f9f9;padding:16px;text-align:center;border-top:1px solid #eee;">
-      <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibelô · papelariabibelo.com.br</p>
+    <div style="padding:14px 30px;background:#fafafa;text-align:center;border-top:1px solid #ffe5ec;">
+      <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibelô · <span style="color:#fe68c4;">papelariabibelo.com.br</span></p>
     </div>
   </div>
+</div>
 </body>
 </html>`,
     tags: [{ name: "type", value: "lead_verification" }],
