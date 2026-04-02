@@ -295,13 +295,13 @@ flowsRouter.get("/:id/step-stats", async (req: Request, res: Response) => {
     [flowId],
   );
 
-  const templates: Record<number, { nome: string; assunto: string }> = {};
+  const templates: Record<number, { nome: string; assunto: string; html: string }> = {};
   if (flow) {
     const steps = typeof flow.steps === "string" ? JSON.parse(flow.steps) : flow.steps;
     for (let i = 0; i < steps.length; i++) {
       if (steps[i].tipo === "email" && steps[i].template) {
-        const tpl = await queryOne<{ nome: string; assunto: string }>(
-          "SELECT nome, assunto FROM marketing.templates WHERE nome ILIKE $1 AND ativo = true LIMIT 1",
+        const tpl = await queryOne<{ nome: string; assunto: string; html: string }>(
+          "SELECT nome, assunto, html FROM marketing.templates WHERE nome ILIKE $1 AND ativo = true LIMIT 1",
           [`%${steps[i].template}%`],
         );
         if (tpl) templates[i] = tpl;

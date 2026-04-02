@@ -35,6 +35,7 @@ interface StepStat {
 interface TemplateInfo {
   nome: string;
   assunto: string;
+  html?: string;
 }
 
 // ── Config ─────────────────────────────────────────────────────
@@ -231,7 +232,7 @@ export default function FlowVisualizer({ steps, nome, gatilho, flowId }: FlowVis
                       <span className="text-bibelo-muted">{step.delay_horas > 0 ? `Delay: ${formatDelay(step.delay_horas)}` : 'Imediato'}</span>
                     </div>
 
-                    {/* Email: template info */}
+                    {/* Email: template info + preview */}
                     {step.tipo === 'email' && (
                       <div className="space-y-1.5">
                         <div className="p-2 bg-blue-500/5 rounded-md">
@@ -240,6 +241,21 @@ export default function FlowVisualizer({ steps, nome, gatilho, flowId }: FlowVis
                         </div>
                         {step.proximo !== undefined && (
                           <p className="text-bibelo-muted">Após envio → <span className="font-medium">{step.proximo === -1 ? 'finaliza fluxo' : `pula para step ${step.proximo}`}</span> (convergência)</p>
+                        )}
+                        {tpl?.html && (
+                          <details className="mt-2">
+                            <summary className="text-bibelo-primary cursor-pointer text-xs font-medium hover:underline">
+                              👁️ Ver preview do email
+                            </summary>
+                            <div className="mt-2 border border-bibelo-border rounded-lg overflow-hidden" style={{ maxHeight: 400 }}>
+                              <iframe
+                                srcDoc={tpl.html.replace(/\{\{nome\}\}/g, 'Maria').replace(/\{\{email\}\}/g, 'maria@email.com').replace(/\{\{cupom\}\}/g, 'BIB-EXEMPLO').replace(/\{\{valor\}\}/g, 'R$ 49,90').replace(/\{\{itens\}\}/g, 'Caneta Pompom (1x)').replace(/\{\{recovery_url\}\}/g, '#').replace(/\{\{unsub_link\}\}/g, '#').replace(/\{\{senha_temp\}\}/g, 'BibTemp1!').replace(/\{\{produto\}\}/g, 'Caneta Luxo Pompom')}
+                                style={{ width: '100%', height: 400, border: 'none' }}
+                                sandbox="allow-same-origin"
+                                title="Preview do email"
+                              />
+                            </div>
+                          </details>
                         )}
                       </div>
                     )}
