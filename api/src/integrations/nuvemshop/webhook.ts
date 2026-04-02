@@ -108,6 +108,9 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
 
   const products = (order.products as Array<Record<string, unknown>>) || [];
   const valor = parseFloat(String(order.total || 0));
+  // Extrair cupom usado no pedido (NuvemShop envia como coupon[])
+  const coupons = (order.coupon as Array<Record<string, unknown>>) || [];
+  const cupomUsado = coupons.length > 0 ? String(coupons[0].code || "") : null;
 
   if (event.includes("cancelled")) {
     await query(
@@ -116,10 +119,10 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
     );
   } else {
     await query(
-      `INSERT INTO sync.nuvemshop_orders (ns_id, customer_id, numero, valor, status, itens, processado)
-       VALUES ($1, $2, $3, $4, $5, $6, true)
+      `INSERT INTO sync.nuvemshop_orders (ns_id, customer_id, numero, valor, status, itens, cupom, processado)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true)
        ON CONFLICT (ns_id) DO UPDATE SET
-         customer_id = $2, valor = $4, status = $5, itens = $6, processado = true`,
+         customer_id = $2, valor = $4, status = $5, itens = $6, cupom = $7, processado = true`,
       [
         resourceId,
         customerId,
@@ -127,8 +130,12 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
         valor,
         (order.payment_status as string) || "pending",
         JSON.stringify(products),
+        cupomUsado,
       ]
     );
+    if (cupomUsado) {
+      logger.info("NuvemShop: pedido com cupom", { orderId: resourceId, cupom: cupomUsado, customerId });
+    }
   }
 
   if (customerId) {

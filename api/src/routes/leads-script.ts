@@ -108,9 +108,9 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
       body: JSON.stringify({ popup_id: config.id })
     }).catch(function() {});
 
-    // Google Font
+    // Google Fonts
     var link = document.createElement('link');
-    link.href = 'https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap';
+    link.href = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@400;500;600;700&display=swap';
     link.rel = 'stylesheet';
     document.head.appendChild(link);
 
@@ -127,35 +127,50 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
     card.style.cssText = 'background:#fff;border-radius:20px;max-width:420px;width:100%;overflow:hidden;box-shadow:0 20px 60px rgba(254,104,196,0.25);transform:translateY(20px);transition:transform 0.4s ease;font-family:Jost,Arial,sans-serif;';
 
     var isClube = (config.desconto_texto || '').indexOf('FRETE') !== -1;
-    var btnText = isClube ? 'Quero fazer parte! \\uD83C\\uDF80' : 'Quero meu cupom! \\uD83C\\uDF89';
-    var headerBg = isClube ? 'background:linear-gradient(135deg,#ffe5ec,#fff7c1);' : 'background:#fff7c1;';
-    var badgeStyle = isClube
-      ? 'background:linear-gradient(135deg,#25D366,#128C7E);color:#fff;display:inline-block;padding:8px 20px;border-radius:50px;font-size:16px;font-weight:700;margin-bottom:12px;letter-spacing:0.5px;'
-      : 'background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:8px 20px;border-radius:50px;font-size:20px;font-weight:700;margin-bottom:12px;';
+    var btnText = isClube ? 'Quero fazer parte \\uD83C\\uDF80' : 'Quero meu cupom \\uD83C\\uDF89';
+    var inputStyle = 'width:100%;padding:13px 16px 13px 42px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:10px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;background:#fff;';
 
     card.innerHTML =
-      '<div style="' + headerBg + 'padding:28px 24px 20px;text-align:center;border-bottom:3px solid #fe68c4;position:relative;">' +
-        '<button id="bibelo-popup-close" style="position:absolute;top:12px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:#999;line-height:1;">&times;</button>' +
-        '<div style="' + badgeStyle + '">' + esc(config.desconto_texto || 'FRETE GR\\u00C1TIS') + '</div>' +
-        '<h2 style="color:#333;margin:0 0 6px;font-size:20px;font-weight:700;">' + esc(config.titulo || 'Entre pro Clube Bibel\\u00F4!') + '</h2>' +
-        '<p style="color:#777;margin:0;font-size:14px;line-height:1.5;">' + esc(config.subtitulo || 'Frete gr\\u00E1tis na 1\\u00AA compra + novidades em primeira m\\u00E3o!') + '</p>' +
+      // ── Header premium com Cormorant Garamond ──
+      '<div style="background:linear-gradient(160deg,#ffe5ec 0%,#fff7c1 50%,#ffe5ec 100%);padding:32px 28px 24px;text-align:center;position:relative;overflow:hidden;">' +
+        // Decoração sutil de fundo
+        '<div style="position:absolute;top:-20px;right:-20px;width:80px;height:80px;background:rgba(254,104,196,0.08);border-radius:50%;"></div>' +
+        '<div style="position:absolute;bottom:-10px;left:-10px;width:50px;height:50px;background:rgba(254,104,196,0.06);border-radius:50%;"></div>' +
+        '<button id="bibelo-popup-close" style="position:absolute;top:10px;right:12px;background:rgba(255,255,255,0.7);border:none;width:28px;height:28px;border-radius:50%;font-size:18px;cursor:pointer;color:#999;line-height:1;display:flex;align-items:center;justify-content:center;">&times;</button>' +
+        // Badge
+        '<div style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:6px 18px;border-radius:50px;font-size:12px;font-weight:600;margin-bottom:14px;letter-spacing:1.5px;text-transform:uppercase;font-family:Jost,sans-serif;">' + esc(config.desconto_texto || 'FRETE GR\\u00C1TIS') + '</div>' +
+        // T\\u00EDtulo em Cormorant Garamond
+        '<h2 style="color:#2d2d2d;margin:0 0 8px;font-size:28px;font-weight:600;font-family:Cormorant Garamond,Georgia,serif;line-height:1.2;">' + esc(config.titulo || 'Entre pro Clube Bibel\\u00F4!') + '</h2>' +
+        '<p style="color:#888;margin:0;font-size:13px;line-height:1.5;font-family:Jost,sans-serif;max-width:320px;display:inline-block;">' + esc(config.subtitulo || 'Frete gr\\u00E1tis na 1\\u00AA compra + novidades em primeira m\\u00E3o!') + '</p>' +
       '</div>' +
-      '<div style="padding:24px;">' +
+      // ── Divider rosa ──
+      '<div style="height:3px;background:linear-gradient(90deg,#fe68c4,#f472b6,#fe68c4);"></div>' +
+      // ── Form ──
+      '<div style="padding:24px 24px 20px;">' +
         '<form id="bibelo-popup-form">' +
-          (temNome ? '<input type="text" name="nome" placeholder="Seu nome" required style="width:100%;padding:12px 16px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:10px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" />' : '') +
-          '<input type="email" name="email" placeholder="Seu melhor e-mail" required style="width:100%;padding:12px 16px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:10px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" />' +
-          (temTelefone ? '<input type="tel" name="telefone" placeholder="WhatsApp (ex: 47 999999999)" required style="width:100%;padding:12px 16px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:14px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" />' : '<div style="height:4px;"></div>') +
-          '<button type="submit" id="bibelo-popup-btn" style="width:100%;padding:14px;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;font-family:Jost,Arial,sans-serif;box-shadow:0 4px 15px rgba(254,104,196,0.3);transition:transform 0.2s,box-shadow 0.2s;" onmouseover="this.style.transform=\\'translateY(-1px)\\';this.style.boxShadow=\\'0 6px 20px rgba(254,104,196,0.4)\\'" onmouseout="this.style.transform=\\'none\\';this.style.boxShadow=\\'0 4px 15px rgba(254,104,196,0.3)\\'">' +
+          // Input nome com \\u00EDcone
+          (temNome ? '<div style="position:relative;margin-bottom:10px;"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;opacity:0.4;">\\uD83D\\uDC64</span><input type="text" name="nome" placeholder="Seu nome" required style="' + inputStyle + '" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" /></div>' : '') +
+          // Input email com \\u00EDcone
+          '<div style="position:relative;margin-bottom:10px;"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;opacity:0.4;">\\u2709\\uFE0F</span><input type="email" name="email" placeholder="Seu melhor e-mail" required style="' + inputStyle + '" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" /></div>' +
+          // Input WhatsApp com \\u00EDcone
+          (temTelefone ? '<div style="position:relative;margin-bottom:14px;"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;opacity:0.4;">\\uD83D\\uDCF1</span><input type="tel" name="telefone" placeholder="WhatsApp (47 999999999)" required style="' + inputStyle + '" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" /></div>' : '') +
+          // Bot\\u00E3o
+          '<button type="submit" id="bibelo-popup-btn" style="width:100%;padding:15px;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;font-family:Jost,Arial,sans-serif;box-shadow:0 4px 15px rgba(254,104,196,0.3);transition:transform 0.2s,box-shadow 0.2s;letter-spacing:0.3px;" onmouseover="this.style.transform=\\'translateY(-2px)\\';this.style.boxShadow=\\'0 8px 25px rgba(254,104,196,0.4)\\'" onmouseout="this.style.transform=\\'none\\';this.style.boxShadow=\\'0 4px 15px rgba(254,104,196,0.3)\\'">' +
             btnText +
           '</button>' +
         '</form>' +
-        (isClube ? '<p style="text-align:center;margin:12px 0 0;font-size:11px;color:#bbb;">\\uD83C\\uDF81 Toda compra vai com mimo surpresa!</p>' : '') +
-        '<div id="bibelo-popup-success" style="display:none;text-align:center;padding:10px 0;">' +
-          '<p style="font-size:36px;margin:0 0 12px;" id="bibelo-popup-emoji">\\u2709\\uFE0F</p>' +
-          '<p style="font-size:18px;font-weight:700;color:#333;margin:0 0 8px;" id="bibelo-popup-msg"></p>' +
-          '<p style="font-size:13px;color:#999;margin:0;" id="bibelo-popup-submsg">Verifique tamb\\u00E9m a pasta de spam.</p>' +
+        // Mimo surpresa
+        (isClube ? '<div style="text-align:center;margin:14px 0 0;padding:8px 12px;background:#fff7c1;border-radius:8px;"><span style="font-size:12px;color:#2d2d2d;font-family:Jost,sans-serif;">\\uD83C\\uDF81 Toda compra vai com <strong>mimo surpresa</strong> na caixa!</span></div>' : '') +
+        // Success
+        '<div id="bibelo-popup-success" style="display:none;text-align:center;padding:16px 0;">' +
+          '<p style="font-size:40px;margin:0 0 12px;" id="bibelo-popup-emoji">\\u2709\\uFE0F</p>' +
+          '<p style="font-size:20px;font-weight:600;color:#2d2d2d;margin:0 0 8px;font-family:Cormorant Garamond,Georgia,serif;" id="bibelo-popup-msg"></p>' +
+          '<p style="font-size:13px;color:#999;margin:0;font-family:Jost,sans-serif;" id="bibelo-popup-submsg">Verifique tamb\\u00E9m a pasta de spam.</p>' +
         '</div>' +
-        '<p style="text-align:center;margin:14px 0 0;font-size:11px;color:#bbb;">Papelaria Bibel\\u00F4 \\u00B7 papelariabibelo.com.br</p>' +
+      '</div>' +
+      // ── Footer ──
+      '<div style="padding:12px 24px;background:#fafafa;text-align:center;border-top:1px solid #ffe5ec;">' +
+        '<p style="margin:0;font-size:11px;color:#bbb;font-family:Jost,sans-serif;">Papelaria Bibel\\u00F4 \\u00B7 <span style="color:#fe68c4;">papelariabibelo.com.br</span></p>' +
       '</div>';
 
     overlay.appendChild(card);
@@ -210,20 +225,23 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
         success.style.display = 'block';
         document.getElementById('bibelo-popup-msg').textContent = data.mensagem || 'Verifique seu e-mail!';
 
+        var vipLink = 'https://menu.papelariabibelo.com.br/api/links/go/grupo-vip';
+        var vipBtn = '<a href="' + vipLink + '" target="_blank" style="display:inline-block;background:#25D366;color:#fff;padding:10px 24px;border-radius:50px;text-decoration:none;font-size:13px;font-weight:600;margin-top:12px;font-family:Jost,sans-serif;">Entrar no Grupo VIP \\uD83D\\uDCAC</a>';
+
         if (data.verificacao === 'cliente_existente') {
           document.getElementById('bibelo-popup-emoji').textContent = '\\uD83D\\uDC95';
-          document.getElementById('bibelo-popup-submsg').textContent = 'Fique de olho no seu e-mail para promo\\u00E7\\u00F5es VIP!';
+          document.getElementById('bibelo-popup-submsg').innerHTML = 'Voc\\u00EA j\\u00E1 faz parte da fam\\u00EDlia!' + vipBtn;
         } else if (data.verificacao === 'ja_verificado') {
           document.getElementById('bibelo-popup-emoji').textContent = '\\u2705';
-          document.getElementById('bibelo-popup-submsg').textContent = 'Seu cupom j\\u00E1 foi enviado anteriormente.';
+          document.getElementById('bibelo-popup-submsg').innerHTML = 'Seu frete gr\\u00E1tis j\\u00E1 est\\u00E1 ativo!' + vipBtn;
         } else {
-          document.getElementById('bibelo-popup-submsg').textContent = 'Verifique tamb\\u00E9m a pasta de spam.';
+          document.getElementById('bibelo-popup-submsg').innerHTML = 'Verifique seu e-mail para ativar o frete gr\\u00E1tis.<br>Verifique tamb\\u00E9m a pasta de spam.' + vipBtn;
         }
         setCookie(COOKIE_NAME, '1', COOKIE_DAYS);
-        setCookie('_bibelo_lead', '1', 365); // Marca como lead — popup não aparece mais
+        setCookie('_bibelo_lead', '1', 365);
 
-        // Fecha sozinho após 15 segundos (tempo suficiente para ler)
-        setTimeout(closePopup, 15000);
+        // Não fecha sozinho — tem link VIP pra clicar
+        setTimeout(closePopup, 30000);
       })
       .catch(function() {
         btn.textContent = 'Tente novamente';

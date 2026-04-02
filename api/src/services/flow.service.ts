@@ -4,9 +4,52 @@ import { sendEmail } from "../integrations/resend/email";
 import { getNuvemShopToken, nsRequest } from "../integrations/nuvemshop/auth";
 import { gerarLinkDescadastro } from "../routes/email";
 
+import crypto from "crypto";
+
 // ── Sanitização HTML (anti-XSS em templates de email) ──────────
 function escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+// ── Gerar cupom único por lead via NuvemShop API ────────────────
+
+async function gerarCupomUnico(
+  nome: string,
+  tipo: "percentage" | "absolute",
+  valor: number,
+  validadeDias: number,
+): Promise<string | null> {
+  try {
+    const token = await getNuvemShopToken();
+    if (!token) return null;
+
+    // Gera código único: BIB-NOME-XXXX
+    const nomeClean = nome.replace(/[^a-zA-Z]/g, "").toUpperCase().slice(0, 6) || "LEAD";
+    const hash = crypto.randomBytes(2).toString("hex").toUpperCase();
+    const code = `BIB-${nomeClean}-${hash}`;
+
+    // Data de expiração
+    const endDate = new Date(Date.now() + validadeDias * 86400000);
+    const endDateStr = endDate.toISOString().split("T")[0];
+
+    await nsRequest<{ id: number }>("post", "coupons", token, {
+      code,
+      type: tipo,
+      value: String(valor),
+      max_uses: 1,
+      first_consumer_purchase: true,
+      end_date: endDateStr,
+      valid: true,
+      combines_with_other_discounts: false,
+    });
+
+    logger.info("Cupom único criado na NuvemShop", { code, tipo, valor, endDate: endDateStr });
+    return code;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("Erro ao criar cupom único", { error: msg, nome, tipo, valor });
+    return null;
+  }
 }
 
 // ── Types ──────────────────────────────────────────────────────
@@ -581,6 +624,33 @@ async function executeEmailStep(
 
   // Usa template do banco (marketing.templates)
   const recoveryUrl = (metadata.recovery_url as string) || "";
+
+  // ── Cupom único: gerar via NuvemShop API para templates de desconto ──
+  const tplLower = (step.template || "").toLowerCase();
+  const isCupomDesconto = tplLower.includes("cupom recupera") || tplLower.includes("cupom exclusi") || tplLower.includes("reativa") && tplLower.includes("cupom");
+  let cupomFinal = String(metadata.cupom || "");
+
+  if (isCupomDesconto) {
+    // Determinar tipo e valor do cupom pelo template
+    let cupomTipo: "percentage" | "absolute" = "percentage";
+    let cupomValor = 10;
+    let cupomDias = 2;
+
+    if (tplLower.includes("recupera")) {
+      cupomValor = 5; cupomDias = 1;  // Carrinho abandonado: 5%, 24h
+    } else if (tplLower.includes("reativa")) {
+      cupomValor = 10; cupomDias = 7;  // Reativação: 10%, 7 dias
+    } else {
+      cupomValor = 10; cupomDias = 2;  // Nutrição lead: 10%, 48h
+    }
+
+    const cupomUnico = await gerarCupomUnico(customer.nome, cupomTipo, cupomValor, cupomDias);
+    if (cupomUnico) {
+      cupomFinal = cupomUnico;
+      logger.info("Cupom único gerado para email", { cupom: cupomUnico, template: step.template, customerId: customer.id });
+    }
+  }
+
   // Variáveis para HTML (escapadas) e texto plano (sem escape)
   const rawVars: Record<string, string> = {
     nome: customer.nome || "Cliente",
@@ -591,7 +661,7 @@ async function executeEmailStep(
     numero: String(metadata.numero || metadata.ns_order_id || ""),
     codigo: String(metadata.codigo_rastreio || metadata.codigo || ""),
     prazo: String(metadata.prazo || ""),
-    cupom: String(metadata.cupom || ""),
+    cupom: cupomFinal,
     produto: String(metadata.resource_nome || ""),
   };
   // URLs e valores numéricos não precisam escape; nomes e textos sim
@@ -877,7 +947,7 @@ function buildReactivationEmail(nome: string): string {
 // ── Template: Lead Quente (add_to_cart sem compra) ────────────
 
 function buildLeadCartEmail(nome: string, metadata: Record<string, unknown>): string {
-  const cupom = (metadata.cupom as string) || "BIBELO10";
+  const cupom = (metadata.cupom as string) || "CLUBEBIBELO";
   const productName = (metadata.resource_nome as string) || "";
   const productImg = safeImageUrl(metadata.resource_imagem as string);
   const productUrl = (metadata.recovery_url as string) || "https://www.papelariabibelo.com.br";
@@ -972,7 +1042,7 @@ async function buildPopularProductsEmail(nome: string): Promise<string> {
 // ── Template: Lembrete Cupom (drip dia 5) ─────────────────────
 
 function buildCouponReminderEmail(nome: string, metadata: Record<string, unknown>): string {
-  const cupom = (metadata.cupom as string) || "BIBELO10";
+  const cupom = (metadata.cupom as string) || "CLUBEBIBELO";
 
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! ⏰</p>
@@ -1341,7 +1411,7 @@ export async function checkLeadCartAbandoned(): Promise<number> {
        t.resource_imagem,
        t.resource_id,
        t.pagina,
-       COALESCE(l.cupom, 'BIBELO10') AS cupom
+       COALESCE(l.cupom, 'CLUBEBIBELO') AS cupom
      FROM crm.tracking_events t
      JOIN marketing.leads l ON l.customer_id = t.customer_id
      WHERE t.evento = 'add_to_cart'
