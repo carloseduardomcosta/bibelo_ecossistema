@@ -107,6 +107,18 @@ export default function Campanhas() {
     } catch { showError('Erro ao carregar detalhe'); }
   };
 
+  // Auto-refresh detalhe da campanha a cada 15s (atualiza opens/clicks)
+  useEffect(() => {
+    if (!detalhe) return;
+    const interval = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/campaigns/${detalhe.id}`);
+        setDetalhe(data);
+      } catch { /* silencioso */ }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [detalhe?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Campaign form
   const [campForm, setCampForm] = useState({
     nome: '', canal: 'email' as 'email' | 'whatsapp', template_id: '', segment_id: '',

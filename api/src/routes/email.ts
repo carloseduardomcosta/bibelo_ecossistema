@@ -1,5 +1,7 @@
 import { Router, Request, Response } from "express";
 import crypto from "crypto";
+import path from "path";
+import fs from "fs";
 import rateLimit from "express-rate-limit";
 import { query, queryOne } from "../db";
 import { logger } from "../utils/logger";
@@ -161,3 +163,104 @@ function paginaErro(msg: string): string {
 </body>
 </html>`;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// PROXY DE IMAGENS PARA EMAILS (serve imagens externas pelo nosso domínio)
+// Evita que Gmail/Outlook marque como spam por imagens de domínio diferente
+// ═══════════════════════════════════════════════════════════════
+
+const IMG_CACHE_DIR = path.resolve(process.cwd(), "uploads", "email-img-cache");
+if (!fs.existsSync(IMG_CACHE_DIR)) fs.mkdirSync(IMG_CACHE_DIR, { recursive: true });
+
+const imgProxyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: { error: "Muitas requisições" },
+});
+
+// Domínios permitidos para proxy
+const ALLOWED_IMG_DOMAINS = [
+  "dcdn-us.mitiendanube.com",
+  "d2r9epyceweg5n.cloudfront.net",
+  "orgbling.s3.amazonaws.com",
+  "images.unsplash.com",
+];
+
+// GET /api/email/img/:hash — serve imagem cacheada
+emailRouter.get("/img/:hash", imgProxyLimiter, async (req: Request, res: Response) => {
+  const { hash } = req.params;
+  if (!/^[a-f0-9]{32,64}\.(jpg|jpeg|png|webp|gif)$/.test(hash)) {
+    res.status(400).json({ error: "Hash inválido" });
+    return;
+  }
+
+  const filePath = path.resolve(IMG_CACHE_DIR, hash);
+  if (!filePath.startsWith(path.resolve(IMG_CACHE_DIR))) {
+    res.status(400).json({ error: "Caminho inválido" });
+    return;
+  }
+
+  if (fs.existsSync(filePath)) {
+    const ext = path.extname(hash).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+      ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif",
+    };
+    res.setHeader("Content-Type", mimeMap[ext] || "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=604800"); // 7 dias
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    fs.createReadStream(filePath).pipe(res);
+    return;
+  }
+
+  res.status(404).json({ error: "Imagem não encontrada" });
+});
+
+// ── Helper: converter URL externa em URL proxy ────────────────
+// Usado pelos templates de campanha
+export function proxyImageUrl(externalUrl: string): string {
+  if (!externalUrl || !externalUrl.startsWith("http")) return externalUrl;
+
+  try {
+    const parsed = new URL(externalUrl);
+    if (!ALLOWED_IMG_DOMAINS.some(d => parsed.hostname.endsWith(d))) {
+      return externalUrl; // domínio não permitido, retorna original
+    }
+  } catch { return externalUrl; }
+
+  // Hash determinístico da URL
+  const hash = crypto.createHash("sha256").update(externalUrl).digest("hex");
+  const urlPath = externalUrl.split("?")[0];
+  let ext = "jpg";
+  if (urlPath.endsWith(".png")) ext = "png";
+  else if (urlPath.endsWith(".webp")) ext = "webp";
+  else if (urlPath.endsWith(".gif")) ext = "gif";
+
+  const fileName = `${hash}.${ext}`;
+  const filePath = path.join(IMG_CACHE_DIR, fileName);
+
+  // Baixar em background se não cacheado
+  if (!fs.existsSync(filePath)) {
+    (async () => {
+      try {
+        const axios = (await import("axios")).default;
+        const resp = await axios.get(externalUrl, {
+          responseType: "arraybuffer",
+          timeout: 15000,
+        });
+        fs.writeFileSync(filePath, Buffer.from(resp.data));
+      } catch {
+        logger.error("Erro ao cachear imagem para email", { url: externalUrl.substring(0, 80) });
+      }
+    })();
+  }
+
+  const baseUrl = process.env.WEBHOOK_BASE_URL || "https://webhook.papelariabibelo.com.br";
+  return `${baseUrl}/api/email/img/${fileName}`;
+}
+
+// ── GET /api/email/wa — redirect WhatsApp pelo nosso domínio ──
+emailRouter.get("/wa", (_req: Request, res: Response) => {
+  const text = typeof _req.query.text === "string" ? _req.query.text : "Olá!";
+  res.redirect(302, `https://wa.me/5547933862514?text=${encodeURIComponent(text)}`);
+});

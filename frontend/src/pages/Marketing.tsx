@@ -24,6 +24,18 @@ interface FlowStats {
   carrinhos_pendentes: number;
   carrinhos_notificados: number;
   carrinhos_convertidos: number;
+  emails_hoje: number;
+}
+
+interface StepExecution {
+  id: string;
+  step_index: number;
+  tipo: string;
+  status: string;
+  resultado: Record<string, unknown>;
+  agendado_para: string | null;
+  executado_em: string | null;
+  criado_em: string;
 }
 
 interface Flow {
@@ -140,6 +152,22 @@ const STEP_ICONS: Record<string, string> = {
 
 const PIE_COLORS = ['#34D399', '#60A5FA', '#F87171', '#FBBF24', '#A78BFA'];
 
+function parseSteps(steps: unknown): Array<{ tipo: string; template?: string; delay_horas: number }> {
+  try {
+    const parsed = typeof steps === 'string' ? JSON.parse(steps) : steps;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+const STEP_STATUS_COLORS: Record<string, { dot: string; text: string }> = {
+  concluido: { dot: 'bg-emerald-400', text: 'text-emerald-400' },
+  executando: { dot: 'bg-blue-400 animate-pulse', text: 'text-blue-400' },
+  pendente: { dot: 'bg-bibelo-muted/40', text: 'text-bibelo-muted' },
+  erro: { dot: 'bg-red-400', text: 'text-red-400' },
+  pulado: { dot: 'bg-amber-400', text: 'text-amber-400' },
+  ignorado: { dot: 'bg-amber-400', text: 'text-amber-400' },
+};
+
 // ── Component ─────────────────────────────────────────────────
 
 export default function Marketing() {
@@ -154,6 +182,8 @@ export default function Marketing() {
   const [funnel, setFunnel] = useState<{ steps: Array<{ etapa: string; total: number; taxa: number }>; taxa_conversao_geral: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [error, setError] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -174,7 +204,10 @@ export default function Marketing() {
       setTrackingEvents(timelineRes.data);
       setTrackingStats(trackStatsRes.data);
       setFunnel(funnelRes.data);
+      setLastUpdate(new Date());
+      setError(null);
     } catch {
+      setError('Erro ao carregar dados de automação');
     } finally {
       setLoading(false);
     }
@@ -182,8 +215,9 @@ export default function Marketing() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Auto-refresh a cada 30s — só busca endpoints da aba ativa
+  // Auto-refresh — 10s na aba Atividade, 30s nas outras
   useEffect(() => {
+    const ms = tab === 'atividade' ? 10000 : 30000;
     const interval = setInterval(async () => {
       try {
         if (tab === 'overview') {
@@ -217,8 +251,9 @@ export default function Marketing() {
           setLeadStats(leadsStatsRes.data);
           setLeads(leadsRes.data.leads);
         }
-      } catch (err) { console.error('Erro ao atualizar dados de marketing:', err); }
-    }, 30000);
+        setLastUpdate(new Date());
+      } catch { /* silencioso no polling */ }
+    }, ms);
     return () => clearInterval(interval);
   }, [tab]);
 
@@ -246,6 +281,10 @@ export default function Marketing() {
           <h1 className="text-2xl font-bold text-bibelo-text">Marketing</h1>
           <p className="text-sm text-bibelo-muted mt-1">Automações, leads e campanhas do ecossistema Bibelô</p>
         </div>
+        <div className="flex items-center gap-3">
+        <span className="text-[10px] text-bibelo-muted/60 hidden md:inline">
+          Atualizado {lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        </span>
         <div className="flex items-center gap-1 bg-bibelo-card border border-bibelo-border rounded-lg p-1">
           {(['overview', 'atividade', 'fluxos', 'leads'] as const).map((t) => (
             <button
@@ -259,10 +298,19 @@ export default function Marketing() {
             </button>
           ))}
         </div>
+        </div>
       </div>
 
+      {/* Erro global */}
+      {error && (
+        <div className="bg-red-400/10 border border-red-400/20 rounded-xl p-3 flex items-center gap-3">
+          <AlertCircle size={16} className="text-red-400 shrink-0" />
+          <p className="text-sm text-red-400">{error}</p>
+        </div>
+      )}
+
       {tab === 'overview' && <OverviewTab flowStats={flowStats} flows={flows} leadStats={leadStats} leads={leads} onFlowClick={fetchFlowDetail} />}
-      {tab === 'atividade' && <AtividadeTab events={trackingEvents} stats={trackingStats} funnel={funnel} onRefresh={fetchAll} />}
+      {tab === 'atividade' && <AtividadeTab events={trackingEvents} stats={trackingStats} funnel={funnel} onRefresh={fetchAll} lastUpdate={lastUpdate} />}
       {tab === 'fluxos' && <FluxosTab flows={flows} executions={executions} selectedFlow={selectedFlow} onFlowClick={fetchFlowDetail} onRefresh={fetchAll} />}
       {tab === 'leads' && <LeadsTab leadStats={leadStats} />}
     </div>
@@ -278,13 +326,12 @@ function OverviewTab({ flowStats, flows, leadStats, leads, onFlowClick }: {
   leads: Lead[];
   onFlowClick: (id: string) => void;
 }) {
-  const totalConversoes = flows.reduce((acc, f) => acc + (f.total_conversoes || 0), 0);
   const totalExecAtivas = flows.reduce((acc, f) => acc + parseInt(f.execucoes_ativas || '0', 10), 0);
 
   const kpis = [
     { label: 'Fluxos Ativos', value: flowStats?.fluxos_ativos || 0, icon: Zap, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
     { label: 'Execuções Ativas', value: totalExecAtivas, icon: Play, color: 'text-blue-400', bg: 'bg-blue-400/10' },
-    { label: 'Emails Enviados', value: totalConversoes, icon: Send, color: 'text-violet-400', bg: 'bg-violet-400/10' },
+    { label: 'Emails Hoje', value: flowStats?.emails_hoje || 0, icon: Send, color: 'text-violet-400', bg: 'bg-violet-400/10' },
     { label: 'Leads Capturados', value: leadStats?.total_leads || 0, icon: UserPlus, color: 'text-pink-400', bg: 'bg-pink-400/10' },
     { label: 'Leads (7 dias)', value: leadStats?.leads_7d || 0, icon: TrendingUp, color: 'text-amber-400', bg: 'bg-amber-400/10' },
     { label: 'Taxa Conversão', value: `${leadStats?.taxa_conversao || 0}%`, icon: Target, color: 'text-cyan-400', bg: 'bg-cyan-400/10' },
@@ -454,7 +501,7 @@ function OverviewTab({ flowStats, flows, leadStats, leads, onFlowClick }: {
               <p className="text-sm font-medium text-bibelo-text mb-1 group-hover:text-bibelo-primary transition-colors">{f.nome}</p>
               <p className="text-xs text-bibelo-muted mb-3">{GATILHO_LABELS[f.gatilho]?.split(' ').slice(1).join(' ') || f.gatilho}</p>
               <div className="flex items-center gap-1">
-                {((() => { try { return typeof f.steps === 'string' ? JSON.parse(f.steps) : f.steps || []; } catch { return []; } })()).map((s: { tipo: string }, i: number) => (
+                {parseSteps(f.steps).map((s: { tipo: string }, i: number) => (
                   <span key={i} className="text-xs" title={s.tipo}>{STEP_ICONS[s.tipo] || '❓'}</span>
                 ))}
               </div>
@@ -482,21 +529,66 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
   onFlowClick: (id: string) => void;
   onRefresh: () => void;
 }) {
+  const [filter, setFilter] = useState<'todos' | 'ativos' | 'inativos'>('todos');
+  const [confirmToggle, setConfirmToggle] = useState<string | null>(null);
+  const [expandedExec, setExpandedExec] = useState<string | null>(null);
+  const [stepExecs, setStepExecs] = useState<StepExecution[]>([]);
+  const [loadingSteps, setLoadingSteps] = useState(false);
+
   const selected = flows.find((f) => f.id === selectedFlow);
+  const filtered = flows.filter(f =>
+    filter === 'todos' ? true : filter === 'ativos' ? f.ativo : !f.ativo
+  );
 
   const toggleFlow = async (flowId: string) => {
+    const flow = flows.find(f => f.id === flowId);
+    if (flow?.ativo && Number(flow.execucoes_ativas) > 0) {
+      setConfirmToggle(flowId);
+      return;
+    }
     try {
       await api.post(`/flows/${flowId}/toggle`);
       onRefresh();
-    } catch (err) { console.error('Erro ao alternar status do fluxo:', err); }
+    } catch { /* silencioso */ }
+  };
+
+  const confirmAndToggle = async () => {
+    if (!confirmToggle) return;
+    try {
+      await api.post(`/flows/${confirmToggle}/toggle`);
+      onRefresh();
+    } catch { /* silencioso */ }
+    setConfirmToggle(null);
+  };
+
+  const fetchStepDetail = async (flowId: string, execId: string) => {
+    if (expandedExec === execId) { setExpandedExec(null); return; }
+    setLoadingSteps(true);
+    setExpandedExec(execId);
+    try {
+      const { data } = await api.get(`/flows/${flowId}/executions/${execId}`);
+      setStepExecs(data.steps || []);
+    } catch { setStepExecs([]); }
+    finally { setLoadingSteps(false); }
   };
 
   return (
     <div className="grid lg:grid-cols-3 gap-6">
       {/* Lista de fluxos */}
       <div className="lg:col-span-1 space-y-2">
-        <h3 className="text-sm font-semibold text-bibelo-text mb-3">Todos os Fluxos</h3>
-        {flows.map((f) => (
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-bibelo-text">Fluxos ({filtered.length})</h3>
+          <select
+            value={filter}
+            onChange={e => setFilter(e.target.value as typeof filter)}
+            className="text-xs bg-bibelo-bg border border-bibelo-border rounded-lg px-2 py-1 text-bibelo-muted"
+          >
+            <option value="todos">Todos</option>
+            <option value="ativos">Ativos</option>
+            <option value="inativos">Inativos</option>
+          </select>
+        </div>
+        {filtered.map((f) => (
           <div
             key={f.id}
             className={`p-4 rounded-xl border transition-all cursor-pointer ${
@@ -509,7 +601,7 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
               <span className="text-xl">{GATILHO_LABELS[f.gatilho]?.split(' ')[0] || '⚡'}</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-bibelo-text truncate">{f.nome}</p>
-                <p className="text-xs text-bibelo-muted">{f.gatilho}</p>
+                <p className="text-xs text-bibelo-muted">{GATILHO_LABELS[f.gatilho]?.split(' ').slice(1).join(' ') || f.gatilho}</p>
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); toggleFlow(f.id); }}
@@ -523,8 +615,8 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
                 )}
               </button>
             </div>
-            <div className="flex items-center gap-2 mt-3">
-              {((() => { try { return typeof f.steps === 'string' ? JSON.parse(f.steps) : f.steps || []; } catch { return []; } })()).map((s: { tipo: string; template?: string; delay_horas: number }, i: number) => (
+            <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+              {parseSteps(f.steps).map((s, i) => (
                 <div key={i} className="flex items-center gap-1">
                   {i > 0 && <ChevronRight size={10} className="text-bibelo-muted/40" />}
                   <span className="text-xs px-2 py-0.5 bg-bibelo-bg rounded-md text-bibelo-muted" title={s.template || s.tipo}>
@@ -532,6 +624,12 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
                   </span>
                 </div>
               ))}
+            </div>
+            {/* Mini stats */}
+            <div className="flex items-center gap-3 mt-2 text-[10px] text-bibelo-muted">
+              <span className="text-emerald-400">{f.execucoes_concluidas || 0} ok</span>
+              <span className="text-blue-400">{f.execucoes_ativas || 0} ativas</span>
+              {Number(f.execucoes_erro) > 0 && <span className="text-red-400">{f.execucoes_erro} erros</span>}
             </div>
           </div>
         ))}
@@ -554,15 +652,15 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
 
             {/* Steps visuais */}
             <div className="flex items-center gap-2 mb-6 p-4 bg-bibelo-bg rounded-xl overflow-x-auto">
-              {((() => { try { return typeof selected.steps === 'string' ? JSON.parse(selected.steps) : selected.steps || []; } catch { return []; } })()).map((s: { tipo: string; template?: string; delay_horas: number }, i: number) => (
+              {parseSteps(selected.steps).map((s, i) => (
                 <div key={i} className="flex items-center gap-2">
                   {i > 0 && <div className="w-8 h-px bg-bibelo-border" />}
                   <div className="flex flex-col items-center gap-1 min-w-[80px]">
                     <div className="w-10 h-10 rounded-xl bg-bibelo-card border border-bibelo-border flex items-center justify-center text-lg">
                       {STEP_ICONS[s.tipo]}
                     </div>
-                    <span className="text-[10px] text-bibelo-muted text-center">{s.template || s.tipo}</span>
-                    {s.delay_horas > 0 && <span className="text-[10px] text-bibelo-muted/60">{s.delay_horas}h delay</span>}
+                    <span className="text-[10px] text-bibelo-muted text-center leading-tight">{s.template || s.tipo}</span>
+                    {s.delay_horas > 0 && <span className="text-[10px] text-bibelo-muted/60">{s.delay_horas}h</span>}
                   </div>
                 </div>
               ))}
@@ -589,25 +687,112 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
             {executions.length === 0 ? (
               <p className="text-sm text-bibelo-muted text-center py-6">Nenhuma execução ainda</p>
             ) : (
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                {executions.map((e) => (
-                  <div key={e.id} className="flex items-center gap-3 p-3 rounded-lg bg-bibelo-bg">
-                    <div className={`w-2 h-2 rounded-full shrink-0 ${
-                      e.status === 'ativo' ? 'bg-emerald-400 animate-pulse' :
-                      e.status === 'concluido' ? 'bg-blue-400' : 'bg-red-400'
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-bibelo-text truncate">{e.customer_nome || e.customer_email}</p>
-                      <p className="text-xs text-bibelo-muted">{e.customer_email}</p>
+              <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                {executions.map((e) => {
+                  const steps = parseSteps(selected.steps);
+                  const totalSteps = steps.length;
+                  const progressPct = totalSteps > 0 ? Math.round((e.step_atual / totalSteps) * 100) : 0;
+                  const isExpanded = expandedExec === e.id;
+
+                  return (
+                    <div key={e.id} className="rounded-lg bg-bibelo-bg overflow-hidden">
+                      <div
+                        className="flex items-center gap-3 p-3 cursor-pointer hover:bg-bibelo-bg/80 transition-colors"
+                        onClick={() => fetchStepDetail(selected.id, e.id)}
+                      >
+                        <div className={`w-2 h-2 rounded-full shrink-0 ${
+                          e.status === 'ativo' ? 'bg-emerald-400 animate-pulse' :
+                          e.status === 'concluido' ? 'bg-blue-400' : 'bg-red-400'
+                        }`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-bibelo-text truncate">{e.customer_nome || e.customer_email}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            {/* Barra de progresso */}
+                            <div className="flex-1 h-1.5 bg-bibelo-border rounded-full overflow-hidden max-w-[120px]">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  e.status === 'concluido' ? 'bg-blue-400' :
+                                  e.status === 'erro' ? 'bg-red-400' : 'bg-emerald-400'
+                                }`}
+                                style={{ width: e.status === 'concluido' ? '100%' : `${progressPct}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] text-bibelo-muted">
+                              {e.status === 'concluido' ? `${totalSteps}/${totalSteps}` : `${e.step_atual}/${totalSteps}`}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[e.status] || ''}`}>
+                            {e.status}
+                          </span>
+                          <p className="text-[10px] text-bibelo-muted mt-1">{timeAgo(e.iniciado_em)}</p>
+                        </div>
+                        <ChevronRight size={14} className={`text-bibelo-muted transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                      </div>
+
+                      {/* Detalhe expandido: timeline de steps */}
+                      {isExpanded && (
+                        <div className="px-4 pb-4 border-t border-bibelo-border/50">
+                          {loadingSteps ? (
+                            <div className="flex items-center gap-2 py-3 text-xs text-bibelo-muted">
+                              <div className="animate-spin rounded-full h-3 w-3 border-b border-bibelo-primary" /> Carregando steps...
+                            </div>
+                          ) : stepExecs.length === 0 ? (
+                            <p className="text-xs text-bibelo-muted py-3">Nenhum step executado ainda</p>
+                          ) : (
+                            <div className="pt-3 space-y-0">
+                              {stepExecs.map((step, i) => {
+                                const stepDef = steps[step.step_index];
+                                const colors = STEP_STATUS_COLORS[step.status] || STEP_STATUS_COLORS.pendente;
+                                const resultado = step.resultado || {};
+                                return (
+                                  <div key={step.id} className="flex gap-3">
+                                    {/* Linha vertical + dot */}
+                                    <div className="flex flex-col items-center">
+                                      <div className={`w-3 h-3 rounded-full shrink-0 mt-0.5 ${colors.dot}`} />
+                                      {i < stepExecs.length - 1 && <div className="w-px flex-1 bg-bibelo-border/50 my-1" />}
+                                    </div>
+                                    {/* Conteúdo do step */}
+                                    <div className="pb-3 min-w-0 flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm">{STEP_ICONS[step.tipo]}</span>
+                                        <span className="text-xs font-medium text-bibelo-text">
+                                          {stepDef?.template || step.tipo}
+                                        </span>
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${colors.text} bg-current/10`}>
+                                          {step.status}
+                                        </span>
+                                      </div>
+                                      {/* Detalhes do resultado */}
+                                      <div className="text-[10px] text-bibelo-muted mt-0.5 space-y-0.5">
+                                        {step.executado_em && (
+                                          <p>Executado: {new Date(step.executado_em).toLocaleString('pt-BR')}</p>
+                                        )}
+                                        {step.agendado_para && step.status === 'pendente' && (
+                                          <p>Agendado: {new Date(step.agendado_para).toLocaleString('pt-BR')}</p>
+                                        )}
+                                        {'message_id' in resultado && (
+                                          <p className="text-emerald-400/70">Email enviado (ID: {String(resultado.message_id).substring(0, 16)}...)</p>
+                                        )}
+                                        {'error' in resultado && (
+                                          <p className="text-red-400">{String(resultado.error)}</p>
+                                        )}
+                                        {'motivo' in resultado && (
+                                          <p className="text-amber-400">{String(resultado.motivo)}</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="text-right">
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[e.status] || ''}`}>
-                        {e.status}
-                      </span>
-                      <p className="text-[10px] text-bibelo-muted mt-1">{timeAgo(e.iniciado_em)}</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -618,6 +803,33 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
           </div>
         )}
       </div>
+
+      {/* Modal confirmação de desativação */}
+      {confirmToggle && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setConfirmToggle(null)}>
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-6 max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+            <AlertCircle size={32} className="text-amber-400 mx-auto mb-3" />
+            <h3 className="text-base font-semibold text-bibelo-text text-center mb-2">Desativar fluxo?</h3>
+            <p className="text-sm text-bibelo-muted text-center mb-5">
+              Este fluxo tem execuções em andamento. Desativá-lo não cancela as execuções ativas, mas impede que novas sejam criadas.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmToggle(null)}
+                className="flex-1 px-4 py-2 border border-bibelo-border rounded-lg text-sm text-bibelo-muted hover:bg-bibelo-bg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmAndToggle}
+                className="flex-1 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors"
+              >
+                Desativar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -888,11 +1100,12 @@ const EVENTO_CONFIG: Record<string, { icon: typeof Eye; label: string; color: st
   checkout_start: { icon: ShoppingCart, label: 'Iniciou checkout', color: 'text-orange-400', bg: 'bg-orange-400/10' },
 };
 
-function AtividadeTab({ events, stats, funnel, onRefresh }: {
+function AtividadeTab({ events, stats, funnel, onRefresh, lastUpdate }: {
   events: TrackingEvent[];
   stats: TrackingStats | null;
   funnel: { steps: Array<{ etapa: string; total: number; taxa: number }>; taxa_conversao_geral: number } | null;
   onRefresh: () => void;
+  lastUpdate: Date;
 }) {
   const kpis = [
     { label: 'Eventos (24h)', value: stats?.eventos_24h || 0, icon: Activity, color: 'text-blue-400', bg: 'bg-blue-400/10' },
@@ -966,8 +1179,14 @@ function AtividadeTab({ events, stats, funnel, onRefresh }: {
         {/* Timeline */}
         <div className="lg:col-span-2 bg-bibelo-card border border-bibelo-border rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-bibelo-text">Atividade em Tempo Real</h3>
-            <button onClick={onRefresh} className="text-xs text-bibelo-primary hover:text-bibelo-primary/80 font-medium">Atualizar</button>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-bibelo-text">Atividade em Tempo Real</h3>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" title="Atualizando a cada 10s" />
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] text-bibelo-muted">{lastUpdate.toLocaleTimeString('pt-BR')}</span>
+              <button onClick={onRefresh} className="text-xs text-bibelo-primary hover:text-bibelo-primary/80 font-medium">Atualizar</button>
+            </div>
           </div>
 
           {events.length === 0 ? (

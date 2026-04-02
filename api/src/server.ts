@@ -33,6 +33,7 @@ import { ordersRouter }          from "./routes/orders";
 import { imagesRouter, imagesPublicRouter } from "./routes/images";
 import { nuvemshopWebhookRouter } from "./integrations/nuvemshop/webhook";
 import { blingWebhookRouter }     from "./integrations/bling/webhook";
+import { resendWebhookRouter }   from "./integrations/resend/webhook";
 import { registerScheduledJobs, closeSyncQueue } from "./queues/sync.queue";
 import { registerFlowJobs, closeFlowQueue }      from "./queues/flow.queue";
 
@@ -101,6 +102,7 @@ app.use("/api/images", imagesPublicRouter); // serve imagens sem auth (antes do 
 app.use("/api/images", imagesRouter);
 app.use("/api/webhooks/nuvemshop", nuvemshopWebhookRouter);
 app.use("/api/webhooks/bling", blingWebhookRouter);
+app.use("/api/webhooks/resend", resendWebhookRouter);
 
 // ── 404
 app.use((_req, res) => {

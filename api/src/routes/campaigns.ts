@@ -4,7 +4,7 @@ import { query, queryOne, db } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { sendCampaignEmails, sendEmail, isResendConfigured, getResendStatus } from "../integrations/resend/email";
-import { gerarLinkDescadastro } from "./email";
+import { gerarLinkDescadastro, proxyImageUrl } from "./email";
 
 export const campaignsRouter = Router();
 campaignsRouter.use(authMiddleware);
@@ -223,7 +223,8 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
     const est = estoqueEfetivo(p);
     const estoqueBaixo = est !== null && est > 0 && est <= 3;
 
-    const imgSrc = p.ns_imagem || (p.imagem_url && p.imagem_url.startsWith("http") ? p.imagem_url : null);
+    const rawImgSrc = p.ns_imagem || (p.imagem_url && p.imagem_url.startsWith("http") ? p.imagem_url : null);
+    const imgSrc = rawImgSrc ? proxyImageUrl(rawImgSrc) : null;
     const link = p.ns_url || `${linkBase}/novidades/`;
 
     if (layout === "catalogo") {
@@ -287,7 +288,8 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
 
   // WhatsApp CTA
   const whatsappMsg = encodeURIComponent("Oi! Vi as novidades no email e quero saber mais!");
-  const whatsappUrl = `https://wa.me/5547933862514?text=${whatsappMsg}`;
+  const whatsappBaseUrl = process.env.WEBHOOK_BASE_URL || "https://webhook.papelariabibelo.com.br";
+  const whatsappUrl = `${whatsappBaseUrl}/api/email/wa?text=${whatsappMsg}`;
 
   // Textos adaptativos ao volume
   const saudacao = qtd === 1
@@ -694,7 +696,8 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
   // 3. Gera HTML
   const linkBase = "https://www.papelariabibelo.com.br";
   const whatsappMsg = encodeURIComponent("Oi! Vi as novidades no email e quero saber mais!");
-  const whatsappUrl = `https://wa.me/5547933862514?text=${whatsappMsg}`;
+  const whatsappBaseUrl = process.env.WEBHOOK_BASE_URL || "https://webhook.papelariabibelo.com.br";
+  const whatsappUrl = `${whatsappBaseUrl}/api/email/wa?text=${whatsappMsg}`;
   const catLabel = categorias.slice(0, 3).join(", ");
 
   function limparNome(n: string): string {
@@ -1036,7 +1039,8 @@ campaignsRouter.get("/gerar-reengajamento", async (req: Request, res: Response) 
   const linkBase = "https://www.papelariabibelo.com.br";
   const unsubLink = "{{unsub_link}}";
   const whatsappMsg = encodeURIComponent("Oi! Vi as novidades no email e quero saber mais!");
-  const whatsappUrl = `https://wa.me/5547933862514?text=${whatsappMsg}`;
+  const whatsappBaseUrl = process.env.WEBHOOK_BASE_URL || "https://webhook.papelariabibelo.com.br";
+  const whatsappUrl = `${whatsappBaseUrl}/api/email/wa?text=${whatsappMsg}`;
   const nome = customer.nome.split(" ")[0]; // Primeiro nome
 
   const itensCompradosTexto = compras.map((c) => limparNome(c.nome_item)).slice(0, 3).join(", ");

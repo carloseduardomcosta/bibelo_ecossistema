@@ -18,7 +18,8 @@ flowsRouter.get("/stats/overview", async (_req: Request, res: Response) => {
        (SELECT COUNT(*) FROM marketing.flow_executions WHERE status = 'erro' AND concluido_em > NOW() - INTERVAL '7 days') AS erros_7d,
        (SELECT COUNT(*) FROM marketing.pedidos_pendentes WHERE convertido = false AND notificado = false) AS carrinhos_pendentes,
        (SELECT COUNT(*) FROM marketing.pedidos_pendentes WHERE notificado = true AND convertido = false) AS carrinhos_notificados,
-       (SELECT COUNT(*) FROM marketing.pedidos_pendentes WHERE convertido = true) AS carrinhos_convertidos`
+       (SELECT COUNT(*) FROM marketing.pedidos_pendentes WHERE convertido = true) AS carrinhos_convertidos,
+       (SELECT COUNT(*) FROM marketing.flow_step_executions WHERE tipo = 'email' AND status = 'concluido' AND executado_em > NOW() - INTERVAL '24 hours') AS emails_hoje`
   );
 
   res.json(stats);
