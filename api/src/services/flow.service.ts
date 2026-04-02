@@ -15,6 +15,13 @@ interface FlowStep {
   tipo: "email" | "whatsapp" | "wait" | "condicao";
   template?: string;
   delay_horas: number;
+  // Campos de condição (só quando tipo === "condicao"):
+  condicao?: "email_aberto" | "email_clicado" | "comprou" | "visitou_site" | "viu_produto" | "abandonou_cart" | "score_minimo";
+  ref_step?: number;    // qual email step verificar (para email_aberto/email_clicado)
+  parametros?: Record<string, unknown>;
+  sim?: number;         // índice do step se TRUE (-1 = completar fluxo)
+  nao?: number;         // índice do step se FALSE (-1 = completar fluxo)
+  proximo?: number;     // override do próximo step para qualquer tipo (-1 = completar, undefined = +1)
 }
 
 interface Flow {
@@ -160,6 +167,109 @@ export async function triggerFlow(
   return executionIds;
 }
 
+// ── Avaliar condição comportamental ──────────────────────────────
+
+async function evaluateCondition(
+  condicao: string,
+  executionId: string,
+  customerId: string,
+  refStep?: number,
+  parametros?: Record<string, unknown>,
+): Promise<boolean> {
+  // Buscar timestamp de início do fluxo (janela temporal)
+  const exec = await queryOne<{ iniciado_em: string }>(
+    "SELECT iniciado_em FROM marketing.flow_executions WHERE id = $1",
+    [executionId],
+  );
+  const flowStart = exec?.iniciado_em || new Date().toISOString();
+
+  switch (condicao) {
+    case "email_aberto":
+    case "email_clicado": {
+      if (refStep === undefined) {
+        logger.warn("evaluateCondition: ref_step obrigatório para " + condicao, { executionId });
+        return false;
+      }
+      // Buscar messageId do email enviado no step referenciado
+      const stepExec = await queryOne<{ resultado: Record<string, unknown> }>(
+        `SELECT resultado FROM marketing.flow_step_executions
+         WHERE execution_id = $1 AND step_index = $2 AND tipo = 'email' AND status = 'concluido'`,
+        [executionId, refStep],
+      );
+      const messageId = stepExec?.resultado?.messageId as string | undefined;
+      if (!messageId) {
+        logger.warn("evaluateCondition: messageId não encontrado no step " + refStep, { executionId });
+        return false;
+      }
+      const tipoEvento = condicao === "email_aberto" ? "opened" : "clicked";
+      const event = await queryOne<{ id: string }>(
+        `SELECT id FROM marketing.email_events
+         WHERE message_id = $1 AND tipo = $2 LIMIT 1`,
+        [messageId, tipoEvento],
+      );
+      return !!event;
+    }
+
+    case "comprou": {
+      const order = await queryOne<{ total: string }>(
+        `SELECT (
+          (SELECT COUNT(*) FROM sync.nuvemshop_orders WHERE customer_id = $1 AND webhook_em > $2) +
+          (SELECT COUNT(*) FROM sync.bling_orders WHERE customer_id = $1 AND criado_bling > $2)
+        )::text AS total`,
+        [customerId, flowStart],
+      );
+      return parseInt(order?.total || "0", 10) > 0;
+    }
+
+    case "visitou_site": {
+      const visit = await queryOne<{ id: string }>(
+        `SELECT id FROM crm.tracking_events
+         WHERE customer_id = $1 AND evento IN ('page_view', 'product_view', 'add_to_cart', 'checkout_start')
+           AND criado_em > $2 LIMIT 1`,
+        [customerId, flowStart],
+      );
+      return !!visit;
+    }
+
+    case "viu_produto": {
+      const resourceId = parametros?.resource_id as string | undefined;
+      const conditions = [`customer_id = $1`, `evento = 'product_view'`, `criado_em > $2`];
+      const params: unknown[] = [customerId, flowStart];
+      if (resourceId) {
+        conditions.push(`resource_id = $3`);
+        params.push(resourceId);
+      }
+      const pv = await queryOne<{ id: string }>(
+        `SELECT id FROM crm.tracking_events WHERE ${conditions.join(" AND ")} LIMIT 1`,
+        params,
+      );
+      return !!pv;
+    }
+
+    case "abandonou_cart": {
+      const cart = await queryOne<{ id: string }>(
+        `SELECT id FROM marketing.pedidos_pendentes
+         WHERE customer_id = $1 AND convertido = false LIMIT 1`,
+        [customerId],
+      );
+      return !!cart;
+    }
+
+    case "score_minimo": {
+      const minimo = (parametros?.minimo as number) || 50;
+      const score = await queryOne<{ score: number }>(
+        `SELECT score FROM crm.customer_scores WHERE customer_id = $1 AND score >= $2`,
+        [customerId, minimo],
+      );
+      return !!score;
+    }
+
+    default:
+      logger.warn("evaluateCondition: condição desconhecida", { condicao, executionId });
+      return false;
+  }
+}
+
 // ── Executar um step específico ────────────────────────────────
 
 export async function executeStep(executionId: string): Promise<boolean> {
@@ -256,10 +366,39 @@ export async function executeStep(executionId: string): Promise<boolean> {
         resultado = { waited: true };
         break;
 
-      case "condicao":
-        // Placeholder para condições futuras
-        resultado = { evaluated: true, passed: true };
-        break;
+      case "condicao": {
+        const passed = await evaluateCondition(
+          currentStep.condicao || "",
+          executionId,
+          execution.customer_id,
+          currentStep.ref_step,
+          currentStep.parametros,
+        );
+        const targetIndex = passed ? (currentStep.sim ?? -1) : (currentStep.nao ?? -1);
+        const condResultado = {
+          evaluated: true,
+          passed,
+          condicao: currentStep.condicao,
+          ref_step: currentStep.ref_step,
+          targetIndex,
+        };
+
+        logger.info("Condição avaliada", {
+          executionId,
+          condicao: currentStep.condicao,
+          passou: passed,
+          proximoIndex: targetIndex,
+        });
+
+        // Marca step como concluído e avança com branching (early return)
+        await query(
+          `UPDATE marketing.flow_step_executions SET status = 'concluido', resultado = $3, executado_em = NOW()
+           WHERE execution_id = $1 AND step_index = $2`,
+          [executionId, execution.step_atual, JSON.stringify(condResultado)],
+        );
+        await advanceFlow(executionId, execution, steps, targetIndex);
+        return true;
+      }
 
       default:
         logger.warn("Tipo de step desconhecido", { tipo: currentStep.tipo });
@@ -325,11 +464,26 @@ export async function executeStep(executionId: string): Promise<boolean> {
 async function advanceFlow(
   executionId: string,
   execution: FlowExecution,
-  steps: FlowStep[]
+  steps: FlowStep[],
+  targetIndex?: number,
 ): Promise<void> {
-  const nextIndex = execution.step_atual + 1;
+  // Prioridade: targetIndex (branching) > proximo (goto) > +1 (linear)
+  const currentStep = steps[execution.step_atual];
+  const nextIndex = targetIndex !== undefined
+    ? targetIndex
+    : currentStep?.proximo !== undefined
+      ? currentStep.proximo
+      : execution.step_atual + 1;
 
-  if (nextIndex >= steps.length) {
+  // -1 = completar o fluxo (ex: comprou → para)
+  if (nextIndex === -1 || nextIndex >= steps.length) {
+    await completeExecution(executionId, execution.flow_id);
+    return;
+  }
+
+  // Proteção contra índice inválido
+  if (nextIndex < 0) {
+    logger.error("advanceFlow: índice inválido", { executionId, targetIndex: nextIndex });
     await completeExecution(executionId, execution.flow_id);
     return;
   }

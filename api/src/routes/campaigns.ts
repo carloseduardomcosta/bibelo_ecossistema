@@ -1210,6 +1210,96 @@ campaignsRouter.post("/test-email", async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /api/campaigns/email-events — eventos recentes de email (notificações) ──
+
+const emailEventsSchema = z.object({
+  hours: z.coerce.number().int().min(1).max(168).default(48),
+});
+
+campaignsRouter.get("/email-events", async (req: Request, res: Response) => {
+  const parse = emailEventsSchema.safeParse(req.query);
+  if (!parse.success) {
+    res.status(400).json({ error: "Parâmetros inválidos" });
+    return;
+  }
+
+  const { hours } = parse.data;
+
+  // Busca da tabela email_events (detalhada, com link) com fallback para campaign_sends
+  const events = await query<{
+    tipo: string;
+    email: string;
+    nome: string | null;
+    campaign_nome: string | null;
+    link: string | null;
+    timestamp: string;
+  }>(
+    `SELECT
+       CASE ee.tipo
+         WHEN 'opened' THEN 'aberto'
+         WHEN 'clicked' THEN 'clicado'
+         WHEN 'bounced' THEN 'bounce'
+         WHEN 'complained' THEN 'spam'
+         WHEN 'delivered' THEN 'entregue'
+       END AS tipo,
+       cu.email, cu.nome, ca.nome AS campaign_nome, ee.link, ee.criado_em AS timestamp
+     FROM marketing.email_events ee
+     JOIN crm.customers cu ON cu.id = ee.customer_id
+     LEFT JOIN marketing.campaigns ca ON ca.id = ee.campaign_id
+     WHERE ee.criado_em > NOW() - make_interval(hours => $1)
+       AND ee.tipo IN ('opened', 'clicked', 'bounced', 'complained')
+     ORDER BY ee.criado_em DESC
+     LIMIT 30`,
+    [hours],
+  );
+
+  // Se não há eventos na tabela nova, fallback para campaign_sends (dados antigos)
+  if (events.length === 0) {
+    const fallback = await query<{
+      tipo: string;
+      email: string;
+      nome: string | null;
+      campaign_nome: string | null;
+      link: string | null;
+      timestamp: string;
+    }>(
+      `SELECT * FROM (
+         SELECT 'aberto' AS tipo, cu.email, cu.nome, ca.nome AS campaign_nome, NULL::text AS link, cs.aberto_em AS timestamp
+         FROM marketing.campaign_sends cs
+         JOIN crm.customers cu ON cu.id = cs.customer_id
+         LEFT JOIN marketing.campaigns ca ON ca.id = cs.campaign_id
+         WHERE cs.aberto_em IS NOT NULL AND cs.aberto_em > NOW() - make_interval(hours => $1)
+         UNION ALL
+         SELECT 'clicado' AS tipo, cu.email, cu.nome, ca.nome AS campaign_nome, NULL::text AS link, cs.clicado_em AS timestamp
+         FROM marketing.campaign_sends cs
+         JOIN crm.customers cu ON cu.id = cs.customer_id
+         LEFT JOIN marketing.campaigns ca ON ca.id = cs.campaign_id
+         WHERE cs.clicado_em IS NOT NULL AND cs.clicado_em > NOW() - make_interval(hours => $1)
+       ) sub ORDER BY timestamp DESC LIMIT 30`,
+      [hours],
+    );
+
+    const resumoFb = {
+      abertos: fallback.filter((e) => e.tipo === "aberto").length,
+      clicados: fallback.filter((e) => e.tipo === "clicado").length,
+      bounces: 0,
+      spam: 0,
+    };
+
+    res.json({ events: fallback, resumo: resumoFb });
+    return;
+  }
+
+  const resumo = {
+    abertos: events.filter((e) => e.tipo === "aberto").length,
+    clicados: events.filter((e) => e.tipo === "clicado").length,
+    bounces: events.filter((e) => e.tipo === "bounce").length,
+    spam: events.filter((e) => e.tipo === "spam").length,
+  };
+
+  res.json({ events, resumo });
+});
+
 // ── GET /api/campaigns/:id — detalhes ───────────────────────────
 
 campaignsRouter.get("/:id", async (req: Request, res: Response) => {

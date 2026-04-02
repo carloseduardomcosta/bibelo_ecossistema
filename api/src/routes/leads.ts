@@ -6,6 +6,7 @@ import { logger } from "../utils/logger";
 import { upsertCustomer } from "../services/customer.service";
 import { triggerFlow } from "../services/flow.service";
 import { sendEmail } from "../integrations/resend/email";
+import { getNuvemShopToken, nsRequest } from "../integrations/nuvemshop/auth";
 import { authMiddleware } from "../middleware/auth";
 import rateLimit from "express-rate-limit";
 
@@ -15,6 +16,86 @@ function esc(s: string): string {
 }
 
 export const leadsRouter = Router();
+
+// ── NuvemShop: criar conta do cliente + cupom de frete ─────────
+
+async function criarContaNuvemShop(nome: string, email: string, telefone?: string): Promise<{ ns_customer_id: number | null }> {
+  try {
+    const token = await getNuvemShopToken();
+    if (!token) {
+      logger.warn("NuvemShop: token não disponível — conta não criada", { email });
+      return { ns_customer_id: null };
+    }
+
+    // Verifica se já existe na NuvemShop (API retorna 404 quando 0 resultados)
+    try {
+      const existing = await nsRequest<Array<{ id: number }>>("get", `customers?q=${encodeURIComponent(email)}`, token);
+      if (existing && existing.length > 0) {
+        logger.info("NuvemShop: cliente já existe", { email, ns_id: existing[0].id });
+        return { ns_customer_id: existing[0].id };
+      }
+    } catch (searchErr) {
+      // 404 = sem resultados, seguir para criar
+      const axErr = searchErr as { response?: { status?: number } };
+      if (axErr.response?.status !== 404) throw searchErr;
+    }
+
+    // Cria conta na NuvemShop
+    const nsCustomer = await nsRequest<{ id: number }>("post", "customers", token, {
+      name: nome,
+      email,
+      phone: telefone || "",
+      send_email_invite: true,
+    });
+
+    logger.info("NuvemShop: conta criada via popup", { email, ns_customer_id: nsCustomer.id });
+    return { ns_customer_id: nsCustomer.id };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("NuvemShop: erro ao criar conta", { email, error: msg });
+    return { ns_customer_id: null };
+  }
+}
+
+async function garantirCupomFrete(): Promise<string | null> {
+  try {
+    const token = await getNuvemShopToken();
+    if (!token) return null;
+
+    const cupomCode = "CLUBEBIBELO";
+
+    // Verifica se cupom já existe (API retorna 404 quando 0 resultados)
+    try {
+      const existing = await nsRequest<Array<{ id: number; code: string }>>("get", `coupons?q=${cupomCode}`, token);
+      if (existing && existing.some(c => c.code === cupomCode)) {
+        return cupomCode;
+      }
+    } catch (searchErr) {
+      const axErr = searchErr as { response?: { status?: number } };
+      if (axErr.response?.status !== 404) throw searchErr;
+    }
+
+    // Cria cupom de frete grátis
+    await nsRequest<{ id: number }>("post", "coupons", token, {
+      code: cupomCode,
+      type: "shipping",
+      min_price: 79,
+      first_consumer_purchase: true,
+      only_cheapest_shipping: true,
+      max_uses: 5000,
+      end_date: "2026-12-31",
+      valid: true,
+      combines_with_other_discounts: true,
+    });
+
+    logger.info("NuvemShop: cupom CLUBEBIBELO criado");
+    return cupomCode;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("NuvemShop: erro ao criar cupom frete", { error: msg });
+    return null;
+  }
+}
 
 // ── Rate limit agressivo para endpoints públicos ──────────────
 
@@ -47,7 +128,7 @@ function gerarLinkVerificacao(email: string): string {
 
 async function enviarEmailVerificacao(email: string, cupom: string | null, nome: string | null): Promise<void> {
   const link = gerarLinkVerificacao(email);
-  const descontoTexto = cupom === "BIBELO10" ? "10% OFF" : "7% OFF";
+  const descontoTexto = cupom === "CLUBEBIBELO" ? "frete grátis" : cupom === "BIBELO10" ? "10% OFF" : "7% OFF";
   const nomeDisplay = (nome || "Cliente").replace(/[<>"'&]/g, "");
 
   await sendEmail({
@@ -69,10 +150,10 @@ async function enviarEmailVerificacao(email: string, cupom: string | null, nome:
         Oi, <strong>${nomeDisplay}</strong>!
       </p>
       <p style="color:#555;font-size:15px;line-height:1.6;margin:0 0 24px;">
-        Confirme seu e-mail para receber seu cupom exclusivo de <strong style="color:#fe68c4;">${descontoTexto}</strong> na Papelaria Bibelô.
+        Confirme seu e-mail para ${cupom === "CLUBEBIBELO" ? "ativar seu <strong style=\"color:#fe68c4;\">frete grátis</strong> na 1ª compra acima de R$79" : `receber seu cupom exclusivo de <strong style="color:#fe68c4;">${descontoTexto}</strong>`} na Papelaria Bibelô.
       </p>
       <a href="${link}" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:16px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
-        Confirmar e-mail e ganhar cupom
+        ${cupom === "CLUBEBIBELO" ? "Confirmar e ativar frete grátis" : "Confirmar e-mail e ganhar cupom"}
       </a>
       <p style="color:#999;font-size:12px;margin:20px 0 0;">
         Se você não se cadastrou na Papelaria Bibelô, ignore este e-mail.
@@ -226,6 +307,20 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
   } catch (err) {
     logger.warn("Falha ao enviar verificação de lead", { email, error: String(err) });
   }
+
+  // ── NuvemShop: criar conta + garantir cupom (background, não bloqueia resposta) ──
+  criarContaNuvemShop(nome || email.split("@")[0], email, telefone || undefined)
+    .then(({ ns_customer_id }) => {
+      if (ns_customer_id) {
+        // Atualiza nuvemshop_id no CRM
+        query(
+          "UPDATE crm.customers SET nuvemshop_id = $2 WHERE id = $1 AND nuvemshop_id IS NULL",
+          [customer.id, String(ns_customer_id)]
+        ).catch(() => {});
+      }
+    })
+    .catch(() => {});
+  garantirCupomFrete().catch(() => {});
 
   logger.info("Lead capturado — aguardando verificação", { email, popup_id, cupom, customerId: customer.id });
   res.json({ ok: true, verificacao: "pendente", mensagem: "Verifique seu e-mail para receber o cupom!" });

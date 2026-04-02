@@ -81,16 +81,70 @@ function stripHtml(s: string): string {
   return s.replace(/<[^>]*>/g, "").trim();
 }
 
+// ── Schema de step (compartilhado) ──────────────────────────────
+
+const stepSchema = z.object({
+  tipo: z.enum(["email", "whatsapp", "wait", "condicao"]),
+  template: z.string().optional(),
+  delay_horas: z.number().min(0),
+  condicao: z.enum(["email_aberto", "email_clicado", "comprou", "visitou_site", "viu_produto", "abandonou_cart", "score_minimo"]).optional(),
+  ref_step: z.number().int().min(0).optional(),
+  parametros: z.record(z.unknown()).optional(),
+  sim: z.number().int().min(-1).optional(),
+  nao: z.number().int().min(-1).optional(),
+  proximo: z.number().int().min(-1).optional(),
+});
+
+type StepInput = z.infer<typeof stepSchema>;
+
+// ── Validação de integridade dos steps condicionais ─────────────
+
+function validateFlowSteps(steps: StepInput[]): string | null {
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    if (step.tipo === "condicao") {
+      if (!step.condicao) return `Step ${i}: condicao requer campo 'condicao'`;
+      if (step.sim === undefined || step.nao === undefined)
+        return `Step ${i}: condicao requer 'sim' e 'nao'`;
+      for (const target of [step.sim, step.nao]) {
+        if (target !== -1 && (target < 0 || target >= steps.length))
+          return `Step ${i}: índice ${target} fora dos limites (0-${steps.length - 1} ou -1)`;
+        if (target === i)
+          return `Step ${i}: condição não pode apontar para si mesma`;
+      }
+      if ((step.condicao === "email_aberto" || step.condicao === "email_clicado") && step.ref_step === undefined)
+        return `Step ${i}: ${step.condicao} requer ref_step`;
+      if (step.ref_step !== undefined) {
+        if (step.ref_step < 0 || step.ref_step >= steps.length)
+          return `Step ${i}: ref_step ${step.ref_step} fora dos limites`;
+        if (steps[step.ref_step].tipo !== "email")
+          return `Step ${i}: ref_step deve apontar para um step de email`;
+        if (step.ref_step >= i)
+          return `Step ${i}: ref_step deve apontar para step anterior`;
+      }
+    }
+    // Validar proximo (goto) em qualquer step
+    if (step.proximo !== undefined && step.proximo !== -1) {
+      if (step.proximo < 0 || step.proximo >= steps.length)
+        return `Step ${i}: proximo ${step.proximo} fora dos limites`;
+      if (step.proximo === i)
+        return `Step ${i}: proximo não pode apontar para si mesmo`;
+    }
+  }
+  return null;
+}
+
 const createSchema = z.object({
   nome: z.string().min(3).max(100).transform(stripHtml),
   descricao: z.string().optional().transform((v) => v ? stripHtml(v) : v),
-  gatilho: z.enum(["order.first", "order.paid", "order.abandoned", "customer.created", "customer.inactive"]),
+  gatilho: z.enum([
+    "order.first", "order.paid", "order.abandoned", "order.delivered",
+    "customer.created", "customer.inactive",
+    "lead.captured", "lead.cart_abandoned",
+    "product.interested",
+  ]),
   gatilho_config: z.record(z.unknown()).optional(),
-  steps: z.array(z.object({
-    tipo: z.enum(["email", "whatsapp", "wait", "condicao"]),
-    template: z.string().optional(),
-    delay_horas: z.number().min(0),
-  })).min(1),
+  steps: z.array(stepSchema).min(1),
   ativo: z.boolean().optional(),
 });
 
@@ -102,6 +156,13 @@ flowsRouter.post("/", async (req: Request, res: Response) => {
   }
 
   const { nome, descricao, gatilho, gatilho_config, steps, ativo } = parsed.data;
+
+  // Validar integridade dos steps condicionais
+  const stepError = validateFlowSteps(steps);
+  if (stepError) {
+    res.status(400).json({ error: stepError });
+    return;
+  }
 
   const flow = await queryOne<Record<string, unknown>>(
     `INSERT INTO marketing.flows (nome, descricao, gatilho, gatilho_config, steps, ativo)
@@ -119,11 +180,8 @@ const updateSchema = z.object({
   nome: z.string().min(3).max(100).transform(stripHtml).optional(),
   descricao: z.string().optional().transform((v) => v ? stripHtml(v) : v),
   gatilho_config: z.record(z.unknown()).optional(),
-  steps: z.array(z.object({
-    tipo: z.enum(["email", "whatsapp", "wait", "condicao"]),
-    template: z.string().optional(),
-    delay_horas: z.number().min(0),
-  })).min(1).optional(),
+  steps: z.array(stepSchema).min(1).optional(),
+  ativo: z.boolean().optional(),
 });
 
 flowsRouter.put("/:id", async (req: Request, res: Response) => {
@@ -131,6 +189,15 @@ flowsRouter.put("/:id", async (req: Request, res: Response) => {
   if (!parsed.success) {
     res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
     return;
+  }
+
+  // Validar steps condicionais se fornecidos
+  if (parsed.data.steps) {
+    const stepError = validateFlowSteps(parsed.data.steps);
+    if (stepError) {
+      res.status(400).json({ error: stepError });
+      return;
+    }
   }
 
   const existing = await queryOne<{ id: string }>(

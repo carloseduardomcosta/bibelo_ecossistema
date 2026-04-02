@@ -126,28 +126,36 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
     var card = document.createElement('div');
     card.style.cssText = 'background:#fff;border-radius:20px;max-width:420px;width:100%;overflow:hidden;box-shadow:0 20px 60px rgba(254,104,196,0.25);transform:translateY(20px);transition:transform 0.4s ease;font-family:Jost,Arial,sans-serif;';
 
+    var isClube = (config.desconto_texto || '').indexOf('FRETE') !== -1;
+    var btnText = isClube ? 'Quero fazer parte! \\uD83C\\uDF80' : 'Quero meu cupom! \\uD83C\\uDF89';
+    var headerBg = isClube ? 'background:linear-gradient(135deg,#ffe5ec,#fff7c1);' : 'background:#fff7c1;';
+    var badgeStyle = isClube
+      ? 'background:linear-gradient(135deg,#25D366,#128C7E);color:#fff;display:inline-block;padding:8px 20px;border-radius:50px;font-size:16px;font-weight:700;margin-bottom:12px;letter-spacing:0.5px;'
+      : 'background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:8px 20px;border-radius:50px;font-size:20px;font-weight:700;margin-bottom:12px;';
+
     card.innerHTML =
-      '<div style="background:#fff7c1;padding:28px 24px 20px;text-align:center;border-bottom:3px solid #fe68c4;position:relative;">' +
+      '<div style="' + headerBg + 'padding:28px 24px 20px;text-align:center;border-bottom:3px solid #fe68c4;position:relative;">' +
         '<button id="bibelo-popup-close" style="position:absolute;top:12px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:#999;line-height:1;">&times;</button>' +
-        '<div style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:8px 20px;border-radius:50px;font-size:20px;font-weight:700;margin-bottom:12px;">' + esc(config.desconto_texto || '7% OFF') + '</div>' +
-        '<h2 style="color:#333;margin:0 0 6px;font-size:20px;font-weight:700;">' + esc(config.titulo || 'Ganhe 7% na primeira compra!') + '</h2>' +
-        '<p style="color:#777;margin:0;font-size:14px;line-height:1.5;">' + esc(config.subtitulo || 'Cadastre seu e-mail e receba um cupom exclusivo.') + '</p>' +
+        '<div style="' + badgeStyle + '">' + esc(config.desconto_texto || 'FRETE GR\\u00C1TIS') + '</div>' +
+        '<h2 style="color:#333;margin:0 0 6px;font-size:20px;font-weight:700;">' + esc(config.titulo || 'Entre pro Clube Bibel\\u00F4!') + '</h2>' +
+        '<p style="color:#777;margin:0;font-size:14px;line-height:1.5;">' + esc(config.subtitulo || 'Frete gr\\u00E1tis na 1\\u00AA compra + novidades em primeira m\\u00E3o!') + '</p>' +
       '</div>' +
       '<div style="padding:24px;">' +
         '<form id="bibelo-popup-form">' +
-          (temNome ? '<input type="text" name="nome" placeholder="Seu nome" style="width:100%;padding:12px 16px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:10px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" />' : '') +
+          (temNome ? '<input type="text" name="nome" placeholder="Seu nome" required style="width:100%;padding:12px 16px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:10px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" />' : '') +
           '<input type="email" name="email" placeholder="Seu melhor e-mail" required style="width:100%;padding:12px 16px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:10px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" />' +
-          (temTelefone ? '<input type="tel" name="telefone" placeholder="WhatsApp (ex: 47 999999999)" style="width:100%;padding:12px 16px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:14px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" />' : '<div style="height:4px;"></div>') +
+          (temTelefone ? '<input type="tel" name="telefone" placeholder="WhatsApp (ex: 47 999999999)" required style="width:100%;padding:12px 16px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:14px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" />' : '<div style="height:4px;"></div>') +
           '<button type="submit" id="bibelo-popup-btn" style="width:100%;padding:14px;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;font-family:Jost,Arial,sans-serif;box-shadow:0 4px 15px rgba(254,104,196,0.3);transition:transform 0.2s,box-shadow 0.2s;" onmouseover="this.style.transform=\\'translateY(-1px)\\';this.style.boxShadow=\\'0 6px 20px rgba(254,104,196,0.4)\\'" onmouseout="this.style.transform=\\'none\\';this.style.boxShadow=\\'0 4px 15px rgba(254,104,196,0.3)\\'">' +
-            'Quero meu cupom! \\uD83C\\uDF89' +
+            btnText +
           '</button>' +
         '</form>' +
+        (isClube ? '<p style="text-align:center;margin:12px 0 0;font-size:11px;color:#bbb;">\\uD83C\\uDF81 Toda compra vai com mimo surpresa!</p>' : '') +
         '<div id="bibelo-popup-success" style="display:none;text-align:center;padding:10px 0;">' +
           '<p style="font-size:36px;margin:0 0 12px;" id="bibelo-popup-emoji">\\u2709\\uFE0F</p>' +
           '<p style="font-size:18px;font-weight:700;color:#333;margin:0 0 8px;" id="bibelo-popup-msg"></p>' +
           '<p style="font-size:13px;color:#999;margin:0;" id="bibelo-popup-submsg">Verifique tamb\\u00E9m a pasta de spam.</p>' +
         '</div>' +
-        '<p style="text-align:center;margin:14px 0 0;font-size:11px;color:#bbb;">Papelaria Bibelô · papelariabibelo.com.br</p>' +
+        '<p style="text-align:center;margin:14px 0 0;font-size:11px;color:#bbb;">Papelaria Bibel\\u00F4 \\u00B7 papelariabibelo.com.br</p>' +
       '</div>';
 
     overlay.appendChild(card);

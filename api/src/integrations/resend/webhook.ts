@@ -64,6 +64,44 @@ function verifySvixSignature(body: string, headers: Record<string, string | stri
   return false;
 }
 
+// ── Helper: registrar evento detalhado em marketing.email_events ──
+async function registrarEvento(
+  send: { id: string; campaign_id: string; customer_id: string },
+  messageId: string,
+  tipo: string,
+  link?: string,
+) {
+  await query(
+    `INSERT INTO marketing.email_events (campaign_send_id, campaign_id, customer_id, message_id, tipo, link)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [send.id, send.campaign_id, send.customer_id, messageId, tipo, link || null],
+  );
+}
+
+// ── Fallback: registrar evento para emails de fluxo (sem campanha) ──
+async function registrarEventoFluxo(
+  messageId: string,
+  tipo: string,
+  link?: string,
+): Promise<boolean> {
+  const flowStep = await queryOne<{ customer_id: string }>(
+    `SELECT fe.customer_id
+     FROM marketing.flow_step_executions fse
+     JOIN marketing.flow_executions fe ON fe.id = fse.execution_id
+     WHERE fse.resultado->>'messageId' = $1
+     LIMIT 1`,
+    [messageId],
+  );
+  if (!flowStep) return false;
+
+  await query(
+    `INSERT INTO marketing.email_events (customer_id, message_id, tipo, link)
+     VALUES ($1, $2, $3, $4)`,
+    [flowStep.customer_id, messageId, tipo, link || null],
+  );
+  return true;
+}
+
 // ── POST /api/webhooks/resend ─────────────────────────────────
 resendWebhookRouter.post("/", async (req: Request, res: Response) => {
   const rawBody = JSON.stringify(req.body);
@@ -94,17 +132,23 @@ resendWebhookRouter.post("/", async (req: Request, res: Response) => {
   try {
     switch (type) {
       case "email.opened": {
-        // Atualizar campaign_sends
-        const send = await queryOne<{ id: string; campaign_id: string }>(
-          `UPDATE marketing.campaign_sends
-           SET aberto_em = COALESCE(aberto_em, NOW())
-           WHERE message_id = $1 AND aberto_em IS NULL
-           RETURNING id, campaign_id`,
+        // Buscar send pelo message_id
+        const send = await queryOne<{ id: string; campaign_id: string; customer_id: string }>(
+          `SELECT id, campaign_id, customer_id FROM marketing.campaign_sends WHERE message_id = $1`,
           [emailId],
         );
 
         if (send) {
-          // Incrementar total_abertos da campanha
+          // Registrar evento detalhado (cada abertura)
+          await registrarEvento(send, emailId, "opened");
+
+          // Atualizar primeira abertura no resumo
+          await query(
+            `UPDATE marketing.campaign_sends SET aberto_em = COALESCE(aberto_em, NOW()) WHERE id = $1`,
+            [send.id],
+          );
+
+          // Recalcular total_abertos da campanha
           await query(
             `UPDATE marketing.campaigns
              SET total_abertos = (
@@ -118,27 +162,39 @@ resendWebhookRouter.post("/", async (req: Request, res: Response) => {
             emailId,
             campaignId: send.campaign_id,
           });
+        } else {
+          // Fallback: email de fluxo automático
+          const tracked = await registrarEventoFluxo(emailId, "opened");
+          if (tracked) logger.info("Resend webhook: flow email aberto", { emailId });
         }
         break;
       }
 
       case "email.clicked": {
-        // Atualizar campaign_sends
-        const send = await queryOne<{ id: string; campaign_id: string }>(
-          `UPDATE marketing.campaign_sends
-           SET clicado_em = COALESCE(clicado_em, NOW())
-           WHERE message_id = $1 AND clicado_em IS NULL
-           RETURNING id, campaign_id`,
+        const clickedLink = data.click?.link || null;
+
+        // Buscar send pelo message_id
+        const send = await queryOne<{ id: string; campaign_id: string; customer_id: string }>(
+          `SELECT id, campaign_id, customer_id FROM marketing.campaign_sends WHERE message_id = $1`,
           [emailId],
         );
 
         if (send) {
-          // Incrementar total_cliques da campanha
+          // Registrar evento detalhado com o link clicado
+          await registrarEvento(send, emailId, "clicked", clickedLink || undefined);
+
+          // Atualizar primeiro clique no resumo
+          await query(
+            `UPDATE marketing.campaign_sends SET clicado_em = COALESCE(clicado_em, NOW()) WHERE id = $1`,
+            [send.id],
+          );
+
+          // Recalcular total_cliques da campanha
           await query(
             `UPDATE marketing.campaigns
              SET total_cliques = (
-               SELECT COUNT(*) FROM marketing.campaign_sends
-               WHERE campaign_id = $1 AND clicado_em IS NOT NULL
+               SELECT COUNT(DISTINCT cs.id) FROM marketing.campaign_sends cs
+               WHERE cs.campaign_id = $1 AND cs.clicado_em IS NOT NULL
              )
              WHERE id = $1`,
             [send.campaign_id],
@@ -146,8 +202,12 @@ resendWebhookRouter.post("/", async (req: Request, res: Response) => {
           logger.info("Resend webhook: link clicado", {
             emailId,
             campaignId: send.campaign_id,
-            link: data.click?.link,
+            link: clickedLink,
           });
+        } else {
+          // Fallback: email de fluxo automático
+          const tracked = await registrarEventoFluxo(emailId, "clicked", clickedLink || undefined);
+          if (tracked) logger.info("Resend webhook: flow link clicado", { emailId, link: clickedLink });
         }
         break;
       }
@@ -163,25 +223,30 @@ resendWebhookRouter.post("/", async (req: Request, res: Response) => {
         );
 
         if (send) {
+          await registrarEvento(send, emailId, "bounced");
           logger.warn("Resend webhook: email bounce", {
             emailId,
             campaignId: send.campaign_id,
           });
+        } else {
+          const tracked = await registrarEventoFluxo(emailId, "bounced");
+          if (tracked) logger.warn("Resend webhook: flow email bounce", { emailId });
         }
         break;
       }
 
       case "email.complained": {
         // Spam complaint → opt-out automático (LGPD)
-        const send = await queryOne<{ id: string; customer_id: string }>(
+        const send = await queryOne<{ id: string; campaign_id: string; customer_id: string }>(
           `UPDATE marketing.campaign_sends
            SET status = 'spam'
            WHERE message_id = $1
-           RETURNING id, customer_id`,
+           RETURNING id, campaign_id, customer_id`,
           [emailId],
         );
 
         if (send) {
+          await registrarEvento(send, emailId, "complained");
           // Ativar opt-out para respeitar o complaint
           await query(
             `UPDATE crm.customers SET email_optout = true WHERE id = $1`,
@@ -191,18 +256,42 @@ resendWebhookRouter.post("/", async (req: Request, res: Response) => {
             emailId,
             customerId: send.customer_id,
           });
+        } else {
+          // Fluxo: spam complaint também ativa opt-out
+          const flowStep = await queryOne<{ customer_id: string }>(
+            `SELECT fe.customer_id
+             FROM marketing.flow_step_executions fse
+             JOIN marketing.flow_executions fe ON fe.id = fse.execution_id
+             WHERE fse.resultado->>'messageId' = $1 LIMIT 1`,
+            [emailId],
+          );
+          if (flowStep) {
+            await query(
+              `INSERT INTO marketing.email_events (customer_id, message_id, tipo) VALUES ($1, $2, 'complained')`,
+              [flowStep.customer_id, emailId],
+            );
+            await query(`UPDATE crm.customers SET email_optout = true WHERE id = $1`, [flowStep.customer_id]);
+            logger.warn("Resend webhook: flow spam complaint → opt-out ativado", { emailId, customerId: flowStep.customer_id });
+          }
         }
         break;
       }
 
       case "email.delivered": {
-        // Atualizar status para entregue
-        await query(
+        // Buscar send para registrar evento
+        const send = await queryOne<{ id: string; campaign_id: string; customer_id: string }>(
           `UPDATE marketing.campaign_sends
            SET status = 'entregue'
-           WHERE message_id = $1 AND status = 'enviado'`,
+           WHERE message_id = $1 AND status = 'enviado'
+           RETURNING id, campaign_id, customer_id`,
           [emailId],
         );
+
+        if (send) {
+          await registrarEvento(send, emailId, "delivered");
+        } else {
+          await registrarEventoFluxo(emailId, "delivered");
+        }
         break;
       }
 

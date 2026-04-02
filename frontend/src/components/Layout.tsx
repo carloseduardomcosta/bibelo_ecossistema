@@ -32,6 +32,9 @@ import {
   AlertTriangle,
   Clock,
   CheckCircle2,
+  MailOpen,
+  MousePointerClick,
+  MailX,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -196,19 +199,31 @@ interface LeadNotif {
   criado_em: string;
 }
 
+interface EmailEvent {
+  tipo: 'aberto' | 'clicado' | 'bounce' | 'spam';
+  email: string;
+  nome: string | null;
+  campaign_nome: string | null;
+  link: string | null;
+  timestamp: string;
+}
+
 function NotificationBell() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [alertas, setAlertas] = useState<Notificacao[]>([]);
   const [leads, setLeads] = useState<LeadNotif[]>([]);
+  const [emailEvents, setEmailEvents] = useState<EmailEvent[]>([]);
+  const [emailResumo, setEmailResumo] = useState({ abertos: 0, clicados: 0, bounces: 0, spam: 0 });
   const [resumo, setResumo] = useState({ atrasados: 0, vence_em_breve: 0, pagos: 0, pendentes: 0, total: 0 });
   const ref = useRef<HTMLDivElement>(null);
 
   const fetchAlertas = useCallback(async (signal?: AbortSignal) => {
     try {
-      const [finResp, leadsResp] = await Promise.all([
+      const [finResp, leadsResp, emailResp] = await Promise.all([
         api.get('/financeiro/despesas-fixas/alertas', { signal }),
         api.get('/leads?limit=5', { signal }),
+        api.get('/campaigns/email-events?hours=48', { signal }),
       ]);
       setAlertas(finResp.data.data.filter((d: Notificacao) => d.alerta !== 'pago'));
       setResumo(finResp.data.resumo);
@@ -218,6 +233,8 @@ function NotificationBell() {
         return ms < 72 * 3600 * 1000;
       });
       setLeads(recentes);
+      setEmailEvents(emailResp.data.events || []);
+      setEmailResumo(emailResp.data.resumo || { abertos: 0, clicados: 0, bounces: 0, spam: 0 });
     } catch (err) {
       if ((err as Error).name !== 'AbortError' && (err as Error).name !== 'CanceledError') {
         console.error('Erro ao buscar notificações:', err);
@@ -250,7 +267,7 @@ function NotificationBell() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const urgentes = resumo.atrasados + resumo.vence_em_breve + leads.length;
+  const urgentes = resumo.atrasados + resumo.vence_em_breve + leads.length + emailEvents.length;
 
   return (
     <div ref={ref} className="relative">
@@ -286,6 +303,11 @@ function NotificationBell() {
                   {resumo.vence_em_breve} em breve
                 </span>
               )}
+              {emailEvents.length > 0 && (
+                <span className="text-[10px] px-2 py-0.5 bg-blue-400/10 text-blue-400 rounded-full font-medium">
+                  {emailEvents.length} email{emailEvents.length > 1 ? 's' : ''}
+                </span>
+              )}
             </div>
           </div>
 
@@ -316,6 +338,56 @@ function NotificationBell() {
                       <span className="text-[10px] text-pink-400 font-medium">{timeAgo(l.criado_em)}</span>
                       {l.cupom && <p className="text-[10px] text-bibelo-muted">{l.cupom}</p>}
                     </div>
+                  </button>
+                ))}
+              </>
+            )}
+
+            {/* ── Eventos de email ── */}
+            {emailEvents.length > 0 && (
+              <>
+                <div className="px-4 py-2 bg-blue-400/5 border-b border-bibelo-border/50">
+                  <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">
+                    Interações de Email
+                    {emailResumo.abertos > 0 && <span className="ml-2 text-emerald-400">{emailResumo.abertos} aberto{emailResumo.abertos > 1 ? 's' : ''}</span>}
+                    {emailResumo.clicados > 0 && <span className="ml-2 text-blue-300">{emailResumo.clicados} clique{emailResumo.clicados > 1 ? 's' : ''}</span>}
+                    {emailResumo.bounces > 0 && <span className="ml-2 text-red-400">{emailResumo.bounces} bounce{emailResumo.bounces > 1 ? 's' : ''}</span>}
+                  </p>
+                </div>
+                {emailEvents.map((ev, i) => (
+                  <button
+                    key={`email-${i}`}
+                    onClick={() => { setOpen(false); navigate('/campanhas'); }}
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bibelo-border/30 transition-colors text-left border-b border-bibelo-border/50"
+                  >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                      ev.tipo === 'aberto' ? 'bg-emerald-400/20' :
+                      ev.tipo === 'clicado' ? 'bg-blue-400/20' :
+                      ev.tipo === 'bounce' ? 'bg-red-400/20' :
+                      'bg-red-400/20'
+                    }`}>
+                      {ev.tipo === 'aberto' && <MailOpen size={14} className="text-emerald-400" />}
+                      {ev.tipo === 'clicado' && <MousePointerClick size={14} className="text-blue-400" />}
+                      {ev.tipo === 'bounce' && <MailX size={14} className="text-red-400" />}
+                      {ev.tipo === 'spam' && <AlertTriangle size={14} className="text-red-400" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-bibelo-text truncate">
+                        {ev.nome || ev.email.split('@')[0]}
+                        <span className="font-normal text-bibelo-muted ml-1">
+                          {ev.tipo === 'aberto' && 'abriu'}
+                          {ev.tipo === 'clicado' && 'clicou'}
+                          {ev.tipo === 'bounce' && 'bounce'}
+                          {ev.tipo === 'spam' && 'spam'}
+                        </span>
+                      </p>
+                      <p className="text-xs text-bibelo-muted truncate">
+                        {ev.tipo === 'clicado' && ev.link
+                          ? ev.link.replace(/^https?:\/\//, '').split('?')[0]
+                          : ev.campaign_nome || ev.email}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-blue-400 font-medium shrink-0">{timeAgo(ev.timestamp)}</span>
                   </button>
                 ))}
               </>
@@ -356,11 +428,11 @@ function NotificationBell() {
               </>
             )}
 
-            {alertas.length === 0 && leads.length === 0 && (
+            {alertas.length === 0 && leads.length === 0 && emailEvents.length === 0 && (
               <div className="px-4 py-8 text-center">
                 <CheckCircle2 size={24} className="mx-auto mb-2 text-emerald-400" />
                 <p className="text-sm text-bibelo-muted">Tudo em dia!</p>
-                <p className="text-xs text-bibelo-muted/60 mt-1">Nenhum lead novo ou despesa pendente</p>
+                <p className="text-xs text-bibelo-muted/60 mt-1">Nenhum lead, email ou despesa pendente</p>
               </div>
             )}
           </div>
@@ -372,6 +444,14 @@ function NotificationBell() {
                 className="flex-1 text-center text-xs text-pink-400 hover:text-pink-300 font-medium transition-colors"
               >
                 Ver leads
+              </button>
+            )}
+            {emailEvents.length > 0 && (
+              <button
+                onClick={() => { setOpen(false); navigate('/campanhas'); }}
+                className="flex-1 text-center text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
+              >
+                Ver campanhas
               </button>
             )}
             <button

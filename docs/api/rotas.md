@@ -110,6 +110,7 @@ Referência completa de todos os endpoints.
 - `POST /api/campaigns/gerar-personalizada` — gera email HTML com categorias + produto_ids + público + max_por_categoria
 - `POST /api/campaigns/enviar-personalizada` — dispara campanha personalizada para clientes selecionados via Resend
 - `GET  /api/campaigns/gerar-reengajamento?customer_id=X` — gera email personalizado baseado no histórico de compra do cliente
+- `GET  /api/campaigns/email-events?hours=48` — retorna eventos recentes de email (opens, clicks, bounces) de campanhas e fluxos
 
 ### Busca Global
 - `GET  /api/search?q=texto` — busca em clientes, produtos, lançamentos e NFs

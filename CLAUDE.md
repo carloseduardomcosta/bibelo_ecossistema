@@ -74,7 +74,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 `customers`, `customer_scores`, `interactions`, `deals`, `segments`, `tracking_events`, `visitor_customers`
 
 ### marketing
-`templates`, `campaigns`, `campaign_sends`, `flows`, `flow_executions`, `flow_step_executions`, `pedidos_pendentes`, `leads`, `popup_config`
+`templates`, `campaigns`, `campaign_sends`, `flows`, `flow_executions`, `flow_step_executions`, `pedidos_pendentes`, `leads`, `popup_config`, `email_events`
 
 ### sync
 `bling_orders`, `bling_customers`, `nuvemshop_orders`, `sync_logs`, `sync_state`
@@ -97,7 +97,7 @@ Ficam em `/opt/bibelocrm/.env` — nunca commitar. Ver `.env.example` para todos
 
 Referência completa em **`docs/api/rotas.md`** (~120 endpoints).
 
-Resumo: auth (Google OAuth), customers CRUD + timeline + reativar-email, analytics, campaigns + templates + personalizada (wizard), sync (Bling/NuvemShop), products, financeiro (20+ endpoints), NF entrada, orders, search, tracking, leads, flows, links, briefing diário, webhooks, images (editor + envio Bling).
+Resumo: auth (Google OAuth), customers CRUD + timeline + reativar-email, analytics, campaigns + templates + personalizada (wizard) + email-events, sync (Bling/NuvemShop), products, financeiro (20+ endpoints), NF entrada, orders, search, tracking, leads, flows (condicionais com branching), links, briefing diário, webhooks, images (editor + envio Bling).
 
 Endpoints públicos (sem auth): `/health`, auth/google, tracking (event/identify/bibelo.js), leads (capture/confirm/popup.js/config/view), email/unsubscribe, links, webhooks, images/serve/:id.
 
@@ -144,6 +144,8 @@ Toda comunicação **DEVE ser em português brasileiro (pt-BR)**. Commits, mensa
 7. **Dados em HTML** — escapar nomes, emails, produtos do banco
 
 ### Regras de negócio (emails e fluxos)
+- Motor condicional: steps tipo "condicao" avaliam 7 tipos (email_aberto, email_clicado, comprou, visitou_site, viu_produto, abandonou_cart, score_minimo) e fazem branching (sim/nao → targetIndex)
+- 3 fluxos inteligentes com branching: carrinho abandonado (12 steps), nutrição de lead (12 steps), reativação (10 steps)
 - triggerFlow nunca re-executa (ignora se já existe execução)
 - Reativação só para quem tem pelo menos 1 pedido
 - Testes de email: SEMPRE em `carloseduardocostatj@gmail.com`
@@ -256,11 +258,14 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 
 ### Resend (e-mail)
 - Plano grátis: 3.000/mês. Remetente: `Papelaria Bibelô <marketing@papelariabibelo.com.br>`
-- 14 templates no banco
+- 20 templates no banco (14 originais + 6 novos: carrinho reenvio, cupom recuperação, FOMO VIP, convite VIP, cupom exclusivo, reativação cupom)
 - **Webhook**: `POST /api/webhooks/resend` — recebe open/click/delivered/bounced/complained
   - Signing secret: env `RESEND_WEBHOOK_SECRET` (Svix HMAC)
+  - Registra cada evento em `marketing.email_events` (migration 020)
+  - Rastreia emails de campanhas E de fluxos automáticos (fallback flow_step_executions)
   - Atualiza `campaign_sends.aberto_em/clicado_em` + totais da campanha
   - Spam complaint → opt-out automático (LGPD)
+  - Endpoint `GET /api/campaigns/email-events?hours=48` — interações recentes para NotificationBell
 - **Proxy de imagens**: `/api/email/img/:hash` — cacheia imagens NuvemShop pelo nosso domínio
 - **Redirect WhatsApp**: `/api/email/wa` — evita wa.me direto nos emails (spam filter)
 
@@ -352,7 +357,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 1 de Abril de 2026 — api.papelariabibelo.com.br ativo (DNS + SSL + Nginx), docs reorganizados em subpastas, Medusa.js v2 integrado*
+*Última atualização: 2 de Abril de 2026 — motor condicional de fluxos, tracking de email (email_events), 6 novos templates, 3 fluxos inteligentes com branching*
 
 ---
 
