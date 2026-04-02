@@ -192,6 +192,100 @@ async function processEstoque(data: Record<string, unknown>): Promise<void> {
   logger.info("Bling webhook: estoque atualizado", { blingProductId });
 }
 
+// ── Processar evento de produto → sync individual para Medusa ─
+
+async function processProduct(data: Record<string, unknown>, evento: string): Promise<void> {
+  const produto = (data.produto || data) as Record<string, unknown>;
+  if (!produto?.id) return;
+
+  const blingProductId = String(produto.id);
+
+  try {
+    // Buscar dados completos do produto no Bling (o webhook só traz o ID)
+    const token = await getValidToken();
+    const detail = await rateLimitedGet<{ data: Record<string, unknown> }>(
+      `${BLING_API}/produtos/${blingProductId}`,
+      token
+    );
+
+    if (!detail.data) return;
+    const prod = detail.data;
+
+    // Buscar mapa de categorias para resolver o nome
+    const categoriaObj = prod.categoria as { id?: number } | undefined;
+    let categoriaName: string | null = null;
+    let blingCategoryId: string | null = null;
+
+    if (categoriaObj?.id && categoriaObj.id > 0) {
+      blingCategoryId = String(categoriaObj.id);
+      // Buscar nome da categoria
+      const catRow = await queryOne<{ nome: string }>(
+        "SELECT nome FROM sync.bling_medusa_categories WHERE bling_category_id = $1",
+        [blingCategoryId]
+      );
+      categoriaName = catRow?.nome || null;
+    }
+
+    // Extrair imagens do detalhe (inclui midia.imagens completo!)
+    const midia = prod.midia as Record<string, unknown> | undefined;
+    const imagensInternas = (midia?.imagens as Record<string, unknown>)?.internas as Array<Record<string, unknown>> | undefined;
+    const imagensExternas = (midia?.imagens as Record<string, unknown>)?.externas as Array<Record<string, unknown>> | undefined;
+    let imagens = [
+      ...(imagensInternas || []).map((img, i) => ({ url: img.link || img.linkMiniatura, ordem: i })),
+      ...(imagensExternas || []).map((img, i) => ({ url: img.link, ordem: 100 + i })),
+    ].filter((img) => img.url);
+
+    if (imagens.length === 0 && prod.imagemURL) {
+      imagens = [{ url: prod.imagemURL as string, ordem: 0 }];
+    }
+
+    const isDeleted = evento.includes("deleted");
+    const isActive = !isDeleted && (prod.situacao === "A" || prod.situacao === "Ativo");
+
+    // Upsert no banco local
+    await query(
+      `INSERT INTO sync.bling_products
+       (bling_id, nome, sku, preco_custo, preco_venda, categoria, bling_category_id, imagens, ativo, tipo, unidade, peso_bruto, gtin, dados_raw, sincronizado_em)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+       ON CONFLICT (bling_id) DO UPDATE SET
+         nome = $2, sku = $3, preco_custo = $4, preco_venda = $5, categoria = $6,
+         bling_category_id = $7, imagens = $8, ativo = $9, tipo = $10, unidade = $11,
+         peso_bruto = $12, gtin = $13, dados_raw = $14, sincronizado_em = NOW()`,
+      [
+        blingProductId,
+        prod.nome || "Sem nome",
+        prod.codigo || null,
+        prod.precoCusto || 0,
+        prod.preco || 0,
+        categoriaName,
+        blingCategoryId,
+        JSON.stringify(imagens),
+        isActive,
+        prod.tipo || "P",
+        prod.unidade || "UN",
+        prod.pesoBruto || null,
+        prod.gtin || null,
+        JSON.stringify(prod),
+      ]
+    );
+
+    // Disparar sync individual para o Medusa (async, não bloqueia o webhook)
+    setImmediate(async () => {
+      try {
+        const { syncBlingToMedusa } = await import("../medusa/sync");
+        await syncBlingToMedusa();
+        logger.info("Bling webhook: produto sincronizado com Medusa", { blingProductId });
+      } catch (err: any) {
+        logger.error(`Bling webhook: falha ao sincronizar Medusa: ${err.message}`);
+      }
+    });
+
+    logger.info(`Bling webhook: produto ${evento}`, { blingProductId, nome: prod.nome });
+  } catch (err: any) {
+    logger.error(`Bling webhook: erro ao processar produto ${blingProductId}: ${err.message}`);
+  }
+}
+
 // ── Rota principal do webhook ────────────────────────────────
 
 blingWebhookRouter.post("/", blingWebhookAuth, async (req: Request, res: Response) => {
@@ -234,6 +328,8 @@ blingWebhookRouter.post("/", blingWebhookAuth, async (req: Request, res: Respons
       await processPedido(body.data || body, evento);
     } else if (ev.startsWith("stock") || ev.startsWith("estoque")) {
       await processEstoque(body.data || body);
+    } else if (ev.startsWith("product") || ev.startsWith("produto")) {
+      await processProduct(body.data || body, evento);
     } else {
       logger.info("Bling webhook: evento não mapeado", { evento, body: JSON.stringify(body).slice(0, 500) });
     }

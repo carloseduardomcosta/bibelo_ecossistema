@@ -313,10 +313,10 @@ export async function syncProductCategories(token: string, categoryMap: Map<numb
 
       const blingIds = data.data.map((p) => String(p.id));
       if (blingIds.length > 0) {
-        const placeholders = blingIds.map((_, i) => `$${i + 2}`).join(", ");
+        const placeholders = blingIds.map((_, i) => `$${i + 3}`).join(", ");
         await query(
-          `UPDATE sync.bling_products SET categoria = $1 WHERE bling_id IN (${placeholders})`,
-          [catName, ...blingIds]
+          `UPDATE sync.bling_products SET categoria = $1, bling_category_id = $2 WHERE bling_id IN (${placeholders})`,
+          [catName, String(catId), ...blingIds]
         );
         updated += blingIds.length;
       }
@@ -351,22 +351,32 @@ export async function syncProducts(): Promise<number> {
         const categoriaObj = prod.categoria as { id?: number } | undefined;
         const categoriaName = categoriaObj?.id ? categoryMap.get(categoriaObj.id) || null : null;
 
+        // O listing do Bling retorna imagemURL (primeira imagem) mas NÃO retorna midia.imagens
+        // Para imagens completas, seria necessário GET /produtos/{id} (detalhe) — muito custoso em batch
+        // Usamos imagemURL do listing + midia se disponível (ex: via webhook/detalhe)
         const midia = prod.midia as Record<string, unknown> | undefined;
         const imagensInternas = (midia?.imagens as Record<string, unknown>)?.internas as Array<Record<string, unknown>> | undefined;
         const imagensExternas = (midia?.imagens as Record<string, unknown>)?.externas as Array<Record<string, unknown>> | undefined;
-        const imagens = [
+        let imagens = [
           ...(imagensInternas || []).map((img, i) => ({ url: img.link || img.linkMiniatura, ordem: i })),
           ...(imagensExternas || []).map((img, i) => ({ url: img.link, ordem: 100 + i })),
         ].filter((img) => img.url);
 
+        // Se não tem imagens do midia, usar imagemURL do listing (sempre disponível)
+        if (imagens.length === 0 && prod.imagemURL) {
+          imagens = [{ url: prod.imagemURL as string, ordem: 0 }];
+        }
+
+        const blingCategoryId = categoriaObj?.id && categoriaObj.id > 0 ? String(categoriaObj.id) : null;
+
         await query(
           `INSERT INTO sync.bling_products
-           (bling_id, nome, sku, preco_custo, preco_venda, categoria, imagens, ativo, tipo, unidade, peso_bruto, gtin, dados_raw, sincronizado_em)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+           (bling_id, nome, sku, preco_custo, preco_venda, categoria, bling_category_id, imagens, ativo, tipo, unidade, peso_bruto, gtin, dados_raw, sincronizado_em)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
            ON CONFLICT (bling_id) DO UPDATE SET
              nome = $2, sku = $3, preco_custo = $4, preco_venda = $5, categoria = $6,
-             imagens = $7, ativo = $8, tipo = $9, unidade = $10, peso_bruto = $11,
-             gtin = $12, dados_raw = $13, sincronizado_em = NOW()`,
+             bling_category_id = $7, imagens = $8, ativo = $9, tipo = $10, unidade = $11,
+             peso_bruto = $12, gtin = $13, dados_raw = $14, sincronizado_em = NOW()`,
           [
             String(prod.id),
             prod.nome || "Sem nome",
@@ -374,6 +384,7 @@ export async function syncProducts(): Promise<number> {
             prod.precoCusto || 0,
             prod.preco || 0,
             categoriaName,
+            blingCategoryId,
             JSON.stringify(imagens),
             prod.situacao === "A" || prod.situacao === "Ativo",
             prod.tipo || "P",
