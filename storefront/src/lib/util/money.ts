@@ -15,12 +15,17 @@ export const convertToLocale = ({
   maximumFractionDigits,
   locale = "pt-BR",
 }: ConvertToLocaleParams) => {
+  // Medusa v2 retorna valores em centavos (menor unidade da moeda)
+  // Intl.NumberFormat espera valor em unidade principal (reais, não centavos)
+  const divisor = currency_code?.toUpperCase() === "JPY" ? 1 : 100
+  const amountInMajorUnits = amount / divisor
+
   return currency_code && !isEmpty(currency_code)
     ? new Intl.NumberFormat(locale, {
         style: "currency",
         currency: currency_code,
         minimumFractionDigits,
         maximumFractionDigits,
-      }).format(amount)
-    : amount.toString()
+      }).format(amountInMajorUnits)
+    : amountInMajorUnits.toString()
 }

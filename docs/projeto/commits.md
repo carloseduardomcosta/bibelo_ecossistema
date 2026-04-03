@@ -359,3 +359,8 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - 378 produtos atualizados com estoque correto (183 com saldo, 195 zerados)
   - Simplifica existingInventory map (não precisa mais de levelId)
   - Remove silenciamento de erros (logava apenas os 5 primeiros)
+- fix: preços incorretos no storefront — convertToLocale dividia centavos como reais
+  - Medusa v2 retorna valores em centavos (5990 = R$ 59,90)
+  - Intl.NumberFormat espera valor em unidade principal
+  - Fix: dividir por 100 antes de formatar (exceto JPY)
+  - Afeta: preços de produtos, carrinho, checkout, pedidos, frete
