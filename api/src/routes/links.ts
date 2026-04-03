@@ -445,13 +445,42 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
       box-shadow: 0 6px 18px rgba(225, 48, 108, 0.15);
     }
 
-    .link-btn.vip {
-      border-color: #f3d0e8;
-      background: linear-gradient(135deg, #fff0f8, #fff);
+    .link-btn.vip-destaque {
+      border: 2px solid var(--pink-main);
+      background: linear-gradient(135deg, #fff0f8 0%, #ffe5ec 50%, #fff7c1 100%);
+      position: relative;
+      overflow: hidden;
+      animation: vip-pulse 2.5s ease-in-out infinite;
+      box-shadow: 0 4px 20px rgba(244, 63, 142, 0.2);
     }
-    .link-btn.vip:hover {
-      border-color: var(--pink-main);
-      background: linear-gradient(135deg, #ffe0f0, #fff5fb);
+    .link-btn.vip-destaque:hover {
+      border-color: var(--pink-dark);
+      background: linear-gradient(135deg, #ffe0f0, #ffd6e7, #fff3c4);
+      box-shadow: 0 8px 28px rgba(244, 63, 142, 0.3);
+      transform: translateY(-3px);
+    }
+    .link-btn.vip-destaque .btn-label {
+      font-weight: 900;
+      color: var(--pink-dark, #c2185b);
+    }
+    .link-btn.vip-destaque .btn-arrow {
+      color: var(--pink-main);
+    }
+    .vip-sparkle {
+      position: absolute;
+      top: -2px;
+      right: 8px;
+      font-size: 14px;
+      animation: sparkle-float 2s ease-in-out infinite;
+      pointer-events: none;
+    }
+    @keyframes vip-pulse {
+      0%, 100% { box-shadow: 0 4px 20px rgba(244, 63, 142, 0.2); }
+      50% { box-shadow: 0 4px 25px rgba(244, 63, 142, 0.35); }
+    }
+    @keyframes sparkle-float {
+      0%, 100% { transform: translateY(0) rotate(0deg); opacity: 1; }
+      50% { transform: translateY(-4px) rotate(10deg); opacity: 0.7; }
     }
 
     /* ===== FOOTER ===== */
@@ -532,15 +561,16 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
     <!-- LINKS -->
     <div class="body">
 
-      <a href="/api/links/go/whatsapp" target="_blank" rel="noopener" class="link-btn whatsapp">
-        <span class="btn-icon">💬</span>
-        <span class="btn-label">Fale conosco no WhatsApp</span>
+      <a href="/api/links/go/grupo-vip" target="_blank" rel="noopener" class="link-btn vip-destaque">
+        <span class="vip-sparkle">✨</span>
+        <span class="btn-icon">💖</span>
+        <span class="btn-label">Entrar no Clube VIP</span>
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </a>
 
-      <a href="/api/links/go/grupo-vip" target="_blank" rel="noopener" class="link-btn vip">
-        <span class="btn-icon">💖</span>
-        <span class="btn-label">Entrar no Clube VIP</span>
+      <a href="/api/links/go/whatsapp" target="_blank" rel="noopener" class="link-btn whatsapp">
+        <span class="btn-icon">💬</span>
+        <span class="btn-label">Fale conosco no WhatsApp</span>
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </a>
 
