@@ -145,6 +145,7 @@ Referência completa de todos os endpoints.
 ### Fluxos Automáticos (protegidos)
 - `GET  /api/flows` — listar fluxos com contagem de execuções
 - `GET  /api/flows/stats/overview` — KPIs: fluxos ativos, execuções, carrinhos
+- `GET  /api/flows/stats/reminders` — stats do lembrete de verificação: leads pendentes, lembretes enviados, lista de leads não verificados
 - `GET  /api/flows/:id` — detalhes + 50 execuções recentes
 - `POST /api/flows` — criar fluxo (gatilho, steps, ativo)
 - `PUT  /api/flows/:id` — atualizar fluxo

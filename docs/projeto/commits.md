@@ -346,3 +346,16 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Marketing.tsx: helpers extractPagePath, slugToName, trafficSource, pageLabel
   - Exibição enriquecida de eventos de tracking no dashboard
   - Novos testes condicionais de fluxo
+- feat: lembrete automático de verificação de leads + card no dashboard
+  - Cron job `flow-check-unverified-leads` a cada 2h via BullMQ
+  - `checkUnverifiedLeads()` em flow.service.ts — máx 2 lembretes (3h + 24h)
+  - Migration 022: `lembretes_enviados` e `ultimo_lembrete_em` em marketing.leads
+  - Export `gerarLinkVerificacao()` de leads.ts para reuso
+  - Endpoint `GET /api/flows/stats/reminders` — stats + lista de leads pendentes
+  - Card "Lembrete de verificação" na aba Fluxos (Marketing.tsx) com timeline visual, stats e preview do email
+  - Protocolo de testes com clientes reais adicionado ao CLAUDE.md (obrigatório perguntar antes)
+- fix: corrige sync de estoque Bling→Medusa — URL usava levelId em vez de stockLocationId
+  - Medusa v2 API: POST /inventory-items/{id}/location-levels/{stockLocationId} (não levelId)
+  - 378 produtos atualizados com estoque correto (183 com saldo, 195 zerados)
+  - Simplifica existingInventory map (não precisa mais de levelId)
+  - Remove silenciamento de erros (logava apenas os 5 primeiros)

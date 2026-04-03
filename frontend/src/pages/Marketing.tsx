@@ -1136,7 +1136,7 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
         <p style="margin:0 0 6px;font-size:13px;color:#555;">&#x1F381; Mimo surpresa em toda compra</p>
         <p style="margin:0;font-size:13px;color:#555;">&#x2728; Novidades antes de todo mundo</p>
       </div>
-      <a href="#" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:16px 44px;border-radius:50px;text-decoration:none;font-weight:600;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
+      <a href="javascript:void(0)" onclick="return false" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:16px 44px;border-radius:50px;text-decoration:none;font-weight:600;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);cursor:default;">
         Confirmar agora &#x2192;
       </a>
       <p style="color:#aaa;font-size:12px;margin:20px 0 0;">
@@ -1154,6 +1154,9 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
                     style={{ height: '520px' }}
                     title="Preview email lembrete"
                   />
+                  <p className="text-[10px] text-bibelo-muted mt-2 text-center italic">
+                    Preview ilustrativo — o email real contém link HMAC personalizado para cada lead
+                  </p>
                 </div>
               )}
             </div>

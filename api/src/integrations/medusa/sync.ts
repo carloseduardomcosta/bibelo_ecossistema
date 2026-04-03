@@ -611,23 +611,18 @@ export async function syncInventoryToMedusa(
     if (offset >= data.count) break
   }
 
-  // Buscar inventory items existentes
-  const existingInventory = new Map<string, { itemId: string; levelId: string | null }>()
+  // Buscar inventory items existentes (SKU → itemId)
+  const existingInventory = new Map<string, { itemId: string }>()
   let invOffset = 0
   while (true) {
     const data = await medusaRequest<{
-      inventory_items: Array<{
-        id: string
-        sku: string
-        location_levels?: Array<{ id: string; location_id: string; stocked_quantity: number }>
-      }>
+      inventory_items: Array<{ id: string; sku: string }>
       count: number
-    }>("GET", `/admin/inventory-items?limit=100&offset=${invOffset}&fields=id,sku,*location_levels`)
+    }>("GET", `/admin/inventory-items?limit=100&offset=${invOffset}&fields=id,sku`)
 
     for (const item of data.inventory_items) {
       if (item.sku) {
-        const level = item.location_levels?.find((l) => l.location_id === stockLocationId)
-        existingInventory.set(item.sku, { itemId: item.id, levelId: level?.id || null })
+        existingInventory.set(item.sku, { itemId: item.id })
       }
     }
     invOffset += 100
@@ -669,44 +664,25 @@ export async function syncInventoryToMedusa(
           { sku, requires_shipping: true }
         )
 
-        // Criar level no stock location
+        // Criar level no stock location (Medusa v2: POST com location_id no body)
         await medusaRequest(
           "POST",
           `/admin/inventory-items/${itemData.inventory_item.id}/location-levels`,
           { location_id: stockLocationId, stocked_quantity: stock }
         )
 
-        // Vincular à variante
-        await medusaRequest(
-          "POST",
-          `/admin/inventory-items/${itemData.inventory_item.id}/location-levels/batch`,
-          // Alternativa: vincular via variant
-        ).catch(() => {}) // ignore se batch não disponível
-
         created++
       } else {
-        // Atualizar quantidade no level existente
-        if (existingInv.levelId) {
-          await medusaRequest(
-            "POST",
-            `/admin/inventory-items/${existingInv.itemId}/location-levels/${existingInv.levelId}`,
-            { stocked_quantity: stock }
-          )
-        } else {
-          // Criar level (item existe mas sem level neste location)
-          await medusaRequest(
-            "POST",
-            `/admin/inventory-items/${existingInv.itemId}/location-levels`,
-            { location_id: stockLocationId, stocked_quantity: stock }
-          )
-        }
+        // Atualizar quantidade — Medusa v2 usa stockLocationId na URL (não levelId)
+        await medusaRequest(
+          "POST",
+          `/admin/inventory-items/${existingInv.itemId}/location-levels/${stockLocationId}`,
+          { stocked_quantity: stock }
+        )
         updated++
       }
     } catch (err: any) {
-      // Silenciar erros individuais — loggar apenas se muitos
-      if (created + updated < 5) {
-        logger.error(`Inventory sync erro bling_id=${blingId}: ${err.message}`)
-      }
+      logger.error(`Inventory sync erro bling_id=${blingId}: ${err.message}`)
     }
   }
 
