@@ -593,8 +593,8 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
     <!-- FOOTER -->
     <div class="footer">
       <p class="footer-info">
-        Papelaria Bibelô &nbsp;&middot;&nbsp;
         <a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener" class="footer-link">papelariabibelo.com.br</a>
+        <br>&copy; Papelaria Bibelô &mdash; CNPJ 63.961.764/0001-63 &mdash; 2026. Todos os direitos reservados.
       </p>
     </div>
 
@@ -728,7 +728,7 @@ linksRouter.get("/formulario", (_req: Request, res: Response) => {
     </form>
 
     <div class="footer">
-      <p>Papelaria Bibelô &middot; <a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener">papelariabibelo.com.br</a></p>
+      <p><a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener">papelariabibelo.com.br</a><br>&copy; Papelaria Bibelô &mdash; 63.961.764/0001-63 &mdash; 2026. Todos os direitos reservados.</p>
     </div>
   </div>
 
@@ -970,7 +970,7 @@ linksRouter.get("/grupo-vip", (_req: Request, res: Response) => {
     </form>
 
     <div class="footer">
-      <p>Papelaria Bibelô &middot; <a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener">papelariabibelo.com.br</a></p>
+      <p><a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener">papelariabibelo.com.br</a><br>&copy; Papelaria Bibelô &mdash; 63.961.764/0001-63 &mdash; 2026. Todos os direitos reservados.</p>
     </div>
   </div>
 
@@ -1291,7 +1291,7 @@ linksRouter.get("/parcerias", (_req: Request, res: Response) => {
     </form>
 
     <div class="footer">
-      <p>Papelaria Bibelô &middot; <a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener">papelariabibelo.com.br</a></p>
+      <p><a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener">papelariabibelo.com.br</a><br>&copy; Papelaria Bibelô &mdash; 63.961.764/0001-63 &mdash; 2026. Todos os direitos reservados.</p>
     </div>
   </div>
 
