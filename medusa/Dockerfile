@@ -10,7 +10,8 @@ RUN DATABASE_URL=postgres://x:x@localhost/x \
 
 FROM node:20-alpine AS production
 WORKDIR /app
-RUN addgroup -S medusa && adduser -S medusa -G medusa
+RUN apk add --no-cache tzdata && \
+    addgroup -S medusa && adduser -S medusa -G medusa
 COPY --from=builder --chown=medusa:medusa /app/.medusa ./.medusa
 COPY --from=builder --chown=medusa:medusa /app/node_modules ./node_modules
 COPY --from=builder --chown=medusa:medusa /app/package.json ./

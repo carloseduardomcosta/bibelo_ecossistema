@@ -8,6 +8,7 @@ RUN npm run build
 
 # ── Production stage
 FROM node:20-alpine AS production
+RUN apk add --no-cache tzdata
 RUN addgroup -S bibelo && adduser -S bibelo -G bibelo
 WORKDIR /app
 COPY package*.json ./

@@ -38,7 +38,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8000
 
-RUN addgroup --system --gid 1001 nodejs && \
+RUN apk add --no-cache tzdata && \
+    addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
