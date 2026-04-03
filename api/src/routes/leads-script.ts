@@ -21,6 +21,7 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
 
   // ── Config ──────────────────────────────────────────────
   var API = '${apiBase}/api/leads';
+  var TRACK_API = '${apiBase}/api/tracking';
   var COOKIE_NAME = '_bibelo_popup';
   var COOKIE_DAYS = 30;
   var VID_COOKIE = '_bibelo_vid';
@@ -48,11 +49,36 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  function trackEvent(visitorId, evento, metadata) {
+    var params = new URLSearchParams(window.location.search);
+    fetch(TRACK_API + '/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        visitor_id: visitorId,
+        evento: evento,
+        pagina: window.location.href,
+        pagina_tipo: 'home',
+        metadata: metadata || {},
+        utm_source: params.get('utm_source') || undefined,
+        utm_medium: params.get('utm_medium') || undefined,
+        utm_campaign: params.get('utm_campaign') || undefined,
+        utm_content: params.get('utm_content') || undefined
+      })
+    }).catch(function() {});
+  }
+
+  // ── Forçar abertura via banner (clube=1 ou desconto=1) ──
+  var qs = window.location.search;
+  var forceClube = /[?&]clube=1/.test(qs);
+  var forceDesconto = /[?&]desconto=1/.test(qs);
+  var forceOpen = forceClube || forceDesconto;
+
   // ── Já é lead cadastrado? Não mostrar popup de captura ──
-  if (getCookie('_bibelo_lead')) return;
+  if (!forceOpen && getCookie('_bibelo_lead')) return;
 
   // ── Já mostrou popup nesta sessão? ─────────────────────
-  if (getCookie(COOKIE_NAME)) return;
+  if (!forceOpen && getCookie(COOKIE_NAME)) return;
 
   // ── Visitor ID ──────────────────────────────────────────
   var vid = getCookie(VID_COOKIE);
@@ -74,6 +100,30 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
       for (var i = 0; i < data.popups.length; i++) {
         if (data.popups[i].tipo === 'timer') timerPopup = data.popups[i];
         if (data.popups[i].tipo === 'exit_intent') exitPopup = data.popups[i];
+      }
+
+      // Forçar abertura imediata via banner (clube=1 ou desconto=1)
+      if (forceOpen) {
+        // Seleciona popup certo: desconto=1 → popup com % OFF, clube=1 → popup Clube Bibelô
+        var targetPopup = null;
+        if (forceDesconto) {
+          for (var j = 0; j < data.popups.length; j++) {
+            if (data.popups[j].id === 'desconto_primeira_compra') { targetPopup = data.popups[j]; break; }
+          }
+        }
+        if (!targetPopup) targetPopup = timerPopup;
+        if (targetPopup) {
+          shown = true;
+          var bannerNome = forceDesconto ? '7% OFF' : 'Frete Grátis';
+          trackEvent(vid, 'banner_click', { banner: bannerNome, popup_id: targetPopup.id });
+          showPopup(targetPopup, vid);
+          // Limpa params da URL sem recarregar
+          if (window.history && window.history.replaceState) {
+            var cleanUrl = window.location.href.replace(/[?&](clube|desconto)=1/g, '').replace(/\\?$/, '');
+            window.history.replaceState(null, '', cleanUrl);
+          }
+        }
+        return;
       }
 
       // Timer popup: aparece após X segundos
@@ -107,6 +157,9 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ popup_id: config.id })
     }).catch(function() {});
+
+    // Tracking: popup exibido
+    trackEvent(visitorId, 'popup_view', { popup_id: config.id, desconto: config.desconto_texto });
 
     // Google Fonts
     var link = document.createElement('link');
@@ -220,6 +273,8 @@ leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
       })
       .then(function(r) { return r.json(); })
       .then(function(data) {
+        // Tracking: lead preencheu popup
+        trackEvent(visitorId, 'popup_submit', { popup_id: config.id, desconto: config.desconto_texto, verificacao: data.verificacao });
         form.style.display = 'none';
         var success = document.getElementById('bibelo-popup-success');
         success.style.display = 'block';

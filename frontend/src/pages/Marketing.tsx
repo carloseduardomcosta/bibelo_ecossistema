@@ -1487,6 +1487,9 @@ const EVENTO_CONFIG: Record<string, { icon: typeof Eye; label: string; color: st
   add_to_cart: { icon: ShoppingCart, label: 'Adicionou ao carrinho', color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
   search: { icon: Search, label: 'Buscou', color: 'text-amber-400', bg: 'bg-amber-400/10' },
   checkout_start: { icon: ShoppingCart, label: 'Iniciou checkout', color: 'text-orange-400', bg: 'bg-orange-400/10' },
+  banner_click: { icon: MousePointerClick, label: 'Clicou no banner', color: 'text-rose-400', bg: 'bg-rose-400/10' },
+  popup_view: { icon: Eye, label: 'Popup exibido', color: 'text-indigo-400', bg: 'bg-indigo-400/10' },
+  popup_submit: { icon: UserPlus, label: 'Preencheu popup', color: 'text-green-400', bg: 'bg-green-400/10' },
 };
 
 // ── Helpers para extrair contexto dos eventos ──────────────
@@ -1720,6 +1723,22 @@ function AtividadeTab({ events, stats, funnel, onRefresh, lastUpdate }: {
                         <p className="text-xs mt-1">
                           <span className="text-bibelo-muted">Pesquisou: </span>
                           <span className="text-amber-300 font-medium">&ldquo;{searchQuery}&rdquo;</span>
+                        </p>
+                      )}
+
+                      {/* Banner clicado — mostra qual banner */}
+                      {ev.evento === 'banner_click' && ev.metadata && (
+                        <p className="text-xs mt-1">
+                          <span className="text-bibelo-muted">Banner: </span>
+                          <span className="text-rose-300 font-semibold">{String((ev.metadata as Record<string, unknown>).banner || '')}</span>
+                        </p>
+                      )}
+
+                      {/* Popup exibido/preenchido — mostra qual oferta */}
+                      {(ev.evento === 'popup_view' || ev.evento === 'popup_submit') && ev.metadata && (
+                        <p className="text-xs mt-1">
+                          <span className="text-bibelo-muted">{ev.evento === 'popup_submit' ? 'Cadastrou: ' : 'Oferta: '}</span>
+                          <span className={`font-semibold ${ev.evento === 'popup_submit' ? 'text-green-300' : 'text-indigo-300'}`}>{String((ev.metadata as Record<string, unknown>).desconto || '')}</span>
                         </p>
                       )}
 

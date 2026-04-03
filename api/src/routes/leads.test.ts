@@ -124,4 +124,146 @@ describe("GET /api/leads/popup.js", () => {
     expect(res.headers["content-type"]).toContain("javascript");
     expect(res.text).toContain("bibelo");
   });
+
+  it("contém lógica de forceOpen para ?clube=1", async () => {
+    const res = await request(app).get("/api/leads/popup.js");
+    expect(res.text).toContain("forceClube");
+    expect(res.text).toContain("clube=1");
+  });
+
+  it("contém lógica de forceOpen para ?desconto=1", async () => {
+    const res = await request(app).get("/api/leads/popup.js");
+    expect(res.text).toContain("forceDesconto");
+    expect(res.text).toContain("desconto=1");
+  });
+
+  it("seleciona popup desconto_primeira_compra quando ?desconto=1", async () => {
+    const res = await request(app).get("/api/leads/popup.js");
+    expect(res.text).toContain("desconto_primeira_compra");
+  });
+
+  it("não contém regex inválida (\\?$ deve ser escapada)", async () => {
+    const res = await request(app).get("/api/leads/popup.js");
+    // Verifica que o JS é sintaticamente válido — não deve ter /?\$/ sem escape
+    expect(res.text).not.toContain("/?$/");
+    expect(res.text).toContain("/\\?$/");
+  });
+
+  it("tem headers CORS corretos para cross-origin", async () => {
+    const res = await request(app).get("/api/leads/popup.js");
+    expect(res.headers["access-control-allow-origin"]).toBe("*");
+    expect(res.headers["cache-control"]).toContain("max-age=300");
+  });
+
+  it("escapa variáveis com esc() contra XSS", async () => {
+    const res = await request(app).get("/api/leads/popup.js");
+    expect(res.text).toContain("function esc(s)");
+    // Toda renderização de config usa esc()
+    expect(res.text).toContain("esc(config.titulo");
+    expect(res.text).toContain("esc(config.subtitulo");
+    expect(res.text).toContain("esc(config.desconto_texto");
+  });
+});
+
+describe("GET /api/leads/config — popup configs", () => {
+  it("retorna popup clube_bibelo ativo", async () => {
+    const res = await request(app).get("/api/leads/config");
+    const clube = res.body.popups.find((p: Record<string, unknown>) => p.id === "clube_bibelo");
+    expect(clube).toBeDefined();
+    expect(clube.cupom).toBe("CLUBEBIBELO");
+    expect(clube.desconto_texto).toBe("FRETE GRÁTIS");
+  });
+
+  it("retorna popup desconto_primeira_compra ativo", async () => {
+    const res = await request(app).get("/api/leads/config");
+    const desconto = res.body.popups.find((p: Record<string, unknown>) => p.id === "desconto_primeira_compra");
+    expect(desconto).toBeDefined();
+    expect(desconto.cupom).toBe("BIBELO7");
+    expect(desconto.desconto_texto).toBe("7% OFF");
+  });
+
+  it("não expõe campos sensíveis na config pública", async () => {
+    const res = await request(app).get("/api/leads/config");
+    const json = JSON.stringify(res.body);
+    expect(json).not.toContain("password");
+    expect(json).not.toContain("secret");
+    expect(json).not.toContain("token");
+    expect(json).not.toContain("JWT");
+  });
+
+  it("retorna exit_intent separado do timer", async () => {
+    const res = await request(app).get("/api/leads/config");
+    const tipos = res.body.popups.map((p: Record<string, unknown>) => p.tipo);
+    expect(tipos).toContain("timer");
+    expect(tipos).toContain("exit_intent");
+  });
+});
+
+describe("Segurança — leads capture", () => {
+  it("bloqueia XSS no nome", async () => {
+    const res = await request(app)
+      .post("/api/leads/capture")
+      .send({ email: "xss-test-vitest@example.com", nome: '<script>alert("xss")</script>' });
+    expect(res.status).toBe(200);
+    // Verifica que o nome foi sanitizado no banco
+    const lead = await query("SELECT nome FROM marketing.leads WHERE email = $1", ["xss-test-vitest@example.com"]);
+    if (lead.length > 0) {
+      expect(lead[0].nome).not.toContain("<script>");
+    }
+    // Cleanup
+    await query("DELETE FROM crm.deals WHERE customer_id IN (SELECT id FROM crm.customers WHERE email = $1)", ["xss-test-vitest@example.com"]);
+    await query("DELETE FROM marketing.leads WHERE email = $1", ["xss-test-vitest@example.com"]);
+    await query("DELETE FROM crm.customers WHERE email = $1", ["xss-test-vitest@example.com"]);
+  });
+
+  it("bloqueia SQL injection no popup_id", async () => {
+    const res = await request(app)
+      .post("/api/leads/capture")
+      .send({ email: "sqli-popup-vitest@example.com", popup_id: "'; DROP TABLE marketing.leads;--" });
+    // Deve processar normalmente (param via $1), não crashar
+    expect([200, 400]).toContain(res.status);
+    // Cleanup
+    await query("DELETE FROM crm.deals WHERE customer_id IN (SELECT id FROM crm.customers WHERE email = $1)", ["sqli-popup-vitest@example.com"]);
+    await query("DELETE FROM marketing.leads WHERE email = $1", ["sqli-popup-vitest@example.com"]);
+    await query("DELETE FROM crm.customers WHERE email = $1", ["sqli-popup-vitest@example.com"]);
+  });
+
+  it("captura com popup_id vincula ao cupom correto (BIBELO7)", async () => {
+    const res = await request(app)
+      .post("/api/leads/capture")
+      .send({ email: "cupom-test-vitest@example.com", popup_id: "desconto_primeira_compra" });
+    expect(res.status).toBe(200);
+
+    const lead = await query("SELECT cupom FROM marketing.leads WHERE email = $1", ["cupom-test-vitest@example.com"]);
+    expect(lead.length).toBeGreaterThan(0);
+    expect(lead[0].cupom).toBe("BIBELO7");
+
+    // Cleanup
+    await query("DELETE FROM crm.deals WHERE customer_id IN (SELECT id FROM crm.customers WHERE email = $1)", ["cupom-test-vitest@example.com"]);
+    await query("DELETE FROM marketing.leads WHERE email = $1", ["cupom-test-vitest@example.com"]);
+    await query("DELETE FROM crm.customers WHERE email = $1", ["cupom-test-vitest@example.com"]);
+  });
+
+  it("popup clube_bibelo tem cupom CLUBEBIBELO no banco", async () => {
+    const popup = await query("SELECT cupom FROM marketing.popup_config WHERE id = $1 AND ativo = true", ["clube_bibelo"]);
+    expect(popup.length).toBe(1);
+    expect(popup[0].cupom).toBe("CLUBEBIBELO");
+  });
+
+  it("popup desconto_primeira_compra tem cupom BIBELO7 no banco", async () => {
+    const popup = await query("SELECT cupom FROM marketing.popup_config WHERE id = $1 AND ativo = true", ["desconto_primeira_compra"]);
+    expect(popup.length).toBe(1);
+    expect(popup[0].cupom).toBe("BIBELO7");
+  });
+
+  // Rate limit DEVE ser o último teste — esgota o bucket e afeta testes seguintes
+  it("respeita rate limit nos endpoints públicos", async () => {
+    const promises = [];
+    for (let i = 0; i < 25; i++) {
+      promises.push(request(app).get("/api/leads/config"));
+    }
+    const results = await Promise.all(promises);
+    const blocked = results.filter(r => r.status === 429);
+    expect(blocked.length).toBeGreaterThan(0);
+  });
 });

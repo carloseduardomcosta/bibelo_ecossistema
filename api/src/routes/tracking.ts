@@ -46,7 +46,7 @@ const publicLimiter = rateLimit({
 
 const eventSchema = z.object({
   visitor_id: z.string().max(100),
-  evento: z.enum(["page_view", "product_view", "category_view", "add_to_cart", "search", "checkout_start"]),
+  evento: z.enum(["page_view", "product_view", "category_view", "add_to_cart", "search", "checkout_start", "banner_click", "popup_view", "popup_submit"]),
   pagina: z.string().max(2000).optional(),
   pagina_tipo: z.enum(["home", "product", "category", "cart", "checkout", "search", "other"]).optional(),
   resource_id: z.string().max(100).optional(),

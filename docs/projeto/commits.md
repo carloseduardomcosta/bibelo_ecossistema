@@ -364,3 +364,12 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Intl.NumberFormat espera valor em unidade principal
   - Fix: dividir por 100 antes de formatar (exceto JPY)
   - Afeta: preços de produtos, carrinho, checkout, pedidos, frete
+- fix(storefront): traduz textos para pt-BR + corrige imagens desfocadas
+  - Product tabs: informações do produto, envio e devoluções
+  - Free shipping nudge: frete grátis desbloqueado, faltam X
+  - Order summary: resumo do pedido, desconto, frete, impostos
+  - Imagens: quality 95, sizes px reais, next.config com AVIF/WebP + cache 24h
+- feat: popup forçável via banner (?clube=1 ou ?desconto=1)
+  - tracking: novos eventos banner_click, popup_view, popup_submit
+  - dashboard Marketing: exibe novos eventos com ícones e metadata
+  - testes: 8 novos testes para popup banners
