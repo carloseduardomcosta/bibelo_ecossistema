@@ -357,6 +357,36 @@ Para histórico completo e atualizado, usar `git log --oneline`.
 - fix: corrige sync de estoque Bling→Medusa — URL usava levelId em vez de stockLocationId
   - Medusa v2 API: POST /inventory-items/{id}/location-levels/{stockLocationId} (não levelId)
   - 378 produtos atualizados com estoque correto (183 com saldo, 195 zerados)
+- fix: timezone servidor e containers para America/Sao_Paulo (Brasília)
+  - Servidor, todos os containers Docker, e PostgreSQL corrigidos de UTC para -03
+  - timedatectl, TZ env em docker-compose, tzdata nos Dockerfiles Alpine, ALTER SYSTEM no PG
+- feat: popup via banner + tracking eventos
+  - popup.js: ?clube=1 (frete grátis) e ?desconto=1 (7% OFF) abrem popup imediatamente
+  - Novos eventos de tracking: banner_click, popup_view, popup_submit
+  - Dashboard Marketing: exibe banner clicado, oferta do popup, cadastro no CRM
+  - popup_config: Clube Bibelô (timer), 7% OFF (banner-only), exit intent (frete grátis)
+  - Cupom CLUBEBIBELO (frete grátis, min R$79, 1ª compra) validado na NuvemShop
+  - Cupom BIBELO7 (7% OFF, 1ª compra) validado na NuvemShop
+  - Links com UTM rastreáveis por posição (carrossel vs informativo)
+  - 16 novos testes: popup triggers, config, segurança, XSS, rate limit, cupom binding
+- feat: lembrete automático de verificação de leads + protocolo testes clientes reais
+- fix: email boas-vindas Clube Bibelô reescrito
+  - Tom emocional: R$79 enquadrado como "fácil com 2-3 itens"
+  - Dica com exemplos de combinações de produtos
+  - Sem emoji no assunto (evita spam)
+  - Header mais compacto, fontes menores
+- fix: unsub_link em fluxos automáticos + auditoria completa de templates
+  - flow.service.ts: {{unsub_link}} adicionado às variáveis de template (LGPD)
+  - 7 templates corrigidos: link de descadastro adicionado (Agradecimento, Carrinho abandonado, Produto visitado, Pedido de avaliação, Reativação, Sentimos sua falta, Última chance)
+  - Template "Pós-compra" criado (faltava, referenciado pelo fluxo Boas-vindas)
+  - Template "Boas-vindas" reativado (estava desativado)
+  - Contadores total_ativos recalculados
+  - 27 novos testes de auditoria: unsub_link, variáveis, gatilhos, dedup, LGPD, integridade
+- fix: mock Resend em testes — não consome cota diária
+  - sendEmail() retorna mock quando VITEST=true (automático pelo Vitest)
+  - Suite completa: 360/360 testes passando (antes: 355/360)
+  - Tempo da suite: 33s (antes: 60s)
+  - Cota Resend protegida — testes nunca enviam emails reais
   - Simplifica existingInventory map (não precisa mais de levelId)
   - Remove silenciamento de erros (logava apenas os 5 primeiros)
 - fix: preços incorretos no storefront — convertToLocale dividia centavos como reais
