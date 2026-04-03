@@ -1,9 +1,8 @@
 "use client"
 
-import { Popover, PopoverButton, PopoverPanel, Transition } from "@headlessui/react"
 import { HttpTypes } from "@medusajs/types"
 import LocalizedClientLink from "@modules/common/components/localized-client-link"
-import { Fragment } from "react"
+import { useEffect, useRef, useState } from "react"
 
 type MegaMenuProps = {
   categories: HttpTypes.StoreProductCategory[]
@@ -33,12 +32,16 @@ const CATEGORY_GROUPS: Record<string, string[]> = {
   ],
 }
 
-// Links de categoria exibidos diretamente na barra de navegação
 const NAV_CATEGORIES = [
   "Canetas", "Cadernos", "Lápis de Cor", "Estojos", "Agendas", "Post-it",
 ]
 
 const MegaMenu = ({ categories, collections }: MegaMenuProps) => {
+  const [open, setOpen] = useState(false)
+  const [panelTop, setPanelTop] = useState(0)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
   const categoryMap = new Map(categories.map((c) => [c.handle, c]))
   const nameToHandle = new Map(categories.map((c) => [c.name, c.handle]))
 
@@ -53,6 +56,49 @@ const MegaMenu = ({ categories, collections }: MegaMenuProps) => {
 
   const groupedHandles = new Set(Object.values(CATEGORY_GROUPS).flat())
   const ungrouped = categories.filter((c) => !groupedHandles.has(c.handle ?? ""))
+
+  // Calcular o top do painel baseado na posição real do botão no DOM
+  const updatePanelTop = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      setPanelTop(rect.bottom)
+    }
+  }
+
+  const handleOpen = () => {
+    updatePanelTop()
+    setOpen(true)
+  }
+
+  // Fechar ao clicar fora
+  useEffect(() => {
+    if (!open) return
+    const handleClick = (e: MouseEvent) => {
+      if (
+        panelRef.current && !panelRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false)
+      }
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("mousedown", handleClick)
+    document.addEventListener("keydown", handleKey)
+    return () => {
+      document.removeEventListener("mousedown", handleClick)
+      document.removeEventListener("keydown", handleKey)
+    }
+  }, [open])
+
+  // Atualizar posição ao rolar (header sticky muda de posição)
+  useEffect(() => {
+    if (!open) return
+    const handleScroll = () => updatePanelTop()
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [open])
 
   return (
     <div className="hidden small:flex items-center gap-x-0 h-full">
@@ -71,116 +117,117 @@ const MegaMenu = ({ categories, collections }: MegaMenuProps) => {
         )
       })}
 
-      {/* Dropdown "Todas as Categorias" */}
-      <Popover className="relative h-full flex items-center">
-        {({ close }) => (
-          <>
-            <PopoverButton className="px-4 h-full flex items-center gap-x-1 text-xs font-semibold uppercase tracking-widest text-bibelo-dark/80 hover:text-bibelo-pink border-b-2 border-transparent hover:border-bibelo-pink transition-all outline-none whitespace-nowrap">
-              Todas as Categorias
-              <svg className="w-3 h-3 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-              </svg>
-            </PopoverButton>
+      {/* Botão "Todas as Categorias" */}
+      <button
+        ref={btnRef}
+        onClick={() => (open ? setOpen(false) : handleOpen())}
+        className={`px-4 h-full flex items-center gap-x-1 text-xs font-semibold uppercase tracking-widest border-b-2 transition-all outline-none whitespace-nowrap ${
+          open
+            ? "text-bibelo-pink border-bibelo-pink"
+            : "text-bibelo-dark/80 border-transparent hover:text-bibelo-pink hover:border-bibelo-pink"
+        }`}
+        aria-expanded={open}
+        aria-haspopup="true"
+      >
+        Todas as Categorias
+        <svg
+          className={`w-3 h-3 mt-0.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2.5}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        </svg>
+      </button>
 
-            <Transition
-              as={Fragment}
-              enter="transition ease-out duration-200"
-              enterFrom="opacity-0 -translate-y-2"
-              enterTo="opacity-100 translate-y-0"
-              leave="transition ease-in duration-150"
-              leaveFrom="opacity-100 translate-y-0"
-              leaveTo="opacity-0 -translate-y-2"
-            >
-              {/*
-                O painel usa `absolute` ancorado no Popover pai (relative).
-                `top-full` = logo abaixo do botão (já está na segunda linha do header).
-                `left-0` com largura grande para cobrir o conteúdo.
-                `z-[100]` garante que fica acima de tudo sem quebrar o sticky header.
-              */}
-              <PopoverPanel className="absolute left-0 top-full mt-0 z-[100] w-[860px] max-w-[95vw] bg-white border border-bibelo-rosa/40 shadow-xl rounded-b-xl overflow-hidden">
-                <div className="p-8">
-                  <div className="flex gap-8">
-                    {/* Grupos de categorias */}
-                    <div className="flex-1 grid grid-cols-3 gap-x-8 gap-y-6">
-                      {groups.map((group) => (
-                        <div key={group.name}>
-                          <h3 className="text-xs font-bold text-bibelo-dark mb-3 uppercase tracking-wider border-b border-bibelo-rosa pb-1.5">
-                            {group.name}
-                          </h3>
-                          <ul className="space-y-1.5">
-                            {group.items.map((cat) => (
-                              <li key={cat.id}>
-                                <LocalizedClientLink
-                                  href={`/categories/${cat.handle}`}
-                                  className="text-sm text-gray-600 hover:text-bibelo-pink transition-colors"
-                                  onClick={close}
-                                >
-                                  {cat.name}
-                                </LocalizedClientLink>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
-                      {ungrouped.length > 0 && (
-                        <div>
-                          <h3 className="text-xs font-bold text-bibelo-dark mb-3 uppercase tracking-wider border-b border-bibelo-rosa pb-1.5">
-                            Outros
-                          </h3>
-                          <ul className="space-y-1.5">
-                            {ungrouped.slice(0, 8).map((cat) => (
-                              <li key={cat.id}>
-                                <LocalizedClientLink
-                                  href={`/categories/${cat.handle}`}
-                                  className="text-sm text-gray-600 hover:text-bibelo-pink transition-colors"
-                                  onClick={close}
-                                >
-                                  {cat.name}
-                                </LocalizedClientLink>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Sidebar de coleções */}
-                    {collections.length > 0 && (
-                      <div className="w-44 border-l border-bibelo-rosa/40 pl-8 shrink-0">
-                        <h3 className="text-xs font-bold text-bibelo-dark mb-3 uppercase tracking-wider border-b border-bibelo-rosa pb-1.5">
-                          Destaques
-                        </h3>
-                        <ul className="space-y-2.5">
-                          {collections.map((col) => (
-                            <li key={col.id}>
-                              <LocalizedClientLink
-                                href={`/collections/${col.handle}`}
-                                className="text-sm font-medium text-bibelo-pink hover:underline"
-                                onClick={close}
-                              >
-                                {col.title}
-                              </LocalizedClientLink>
-                            </li>
-                          ))}
-                        </ul>
-                        <div className="mt-6 pt-4 border-t border-bibelo-rosa/40">
+      {/* Painel do mega menu — fixed, top calculado via JS */}
+      {open && (
+        <div
+          ref={panelRef}
+          className="fixed left-0 right-0 z-[200] bg-white border-t border-bibelo-rosa/40 shadow-2xl"
+          style={{ top: `${panelTop}px` }}
+        >
+          <div className="content-container py-8">
+            <div className="flex gap-8">
+              {/* Grupos de categorias */}
+              <div className="flex-1 grid grid-cols-3 gap-x-8 gap-y-6">
+                {groups.map((group) => (
+                  <div key={group.name}>
+                    <h3 className="text-xs font-bold text-bibelo-dark mb-3 uppercase tracking-wider border-b border-bibelo-rosa pb-1.5">
+                      {group.name}
+                    </h3>
+                    <ul className="space-y-1.5">
+                      {group.items.map((cat) => (
+                        <li key={cat.id}>
                           <LocalizedClientLink
-                            href="/store"
-                            className="text-xs font-semibold text-bibelo-dark hover:text-bibelo-pink transition-colors uppercase tracking-wider"
-                            onClick={close}
+                            href={`/categories/${cat.handle}`}
+                            className="text-sm text-gray-600 hover:text-bibelo-pink transition-colors"
+                            onClick={() => setOpen(false)}
                           >
-                            Ver todos →
+                            {cat.name}
                           </LocalizedClientLink>
-                        </div>
-                      </div>
-                    )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+                {ungrouped.length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-bold text-bibelo-dark mb-3 uppercase tracking-wider border-b border-bibelo-rosa pb-1.5">
+                      Mais
+                    </h3>
+                    <ul className="space-y-1.5">
+                      {ungrouped.slice(0, 8).map((cat) => (
+                        <li key={cat.id}>
+                          <LocalizedClientLink
+                            href={`/categories/${cat.handle}`}
+                            className="text-sm text-gray-600 hover:text-bibelo-pink transition-colors"
+                            onClick={() => setOpen(false)}
+                          >
+                            {cat.name}
+                          </LocalizedClientLink>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Sidebar de coleções */}
+              {collections.length > 0 && (
+                <div className="w-44 border-l border-bibelo-rosa/40 pl-8 shrink-0">
+                  <h3 className="text-xs font-bold text-bibelo-dark mb-3 uppercase tracking-wider border-b border-bibelo-rosa pb-1.5">
+                    Destaques
+                  </h3>
+                  <ul className="space-y-2.5">
+                    {collections.map((col) => (
+                      <li key={col.id}>
+                        <LocalizedClientLink
+                          href={`/collections/${col.handle}`}
+                          className="text-sm font-medium text-bibelo-pink hover:underline"
+                          onClick={() => setOpen(false)}
+                        >
+                          {col.title}
+                        </LocalizedClientLink>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-6 pt-4 border-t border-bibelo-rosa/40">
+                    <LocalizedClientLink
+                      href="/store"
+                      className="text-xs font-semibold text-bibelo-dark hover:text-bibelo-pink transition-colors uppercase tracking-wider"
+                      onClick={() => setOpen(false)}
+                    >
+                      Ver todos os produtos →
+                    </LocalizedClientLink>
                   </div>
                 </div>
-              </PopoverPanel>
-            </Transition>
-          </>
-        )}
-      </Popover>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
