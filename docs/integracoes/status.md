@@ -1,6 +1,6 @@
 # Status das Integrações — BibelôCRM
 
-Última atualização: 1 de Abril de 2026
+Última atualização: 3 de Abril de 2026
 
 | Integração | Status | Observações |
 |-----------|--------|-------------|
@@ -20,6 +20,7 @@
 | NuvemShop Sync | ✅ produção | clientes, pedidos, produtos — sync manual + webhooks real-time |
 | NuvemShop Webhooks | ✅ produção | 9 webhooks — order/created,updated,paid,fulfilled,cancelled + customer/* + product/* |
 | Resend E-mail | ✅ produção | remetente "Papelaria Bibelô", 14 templates, domínio verificado |
+| Amazon SES | ⏳ sandbox | sa-east-1, DKIM verificado, dual provider (SES/Resend), dashboard consumo, aguardando produção |
 | Motor de Fluxos | ✅ produção | 10 fluxos ativos, BullMQ process-steps 1min, check-abandoned 5min, check-interest 15min |
 | Carrinho Abandonado | ✅ produção | detecta order/created sem paid após 2h, recovery_url real do checkout |
 | Avaliação Pós-Entrega | ✅ produção | webhook order/fulfilled → email 12h após entrega |

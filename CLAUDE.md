@@ -24,7 +24,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 | Frontend | React 18 + Vite + TypeScript |
 | Containers | Docker + Docker Compose |
 | Proxy | Nginx + SSL Let's Encrypt |
-| E-mail | Resend SDK |
+| E-mail | Amazon SES v2 (primário, sa-east-1) + Resend SDK (fallback) — dual provider via EMAIL_PROVIDER |
 | WhatsApp | Meta Cloud API + Chatwoot (planejado) |
 | Atendimento | Chatwoot self-hosted (planejado) |
 | E-commerce | Medusa.js v2 (porta 9000) + Next.js storefront |
@@ -273,7 +273,18 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 - Customer API: criação de conta com senha temporária (BibXXXXX!), link recuperação de senha
 - Coupons API: gerarCupomUnico() cria cupons descartáveis (max_uses:1, first_consumer_purchase:true)
 
-### Resend (e-mail)
+### Amazon SES v2 (e-mail — provider primário)
+- Região: **sa-east-1** (São Paulo). Custo: $0,10 por 1.000 emails (~R$ 5/mês para 10k emails)
+- DKIM verificado, Configuration Set `bibelocrm-tracking` com tracking de open/click/bounce/complaint
+- Conta AWS: `350823026867`, IAM user: `bibelocrm-ses` (SES + SNS permissions)
+- **Dual provider**: `EMAIL_PROVIDER=ses|resend` no `.env` — `sendEmail()` despacha para o provider ativo
+- **Webhook SNS**: `POST /api/webhooks/ses` — recebe eventos via SNS topic `ses-bibelocrm-events`
+  - Confirma subscription SNS automaticamente
+  - Mesma lógica de processamento do Resend (email_events, campaign_sends, opt-out LGPD)
+- **Dashboard de consumo**: `/consumo-email` no frontend — KPIs, gráficos diário/mensal, custo comparativo SES vs Resend
+- SDK: `@aws-sdk/client-sesv2` — client em `api/src/integrations/ses/client.ts`
+
+### Resend (e-mail — fallback)
 - Plano grátis: 3.000/mês. Remetente: `Papelaria Bibelô <marketing@papelariabibelo.com.br>`
 - 16 templates ativos no banco (padronizados: logo, Cormorant Garamond, gradiente header, divisor)
 - **Webhook**: `POST /api/webhooks/resend` — recebe open/click/delivered/bounced/complained
@@ -383,7 +394,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 3 de Abril de 2026 — Lembrete verificação leads, fix inventory sync Bling→Medusa, fix preços storefront, i18n pt-BR, menu/mega-menu, Clube VIP WhatsApp, Parcerias B2B, migração boasvindas.papelariabibelo.com.br, SES*
+*Última atualização: 3 de Abril de 2026 — Amazon SES v2 (dual provider SES/Resend), dashboard consumo de email, webhook SNS, DKIM verificado sa-east-1*
 
 ---
 

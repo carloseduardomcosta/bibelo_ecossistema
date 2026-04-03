@@ -165,8 +165,15 @@ Referência completa de todos os endpoints.
 - `POST /api/images/info` — metadata de 1 imagem (formato, dimensões, alpha, DPI)
 - `POST /api/images/send-bling` — converte + salva em URL pública + envia ao Bling via PATCH /produtos/{id}. Params: blingProductId, preset, replaceAll (limpa imagens existentes), removeBackground (IA), etc
 
+### Consumo de Email (protegido)
+- `GET  /api/email-consumption/overview?periodo=30d` — KPIs: total enviados, entregues, abertos, cliques, bounces, spam, taxa abertura/clique, custo estimado, status SES
+- `GET  /api/email-consumption/daily?periodo=30d` — envios por dia (campanhas + fluxos) para gráfico de barras
+- `GET  /api/email-consumption/by-type?periodo=30d` — distribuição por tipo + top campanhas + top fluxos por volume
+- `GET  /api/email-consumption/monthly` — evolução mensal (12 meses) com custo comparativo SES vs Resend
+
 ### Webhooks (público)
 - `POST /api/webhooks/resend` — recebe eventos Resend (open, click, delivered, bounced, complained). Valida assinatura Svix.
+- `POST /api/webhooks/ses` — recebe eventos SES via SNS (open, click, delivery, bounce, complaint). Confirma subscription automaticamente.
 
 ### Email (público)
 - `GET /api/email/img/:hash` — proxy de imagens para emails (serve imagens NuvemShop/Bling cacheadas pelo nosso domínio)
