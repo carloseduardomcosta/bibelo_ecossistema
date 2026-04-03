@@ -55,10 +55,10 @@ const LINKS: LinkItem[] = [
     icone: "📋",
   },
   {
-    slug: "email",
-    titulo: "Nos envie um E-mail (B2B)",
-    url: "mailto:contato@papelariabibelo.com.br",
-    icone: "📧",
+    slug: "parcerias",
+    titulo: "Parcerias e B2B",
+    url: "/api/links/parcerias",
+    icone: "🤝",
   },
 ];
 
@@ -512,7 +512,8 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
         <img src="/logo.png" alt="Papelaria Bibelô" class="avatar">
       </a>
       <h1 class="nome">Papelaria Bibelô</h1>
-      <p class="boas-vindas">Bem-vindo(a) ao mundo da Papelaria Bibelô!</p>
+      <p class="boas-vindas">Curadoria especial em papelaria</p>
+      <p class="bio">Timbó/SC &middot; Loja física + online</p>
     </div>
 
     <!-- BANNER LOJA -->
@@ -549,9 +550,9 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </a>
 
-      <a href="/api/links/go/email" target="_blank" rel="noopener" class="link-btn">
-        <span class="btn-icon">📧</span>
-        <span class="btn-label">E-mail para parcerias (B2B)</span>
+      <a href="/api/links/go/parcerias" target="_blank" rel="noopener" class="link-btn">
+        <span class="btn-icon">🤝</span>
+        <span class="btn-label">Parcerias e atacado (B2B)</span>
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </a>
 
@@ -1137,4 +1138,281 @@ linksRouter.post("/grupo-vip", limiter, async (req: Request, res: Response) => {
     mensagem: "Cadastro realizado! Redirecionando para o Clube VIP...",
     redirect: GRUPO_VIP_URL,
   });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// PARCERIAS B2B — Formulário de contato para empresas
+// ══════════════════════════════════════════════════════════════════
+
+linksRouter.get("/parcerias", (_req: Request, res: Response) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Content-Security-Policy",
+    "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none';"
+  );
+
+  res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Parcerias B2B — Papelaria Bibelô</title>
+  <meta name="description" content="Entre em contato para parcerias, atacado e revenda com a Papelaria Bibelô">
+  <link rel="icon" href="/logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    :root{--pink:#fe68c4;--rosa:#ffe5ec;--amarelo:#fff7c1;--dark:#2d2d2d;--mid:#6b4c6b;--soft:#a07090;--white:#fff;--blue:#3b82f6;--blue-dark:#2563eb}
+    body{font-family:'Nunito','Segoe UI',Arial,sans-serif;background:linear-gradient(160deg,#ffe0ef 0%,#fce7f3 40%,#fff0f6 100%);min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;padding:0}
+    .card{width:100%;max-width:480px;background:var(--white);border-radius:0 0 28px 28px;box-shadow:0 10px 40px rgba(254,104,196,0.15);overflow:hidden;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
+    .header{background:linear-gradient(160deg,var(--amarelo) 0%,var(--rosa) 100%);padding:24px 20px 18px;text-align:center;border-bottom:3px solid var(--pink);position:relative;overflow:hidden}
+    .header::before{content:'';position:absolute;width:120px;height:120px;border-radius:50%;opacity:0.12;background:var(--pink);top:-40px;right:-30px}
+    .avatar{width:56px;height:56px;border-radius:50%;border:3px solid var(--pink);box-shadow:0 4px 15px rgba(254,104,196,0.3);margin:0 auto 10px;display:block}
+    .badge{display:inline-block;background:linear-gradient(135deg,var(--blue),var(--blue-dark));color:var(--white);font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;padding:4px 14px;border-radius:20px;margin-bottom:8px}
+    .header h1{font-size:20px;font-weight:900;color:var(--dark);margin-bottom:4px}
+    .header p{font-size:12px;color:var(--soft);font-weight:600}
+    .form-body{padding:16px 20px;flex:1;display:flex;flex-direction:column;gap:12px}
+    .form-intro{font-size:13px;color:var(--mid);font-weight:600;line-height:1.4;text-align:center}
+    .field{display:flex;flex-direction:column;gap:4px}
+    .field label{font-size:11px;font-weight:800;color:var(--mid);text-transform:uppercase;letter-spacing:0.8px}
+    .field input,.field select,.field textarea{padding:11px 14px;border:2px solid #dbeafe;border-radius:10px;font-size:14px;font-family:'Nunito',sans-serif;font-weight:600;color:var(--dark);outline:none;transition:border-color 0.2s;resize:vertical}
+    .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,0.1)}
+    .field input::placeholder,.field textarea::placeholder{color:#93c5fd;font-weight:500}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .submit-btn{padding:14px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--blue) 0%,var(--blue-dark) 100%);color:var(--white);font-size:15px;font-weight:900;font-family:'Nunito',sans-serif;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 15px rgba(59,130,246,0.3);margin-top:4px}
+    .submit-btn:hover{filter:brightness(1.08);transform:translateY(-2px)}
+    .submit-btn:active{transform:translateY(0)}
+    .submit-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+    .msg{padding:10px 14px;border-radius:10px;font-size:13px;font-weight:700;text-align:center;display:none}
+    .msg.ok{display:block;background:#f0fff6;color:#166534;border:2px solid #bbf7d0}
+    .msg.err{display:block;background:#fff5f5;color:#991b1b;border:2px solid #fecaca}
+    .footer{background:linear-gradient(135deg,var(--amarelo),#fff5fb);padding:12px 20px;text-align:center;border-top:2px solid #fce7f3}
+    .footer p{font-size:11px;color:var(--soft);font-weight:600}
+    .footer a{color:var(--pink);text-decoration:none;font-weight:700}
+    .back-link{display:inline-flex;align-items:center;gap:6px;color:var(--pink);font-size:13px;font-weight:700;text-decoration:none;margin-top:2px}
+    .back-link:hover{text-decoration:underline}
+    @media(max-height:700px){.header{padding:16px 16px 12px}.avatar{width:44px;height:44px}.header h1{font-size:18px}.form-body{padding:12px 16px;gap:10px}}
+    @media(min-width:481px){body{padding:24px 16px 48px}.card{min-height:auto;border-radius:28px}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <img src="/logo.png" alt="Papelaria Bibelô" class="avatar">
+      <div class="badge">Parcerias B2B</div>
+      <h1>Vamos trabalhar juntos?</h1>
+      <p>Atacado, revenda e parcerias corporativas</p>
+    </div>
+
+    <form class="form-body" id="b2bForm">
+      <p class="form-intro">Preencha o formulário abaixo e entraremos em contato para alinhar os detalhes da parceria.</p>
+
+      <div class="field">
+        <label for="nome">Nome completo</label>
+        <input type="text" id="nome" name="nome" placeholder="Seu nome" required maxlength="200">
+      </div>
+
+      <div class="field">
+        <label for="empresa">Empresa</label>
+        <input type="text" id="empresa" name="empresa" placeholder="Nome da empresa" maxlength="200">
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="documento">CPF ou CNPJ</label>
+          <input type="text" id="documento" name="documento" placeholder="000.000.000-00" maxlength="20">
+        </div>
+        <div class="field">
+          <label for="telefone">Telefone</label>
+          <input type="tel" id="telefone" name="telefone" placeholder="(47) 9 9999-9999" maxlength="20">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="email">E-mail</label>
+        <input type="email" id="email" name="email" placeholder="contato@empresa.com" required maxlength="200">
+      </div>
+
+      <div class="field">
+        <label for="assunto">Assunto</label>
+        <select id="assunto" name="assunto" required>
+          <option value="">Selecione...</option>
+          <option value="atacado">Compra no atacado</option>
+          <option value="revenda">Revenda de produtos</option>
+          <option value="corporativo">Brindes corporativos</option>
+          <option value="evento">Eventos e workshops</option>
+          <option value="outro">Outro assunto</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="mensagem">Mensagem</label>
+        <textarea id="mensagem" name="mensagem" rows="3" placeholder="Conte-nos sobre sua necessidade..." maxlength="2000"></textarea>
+      </div>
+
+      <div class="msg" id="msg"></div>
+
+      <button type="submit" class="submit-btn" id="submitBtn">Enviar solicitação</button>
+
+      <a href="/" class="back-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        Voltar ao menu
+      </a>
+    </form>
+
+    <div class="footer">
+      <p>Papelaria Bibelô &middot; <a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener">papelariabibelo.com.br</a></p>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('b2bForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var btn = document.getElementById('submitBtn');
+      var msg = document.getElementById('msg');
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+      msg.className = 'msg';
+      msg.style.display = 'none';
+
+      var data = {
+        nome: document.getElementById('nome').value.trim(),
+        empresa: document.getElementById('empresa').value.trim() || undefined,
+        documento: document.getElementById('documento').value.trim() || undefined,
+        telefone: document.getElementById('telefone').value.trim() || undefined,
+        email: document.getElementById('email').value.trim(),
+        assunto: document.getElementById('assunto').value,
+        mensagem: document.getElementById('mensagem').value.trim() || undefined
+      };
+
+      fetch('/api/links/parcerias', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(res) {
+        if (res.ok) {
+          msg.className = 'msg ok';
+          msg.textContent = res.mensagem;
+          msg.style.display = 'block';
+          btn.textContent = 'Enviado!';
+          document.getElementById('b2bForm').reset();
+        } else {
+          msg.className = 'msg err';
+          msg.textContent = res.error || 'Erro ao enviar. Tente novamente.';
+          msg.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Enviar solicitação';
+        }
+      })
+      .catch(function() {
+        msg.className = 'msg err';
+        msg.textContent = 'Erro de conexão. Tente novamente.';
+        msg.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Enviar solicitação';
+      });
+    });
+  </script>
+</body>
+</html>`);
+});
+
+// ── POST /api/links/parcerias — processar solicitação B2B ────
+
+const parceriasSchema = z.object({
+  nome: z.string().min(1).max(200),
+  empresa: z.string().max(200).optional(),
+  documento: z.string().max(20).optional(),
+  telefone: z.string().max(20).optional(),
+  email: z.string().email().max(200),
+  assunto: z.enum(["atacado", "revenda", "corporativo", "evento", "outro"]),
+  mensagem: z.string().max(2000).optional(),
+});
+
+const ASSUNTO_LABELS: Record<string, string> = {
+  atacado: "Compra no atacado",
+  revenda: "Revenda de produtos",
+  corporativo: "Brindes corporativos",
+  evento: "Eventos e workshops",
+  outro: "Outro assunto",
+};
+
+linksRouter.post("/parcerias", limiter, async (req: Request, res: Response) => {
+  const parsed = parceriasSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: "Preencha nome, e-mail e assunto corretamente." });
+    return;
+  }
+
+  const { assunto, mensagem } = parsed.data;
+  const nome = parsed.data.nome.replace(/[<>"'&]/g, "");
+  const empresa = (parsed.data.empresa || "").replace(/[<>"'&]/g, "");
+  const documento = (parsed.data.documento || "").replace(/[<>"'&]/g, "");
+  const telefone = (parsed.data.telefone || "").replace(/[<>"'&]/g, "");
+  const email = parsed.data.email.toLowerCase().trim();
+  const msgClean = (mensagem || "").replace(/[<>"'&]/g, "");
+
+  // Cria/vincula customer no CRM
+  const customer = await upsertCustomer({
+    nome,
+    email,
+    telefone: telefone || undefined,
+    canal_origem: "parcerias_b2b",
+  });
+
+  // Registra interação no CRM
+  await query(
+    `INSERT INTO crm.interactions (customer_id, tipo, canal, descricao, metadata)
+     VALUES ($1, 'parceria_b2b', 'email', $2, $3)`,
+    [customer.id, `Solicitação B2B: ${ASSUNTO_LABELS[assunto]}`, JSON.stringify({ nome, empresa, documento, telefone, email, assunto, mensagem: msgClean })]
+  );
+
+  // Cria deal B2B no pipeline
+  await query(
+    `INSERT INTO crm.deals (customer_id, titulo, valor, etapa, origem, probabilidade, notas)
+     VALUES ($1, $2, 0, 'prospeccao', 'parcerias_b2b', 40, $3)`,
+    [customer.id, `B2B: ${empresa || nome} — ${ASSUNTO_LABELS[assunto]}`, `${empresa ? `Empresa: ${empresa}\\n` : ""}${documento ? `Doc: ${documento}\\n` : ""}${telefone ? `Tel: ${telefone}\\n` : ""}Assunto: ${ASSUNTO_LABELS[assunto]}\\n${msgClean ? `Mensagem: ${msgClean}` : ""}`]
+  );
+
+  // Registra clique
+  const ip = getRealIp(req);
+  const geo = resolveGeo(ip);
+  query(
+    `INSERT INTO marketing.link_clicks (slug, ip, geo_city, geo_region, geo_country, user_agent, referer)
+     VALUES ('parcerias-submit', $1, $2, $3, $4, $5, $6)`,
+    [geo?.ip || null, geo?.city || null, geo?.region || null, geo?.country || null,
+     (req.headers["user-agent"] || "").slice(0, 500), (req.headers["referer"] || "").slice(0, 500)]
+  ).catch(() => {});
+
+  // Email para o admin com todos os dados
+  sendEmail({
+    to: "contato@papelariabibelo.com.br",
+    subject: `🤝 Parceria B2B: ${empresa || nome} — ${ASSUNTO_LABELS[assunto]}`,
+    html: `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f5f0f2;font-family:'Segoe UI',Arial,sans-serif;">
+  <div style="max-width:500px;margin:20px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
+    <div style="background:linear-gradient(135deg,#3b82f6,#2563eb);padding:24px;text-align:center;">
+      <p style="color:#fff;font-size:20px;font-weight:700;margin:0;">Nova solicitação B2B</p>
+      <p style="color:rgba(255,255,255,0.8);font-size:14px;font-weight:600;margin:4px 0 0;">${ASSUNTO_LABELS[assunto]}</p>
+    </div>
+    <div style="padding:24px;">
+      <p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Nome:</strong> ${nome}</p>
+      ${empresa ? `<p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Empresa:</strong> ${empresa}</p>` : ""}
+      ${documento ? `<p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>CPF/CNPJ:</strong> ${documento}</p>` : ""}
+      ${telefone ? `<p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Telefone:</strong> ${telefone}</p>` : ""}
+      <p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Email:</strong> <a href="mailto:${email}" style="color:#3b82f6;">${email}</a></p>
+      ${msgClean ? `<div style="margin:16px 0 0;padding:14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;"><p style="font-size:12px;color:#64748b;margin:0 0 6px;font-weight:700;">MENSAGEM:</p><p style="font-size:14px;color:#334155;margin:0;line-height:1.5;white-space:pre-wrap;">${msgClean}</p></div>` : ""}
+      <p style="font-size:12px;color:#999;margin:16px 0 0;">Via formulário de parcerias (menu.papelariabibelo.com.br)</p>
+    </div>
+  </div>
+</body></html>`,
+    tags: [{ name: "type", value: "b2b_notification" }],
+  }).catch(err => {
+    logger.warn("Falha ao notificar parceria B2B", { email, error: String(err) });
+  });
+
+  logger.info("Solicitação de parceria B2B", { nome, empresa, email, assunto });
+  res.json({ ok: true, mensagem: "Solicitação enviada com sucesso! Entraremos em contato em breve." });
 });
