@@ -144,11 +144,22 @@ Toda comunicação **DEVE ser em português brasileiro (pt-BR)**. Commits, mensa
 6. **Inputs** — validar com Zod
 7. **Dados em HTML** — escapar nomes, emails, produtos do banco
 
+### Protocolo de testes com clientes reais — OBRIGATÓRIO
+- **NUNCA** executar testes, disparos de email, envios de SMS/WhatsApp, ou qualquer ação que impacte clientes reais sem autorização **EXPLÍCITA** do dono (Carlos Eduardo)
+- Antes de qualquer ação que toque clientes reais, **PERGUNTAR em pt-BR**: "Deseja que eu execute isso com clientes reais? Os impactos serão: [lista de impactos]"
+- Apresentar claramente: quantos clientes serão afetados, que tipo de comunicação receberão, e se a ação é reversível
+- Testes de email: usar `contato@papelariabibelo.com.br` (admin) ou email de teste — nunca email de cliente
+- Testes de fluxo: criar customer de teste, nunca usar customer real
+- Testes de cupom: gerar cupom de teste com prefixo `TEST-` — nunca ativar cupom real
+- Se o agent executar algo por engano com cliente real, notificar **imediatamente** o dono com detalhes do impacto
+
 ### Regras de negócio (emails e fluxos)
 - Motor condicional: steps tipo "condicao" avaliam 7 tipos (email_aberto, email_clicado, comprou, visitou_site, viu_produto, abandonou_cart, score_minimo) e fazem branching (sim/nao → targetIndex)
-- 6 fluxos inteligentes com branching: carrinho abandonado (12 steps), nutrição lead (12 steps), reativação (10 steps), produto visitado (10 steps), lead quente (10 steps), pós-compra (8 steps)
+- 7 fluxos inteligentes: carrinho abandonado (12 steps), nutrição lead (12 steps), reativação (10 steps), produto visitado (10 steps), lead quente (10 steps), pós-compra (8 steps), **lembrete de verificação** (cron 2h, máx 2 lembretes)
+- **Lembrete de verificação**: automação do sistema (cron a cada 2h) que reenvia email de confirmação para leads que não verificaram. 1º lembrete após 3h, 2º (último) após 24h. Campos: `lembretes_enviados`, `ultimo_lembrete_em` em `marketing.leads`. Código: `checkUnverifiedLeads()` em `flow.service.ts`, job `flow-check-unverified-leads` em `flow.queue.ts`
 - Cupons únicos por lead: gerarCupomUnico() cria BIB-NOME-XXXX na NuvemShop API (max_uses:1, first_consumer_purchase:true, expiry automático)
 - 3 cenários de cupom: carrinho abandonado (5%, 24h), nutrição lead (10%, 48h), reativação (10%, 7d)
+- Cupom do popup Clube Bibelô: `CLUBEBIBELO` = frete grátis (não é percentual)
 - triggerFlow nunca re-executa (ignora se já existe execução)
 - Reativação só para quem tem pelo menos 1 pedido
 - Testes de email: SEMPRE em `carloseduardocostatj@gmail.com`
@@ -372,7 +383,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 2 de Abril de 2026 — Storefront redesign (hero, nav, benefícios, VIP banner, cards, footer), conta NuvemShop removida (cliente cria no checkout), tracking inteligente NuvemShop*
+*Última atualização: 3 de Abril de 2026 — Lembrete automático de verificação de leads (cron 2h, máx 2 lembretes), card no dashboard de fluxos, protocolo de testes com clientes reais*
 
 ---
 

@@ -1,6 +1,6 @@
 import { Queue, Worker } from "bullmq";
 import { logger } from "../utils/logger";
-import { processReadySteps, checkAbandonedCarts, checkProductInterest, checkLeadCartAbandoned } from "../services/flow.service";
+import { processReadySteps, checkAbandonedCarts, checkProductInterest, checkLeadCartAbandoned, checkUnverifiedLeads } from "../services/flow.service";
 import { query } from "../db";
 
 // ── Redis connection ───────────────────────────────────────────
@@ -59,6 +59,12 @@ export const flowWorker = new Worker(
           break;
         }
 
+        case "flow-check-unverified-leads": {
+          const reminded = await checkUnverifiedLeads();
+          result = { reminded };
+          break;
+        }
+
         default:
           logger.warn("Flow job desconhecido", { name: job.name });
           return;
@@ -67,7 +73,7 @@ export const flowWorker = new Worker(
       const duration = Date.now() - startTime;
 
       // Log apenas se processou algo
-      const total = (result.processed as number) || (result.triggered as number) || 0;
+      const total = (result.processed as number) || (result.triggered as number) || (result.reminded as number) || 0;
       if (total > 0) {
         await query(
           `INSERT INTO sync.sync_logs (fonte, tipo, status, registros, erro)
@@ -124,7 +130,12 @@ export async function registerFlowJobs(): Promise<void> {
     repeat: { pattern: "*/10 * * * *" },
   });
 
-  logger.info("Flow jobs registrados: process-steps (1min), check-abandoned (5min), check-interest (15min), check-lead-cart (10min)");
+  // Lembrete para leads que não verificaram email: a cada 2 horas
+  await flowQueue.add("flow-check-unverified-leads", {}, {
+    repeat: { pattern: "0 */2 * * *" },
+  });
+
+  logger.info("Flow jobs registrados: process-steps (1min), check-abandoned (5min), check-interest (15min), check-lead-cart (10min), check-unverified (2h)");
 }
 
 // ── Event listeners ────────────────────────────────────────────

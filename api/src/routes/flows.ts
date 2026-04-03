@@ -25,6 +25,29 @@ flowsRouter.get("/stats/overview", async (_req: Request, res: Response) => {
   res.json(stats);
 });
 
+// ── GET /api/flows/stats/reminders — stats do lembrete de verificação ──
+
+flowsRouter.get("/stats/reminders", async (_req: Request, res: Response) => {
+  const stats = await queryOne<Record<string, unknown>>(
+    `SELECT
+       (SELECT COUNT(*) FROM marketing.leads WHERE email_verificado = false) AS pendentes_count,
+       (SELECT COUNT(*) FROM marketing.leads WHERE email_verificado = false AND lembretes_enviados >= 1) AS lembrete_1_enviado,
+       (SELECT COUNT(*) FROM marketing.leads WHERE email_verificado = false AND lembretes_enviados >= 2) AS lembrete_2_enviado,
+       (SELECT COUNT(*) FROM marketing.leads WHERE email_verificado = true) AS verificados_total,
+       (SELECT COUNT(*) FROM marketing.leads) AS leads_total`
+  );
+
+  const pendentes = await query<{ id: string; nome: string; email: string; cupom: string | null; lembretes_enviados: number; ultimo_lembrete_em: string | null; criado_em: string }>(
+    `SELECT id, nome, email, cupom, lembretes_enviados, ultimo_lembrete_em, criado_em
+     FROM marketing.leads
+     WHERE email_verificado = false
+     ORDER BY criado_em DESC
+     LIMIT 20`
+  );
+
+  res.json({ ...stats, pendentes });
+});
+
 // ── GET /api/flows — listar fluxos ────────────────────────────
 
 flowsRouter.get("/", async (_req: Request, res: Response) => {

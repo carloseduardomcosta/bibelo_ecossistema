@@ -1547,3 +1547,131 @@ export async function checkProductInterest(): Promise<number> {
   }
   return triggered;
 }
+
+// ══════════════════════════════════════════════════════════════════
+// LEMBRETE DE VERIFICAÇÃO — leads que não confirmaram o email
+// ══════════════════════════════════════════════════════════════════
+
+import { gerarLinkVerificacao } from "../routes/leads";
+
+/**
+ * Verifica leads não confirmados e reenvia email de verificação.
+ * Máx 2 lembretes: 1º após 3h, 2º após 24h.
+ */
+export async function checkUnverifiedLeads(): Promise<number> {
+  const leads = await query<{
+    id: string;
+    email: string;
+    nome: string | null;
+    cupom: string | null;
+    lembretes_enviados: number;
+    criado_em: string;
+  }>(
+    `SELECT id, email, nome, cupom, lembretes_enviados, criado_em
+     FROM marketing.leads
+     WHERE email_verificado = false
+       AND lembretes_enviados < 2
+       AND (
+         (lembretes_enviados = 0 AND criado_em < NOW() - INTERVAL '3 hours')
+         OR
+         (lembretes_enviados = 1 AND ultimo_lembrete_em < NOW() - INTERVAL '24 hours')
+       )
+     ORDER BY criado_em ASC
+     LIMIT 10`
+  );
+
+  if (!leads.length) return 0;
+
+  let enviados = 0;
+
+  for (const lead of leads) {
+    try {
+      const link = gerarLinkVerificacao(lead.email);
+      const nomeDisplay = escHtml((lead.nome || "Cliente").replace(/[<>"'&]/g, ""));
+      const isClube = lead.cupom === "CLUBEBIBELO";
+      const isSegundo = lead.lembretes_enviados === 1;
+
+      const subject = isSegundo
+        ? `⏰ ${nomeDisplay}, seu ${isClube ? "frete grátis" : "cupom"} vai expirar!`
+        : `💌 ${nomeDisplay}, você esqueceu de confirmar seu ${isClube ? "frete grátis" : "cupom"}!`;
+
+      const urgencia = isSegundo
+        ? "Este é nosso <strong>último lembrete</strong> — não queremos que você perca essa oportunidade!"
+        : "Notamos que você ainda não confirmou seu e-mail. Falta só um clique!";
+
+      await sendEmail({
+        to: lead.email,
+        subject,
+        html: `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{font-family:Jost,'Segoe UI',Arial,sans-serif;}</style>
+</head>
+<body style="margin:0;padding:0;background:#ffe5ec;">
+<div style="max-width:600px;margin:0 auto;padding:20px 10px;">
+  <div style="background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 20px 60px rgba(254,104,196,0.15);">
+    <div style="background:linear-gradient(160deg,#ffe5ec 0%,#fff7c1 50%,#ffe5ec 100%);padding:32px 30px;text-align:center;position:relative;overflow:hidden;">
+      <div style="position:absolute;top:-20px;right:-20px;width:80px;height:80px;background:rgba(254,104,196,0.06);border-radius:50%;"></div>
+      <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" width="52" height="52" style="width:52px;height:52px;border-radius:50%;border:2px solid rgba(254,104,196,0.3);margin-bottom:12px;" />
+      ${isSegundo ? '<div style="background:#ff6b6b;color:#fff;display:inline-block;padding:5px 16px;border-radius:50px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">ÚLTIMO LEMBRETE</div>' : '<div style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:5px 16px;border-radius:50px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">LEMBRETE</div>'}
+      <h1 style="color:#2d2d2d;margin:0 0 6px;font-size:26px;font-weight:600;font-family:Cormorant Garamond,Georgia,serif;line-height:1.2;">${isSegundo ? "Última chance!" : "Ainda dá tempo!"}</h1>
+      <p style="color:#999;margin:0;font-size:13px;">Seu ${isClube ? "frete grátis está esperando" : "cupom está esperando"}</p>
+    </div>
+    <div style="height:3px;background:linear-gradient(90deg,#fe68c4,#f472b6,#fe68c4);"></div>
+    <div style="padding:32px 30px;text-align:center;">
+      <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 8px;">
+        Oi, <strong style="color:#fe68c4;">${nomeDisplay}</strong>! 👋
+      </p>
+      <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 24px;">
+        ${urgencia}
+      </p>
+      ${isClube ? `
+      <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:12px;padding:16px 20px;margin:0 0 24px;text-align:left;">
+        <p style="margin:0 0 6px;font-size:13px;color:#555;">🚚 Frete grátis acima de R$79</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#555;">🎁 Mimo surpresa em toda compra</p>
+        <p style="margin:0;font-size:13px;color:#555;">✨ Novidades antes de todo mundo</p>
+      </div>` : ''}
+      <a href="${link}" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:16px 44px;border-radius:50px;text-decoration:none;font-weight:600;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
+        Confirmar agora →
+      </a>
+      <p style="color:#aaa;font-size:12px;margin:20px 0 0;">
+        Se você não se cadastrou na Papelaria Bibelô, ignore este e-mail.
+      </p>
+    </div>
+    <div style="padding:14px 30px;background:#fafafa;text-align:center;border-top:1px solid #ffe5ec;">
+      <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibelô · <span style="color:#fe68c4;">papelariabibelo.com.br</span></p>
+    </div>
+  </div>
+</div>
+</body>
+</html>`,
+        tags: [{ name: "type", value: "lead_reminder" }],
+      });
+
+      await query(
+        `UPDATE marketing.leads
+         SET lembretes_enviados = lembretes_enviados + 1,
+             ultimo_lembrete_em = NOW()
+         WHERE id = $1`,
+        [lead.id]
+      );
+
+      enviados++;
+      logger.info("Lembrete de verificação enviado", {
+        email: lead.email,
+        lembrete: lead.lembretes_enviados + 1,
+        leadId: lead.id,
+      });
+    } catch (err) {
+      logger.warn("Falha ao enviar lembrete de verificação", {
+        email: lead.email,
+        error: String(err),
+      });
+    }
+  }
+
+  if (enviados > 0) {
+    logger.info("Lembretes de verificação enviados", { total: leads.length, enviados });
+  }
+  return enviados;
+}

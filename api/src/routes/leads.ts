@@ -83,7 +83,7 @@ function gerarTokenVerificacao(email: string): string {
     .digest("hex");
 }
 
-function gerarLinkVerificacao(email: string): string {
+export function gerarLinkVerificacao(email: string): string {
   const token = gerarTokenVerificacao(email);
   const base = process.env.WEBHOOK_URL || "https://webhook.papelariabibelo.com.br";
   return `${base}/api/leads/confirm?email=${encodeURIComponent(email)}&token=${token}`;

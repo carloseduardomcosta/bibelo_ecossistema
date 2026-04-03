@@ -710,6 +710,26 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
   const [filter, setFilter] = useState<'todos' | 'ativos' | 'inativos'>('todos');
   const [confirmToggle, setConfirmToggle] = useState<string | null>(null);
   const [expandedExec, setExpandedExec] = useState<string | null>(null);
+  const [showReminders, setShowReminders] = useState(false);
+  const [reminderStats, setReminderStats] = useState<{
+    pendentes: number; lembrete_1_enviado: number; lembrete_2_enviado: number;
+    verificados_total: number; leads_total: number;
+    pendentes_lista: Array<{ id: string; nome: string; email: string; cupom: string | null; lembretes_enviados: number; ultimo_lembrete_em: string | null; criado_em: string }>;
+  } | null>(null);
+  const [showReminderPreview, setShowReminderPreview] = useState(false);
+
+  useEffect(() => {
+    api.get('/flows/stats/reminders').then(({ data }) => {
+      setReminderStats({
+        pendentes: Number(data.pendentes_count ?? data.pendentes?.length ?? 0),
+        lembrete_1_enviado: Number(data.lembrete_1_enviado ?? 0),
+        lembrete_2_enviado: Number(data.lembrete_2_enviado ?? 0),
+        verificados_total: Number(data.verificados_total ?? 0),
+        leads_total: Number(data.leads_total ?? 0),
+        pendentes_lista: data.pendentes || [],
+      });
+    }).catch(() => {});
+  }, []);
   const [stepExecs, setStepExecs] = useState<StepExecution[]>([]);
   const [loadingSteps, setLoadingSteps] = useState(false);
 
@@ -811,9 +831,42 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
             </div>
           </div>
         ))}
+
+        {/* Card: Lembrete de Verificação (automação do sistema) */}
+        <div
+          className={`p-4 rounded-xl border transition-all cursor-pointer mt-3 ${
+            showReminders
+              ? 'border-amber-400/60 bg-amber-400/5'
+              : 'border-bibelo-border bg-bibelo-card hover:border-amber-400/30'
+          }`}
+          onClick={() => { setShowReminders(!showReminders); onFlowClick(''); }}
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🔔</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-bibelo-text">Lembrete de verificação</p>
+              <p className="text-xs text-bibelo-muted">Automação do sistema</p>
+            </div>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-400/10 text-emerald-400 font-medium">Ativo</span>
+          </div>
+          <div className="flex items-center gap-1.5 mt-3">
+            <span className="text-xs px-2 py-0.5 bg-bibelo-bg rounded-md text-bibelo-muted">📧 3h</span>
+            <ChevronRight size={10} className="text-bibelo-muted/40" />
+            <span className="text-xs px-2 py-0.5 bg-bibelo-bg rounded-md text-bibelo-muted">⏳ 24h</span>
+            <ChevronRight size={10} className="text-bibelo-muted/40" />
+            <span className="text-xs px-2 py-0.5 bg-bibelo-bg rounded-md text-bibelo-muted">📧 último</span>
+          </div>
+          {reminderStats && (
+            <div className="flex items-center gap-3 mt-2 text-[10px] text-bibelo-muted">
+              <span className="text-amber-400">{reminderStats.pendentes_lista.length} pendentes</span>
+              <span className="text-blue-400">{reminderStats.lembrete_1_enviado} lembrete 1</span>
+              <span className="text-emerald-400">{reminderStats.verificados_total} verificados</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Detalhe do fluxo */}
+      {/* Detalhe do fluxo OU preview de lembretes */}
       <div className="lg:col-span-2">
         {selected ? (
           <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
@@ -960,6 +1013,172 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        ) : showReminders && reminderStats ? (
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-2xl">🔔</span>
+              <div>
+                <h3 className="text-lg font-semibold text-bibelo-text">Lembrete de verificação</h3>
+                <p className="text-sm text-bibelo-muted">Reenvia email de confirmação para leads que esqueceram de verificar</p>
+              </div>
+              <span className="ml-auto text-xs px-3 py-1 rounded-full font-medium bg-emerald-400/10 text-emerald-400">Ativo</span>
+            </div>
+
+            {/* Timeline visual do fluxo */}
+            <div className="mb-6 p-4 bg-bibelo-bg rounded-xl">
+              <div className="flex flex-col items-center gap-0">
+                {/* Trigger */}
+                <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-full">
+                  <span className="text-sm">🎯</span>
+                  <span className="text-xs font-medium text-emerald-400">Lead capturado (sem verificação)</span>
+                </div>
+                <div className="w-px h-6 bg-bibelo-border"></div>
+
+                {/* Step 1: Espera 3h */}
+                <div className="w-full max-w-sm p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
+                  <span className="text-lg">⏳</span>
+                  <p className="text-xs font-medium text-amber-400 mt-1">Aguarda 3 horas</p>
+                  <p className="text-[10px] text-bibelo-muted">Tempo para o lead verificar sozinho</p>
+                </div>
+                <div className="w-px h-6 bg-bibelo-border"></div>
+
+                {/* Step 2: Email lembrete 1 */}
+                <div className="w-full max-w-sm p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl text-center">
+                  <span className="text-lg">📧</span>
+                  <p className="text-xs font-medium text-blue-400 mt-1">1º Lembrete</p>
+                  <p className="text-[10px] text-bibelo-muted">"Você esqueceu de confirmar seu frete grátis!"</p>
+                </div>
+                <div className="w-px h-6 bg-bibelo-border"></div>
+
+                {/* Step 3: Espera 24h */}
+                <div className="w-full max-w-sm p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
+                  <span className="text-lg">⏳</span>
+                  <p className="text-xs font-medium text-amber-400 mt-1">Aguarda 24 horas</p>
+                  <p className="text-[10px] text-bibelo-muted">Última chance antes do 2º lembrete</p>
+                </div>
+                <div className="w-px h-6 bg-bibelo-border"></div>
+
+                {/* Step 4: Email lembrete 2 */}
+                <div className="w-full max-w-sm p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-center">
+                  <span className="text-lg">📧</span>
+                  <p className="text-xs font-medium text-red-400 mt-1">2º Lembrete (último)</p>
+                  <p className="text-[10px] text-bibelo-muted">"Última chance! Seu frete grátis vai expirar!"</p>
+                </div>
+                <div className="w-px h-6 bg-bibelo-border"></div>
+
+                {/* Fim */}
+                <div className="flex items-center gap-2 px-4 py-2 bg-bibelo-border/50 rounded-full">
+                  <span className="text-xs font-medium text-bibelo-muted">FIM — máx 2 lembretes</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-4 gap-3 mb-6">
+              <div className="text-center p-3 bg-bibelo-bg rounded-xl">
+                <p className="text-xl font-bold text-amber-400">{reminderStats.pendentes_lista.length}</p>
+                <p className="text-xs text-bibelo-muted">Pendentes</p>
+              </div>
+              <div className="text-center p-3 bg-bibelo-bg rounded-xl">
+                <p className="text-xl font-bold text-blue-400">{reminderStats.lembrete_1_enviado}</p>
+                <p className="text-xs text-bibelo-muted">1º lembrete</p>
+              </div>
+              <div className="text-center p-3 bg-bibelo-bg rounded-xl">
+                <p className="text-xl font-bold text-red-400">{reminderStats.lembrete_2_enviado}</p>
+                <p className="text-xs text-bibelo-muted">2º lembrete</p>
+              </div>
+              <div className="text-center p-3 bg-bibelo-bg rounded-xl">
+                <p className="text-xl font-bold text-emerald-400">{reminderStats.verificados_total}</p>
+                <p className="text-xs text-bibelo-muted">Verificados</p>
+              </div>
+            </div>
+
+            {/* Preview do email */}
+            <div className="mb-6">
+              <button
+                onClick={() => setShowReminderPreview(!showReminderPreview)}
+                className="flex items-center gap-2 text-sm text-bibelo-primary hover:underline mb-3"
+              >
+                <Mail size={14} />
+                {showReminderPreview ? 'Ocultar preview do email' : 'Ver preview do email de lembrete'}
+              </button>
+              {showReminderPreview && (
+                <div className="rounded-xl overflow-hidden border border-bibelo-border">
+                  <iframe
+                    srcDoc={`<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{font-family:Jost,'Segoe UI',Arial,sans-serif;}</style>
+</head>
+<body style="margin:0;padding:0;background:#ffe5ec;">
+<div style="max-width:600px;margin:0 auto;padding:20px 10px;">
+  <div style="background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 20px 60px rgba(254,104,196,0.15);">
+    <div style="background:linear-gradient(160deg,#ffe5ec 0%,#fff7c1 50%,#ffe5ec 100%);padding:32px 30px;text-align:center;position:relative;overflow:hidden;">
+      <div style="position:absolute;top:-20px;right:-20px;width:80px;height:80px;background:rgba(254,104,196,0.06);border-radius:50%;"></div>
+      <div style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:5px 16px;border-radius:50px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">LEMBRETE</div>
+      <h1 style="color:#2d2d2d;margin:0 0 6px;font-size:26px;font-weight:600;font-family:Cormorant Garamond,Georgia,serif;line-height:1.2;">Ainda d&aacute; tempo!</h1>
+      <p style="color:#999;margin:0;font-size:13px;">Seu frete gr&aacute;tis est&aacute; esperando</p>
+    </div>
+    <div style="height:3px;background:linear-gradient(90deg,#fe68c4,#f472b6,#fe68c4);"></div>
+    <div style="padding:32px 30px;text-align:center;">
+      <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 8px;">
+        Oi, <strong style="color:#fe68c4;">Maria</strong>! &#x1F44B;
+      </p>
+      <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 24px;">
+        Notamos que voc&ecirc; ainda n&atilde;o confirmou seu e-mail. Falta s&oacute; um clique!
+      </p>
+      <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:12px;padding:16px 20px;margin:0 0 24px;text-align:left;">
+        <p style="margin:0 0 6px;font-size:13px;color:#555;">&#x1F69A; Frete gr&aacute;tis acima de R$79</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#555;">&#x1F381; Mimo surpresa em toda compra</p>
+        <p style="margin:0;font-size:13px;color:#555;">&#x2728; Novidades antes de todo mundo</p>
+      </div>
+      <a href="#" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:16px 44px;border-radius:50px;text-decoration:none;font-weight:600;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
+        Confirmar agora &#x2192;
+      </a>
+      <p style="color:#aaa;font-size:12px;margin:20px 0 0;">
+        Se voc&ecirc; n&atilde;o se cadastrou na Papelaria Bibel&ocirc;, ignore este e-mail.
+      </p>
+    </div>
+    <div style="padding:14px 30px;background:#fafafa;text-align:center;border-top:1px solid #ffe5ec;">
+      <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibel&ocirc; &middot; <span style="color:#fe68c4;">papelariabibelo.com.br</span></p>
+    </div>
+  </div>
+</div>
+</body>
+</html>`}
+                    className="w-full border-0"
+                    style={{ height: '520px' }}
+                    title="Preview email lembrete"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Leads pendentes */}
+            {reminderStats.pendentes_lista.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-bibelo-text mb-3">Leads aguardando verificação</h4>
+                <div className="space-y-2">
+                  {reminderStats.pendentes_lista.map(l => (
+                    <div key={l.id} className="flex items-center gap-3 p-3 bg-bibelo-bg rounded-xl">
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${l.lembretes_enviados >= 2 ? 'bg-red-400' : l.lembretes_enviados >= 1 ? 'bg-amber-400' : 'bg-bibelo-muted/40'}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-bibelo-text truncate">{l.nome || l.email}</p>
+                        <p className="text-xs text-bibelo-muted truncate">{l.email}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-[10px] text-bibelo-muted">
+                          {l.lembretes_enviados === 0 ? 'Sem lembrete' : `${l.lembretes_enviados} lembrete${l.lembretes_enviados > 1 ? 's' : ''}`}
+                        </p>
+                        <p className="text-[10px] text-bibelo-muted">{timeAgo(l.criado_em)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
