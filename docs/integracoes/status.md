@@ -30,7 +30,7 @@
 | Geolocalização | ✅ produção | geoip-lite (MaxMind offline), IP real → cidade/estado/país |
 | Score de Leads | ✅ produção | engajamento (popup +15, views +3, cart +10, emails +3) |
 | UTM Tracking | ✅ produção | captura utm_source/medium/campaign, persiste cookie 30d |
-| Página de Links | ✅ produção | menu.papelariabibelo.com.br — substitui Linktree |
+| Página de Links | ✅ produção | boasvindas.papelariabibelo.com.br — substitui Linktree |
 | Segurança (Pentest) | ✅ produção | 15 fixes: SQL injection, CSRF, XSS, HMAC, CSP/HSTS |
 | Testes Automatizados | ✅ produção | Vitest + Supertest, 30 testes integração |
 | Google Reviews | ✅ produção | Places API (New), cache DB 6h, widget JS NuvemShop via GTM |

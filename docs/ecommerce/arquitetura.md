@@ -388,7 +388,7 @@ api.papelariabibelo.com.br   A    <IP_VPS>   (Medusa API)
 crm.papelariabibelo.com.br   A    <IP_VPS>   (BibelôCRM)
 chat.papelariabibelo.com.br  A    <IP_VPS>   (Chatwoot)
 webhook.papelariabibelo.com.br A  <IP_VPS>   (Webhooks Bling/MP)
-menu.papelariabibelo.com.br  A    <IP_VPS>   (Página de links)
+boasvindas.papelariabibelo.com.br  A    <IP_VPS>   (Página de links)
 ```
 
 ---

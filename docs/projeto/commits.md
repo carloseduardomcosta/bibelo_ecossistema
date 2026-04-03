@@ -80,7 +80,7 @@ Para histórico completo e atualizado, usar `git log --oneline`.
 - d0d565c feat: página de links própria (substitui Linktree) + UTM tracking completo
 - 3a28546 feat: novo design página de links — Nunito, banner loja, animações, formulário
 - 85b27c1 fix: página de links — remove cupom, visual padrão templates Bibelô, Timbó/SC
-- 262ba1e feat: menu.papelariabibelo.com.br — subdomínio dedicado para página de links
+- 262ba1e feat: boasvindas.papelariabibelo.com.br — subdomínio dedicado para página de links
 - dfe57ec fix: logo usa path relativo na página de links
 - 13850e7 feat: formulário de cadastro no menu + bio atualizada
 - 012e928 feat: pagina Pedidos — lista completa de compras Bling com filtros e detalhe
@@ -307,7 +307,7 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Coluna nuvemshop_orders.cupom — webhook salva qual cupom foi usado no pedido
   - Senha temporária NuvemShop: gera BibXXXXX! ao criar conta, inclui no email de boas-vindas + página de confirmação + link recuperação
   - Proxy de imagens nos fluxos: proxyImageUrl() agora aplicado em emails de fluxos (antes só campanhas). Cache de 7d → 30d.
-  - Link grupo VIP (menu.papelariabibelo.com.br/api/links/go/grupo-vip) integrado em: popup sucesso, página confirmação, 5 templates
+  - Link grupo VIP (boasvindas.papelariabibelo.com.br/api/links/go/grupo-vip) integrado em: popup sucesso, página confirmação, 5 templates
   - Padronização de 21 templates: logo, Cormorant Garamond título, gradiente header, divisor. "Clube Bibelô" só no lead boas-vindas.
   - CTAs atualizados para /novidades em 5 templates + página de confirmação
   - 6 novos templates: Carrinho reenvio, Cupom recuperação carrinho, Lead FOMO grupo VIP, Lead convite VIP, Lead cupom exclusivo, Reativação cupom

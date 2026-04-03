@@ -152,7 +152,7 @@ Referência completa de todos os endpoints.
 - `POST /api/flows/:id/toggle` — ativar/desativar
 - `GET  /api/flows/:id/executions/:execId` — detalhe execução + steps
 
-### Página de Links — menu.papelariabibelo.com.br (público)
+### Página de Links — boasvindas.papelariabibelo.com.br (público)
 - `GET  /` — página HTML com links da Bibelô (Nginx rewrite → /api/links/page)
 - `GET  /api/links/go/:slug` — redirect com tracking de clique + UTM automático
 - `GET  /api/links/formulario` — formulário de cadastro (nome, email, WhatsApp)

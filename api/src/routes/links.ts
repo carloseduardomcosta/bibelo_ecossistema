@@ -155,7 +155,7 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
   <meta name="description" content="Papelaria Bibelô — Loja On-line, WhatsApp, Clube VIP e mais">
   <meta property="og:title" content="Papelaria Bibelô">
   <meta property="og:description" content="Papelaria Bibelô — Loja On-line, WhatsApp, Clube VIP e mais">
-  <meta property="og:image" content="https://menu.papelariabibelo.com.br/logo.png">
+  <meta property="og:image" content="https://boasvindas.papelariabibelo.com.br/logo.png">
   <meta property="og:type" content="website">
   <link rel="icon" href="/logo.png">
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -850,7 +850,7 @@ linksRouter.post("/lead", limiter, async (req: Request, res: Response) => {
       <p style="font-size:15px;color:#333;margin:0 0 12px;"><strong>Nome:</strong> ${nomeClean}</p>
       <p style="font-size:15px;color:#333;margin:0 0 12px;"><strong>Email:</strong> ${email}</p>
       <p style="font-size:15px;color:#333;margin:0 0 12px;"><strong>WhatsApp:</strong> ${(telefone || "Não informado").replace(/[<>"'&]/g, "")}</p>
-      <p style="font-size:13px;color:#999;margin:16px 0 0;">Fonte: formulário do menu (menu.papelariabibelo.com.br)</p>
+      <p style="font-size:13px;color:#999;margin:16px 0 0;">Fonte: formulário do menu (boasvindas.papelariabibelo.com.br)</p>
     </div>
   </div>
 </body></html>`,
@@ -1112,7 +1112,7 @@ linksRouter.post("/grupo-vip", limiter, async (req: Request, res: Response) => {
     <div style="padding:24px;">
       <p style="font-size:15px;color:#333;margin:0 0 12px;"><strong>Nome:</strong> ${nome}</p>
       <p style="font-size:15px;color:#333;margin:0 0 12px;"><strong>Email:</strong> ${email}</p>
-      <p style="font-size:13px;color:#999;margin:16px 0 0;">Via formulário do Clube VIP (menu.papelariabibelo.com.br)</p>
+      <p style="font-size:13px;color:#999;margin:16px 0 0;">Via formulário do Clube VIP (boasvindas.papelariabibelo.com.br)</p>
     </div>
   </div>
 </body></html>`,
@@ -1434,7 +1434,7 @@ linksRouter.post("/parcerias", limiter, async (req: Request, res: Response) => {
       ${telefone ? `<p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Telefone:</strong> ${telefone}</p>` : ""}
       <p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Email:</strong> <a href="mailto:${email}" style="color:#3b82f6;">${email}</a></p>
       ${msgClean ? `<div style="margin:16px 0 0;padding:14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;"><p style="font-size:12px;color:#64748b;margin:0 0 6px;font-weight:700;">MENSAGEM:</p><p style="font-size:14px;color:#334155;margin:0;line-height:1.5;white-space:pre-wrap;">${msgClean}</p></div>` : ""}
-      <p style="font-size:12px;color:#999;margin:16px 0 0;">Via formulário de parcerias (menu.papelariabibelo.com.br)</p>
+      <p style="font-size:12px;color:#999;margin:16px 0 0;">Via formulário de parcerias (boasvindas.papelariabibelo.com.br)</p>
     </div>
   </div>
 </body></html>`,
