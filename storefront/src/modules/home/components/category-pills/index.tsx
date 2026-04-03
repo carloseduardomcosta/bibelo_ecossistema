@@ -2,11 +2,11 @@ import LocalizedClientLink from "@modules/common/components/localized-client-lin
 import { HttpTypes } from "@medusajs/types"
 
 const HIGHLIGHT_CATEGORIES = [
-  "Canetas",
-  "Cadernos",
+  "Caneta",
+  "Caderno",
   "Lápis de Cor",
-  "Estojos",
-  "Agendas",
+  "Estojo",
+  "Agenda",
   "Post-it",
 ]
 

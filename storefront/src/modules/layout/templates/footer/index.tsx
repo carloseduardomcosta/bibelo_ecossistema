@@ -70,28 +70,22 @@ export default async function Footer() {
               Categorias
             </h3>
             <ul className="flex flex-col gap-2.5">
-              {productCategories && productCategories.slice(0, 6).map((cat) => (
-                <li key={cat.id}>
-                  <LocalizedClientLink
-                    href={`/categories/${cat.handle}`}
-                    className="text-sm text-white/60 hover:text-bibelo-pink transition-colors"
-                  >
-                    {cat.name}
-                  </LocalizedClientLink>
-                </li>
-              ))}
-              {(!productCategories || productCategories.length === 0) && (
-                ["Canetas", "Cadernos", "Agendas", "Lápis de Cor", "Post-it", "Estojos"].map((name) => (
-                  <li key={name}>
+              {(() => {
+                const preferred = ["caneta", "caderno", "lapis-de-cor", "estojo", "agenda", "post-it"]
+                const picked = productCategories
+                  ? preferred.map(h => productCategories.find(c => c.handle === h)).filter(Boolean)
+                  : []
+                return (picked.length > 0 ? picked : productCategories?.slice(0, 6) || []).map((cat: any) => (
+                  <li key={cat.id}>
                     <LocalizedClientLink
-                      href="/store"
+                      href={`/categories/${cat.handle}`}
                       className="text-sm text-white/60 hover:text-bibelo-pink transition-colors"
                     >
-                      {name}
+                      {cat.name}
                     </LocalizedClientLink>
                   </li>
                 ))
-              )}
+              })()}
             </ul>
           </div>
 

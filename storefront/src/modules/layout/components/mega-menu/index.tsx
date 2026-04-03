@@ -12,28 +12,32 @@ type MegaMenuProps = {
 const CATEGORY_GROUPS: Record<string, string[]> = {
   "Escrita": [
     "caneta", "caneta-esferografica", "caneta-gel", "caneta-hidrocor",
-    "lapis", "lapiseira", "marcador-de-linha", "liner", "marca-texto",
+    "caneta-acrilica", "lapis", "lapiseira", "grafite", "liner",
+    "marcador-de-linha", "marcador-de-texto",
   ],
   "Papelaria": [
-    "caderno", "agenda", "post-it", "bloco-de-anotacoes", "fichario", "washi-tape",
+    "caderno", "caderneta", "cadernico", "agenda", "planner",
+    "bloco-de-anotacoes", "post-it", "marcador-de-pagina",
+    "papel-de-carta", "papel-carta-pautada",
   ],
   "Organização": [
-    "estojo", "mochila", "penal", "porta-caneta", "porta-clips", "prancheta",
+    "estojo", "penal", "mochila", "porta-caneta", "porta-clips", "prancheta",
   ],
   "Escritório": [
-    "cola", "tesoura", "grampeador", "clips", "corretivo", "apontador",
-    "compasso", "regua", "fita-adesiva", "estilete", "borracha",
+    "cola", "cola-em-fita", "tesoura", "grampeador", "clips-prendedor",
+    "corretivo", "apontador", "compasso", "regua", "estilete", "borracha",
   ],
-  "Artes": [
-    "tinta", "pincel", "giz-de-cera", "lapis-de-cor", "aquarela",
+  "Artes e Cor": [
+    "lapis-de-cor",
   ],
-  "Especiais": [
-    "kit-presente", "kit-papelaria", "kit-canetas", "bobbie-goods", "mousepad",
+  "Kits e Especiais": [
+    "kit-presente", "kit-papelaria", "kit-canetas", "bobbie-goods",
+    "mousepad", "perfume-para-papel", "protetor-de-carregador-de-celular",
   ],
 }
 
 const NAV_CATEGORIES = [
-  "Canetas", "Cadernos", "Lápis de Cor", "Estojos", "Agendas", "Post-it",
+  "Caneta", "Caderno", "Lápis de Cor", "Estojo", "Agenda", "Post-it",
 ]
 
 const MegaMenu = ({ categories, collections }: MegaMenuProps) => {
@@ -55,7 +59,11 @@ const MegaMenu = ({ categories, collections }: MegaMenuProps) => {
     .filter((g) => g.items.length > 0)
 
   const groupedHandles = new Set(Object.values(CATEGORY_GROUPS).flat())
-  const ungrouped = categories.filter((c) => !groupedHandles.has(c.handle ?? ""))
+  // Categorias que são coleções/tags, não categorias de produto no menu
+  const HIDDEN_CATEGORIES = new Set(["novidade", "promocao"])
+  const ungrouped = categories.filter(
+    (c) => !groupedHandles.has(c.handle ?? "") && !HIDDEN_CATEGORIES.has(c.handle ?? "")
+  )
 
   // Calcular o top do painel baseado na posição real do botão no DOM
   const updatePanelTop = () => {
