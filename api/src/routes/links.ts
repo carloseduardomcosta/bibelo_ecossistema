@@ -44,15 +44,9 @@ const LINKS: LinkItem[] = [
   },
   {
     slug: "grupo-vip",
-    titulo: "Entrar no Grupo VIP",
-    url: "https://chat.whatsapp.com/DzOJHBZ2vECF1taXiRRv6g",
+    titulo: "Clube VIP WhatsApp",
+    url: "/api/links/grupo-vip",
     icone: "💖",
-  },
-  {
-    slug: "instagram",
-    titulo: "Siga no Instagram",
-    url: "https://www.instagram.com/papelariabibelo",
-    icone: "📸",
   },
   {
     slug: "formulario",
@@ -158,9 +152,9 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Papelaria Bibelô — Links</title>
-  <meta name="description" content="Papelaria Bibelô — Loja On-line, WhatsApp, Grupo VIP e mais">
+  <meta name="description" content="Papelaria Bibelô — Loja On-line, WhatsApp, Clube VIP e mais">
   <meta property="og:title" content="Papelaria Bibelô">
-  <meta property="og:description" content="Papelaria Bibelô — Loja On-line, WhatsApp, Grupo VIP e mais">
+  <meta property="og:description" content="Papelaria Bibelô — Loja On-line, WhatsApp, Clube VIP e mais">
   <meta property="og:image" content="https://menu.papelariabibelo.com.br/logo.png">
   <meta property="og:type" content="website">
   <link rel="icon" href="/logo.png">
@@ -249,8 +243,9 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
 
     .avatar-wrap {
       position: relative;
-      display: inline-block;
-      margin-bottom: 10px;
+      display: block;
+      margin: 0 auto 10px;
+      width: fit-content;
     }
     .avatar {
       width: 72px;
@@ -259,6 +254,7 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
       border: 4px solid var(--pink-main);
       box-shadow: 0 0 0 6px rgba(244, 63, 142, 0.15), 0 6px 20px var(--pink-glow);
       display: block;
+      margin: 0 auto;
       object-fit: cover;
       transition: transform 0.3s ease;
     }
@@ -543,13 +539,7 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
 
       <a href="/api/links/go/grupo-vip" target="_blank" rel="noopener" class="link-btn vip">
         <span class="btn-icon">💖</span>
-        <span class="btn-label">Entrar no Grupo VIP</span>
-        <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-      </a>
-
-      <a href="/api/links/go/instagram" target="_blank" rel="noopener" class="link-btn instagram">
-        <span class="btn-icon">📸</span>
-        <span class="btn-label">Siga no Instagram</span>
+        <span class="btn-label">Entrar no Clube VIP</span>
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </a>
 
@@ -632,7 +622,7 @@ linksRouter.get("/formulario", (_req: Request, res: Response) => {
     .header{background:linear-gradient(160deg,var(--yellow-soft) 0%,#ffe8f5 60%,var(--pink-light) 100%);padding:20px 20px 14px;text-align:center;border-bottom:3px solid var(--pink-main);position:relative;overflow:hidden}
     .header::before{content:'';position:absolute;width:140px;height:140px;border-radius:50%;opacity:0.18;background:var(--pink-main);top:-50px;right:-40px}
     .header::after{content:'';position:absolute;width:90px;height:90px;border-radius:50%;opacity:0.18;background:#f9a8d4;bottom:-30px;left:-20px}
-    .avatar{width:56px;height:56px;border-radius:50%;border:3px solid var(--pink-main);box-shadow:0 4px 15px var(--pink-glow);margin-bottom:8px}
+    .avatar{width:56px;height:56px;border-radius:50%;border:3px solid var(--pink-main);box-shadow:0 4px 15px var(--pink-glow);margin:0 auto 8px;display:block}
     .header h1{font-size:19px;font-weight:900;color:var(--text-dark);margin-bottom:2px}
     .header p{font-size:12px;color:var(--text-soft);font-weight:600}
     .form-body{padding:16px 20px;flex:1;display:flex;flex-direction:column;gap:12px}
@@ -840,4 +830,311 @@ linksRouter.post("/lead", limiter, async (req: Request, res: Response) => {
 
   logger.info("Lead captado via formulário do menu", { email, nome: nomeClean, telefone });
   res.json({ ok: true, mensagem: "Cadastro realizado com sucesso! Você receberá nossas novidades em breve." });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// GRUPO VIP — Página intermediária + captura + redirect ao grupo
+// ══════════════════════════════════════════════════════════════════
+
+const GRUPO_VIP_URL = "https://chat.whatsapp.com/DzOJHBZ2vECF1taXiRRv6g";
+
+// ── GET /api/links/grupo-vip — página com formulário ─────────
+
+linksRouter.get("/grupo-vip", (_req: Request, res: Response) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Content-Security-Policy",
+    "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none';"
+  );
+
+  res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Clube VIP Bibelô — Papelaria Bibelô</title>
+  <meta name="description" content="Entre no Clube VIP da Papelaria Bibelô no WhatsApp e receba novidades em primeira mão">
+  <link rel="icon" href="/logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    :root{--pink:#fe68c4;--pink-dark:#e550aa;--green:#25D366;--green-dark:#1da851;--rosa:#ffe5ec;--amarelo:#fff7c1;--dark:#2d2d2d;--mid:#6b4c6b;--soft:#a07090;--white:#fff}
+    body{font-family:'Nunito','Segoe UI',Arial,sans-serif;background:linear-gradient(160deg,#ffe0ef 0%,#fce7f3 40%,#fff0f6 100%);min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;padding:0}
+    .card{width:100%;max-width:440px;background:var(--white);border-radius:0 0 28px 28px;box-shadow:0 10px 40px rgba(254,104,196,0.15);overflow:hidden;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
+    .header{background:linear-gradient(160deg,var(--amarelo) 0%,var(--rosa) 100%);padding:24px 20px 18px;text-align:center;border-bottom:3px solid var(--pink);position:relative;overflow:hidden}
+    .header::before{content:'';position:absolute;width:120px;height:120px;border-radius:50%;opacity:0.12;background:var(--pink);top:-40px;right:-30px}
+    .avatar{width:56px;height:56px;border-radius:50%;border:3px solid var(--pink);box-shadow:0 4px 15px rgba(254,104,196,0.3);margin:0 auto 10px;display:block}
+    .badge{display:inline-block;background:linear-gradient(135deg,var(--green),var(--green-dark));color:var(--white);font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;padding:4px 14px;border-radius:20px;margin-bottom:8px}
+    .header h1{font-size:20px;font-weight:900;color:var(--dark);margin-bottom:4px}
+    .header p{font-size:12px;color:var(--soft);font-weight:600}
+    .benefits{padding:16px 20px;background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border-bottom:1px solid #d1fae5}
+    .benefits ul{list-style:none;display:flex;flex-direction:column;gap:8px}
+    .benefits li{font-size:13px;color:#166534;font-weight:600;display:flex;align-items:center;gap:8px}
+    .benefits li::before{content:'';display:none}
+    .form-body{padding:16px 20px;flex:1;display:flex;flex-direction:column;gap:12px}
+    .form-intro{font-size:13px;color:var(--mid);font-weight:600;line-height:1.4;text-align:center}
+    .field{display:flex;flex-direction:column;gap:4px}
+    .field label{font-size:11px;font-weight:800;color:var(--mid);text-transform:uppercase;letter-spacing:0.8px}
+    .field input{padding:11px 14px;border:2px solid #d1fae5;border-radius:10px;font-size:14px;font-family:'Nunito',sans-serif;font-weight:600;color:var(--dark);outline:none;transition:border-color 0.2s}
+    .field input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(37,211,102,0.1)}
+    .field input::placeholder{color:#a7c4b0;font-weight:500}
+    .submit-btn{padding:14px;border:none;border-radius:12px;background:linear-gradient(135deg,#25D366 0%,#1da851 100%);color:var(--white);font-size:15px;font-weight:900;font-family:'Nunito',sans-serif;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 15px rgba(37,211,102,0.3);margin-top:4px;display:flex;align-items:center;justify-content:center;gap:8px}
+    .submit-btn:hover{filter:brightness(1.08);transform:translateY(-2px);box-shadow:0 6px 20px rgba(37,211,102,0.35)}
+    .submit-btn:active{transform:translateY(0)}
+    .submit-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+    .msg{padding:10px 14px;border-radius:10px;font-size:13px;font-weight:700;text-align:center;display:none}
+    .msg.ok{display:block;background:#f0fff6;color:#166534;border:2px solid #bbf7d0}
+    .msg.err{display:block;background:#fff5f5;color:#991b1b;border:2px solid #fecaca}
+    .footer{background:linear-gradient(135deg,var(--amarelo),#fff5fb);padding:12px 20px;text-align:center;border-top:2px solid #fce7f3}
+    .footer p{font-size:11px;color:var(--soft);font-weight:600}
+    .footer a{color:var(--pink);text-decoration:none;font-weight:700}
+    .back-link{display:inline-flex;align-items:center;gap:6px;color:var(--pink);font-size:13px;font-weight:700;text-decoration:none;margin-top:2px}
+    .back-link:hover{text-decoration:underline}
+    @media(max-height:700px){.header{padding:16px 16px 12px}.avatar{width:44px;height:44px}.header h1{font-size:18px}.form-body{padding:12px 16px;gap:10px}.benefits{padding:12px 16px}}
+    @media(min-width:441px){body{padding:24px 16px 48px}.card{min-height:auto;border-radius:28px}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <img src="/logo.png" alt="Papelaria Bibelô" class="avatar">
+      <div class="badge">Clube VIP Bibelô</div>
+      <h1>Clube Bibelô</h1>
+      <p>Novidades e ofertas em primeira mão</p>
+    </div>
+
+    <div class="benefits">
+      <ul>
+        <li>🚚 Frete grátis em pedidos acima de R$ 79</li>
+        <li>🎁 Mimo surpresa em toda compra</li>
+        <li>✨ Lançamentos antes de todo mundo</li>
+        <li>💖 Promoções exclusivas para o clube</li>
+      </ul>
+    </div>
+
+    <form class="form-body" id="vipForm">
+      <p class="form-intro">Informe seu nome e e-mail para entrar no Clube VIP e aproveitar benefícios exclusivos!</p>
+
+      <div class="field">
+        <label for="nome">Seu nome</label>
+        <input type="text" id="nome" name="nome" placeholder="Como podemos te chamar?" required maxlength="200">
+      </div>
+
+      <div class="field">
+        <label for="email">Seu e-mail</label>
+        <input type="email" id="email" name="email" placeholder="seuemail@exemplo.com" required maxlength="200">
+      </div>
+
+      <div class="msg" id="msg"></div>
+
+      <button type="submit" class="submit-btn" id="submitBtn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492a.5.5 0 00.612.638l4.688-1.228A11.943 11.943 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-2.153 0-4.157-.655-5.816-1.776l-.405-.268-3.059.802.816-2.98-.293-.465A9.944 9.944 0 012 12C2 6.486 6.486 2 12 2s10 4.486 10 10-4.486 10-10 10z"/></svg>
+        Entrar no Clube VIP
+      </button>
+
+      <a href="/" class="back-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        Voltar ao menu
+      </a>
+    </form>
+
+    <div class="footer">
+      <p>Papelaria Bibelô &middot; <a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener">papelariabibelo.com.br</a></p>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('vipForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var btn = document.getElementById('submitBtn');
+      var msg = document.getElementById('msg');
+      btn.disabled = true;
+      btn.innerHTML = 'Entrando...';
+      msg.className = 'msg';
+      msg.style.display = 'none';
+
+      var data = {
+        nome: document.getElementById('nome').value.trim(),
+        email: document.getElementById('email').value.trim()
+      };
+
+      fetch('/api/links/grupo-vip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(res) {
+        if (res.ok) {
+          msg.className = 'msg ok';
+          msg.textContent = res.mensagem;
+          msg.style.display = 'block';
+          btn.innerHTML = 'Redirecionando...';
+          setTimeout(function() {
+            window.location.href = res.redirect;
+          }, 1500);
+        } else {
+          msg.className = 'msg err';
+          msg.textContent = res.error || 'Erro ao processar. Tente novamente.';
+          msg.style.display = 'block';
+          btn.disabled = false;
+          btn.innerHTML = 'Entrar no Clube VIP';
+        }
+      })
+      .catch(function() {
+        msg.className = 'msg err';
+        msg.textContent = 'Erro de conexão. Tente novamente.';
+        msg.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = 'Entrar no Clube VIP';
+      });
+    });
+  </script>
+</body>
+</html>`);
+});
+
+// ── POST /api/links/grupo-vip — processar entrada no Clube VIP ──
+
+const grupoVipSchema = z.object({
+  nome: z.string().min(1).max(200),
+  email: z.string().email().max(200),
+});
+
+linksRouter.post("/grupo-vip", limiter, async (req: Request, res: Response) => {
+  const parsed = grupoVipSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: "Preencha nome e e-mail corretamente." });
+    return;
+  }
+
+  const nome = parsed.data.nome.replace(/[<>"'&]/g, "");
+  const email = parsed.data.email.toLowerCase().trim();
+
+  // Verifica se já está no grupo (por email)
+  const existing = await queryOne<{ id: string }>(
+    "SELECT id FROM marketing.leads WHERE email = $1 AND fonte = 'grupo_vip'",
+    [email]
+  );
+
+  if (existing) {
+    // Já cadastrado — redireciona direto
+    res.json({
+      ok: true,
+      mensagem: "Você já está cadastrada! Redirecionando para o Clube VIP...",
+      redirect: GRUPO_VIP_URL,
+    });
+    return;
+  }
+
+  // Cria/vincula customer no CRM
+  const customer = await upsertCustomer({
+    nome,
+    email,
+    canal_origem: "grupo_vip",
+  });
+
+  // Salva lead com fonte grupo_vip
+  await query(
+    `INSERT INTO marketing.leads (email, nome, fonte, customer_id, email_verificado)
+     VALUES ($1, $2, 'grupo_vip', $3, true)
+     ON CONFLICT (email) DO UPDATE SET
+       nome = COALESCE(EXCLUDED.nome, marketing.leads.nome),
+       fonte = 'grupo_vip'`,
+    [email, nome, customer.id]
+  );
+
+  // Registra interação no CRM
+  await query(
+    `INSERT INTO crm.interactions (customer_id, tipo, canal, descricao, metadata)
+     VALUES ($1, 'grupo_vip', 'whatsapp', $2, $3)`,
+    [customer.id, `Entrou no Clube VIP Bibelô`, JSON.stringify({ nome, email })]
+  );
+
+  // Cria deal no pipeline
+  await query(
+    `INSERT INTO crm.deals (customer_id, titulo, valor, etapa, origem, probabilidade, notas)
+     VALUES ($1, $2, 0, 'prospeccao', 'grupo_vip', 30, $3)`,
+    [customer.id, `VIP: ${nome}`, `Clube VIP Bibelô. Email: ${email}`]
+  );
+
+  // Registra clique no tracking de links
+  const ip = getRealIp(req);
+  const geo = resolveGeo(ip);
+  query(
+    `INSERT INTO marketing.link_clicks (slug, ip, geo_city, geo_region, geo_country, user_agent, referer)
+     VALUES ('grupo-vip-join', $1, $2, $3, $4, $5, $6)`,
+    [geo?.ip || null, geo?.city || null, geo?.region || null, geo?.country || null,
+     (req.headers["user-agent"] || "").slice(0, 500), (req.headers["referer"] || "").slice(0, 500)]
+  ).catch(() => {});
+
+  // Email de notificação para o admin
+  sendEmail({
+    to: "contato@papelariabibelo.com.br",
+    subject: `💖 Nova membro VIP: ${nome}`,
+    html: `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f5f0f2;font-family:'Segoe UI',Arial,sans-serif;">
+  <div style="max-width:500px;margin:20px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
+    <div style="background:linear-gradient(135deg,#25D366,#1da851);padding:24px;text-align:center;">
+      <p style="color:#fff;font-size:20px;font-weight:700;margin:0;">Nova membro no Clube VIP!</p>
+    </div>
+    <div style="padding:24px;">
+      <p style="font-size:15px;color:#333;margin:0 0 12px;"><strong>Nome:</strong> ${nome}</p>
+      <p style="font-size:15px;color:#333;margin:0 0 12px;"><strong>Email:</strong> ${email}</p>
+      <p style="font-size:13px;color:#999;margin:16px 0 0;">Via formulário do Clube VIP (menu.papelariabibelo.com.br)</p>
+    </div>
+  </div>
+</body></html>`,
+    tags: [{ name: "type", value: "vip_notification" }],
+  }).catch(err => {
+    logger.warn("Falha ao notificar novo membro VIP", { nome, error: String(err) });
+  });
+
+  // Email de boas-vindas para a membro (se tem email)
+  if (email) {
+    sendEmail({
+      to: email,
+      subject: `💖 Bem-vinda ao Clube VIP Bibelô, ${nome}!`,
+      html: `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><style>*{font-family:Jost,'Segoe UI',Arial,sans-serif;}</style></head>
+<body style="margin:0;padding:0;background:#ffe5ec;">
+<div style="max-width:600px;margin:0 auto;padding:20px 10px;">
+  <div style="background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 20px 60px rgba(254,104,196,0.15);">
+    <div style="background:linear-gradient(160deg,#ffe5ec 0%,#fff7c1 50%,#ffe5ec 100%);padding:32px 30px;text-align:center;">
+      <div style="background:linear-gradient(135deg,#25D366,#1da851);color:#fff;display:inline-block;padding:5px 16px;border-radius:50px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">CLUBE VIP</div>
+      <h1 style="color:#2d2d2d;margin:0 0 6px;font-size:26px;font-weight:600;font-family:Cormorant Garamond,Georgia,serif;">Bem-vinda ao Clube!</h1>
+    </div>
+    <div style="height:3px;background:linear-gradient(90deg,#25D366,#1da851,#25D366);"></div>
+    <div style="padding:32px 30px;text-align:center;">
+      <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 20px;">
+        Oi, <strong style="color:#fe68c4;">${nome}</strong>! Que bom ter voc&ecirc; no nosso Clube VIP!
+      </p>
+      <div style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border-radius:12px;padding:16px 20px;margin:0 0 24px;text-align:left;">
+        <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x1F69A; Frete gr&aacute;tis acima de R$79</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x1F381; Mimo surpresa em toda compra</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x2728; Lan&ccedil;amentos antes de todo mundo</p>
+        <p style="margin:0;font-size:13px;color:#166534;">&#x1F496; Promo&ccedil;&otilde;es exclusivas para o clube</p>
+      </div>
+      <a href="https://www.papelariabibelo.com.br/?utm_source=email&amp;utm_medium=vip&amp;utm_campaign=boas_vindas" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:14px 40px;border-radius:50px;text-decoration:none;font-weight:600;font-size:15px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
+        Conferir novidades
+      </a>
+    </div>
+    <div style="padding:14px 30px;background:#fafafa;text-align:center;border-top:1px solid #ffe5ec;">
+      <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibel&ocirc; &middot; <span style="color:#fe68c4;">papelariabibelo.com.br</span></p>
+    </div>
+  </div>
+</div>
+</body></html>`,
+      tags: [{ name: "type", value: "vip_welcome" }],
+    }).catch(err => {
+      logger.warn("Falha ao enviar boas-vindas VIP", { email, error: String(err) });
+    });
+  }
+
+  logger.info("Nova membro no Clube VIP", { nome, email, customerId: customer.id });
+
+  res.json({
+    ok: true,
+    mensagem: "Cadastro realizado! Redirecionando para o Clube VIP...",
+    redirect: GRUPO_VIP_URL,
+  });
 });
