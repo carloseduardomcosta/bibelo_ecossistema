@@ -513,7 +513,7 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
       </a>
       <h1 class="nome">Papelaria Bibelô</h1>
       <p class="boas-vindas">Curadoria especial em papelaria</p>
-      <p class="bio">Timbó/SC &middot; Loja física + online</p>
+      <p class="bio">Timbó/SC &middot; Entregamos para todo o Brasil</p>
     </div>
 
     <!-- BANNER LOJA -->
