@@ -57,8 +57,8 @@ const ImageOrPlaceholder = ({
       alt={productTitle || "Produto"}
       className="absolute inset-0 object-cover object-center"
       draggable={false}
-      quality={90}
-      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+      quality={95}
+      sizes="(max-width: 640px) 290px, (max-width: 1024px) 440px, 540px"
       fill
     />
   ) : (

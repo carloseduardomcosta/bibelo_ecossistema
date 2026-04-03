@@ -20,11 +20,12 @@ const ImageGallery = ({ images }: ImageGalleryProps) => {
               {!!image.url && (
                 <Image
                   src={image.url}
-                  priority={index <= 2 ? true : false}
+                  priority={index <= 2}
                   className="absolute inset-0 rounded-rounded"
-                  alt={`Product image ${index + 1}`}
+                  alt={`Imagem do produto ${index + 1}`}
                   fill
-                  sizes="(max-width: 576px) 280px, (max-width: 768px) 360px, (max-width: 992px) 480px, 800px"
+                  quality={95}
+                  sizes="(max-width: 576px) 100vw, (max-width: 992px) 60vw, 800px"
                   style={{
                     objectFit: "cover",
                   }}
