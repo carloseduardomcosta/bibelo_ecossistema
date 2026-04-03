@@ -19,11 +19,13 @@ const UserIcon = () => (
 const AccountDropdown = ({ customer }: AccountDropdownProps) => {
   return (
     <Popover className="relative h-full flex items-center">
-      <PopoverButton className="h-full flex items-center gap-x-1.5 text-bibelo-dark hover:text-bibelo-pink transition-colors outline-none">
-        <UserIcon />
-        <span className="hidden medium:inline text-sm">
-          {customer ? customer.first_name : "Entrar"}
-        </span>
+      <PopoverButton className="h-full flex items-center outline-none">
+        <div className="flex flex-col items-center gap-y-0.5 px-3 py-1.5 rounded-lg text-bibelo-dark/70 hover:text-bibelo-pink hover:bg-bibelo-rosa/30 transition-colors">
+          <UserIcon />
+          <span className="text-[10px] font-medium leading-none hidden small:block">
+            {customer ? customer.first_name : "Minha conta"}
+          </span>
+        </div>
       </PopoverButton>
 
       <Transition
