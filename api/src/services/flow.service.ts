@@ -668,6 +668,7 @@ async function executeEmailStep(
     prazo: String(metadata.prazo || ""),
     cupom: cupomFinal,
     produto: String(metadata.resource_nome || ""),
+    unsub_link: gerarLinkDescadastro(customer.email),
   };
   // URLs e valores numéricos não precisam escape; nomes e textos sim
   const htmlSafeKeys = new Set(["nome", "email", "produto", "itens"]);
