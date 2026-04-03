@@ -41,6 +41,13 @@ interface SendEmailParams {
 }
 
 export async function sendEmail(params: SendEmailParams): Promise<{ id: string } | null> {
+  // Mock em ambiente de teste — não consome cota do Resend
+  if (process.env.VITEST === "true" || process.env.MOCK_EMAIL === "true") {
+    const fakeId = `mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    logger.info("Email enviado via Resend", { id: fakeId, to: params.to, subject: params.subject });
+    return { id: fakeId };
+  }
+
   const client = getClient();
   if (!client) {
     logger.warn("Resend não configurado — email não enviado", { to: params.to, subject: params.subject });
