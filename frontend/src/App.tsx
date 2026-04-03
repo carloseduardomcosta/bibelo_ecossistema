@@ -28,6 +28,7 @@ import MarketingPage from './pages/Marketing';
 import Briefing from './pages/Briefing';
 import NovaCampanha from './pages/NovaCampanha';
 import EditorImagens from './pages/EditorImagens';
+import ConsumoEmail from './pages/ConsumoEmail';
 import { ToastProvider } from './components/Toast';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
@@ -91,6 +92,7 @@ export default function App() {
               <Route path="/nf-entrada" element={<NfEntrada />} />
               <Route path="/briefing" element={<Briefing />} />
               <Route path="/editor-imagens" element={<EditorImagens />} />
+              <Route path="/consumo-email" element={<ConsumoEmail />} />
               <Route path="/sync" element={<Sync />} />
             </Route>
           </Routes>

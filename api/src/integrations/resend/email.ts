@@ -2,13 +2,21 @@ import { Resend } from "resend";
 import { queryOne, query } from "../../db";
 import { logger } from "../../utils/logger";
 import { gerarLinkDescadastro } from "../../routes/email";
+import { sesSendEmail, isSesConfigured } from "../ses/client";
 
 // ── Sanitização HTML (anti-XSS em templates de email) ──────────
 function escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-// ── Client (inicializa só se tiver API key, cached) ─────────────
+// ── Provider ativo (ses ou resend) ──────────────────────────────
+export function getEmailProvider(): "ses" | "resend" {
+  const provider = (process.env.EMAIL_PROVIDER || "resend").toLowerCase();
+  if (provider === "ses" && isSesConfigured()) return "ses";
+  return "resend";
+}
+
+// ── Client Resend (inicializa só se tiver API key, cached) ──────
 
 let cachedClient: Resend | null = null;
 
@@ -22,14 +30,20 @@ function getClient(): Resend | null {
   return cachedClient;
 }
 
-// ── Verificar se o Resend está configurado ──────────────────────
+// ── Verificar se algum provider de email está configurado ───────
 
-export function isResendConfigured(): boolean {
+export function isEmailConfigured(): boolean {
+  if (getEmailProvider() === "ses") return isSesConfigured();
   const key = process.env.RESEND_API_KEY;
   return !!key && key !== "PREENCHER";
 }
 
-// ── Enviar email individual ─────────────────────────────────────
+/** @deprecated Usar isEmailConfigured() */
+export function isResendConfigured(): boolean {
+  return isEmailConfigured();
+}
+
+// ── Enviar email individual (dual provider: SES ou Resend) ──────
 
 interface SendEmailParams {
   to: string;
@@ -41,25 +55,46 @@ interface SendEmailParams {
 }
 
 export async function sendEmail(params: SendEmailParams): Promise<{ id: string } | null> {
-  // Mock em ambiente de teste — não consome cota do Resend
+  // Mock em ambiente de teste
   if (process.env.VITEST === "true" || process.env.MOCK_EMAIL === "true") {
     const fakeId = `mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    logger.info("Email enviado via Resend", { id: fakeId, to: params.to, subject: params.subject });
+    logger.info("Email mock enviado", { id: fakeId, to: params.to, subject: params.subject });
     return { id: fakeId };
   }
 
+  const rawFrom = process.env.EMAIL_FROM || "noreply@papelariabibelo.com.br";
+  const from = rawFrom.includes("<") ? rawFrom : `Papelaria Bibelô <${rawFrom}>`;
+  const replyTo = params.replyTo || process.env.EMAIL_REPLY_TO || "contato@papelariabibelo.com.br";
+  const provider = getEmailProvider();
+
+  // ── SES ────────────────────────────────────────────────────
+  if (provider === "ses") {
+    try {
+      const result = await sesSendEmail({
+        from,
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
+        text: params.text,
+        replyTo,
+        tags: params.tags,
+      });
+      logger.info("Email enviado via SES", { id: result.id, to: params.to, subject: params.subject });
+      return result;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro SES";
+      logger.error("Erro ao enviar email via SES", { error: msg, to: params.to });
+      throw new Error(msg);
+    }
+  }
+
+  // ── Resend (fallback) ──────────────────────────────────────
   const client = getClient();
   if (!client) {
-    logger.warn("Resend não configurado — email não enviado", { to: params.to, subject: params.subject });
+    logger.warn("Nenhum provider de email configurado", { to: params.to, subject: params.subject });
     return null;
   }
 
-  const rawFrom = process.env.EMAIL_FROM || "noreply@papelariabibelo.com.br";
-  // Garante que o from tenha nome display "Papelaria Bibelô"
-  const from = rawFrom.includes("<") ? rawFrom : `Papelaria Bibelô <${rawFrom}>`;
-  const replyTo = params.replyTo || process.env.EMAIL_REPLY_TO || "contato@papelariabibelo.com.br";
-
-  // Tenta enviar com 1 retry para erros temporários (rate limit, server error)
   for (let attempt = 0; attempt < 2; attempt++) {
     const { data, error } = await client.emails.send({
       from,
@@ -95,9 +130,8 @@ export async function sendEmail(params: SendEmailParams): Promise<{ id: string }
 // ── Enviar campanha para segmento ───────────────────────────────
 
 export async function sendCampaignEmails(campaignId: string): Promise<{ sent: number; failed: number }> {
-  const client = getClient();
-  if (!client) {
-    throw new Error("Resend não configurado. Adicione RESEND_API_KEY no .env");
+  if (!isEmailConfigured()) {
+    throw new Error("Nenhum provider de email configurado (SES ou Resend)");
   }
 
   // Busca campanha com template
@@ -221,14 +255,17 @@ export async function sendCampaignEmails(campaignId: string): Promise<{ sent: nu
 
 export async function getResendStatus(): Promise<{
   configured: boolean;
+  provider: string;
   from: string;
   reply_to: string;
   plan_limit: string;
 }> {
+  const provider = getEmailProvider();
   return {
-    configured: isResendConfigured(),
+    configured: isEmailConfigured(),
+    provider,
     from: process.env.EMAIL_FROM || "noreply@papelariabibelo.com.br",
     reply_to: process.env.EMAIL_REPLY_TO || "contato@papelariabibelo.com.br",
-    plan_limit: "3.000 emails/mes (gratis)",
+    plan_limit: provider === "ses" ? "Ilimitado (pay-per-use)" : "3.000 emails/mes (gratis)",
   };
 }

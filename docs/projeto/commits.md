@@ -403,3 +403,22 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - tracking: novos eventos banner_click, popup_view, popup_submit
   - dashboard Marketing: exibe novos eventos com ícones e metadata
   - testes: 8 novos testes para popup banners
+- feat: Clube VIP WhatsApp — formulário nome+email + redirect + tracking
+  - Página intermediária em /api/links/grupo-vip com captura antes de entrar no grupo
+  - Cria lead+customer+deal no CRM, email boas-vindas + notificação admin
+  - Rename "Grupo VIP" → "Clube VIP" em todos os templates e popups
+  - Clube VIP em destaque no menu: primeiro link com animação pulsante + sparkle
+- feat: formulário Parcerias B2B (/api/links/parcerias)
+  - 7 campos: nome, empresa, CPF/CNPJ, telefone, email, assunto (select), mensagem
+  - Cria customer+deal+interação no CRM, notifica admin por email formatado
+  - Design azul profissional (diferenciado do B2C rosa)
+- feat: migra menu → boasvindas.papelariabibelo.com.br
+  - Novo subdomínio com SSL Let's Encrypt, Nginx configurado
+  - menu.papelariabibelo.com.br → redirect 301 (links antigos não quebram)
+  - Todas as referências no código e docs atualizadas
+- fix: remove menção a loja física — foco no digital
+- feat: copyright com CNPJ no footer de todas as páginas
+- feat: integração Amazon SES + dashboard de consumo de email
+  - Provider switchável (SES/Resend) via EMAIL_PROVIDER no .env
+  - Webhook SES para tracking de eventos
+  - Página ConsumoEmail no frontend

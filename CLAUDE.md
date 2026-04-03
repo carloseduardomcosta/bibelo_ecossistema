@@ -383,7 +383,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 3 de Abril de 2026 — Lembrete automático de verificação de leads (cron 2h, máx 2 lembretes), card no dashboard de fluxos, protocolo de testes com clientes reais*
+*Última atualização: 3 de Abril de 2026 — Lembrete verificação leads, fix inventory sync Bling→Medusa, fix preços storefront, i18n pt-BR, menu/mega-menu, Clube VIP WhatsApp, Parcerias B2B, migração boasvindas.papelariabibelo.com.br, SES*
 
 ---
 

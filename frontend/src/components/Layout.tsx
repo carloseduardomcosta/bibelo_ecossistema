@@ -32,6 +32,7 @@ import {
   AlertTriangle,
   Clock,
   CheckCircle2,
+  Mail,
   MailOpen,
   MousePointerClick,
   MailX,
@@ -93,6 +94,7 @@ const navGroups: NavGroup[] = [
     items: [
       { to: '/marketing', label: 'Automações', icon: Sparkles },
       { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
+      { to: '/consumo-email', label: 'Consumo Email', icon: Mail },
     ],
   },
   {
