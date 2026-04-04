@@ -4,7 +4,7 @@ import {
   TrendingUp, DollarSign, Eye, MousePointerClick, Target, Users,
   MapPin, Monitor, BarChart3, AlertTriangle, CheckCircle2, Loader2,
   ExternalLink, Copy, RefreshCw, Megaphone, ShoppingCart, UserPlus,
-  ArrowUpRight, Zap,
+  ArrowUpRight, Zap, Database, CloudDownload,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -358,6 +358,8 @@ export default function MetaAds() {
   const [platforms, setPlatforms] = useState<MetaInsight[]>([]);
   const [loading, setLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<{ ultimo_sync: any; total_registros: number; total_campanhas: number } | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   // Carregar status de conexão
@@ -371,6 +373,27 @@ export default function MetaAds() {
       setLoading(false);
     }
   }, []);
+
+  // Carregar status do sync
+  const loadSyncStatus = useCallback(async () => {
+    try {
+      const { data } = await api.get('/meta-ads/sync-status');
+      setSyncStatus(data);
+    } catch { /* ignore */ }
+  }, []);
+
+  // Sync manual
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await api.post('/meta-ads/sync');
+      await loadSyncStatus();
+    } catch (err) {
+      console.error('Erro ao sincronizar Meta Ads:', err);
+    } finally {
+      setSyncing(false);
+    }
+  }, [loadSyncStatus]);
 
   // Carregar dados do dashboard
   const loadData = useCallback(async () => {
@@ -402,8 +425,11 @@ export default function MetaAds() {
   }, [loadStatus]);
 
   useEffect(() => {
-    if (status?.connected) loadData();
-  }, [status?.connected, loadData]);
+    if (status?.connected) {
+      loadData();
+      loadSyncStatus();
+    }
+  }, [status?.connected, loadData, loadSyncStatus]);
 
   // Loading inicial
   if (loading) {
@@ -503,6 +529,13 @@ export default function MetaAds() {
         </div>
 
         <div className="flex items-center gap-3">
+          {syncStatus && syncStatus.total_registros > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-emerald-400" title={`${syncStatus.total_registros} registros no banco, ${syncStatus.total_campanhas} campanhas`}>
+              <Database size={12} />
+              {syncStatus.total_registros} registros salvos
+            </span>
+          )}
+
           {lastUpdate && (
             <span className="text-xs text-bibelo-muted">
               Atualizado {lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -510,10 +543,20 @@ export default function MetaAds() {
           )}
 
           <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/20 border border-violet-500/30 text-violet-300 text-xs font-medium hover:bg-violet-500/30 transition-colors disabled:opacity-50"
+            title="Sincronizar dados da Meta para o banco local"
+          >
+            <CloudDownload size={14} className={syncing ? 'animate-pulse' : ''} />
+            {syncing ? 'Sincronizando...' : 'Sync'}
+          </button>
+
+          <button
             onClick={loadData}
             disabled={dataLoading}
             className="p-2 rounded-lg bg-bibelo-card border border-bibelo-border hover:bg-bibelo-bg transition-colors"
-            title="Atualizar"
+            title="Atualizar dados ao vivo"
           >
             <RefreshCw size={16} className={`text-bibelo-muted ${dataLoading ? 'animate-spin' : ''}`} />
           </button>
