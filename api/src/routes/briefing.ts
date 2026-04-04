@@ -463,7 +463,7 @@ export function gerarEmailBriefing(data: BriefingData): string {
 
   <div style="text-align:center;padding:20px 0;border-top:1px solid #1e293b;margin-top:16px">
     <a href="${esc(appUrl)}/briefing" style="display:inline-block;padding:10px 24px;background:#8b5cf6;color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600">Ver briefing completo</a>
-    <p style="margin:12px 0 0;font-size:11px;color:#64748b">Ecossistema Bibelo — Briefing automatico diario</p>
+    <p style="margin:12px 0 0;font-size:11px;color:#64748b">Ecossistema Bibelô — Briefing automático diário</p>
   </div>
 
 </div>

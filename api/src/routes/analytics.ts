@@ -960,7 +960,11 @@ analyticsRouter.get("/cross-sell", async (_req: Request, res: Response) => {
     ...topProdutos.map(p => p.sku),
   ]);
   const imagensRows = await query<{ sku: string; img: string }>(
-    `SELECT sku, imagens->0->>'url' AS img FROM sync.bling_products WHERE sku = ANY($1) AND imagens IS NOT NULL AND jsonb_array_length(imagens) > 0`,
+    `SELECT COALESCE(np.sku, bp.sku) AS sku,
+            COALESCE(np.imagens->0 #>> '{}', bp.imagens->0->>'url') AS img
+     FROM sync.bling_products bp
+     LEFT JOIN sync.nuvemshop_products np ON LOWER(np.sku) = LOWER(bp.sku) AND np.imagens IS NOT NULL AND jsonb_array_length(np.imagens) > 0
+     WHERE bp.sku = ANY($1) AND (bp.imagens IS NOT NULL AND jsonb_array_length(bp.imagens) > 0 OR np.imagens IS NOT NULL)`,
     [Array.from(skus)],
   );
   const imagens: Record<string, string> = {};
@@ -1047,7 +1051,11 @@ analyticsRouter.get("/cross-sell/recommend/:customerId", async (req: Request, re
 
   // Imagens
   const imgRows = await query<{ sku: string; img: string }>(
-    `SELECT sku, imagens->0->>'url' AS img FROM sync.bling_products WHERE sku = ANY($1) AND imagens IS NOT NULL AND jsonb_array_length(imagens) > 0`,
+    `SELECT COALESCE(np.sku, bp.sku) AS sku,
+            COALESCE(np.imagens->0 #>> '{}', bp.imagens->0->>'url') AS img
+     FROM sync.bling_products bp
+     LEFT JOIN sync.nuvemshop_products np ON LOWER(np.sku) = LOWER(bp.sku) AND np.imagens IS NOT NULL AND jsonb_array_length(np.imagens) > 0
+     WHERE bp.sku = ANY($1) AND (bp.imagens IS NOT NULL AND jsonb_array_length(bp.imagens) > 0 OR np.imagens IS NOT NULL)`,
     [recomendacoes.map(r => r.sku)],
   );
   const imgs: Record<string, string> = {};

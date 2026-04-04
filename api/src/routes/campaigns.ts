@@ -295,8 +295,8 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
   const saudacao = qtd === 1
     ? `Tem um produto especial que acabou de chegar e e a sua cara:`
     : qtd <= 3
-    ? `Acabaram de chegar <strong>${qtd} novidades</strong> na Bibelo e separamos pra voce:`
-    : `Toda semana a Bibelo recebe produtos novos e separamos <strong>${qtd} destaques</strong> especialmente pra voce. Olha so o que chegou:`;
+    ? `Acabaram de chegar <strong>${qtd} novidades</strong> na Bibelô e separamos pra voce:`
+    : `Toda semana a Bibelô recebe produtos novos e separamos <strong>${qtd} destaques</strong> especialmente pra voce. Olha so o que chegou:`;
 
   const tituloHeader = qtd === 1 ? "Novidade Especial" :
                        qtd <= 3 ? "Novidades Frescas" : "Novidades da Semana";
@@ -306,17 +306,17 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
     ? [
         `{{nome}}, chegou algo especial pra voce!`,
         `Novidade fresquinha: ${limparNome(produtos[0])}`,
-        `Acabou de chegar na Bibelo e voce precisa ver!`,
+        `Acabou de chegar na Bibelô e voce precisa ver!`,
       ]
     : qtd <= 3
     ? [
         `${qtd} novidades acabaram de chegar!`,
-        `{{nome}}, olha o que chegou na Bibelo!`,
+        `{{nome}}, olha o que chegou na Bibelô!`,
         `Acabou de chegar: ${categoriasResumo}!`,
       ]
     : [
         `${qtd} novidades fresquinhas esperando por voce!`,
-        `Acabou de chegar: ${categoriasResumo} na Bibelo!`,
+        `Acabou de chegar: ${categoriasResumo} na Bibelô!`,
         `{{nome}}, separamos ${qtd} lancamentos pra voce!`,
       ];
   const assunto = assuntosOpcoes[Math.floor(Math.random() * assuntosOpcoes.length)];
@@ -332,7 +332,7 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>${tituloHeader} - Papelaria Bibelo</title>
+  <title>${tituloHeader} - Papelaria Bibelô</title>
   <!--[if mso]><style>table,td{font-family:Arial,Helvetica,sans-serif!important;}</style><![endif]-->
 </head>
 <body style="margin:0;padding:0;background:#f5f0f2;font-family:'Segoe UI',Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;">
@@ -344,7 +344,7 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
     <!-- Header com logo e titulo -->
     <div style="background:linear-gradient(135deg,#fe68c4,#ff8fd3);padding:30px 20px;text-align:center;">
       <a href="${linkBase}" target="_blank" style="text-decoration:none;">
-        <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelo" width="70" height="70" style="width:70px;height:70px;border-radius:50%;border:3px solid #fff;" />
+        <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" width="70" height="70" style="width:70px;height:70px;border-radius:50%;border:3px solid #fff;" />
       </a>
       <h1 style="color:#fff;margin:12px 0 0;font-size:24px;font-weight:700;">${tituloHeader}</h1>
       <p style="color:rgba(255,255,255,0.9);margin:6px 0 0;font-size:14px;">${qtd === 1 ? "Produto especial acabou de chegar!" : "Produtos fresquinhos acabaram de chegar!"}</p>
@@ -394,12 +394,12 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
 
     <!-- Footer -->
     <div style="background:#f9f9f9;padding:20px 25px;text-align:center;border-top:1px solid #eee;">
-      <p style="color:#999;font-size:12px;margin:0;">Papelaria Bibelo</p>
+      <p style="color:#999;font-size:12px;margin:0;">Papelaria Bibelô</p>
       <p style="color:#bbb;font-size:11px;margin:5px 0 0;">
         <a href="${linkBase}" style="color:#fe68c4;text-decoration:none;">papelariabibelo.com.br</a>
       </p>
       <p style="color:#ccc;font-size:10px;margin:10px 0 0;line-height:1.5;">
-        Voce recebeu este email porque e cliente da Papelaria Bibelo.<br>
+        Voce recebeu este email porque e cliente da Papelaria Bibelô.<br>
         <a href="{{unsub_link}}" style="color:#ccc;text-decoration:underline;">Nao quero mais receber emails</a>
       </p>
     </div>

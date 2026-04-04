@@ -1159,6 +1159,9 @@ async function buildFlowEmail(nome: string, templateName: string, metadata: Reco
   if (lower.includes("cross-sell") || lower.includes("combina com") || lower.includes("complemento")) {
     return await buildCrossSellEmail(nome, metadata);
   }
+  if (lower.includes("recompra") || lower.includes("repor") || lower.includes("favoritos")) {
+    return await buildRepurchaseEmail(nome, metadata);
+  }
 
   // Fallback genérico
   return emailWrapper(`
@@ -1205,6 +1208,12 @@ function getFlowSubject(templateName: string, nome: string): string {
   }
   if (lower.includes("cross-sell") || lower.includes("combina com") || lower.includes("complemento")) {
     return `${nome || "Oi"}, produtos que combinam com sua compra! ✨`;
+  }
+  if (lower.includes("recompra") || lower.includes("repor") || lower.includes("favoritos")) {
+    return `${nome || "Oi"}, hora de repor seus favoritos! 🎀`;
+  }
+  if (lower.includes("lembrete recompra") || lower.includes("favoritos esperando")) {
+    return `${nome || "Oi"}, seus favoritos estão esperando! 💕`;
   }
   return `Novidades da Papelaria Bibelô para você!`;
 }
@@ -1684,6 +1693,130 @@ export async function checkUnverifiedLeads(): Promise<number> {
 }
 
 // ══════════════════════════════════════════════════════════════════
+// RECOMPRA INTELIGENTE — Dispara para clientes com ciclo de recompra
+// ══════════════════════════════════════════════════════════════════
+
+export async function checkRepurchaseDue(): Promise<number> {
+  // Busca clientes com ciclo de recompra identificado que estão "atrasados"
+  // Critério: dias_desde_ultima >= frequencia_dias * 0.8 (avisa ANTES de atrasar)
+  // Só clientes com 2+ pedidos (recorrente, alto_valor, vip)
+  const candidates = await query<{
+    customer_id: string; nome: string; email: string;
+    frequencia_dias: number; dias_sem_compra: number; total_pedidos: number;
+  }>(`
+    SELECT c.id AS customer_id, c.nome, c.email,
+      cs.frequencia_dias,
+      EXTRACT(DAY FROM NOW() - cs.ultima_compra)::int AS dias_sem_compra,
+      cs.total_pedidos
+    FROM crm.customers c
+    JOIN crm.customer_scores cs ON cs.customer_id = c.id
+    WHERE cs.total_pedidos >= 2
+      AND cs.frequencia_dias IS NOT NULL
+      AND cs.frequencia_dias > 0
+      AND cs.ultima_compra IS NOT NULL
+      AND c.email IS NOT NULL
+      AND c.email_optout = false
+      AND EXTRACT(DAY FROM NOW() - cs.ultima_compra) >= (cs.frequencia_dias * 0.8)
+      AND cs.segmento IN ('recorrente', 'alto_valor', 'vip')
+    ORDER BY cs.ltv DESC
+    LIMIT 20
+  `);
+
+  if (candidates.length === 0) return 0;
+
+  let triggered = 0;
+
+  for (const c of candidates) {
+    // Buscar produtos que o cliente costuma comprar (comprou 2+ vezes)
+    const produtosFrequentes = await query<{
+      sku: string; nome: string; valor: number; vezes: number;
+    }>(`
+      SELECT item->>'codigo' AS sku, item->>'descricao' AS nome,
+        ROUND(AVG((item->>'valor')::numeric), 2)::float AS valor,
+        COUNT(*)::int AS vezes
+      FROM sync.bling_orders o, jsonb_array_elements(o.itens) AS item
+      WHERE o.customer_id = $1 AND item->>'codigo' IS NOT NULL
+      GROUP BY item->>'codigo', item->>'descricao'
+      HAVING COUNT(*) >= 2
+      ORDER BY COUNT(*) DESC
+      LIMIT 4
+    `, [c.customer_id]);
+
+    // Se não tem produtos frequentes, pula
+    if (produtosFrequentes.length === 0) continue;
+
+    const executionIds = await triggerFlow("order.recompra", c.customer_id, {
+      customer_id: c.customer_id,
+      frequencia_dias: c.frequencia_dias,
+      dias_sem_compra: c.dias_sem_compra,
+      produtos_frequentes: produtosFrequentes,
+    });
+
+    if (executionIds.length > 0) {
+      triggered++;
+      logger.info("Recompra inteligente disparada", {
+        customerId: c.customer_id,
+        nome: c.nome,
+        frequencia: c.frequencia_dias,
+        diasSemCompra: c.dias_sem_compra,
+        produtos: produtosFrequentes.length,
+      });
+    }
+  }
+
+  return triggered;
+}
+
+// ── Helper: buscar imagens HD (NuvemShop > Bling) ────────────────
+
+async function fetchProductImages(skus: string[]): Promise<Record<string, string>> {
+  if (skus.length === 0) return {};
+  const imgs: Record<string, string> = {};
+
+  // Prioridade 1: NuvemShop (1024x1024 HD)
+  const nsRows = await query<{ sku: string; img: string }>(
+    `SELECT sku, imagens->0 #>> '{}' AS img FROM sync.nuvemshop_products WHERE LOWER(sku) = ANY($1) AND imagens IS NOT NULL AND jsonb_array_length(imagens) > 0`,
+    [skus.map(s => s.toLowerCase())],
+  );
+  for (const r of nsRows) if (r.img) imgs[r.sku.toUpperCase()] = r.img;
+
+  // Prioridade 2: Bling (fallback para SKUs sem imagem na NuvemShop)
+  const missing = skus.filter(s => !imgs[s] && !imgs[s.toUpperCase()]);
+  if (missing.length > 0) {
+    const blingRows = await query<{ sku: string; img: string }>(
+      `SELECT sku, imagens->0->>'url' AS img FROM sync.bling_products WHERE sku = ANY($1) AND imagens IS NOT NULL AND jsonb_array_length(imagens) > 0`,
+      [missing],
+    );
+    for (const r of blingRows) if (r.img) imgs[r.sku] = r.img;
+  }
+
+  // Normalizar: garantir que o SKU original (case-sensitive) tenha a imagem
+  const result: Record<string, string> = {};
+  for (const sku of skus) {
+    result[sku] = imgs[sku] || imgs[sku.toUpperCase()] || imgs[sku.toLowerCase()] || "";
+  }
+  return result;
+}
+
+// ── Helper: buscar URL da NuvemShop para um produto ──────────────
+
+async function fetchProductUrls(skus: string[]): Promise<Record<string, string>> {
+  if (skus.length === 0) return {};
+  const rows = await query<{ sku: string; url: string }>(
+    `SELECT sku, dados_raw->>'canonical_url' AS url FROM sync.nuvemshop_products WHERE LOWER(sku) = ANY($1) AND dados_raw->>'canonical_url' IS NOT NULL`,
+    [skus.map(s => s.toLowerCase())],
+  );
+  const urls: Record<string, string> = {};
+  for (const r of rows) urls[r.sku.toUpperCase()] = r.url;
+  // Normalizar
+  const result: Record<string, string> = {};
+  for (const sku of skus) {
+    result[sku] = urls[sku] || urls[sku.toUpperCase()] || "";
+  }
+  return result;
+}
+
+// ══════════════════════════════════════════════════════════════════
 // CROSS-SELL — Email com produtos complementares
 // ══════════════════════════════════════════════════════════════════
 
@@ -1742,15 +1875,9 @@ async function buildCrossSellEmail(nome: string, metadata: Record<string, unknow
       LIMIT 4
     `, [skusComprados]);
 
-    // Buscar imagens
+    // Buscar imagens HD (NuvemShop 1024x1024, fallback Bling thumbnail)
     if (recs.length > 0) {
-      const imgRows = await query<{ sku: string; img: string }>(
-        `SELECT sku, imagens->0->>'url' AS img FROM sync.bling_products WHERE sku = ANY($1) AND imagens IS NOT NULL AND jsonb_array_length(imagens) > 0`,
-        [recs.map(r => r.sku)],
-      );
-      const imgs: Record<string, string> = {};
-      for (const r of imgRows) if (r.img) imgs[r.sku] = r.img;
-
+      const imgs = await fetchProductImages(recs.map(r => r.sku));
       recomendacoes = recs.map(r => ({
         ...r,
         img: imgs[r.sku] || null,
@@ -1769,30 +1896,35 @@ async function buildCrossSellEmail(nome: string, metadata: Record<string, unknow
       ORDER BY COUNT(*) DESC LIMIT 4
     `, [skusComprados]);
 
-    const imgRows2 = topRows.length > 0 ? await query<{ sku: string; img: string }>(
-      `SELECT sku, imagens->0->>'url' AS img FROM sync.bling_products WHERE sku = ANY($1) AND imagens IS NOT NULL AND jsonb_array_length(imagens) > 0`,
-      [topRows.map(r => r.sku)],
-    ) : [];
-    const imgs2: Record<string, string> = {};
-    for (const r of imgRows2) if (r.img) imgs2[r.sku] = r.img;
-
+    const imgs2 = await fetchProductImages(topRows.map(r => r.sku));
     recomendacoes = topRows.map(r => ({ ...r, img: imgs2[r.sku] || null }));
   }
+
+  // Buscar URLs da NuvemShop para links clicáveis
+  const allSkus = recomendacoes.map(r => r.sku);
+  const urls = await fetchProductUrls(allSkus);
 
   // Montar HTML dos produtos recomendados
   let productsHtml = "";
   if (recomendacoes.length > 0) {
-    const cards = recomendacoes.map(p => {
+    const cards = recomendacoes.map((p, i) => {
       const imgTag = p.img
         ? `<img src="${safeImageUrl(p.img)}" alt="${escHtml(p.nome)}" style="width:100%;height:140px;object-fit:contain;border-radius:8px;margin-bottom:8px;" />`
         : `<div style="width:100%;height:140px;background:#ffe5ec;border-radius:8px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;font-size:40px;">🎀</div>`;
 
+      const prodUrl = urls[p.sku]
+        ? `${urls[p.sku]}?utm_source=email&utm_medium=flow&utm_campaign=cross_sell&utm_content=produto_${i + 1}`
+        : `https://www.papelariabibelo.com.br/novidades?utm_source=email&utm_medium=flow&utm_campaign=cross_sell`;
+
       return `<td style="width:50%;padding:6px;vertical-align:top;">
+        <a href="${prodUrl}" style="text-decoration:none;display:block;">
         <div style="background:#fafafa;border-radius:12px;padding:12px;text-align:center;border:1px solid #fee;">
           ${imgTag}
           <p style="font-size:12px;color:#333;margin:0 0 4px;line-height:1.3;min-height:32px;">${escHtml(p.nome.length > 50 ? p.nome.slice(0, 47) + "..." : p.nome)}</p>
           <p style="font-size:15px;color:#fe68c4;font-weight:700;margin:0;">${formatBRL(p.valor)}</p>
+          <span style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:6px 16px;border-radius:20px;font-size:11px;font-weight:600;margin-top:8px;">Quero esse!</span>
         </div>
+        </a>
       </td>`;
     });
 
@@ -1824,6 +1956,77 @@ async function buildCrossSellEmail(nome: string, metadata: Record<string, unknow
     ${ctaButton("Ver todos os produtos", "https://www.papelariabibelo.com.br/novidades?utm_source=email&utm_medium=flow&utm_campaign=cross_sell&utm_content=cta_ver_produtos")}
     <p style="font-size:13px;color:#999;text-align:center;">
       Aproveite enquanto tem em estoque! 🎀
+    </p>
+  `);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RECOMPRA INTELIGENTE — Email com produtos que o cliente costuma comprar
+// ══════════════════════════════════════════════════════════════════
+
+async function buildRepurchaseEmail(nome: string, metadata: Record<string, unknown>): Promise<string> {
+  const produtosFrequentes = (metadata.produtos_frequentes as Array<{ sku: string; nome: string; valor: number; vezes: number }>) || [];
+  const diasSemCompra = metadata.dias_sem_compra as number || 0;
+
+  if (produtosFrequentes.length === 0) {
+    return emailWrapper(`
+      <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🎀</p>
+      <p style="font-size:15px;color:#555;line-height:1.6;">
+        Faz um tempinho que você não aparece! Temos novidades esperando por você.
+      </p>
+      ${ctaButton("Ver novidades", "https://www.papelariabibelo.com.br/novidades?utm_source=email&utm_medium=flow&utm_campaign=recompra")}
+    `);
+  }
+
+  // Buscar imagens HD e URLs dos produtos frequentes
+  const skus = produtosFrequentes.map(p => p.sku);
+  const imgs = await fetchProductImages(skus);
+  const urls = await fetchProductUrls(skus);
+
+  // Montar grid de produtos
+  const cards = produtosFrequentes.map((p, i) => {
+    const imgTag = imgs[p.sku]
+      ? `<img src="${safeImageUrl(imgs[p.sku])}" alt="${escHtml(p.nome)}" style="width:100%;height:140px;object-fit:contain;border-radius:8px;margin-bottom:8px;" />`
+      : `<div style="width:100%;height:140px;background:#ffe5ec;border-radius:8px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;font-size:40px;">🎀</div>`;
+
+    const prodUrl = urls[p.sku]
+      ? `${urls[p.sku]}?utm_source=email&utm_medium=flow&utm_campaign=recompra&utm_content=produto_${i + 1}`
+      : `https://www.papelariabibelo.com.br/novidades?utm_source=email&utm_medium=flow&utm_campaign=recompra`;
+
+    return `<td style="width:50%;padding:6px;vertical-align:top;">
+      <a href="${prodUrl}" style="text-decoration:none;display:block;">
+      <div style="background:#fafafa;border-radius:12px;padding:12px;text-align:center;border:1px solid #fee;">
+        ${imgTag}
+        <p style="font-size:12px;color:#333;margin:0 0 4px;line-height:1.3;min-height:32px;">${escHtml(p.nome.length > 50 ? p.nome.slice(0, 47) + "..." : p.nome)}</p>
+        <p style="font-size:15px;color:#fe68c4;font-weight:700;margin:0;">${formatBRL(p.valor)}</p>
+        <p style="font-size:10px;color:#999;margin:4px 0 0;">Você já comprou ${p.vezes}x</p>
+        <span style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:6px 16px;border-radius:20px;font-size:11px;font-weight:600;margin-top:6px;">Comprar de novo</span>
+      </div>
+      </a>
+    </td>`;
+  });
+
+  let productsHtml = `<table style="width:100%;border-collapse:collapse;margin:16px 0;"><tr>${cards.slice(0, 2).join("")}</tr>`;
+  if (cards.length > 2) productsHtml += `<tr>${cards.slice(2, 4).join("")}</tr>`;
+  productsHtml += "</table>";
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🎀</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      ${diasSemCompra > 30
+        ? `Faz <strong>${diasSemCompra} dias</strong> desde sua última compra! Seus produtos favoritos estão esperando:`
+        : `Hora de repor seus <strong>queridinhos</strong>? Separamos os produtos que você mais gosta:`
+      }
+    </p>
+    <div style="background:linear-gradient(135deg,#fff7c1,#ffe5ec);border-radius:12px;padding:2px;">
+      <div style="text-align:center;padding:12px 10px 4px;">
+        <span style="background:#fe68c4;color:#fff;padding:5px 16px;border-radius:20px;font-size:12px;font-weight:600;letter-spacing:0.5px;">SEUS FAVORITOS 💕</span>
+      </div>
+      ${productsHtml}
+    </div>
+    ${ctaButton("Visitar a loja", "https://www.papelariabibelo.com.br/novidades?utm_source=email&utm_medium=flow&utm_campaign=recompra&utm_content=cta_visitar")}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      Garantimos estoque reservado para nossas clientes fiéis! 💖
     </p>
   `);
 }
