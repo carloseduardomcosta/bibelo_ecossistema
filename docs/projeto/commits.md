@@ -431,3 +431,16 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Guia de setup interativo quando não configurado
   - Token longa duração (60 dias) configurado
   - Foco: público feminino Sul/Sudeste
+- feat: persistir dados Meta Ads no banco + sync automático 6h
+  - Migration 025: 6 tabelas (campaigns, insights_daily, insights_account, demographics, geographic, platforms)
+  - Service meta.service.ts: sync completo Meta → banco (últimos 30 dias, UPSERT)
+  - Job BullMQ meta-ads-sync a cada 6h + endpoint POST /sync manual
+  - 7 endpoints /historico/* para consulta de dados persistidos do banco
+  - Botão "Sync" no dashboard + indicador de registros salvos
+  - Primeiro sync: 5 campanhas, 47 registros salvos
+- docs: análise campanhas Meta Ads — Caderno vs Catálogo Bibelô
+  - Caderno: R$7,04, 290 impressões, CTR 6.21% — performou rápido (anúncio direto)
+  - Catálogo Bibelô: 6 impressões em 8h — fase de aprendizado (anúncio dinâmico)
+  - Diagnóstico: catálogo dinâmico precisa 24-48h + Pixel ativo + volume de dados
+  - Demográfico: mulheres 35-54 melhor engajamento, Instagram 99%
+  - Geográfico: RJ lidera, seguido de RS e DF

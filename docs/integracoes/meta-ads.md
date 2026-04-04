@@ -115,9 +115,29 @@ No CRM, menu **Marketing** → **Meta Ads** 🎉
 | GET | `/api/meta-ads/geographic?periodo=7d` | Breakdown por região/estado |
 | GET | `/api/meta-ads/platforms?periodo=7d` | Breakdown por plataforma (FB/IG) |
 
-### Meta Graph API v21.0
+### Endpoints históricos (dados do banco)
 
-- Base URL: `https://graph.facebook.com/v21.0/`
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| POST | `/api/meta-ads/sync` | Sync manual Meta → banco (últimos 30 dias) |
+| GET | `/api/meta-ads/sync-status` | Status do último sync + total de registros |
+| GET | `/api/meta-ads/historico/diario?periodo=30d` | Insights conta por dia (banco) |
+| GET | `/api/meta-ads/historico/campanhas?periodo=30d` | Campanhas agregadas (banco) |
+| GET | `/api/meta-ads/historico/demografico?periodo=30d` | Demográfico agregado (banco) |
+| GET | `/api/meta-ads/historico/geografico?periodo=30d` | Geográfico agregado (banco) |
+| GET | `/api/meta-ads/historico/plataformas?periodo=30d` | Plataformas agregado (banco) |
+
+### Persistência de dados
+
+Dados da Meta são persistidos no PostgreSQL (schema `marketing`) via sync automático:
+- **Job BullMQ**: `meta-ads-sync` roda a cada **6 horas**
+- **Sync manual**: botão "Sync" no dashboard ou `POST /api/meta-ads/sync`
+- **Retenção**: UPSERT dos últimos 30 dias a cada sync (dados nunca são deletados)
+- **6 tabelas**: `meta_campaigns`, `meta_insights_daily`, `meta_insights_account`, `meta_demographics`, `meta_geographic`, `meta_platforms`
+
+### Meta Graph API v25.0
+
+- Base URL: `https://graph.facebook.com/v25.0/`
 - Auth: `access_token` como query parameter
 - Rate limit: 9.000 pontos por janela rolante (Standard Access)
 - Cache: 5 minutos in-memory para evitar chamadas desnecessárias
@@ -169,5 +189,75 @@ No CRM, menu **Marketing** → **Meta Ads** 🎉
 
 ---
 
+## Análise de campanhas — Abril 2026
+
+### Campanha "Caderno" (6905325311587)
+- **Período**: 03/04 18:30 → 04/04 18:30 (24h)
+- **Budget**: R$15 (lifetime)
+- **Objetivo**: OUTCOME_SALES
+- **Tipo**: Anúncio direto (imagem/vídeo de produto específico)
+- **Resultados**: R$7,04 investidos, 290 impressões, 18 cliques, **CTR 6.21%**, CPC R$0,39
+- **Destaque**: Entrega rápida, algoritmo otimizou bem em poucas horas
+- **Público que mais engajou**: Mulheres 35-54 no Instagram
+
+### Campanha "CATALOGO BIBELO" (6916096221187)
+- **Período**: 04/04 08:30 → 06/04 08:30 (48h)
+- **Budget**: R$50 (lifetime, ~R$25/dia)
+- **Objetivo**: OUTCOME_SALES
+- **Tipo**: Catálogo de produtos (anúncio dinâmico)
+- **Ad Set**: "CTO Catálogo Bibelo" — Advantage+ audience, Brasil 18-65, otimização OFFSITE_CONVERSIONS
+- **Resultados iniciais (8h)**: 6 impressões, 0 cliques — em fase de aprendizado
+
+#### Por que a campanha de catálogo entrega devagar
+1. **Fase de aprendizado**: A Meta leva 12-48h para sair da fase de aprendizado, onde testa públicos e posicionamentos. A campanha tinha apenas ~8h de vida quando analisada
+2. **Catálogo dinâmico é mais complexo**: Diferente de anúncio direto, o catálogo precisa:
+   - Pixel do Facebook disparando eventos (ViewContent, AddToCart, Purchase) no site
+   - Volume de dados no Pixel para o algoritmo saber quais produtos mostrar para cada pessoa
+   - Mapeamento produto ↔ público (leva tempo)
+3. **Targeting Advantage+**: Com `advantage_audience: 1` e Brasil inteiro, sem dados de Pixel suficientes a Meta não sabe pra quem mostrar primeiro
+4. **Anúncio direto vs catálogo**: A "Caderno" performou rápido por ser produto único com criativo definido. Catálogo é mais poderoso a longo prazo mas demora mais pra pegar tração
+
+#### Recomendações
+- Aguardar 24h+ antes de avaliar performance de catálogo
+- Verificar se o Facebook Pixel está disparando eventos no site
+- Quanto mais produtos no catálogo com boas imagens, melhor a entrega
+- Considerar restringir targeting para Sul/Sudeste em futuras campanhas de catálogo
+
+### Campanhas pausadas (histórico)
+| Campanha | Período | Budget |
+|----------|---------|--------|
+| Março - LÁPIS FaberCastell | 17-19/03 | R$20 |
+| 2ª QUEIMA AGENDA \| SUL | 23-25/01 | R$10/dia |
+| 1º ADS BIBELÔ - Lápis FC | 22/01-11/02 | R$16 |
+
+---
+
+## Dados demográficos consolidados (Abril 2026)
+
+### Por gênero + faixa etária (investimento)
+| Faixa | Feminino | Masculino | Destaque |
+|-------|----------|-----------|----------|
+| 35-44 | R$2,07 | R$0,20 | Maior investimento feminino |
+| 45-54 | R$1,97 | R$0,11 | CTR feminino alto |
+| 25-34 | R$0,91 | R$0,18 | — |
+| 18-24 | R$0,69 | R$0,24 | — |
+| 55-64 | R$0,45 | — | CPC mais barato |
+
+### Por estado (top 10)
+| Estado | Investimento | Cliques |
+|--------|-------------|---------|
+| Rio de Janeiro | R$1,40 | 5 |
+| Rio Grande do Sul | R$0,55 | 0 |
+| Distrito Federal | R$0,41 | 1 |
+| Minas Gerais | R$0,34 | 0 |
+| Goiás | R$0,30 | 1 |
+| Paraná | R$0,24 | 3 |
+
+### Por plataforma
+- **Instagram**: ~99% do investimento, CTR 11.6%
+- **Facebook**: < 1%
+
+---
+
 *Criado em: 4 de Abril de 2026*
-*Última atualização: 4 de Abril de 2026*
+*Última atualização: 4 de Abril de 2026 — persistência banco, sync 6h, análise campanhas Caderno + Catálogo*
