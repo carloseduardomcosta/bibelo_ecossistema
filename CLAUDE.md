@@ -298,6 +298,20 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 - **Proxy de imagens**: `/api/email/img/:hash` — cacheia imagens NuvemShop pelo nosso domínio (cache 30d). Usado em campanhas E fluxos automáticos (proxyImageUrl).
 - **Redirect WhatsApp**: `/api/email/wa` — evita wa.me direto nos emails (spam filter)
 
+### Meta Ads (Facebook + Instagram) — Dashboard de Performance
+- **API**: Meta Graph API v21.0 (Marketing API)
+- **SDK**: axios direto (sem SDK pesado). Client: `api/src/integrations/meta/client.ts`
+- **Rota**: `api/src/routes/meta-ads.ts` — 6 endpoints (status, overview, campaigns, demographics, geographic, platforms)
+- **Frontend**: `frontend/src/pages/MetaAds.tsx` — dashboard completo com KPIs, gráficos, tabelas
+- **Auth**: System User Token (sem expiração) ou Long-lived User Token (60 dias)
+- **Permissões**: `ads_read` + `ads_management`
+- **Cache**: 5 min in-memory para evitar chamadas desnecessárias
+- **Rate limit**: 9.000 pontos por janela rolante (Standard Access — mais que suficiente)
+- **Custo**: R$ 0 (API gratuita, só paga ad spend)
+- **Documentação completa**: `docs/integracoes/meta-ads.md`
+- **Variáveis .env**: `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID`
+- **Fases**: 1) Dashboard insights ✅ | 2) Sync audiences CRM→Meta 🔜 | 3) Criação campanhas 📋
+
 ### Chatwoot + Meta Cloud API (WhatsApp + Instagram) — planejado
 - Plano completo: `docs/integracoes/whatsapp-chatwoot.md`
 - Chatwoot self-hosted em chat.papelariabibelo.com.br
@@ -322,6 +336,7 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 | `visao-geral.md` | Visão geral das integrações do ecossistema |
 | `bling-referencia.md` | Resumo da API Bling v3 |
 | `bling-openapi.json` | OpenAPI 3.0 spec completo (1MB) |
+| `meta-ads.md` | Plano Meta Ads: setup, endpoints, estratégia público feminino Sul/SE |
 | `nuvemshop-guia.md` | Guia completo NuvemShop API |
 | `nuvemshop-setup.md` | Passo a passo para criar app NuvemShop |
 | `whatsapp-estrategia.md` | Estratégia WhatsApp Business |
@@ -395,7 +410,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 3 de Abril de 2026 — Amazon SES v2 (dual provider SES/Resend), dashboard consumo de email, webhook SNS, DKIM verificado sa-east-1*
+*Última atualização: 4 de Abril de 2026 — Meta Ads dashboard (Facebook + Instagram), integração Meta Graph API v21.0, KPIs/demográfico/geográfico/plataformas*
 
 ---
 

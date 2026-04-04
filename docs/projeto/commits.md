@@ -423,3 +423,11 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Webhook SES para tracking de eventos
   - Página ConsumoEmail no frontend
 - feat: ajustes visuais menu — novo slogan e remove pulsante da logo
+- feat: inteligência (RFM + conversão fluxos + ROI canal + cross-sell)
+- feat: integração Meta Ads — dashboard Facebook + Instagram
+  - Client Meta Graph API v25.0 (cache 5min, retry 429)
+  - 6 endpoints: status, overview, campaigns, demographics, geographic, platforms
+  - Dashboard com KPIs, tendência diária, plataformas, campanhas, gênero, faixa etária, regiões
+  - Guia de setup interativo quando não configurado
+  - Token longa duração (60 dias) configurado
+  - Foco: público feminino Sul/Sudeste

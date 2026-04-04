@@ -36,6 +36,7 @@ import { blingWebhookRouter }     from "./integrations/bling/webhook";
 import { resendWebhookRouter }   from "./integrations/resend/webhook";
 import { sesWebhookRouter }      from "./integrations/ses/webhook";
 import { emailConsumptionRouter } from "./routes/email-consumption";
+import { metaAdsRouter } from "./routes/meta-ads";
 import { registerScheduledJobs, closeSyncQueue } from "./queues/sync.queue";
 import { registerFlowJobs, closeFlowQueue }      from "./queues/flow.queue";
 
@@ -107,6 +108,7 @@ app.use("/api/webhooks/bling", blingWebhookRouter);
 app.use("/api/webhooks/resend", resendWebhookRouter);
 app.use("/api/webhooks/ses", sesWebhookRouter);
 app.use("/api/email-consumption", emailConsumptionRouter);
+app.use("/api/meta-ads", metaAdsRouter);
 
 // ── 404
 app.use((_req, res) => {

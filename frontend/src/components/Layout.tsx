@@ -36,6 +36,7 @@ import {
   MailOpen,
   MousePointerClick,
   MailX,
+  Radar,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -96,6 +97,7 @@ const navGroups: NavGroup[] = [
       { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
       { to: '/consumo-email', label: 'Consumo Email', icon: Mail },
       { to: '/inteligencia', label: 'Inteligência', icon: Target },
+      { to: '/meta-ads', label: 'Meta Ads', icon: Radar },
     ],
   },
   {
