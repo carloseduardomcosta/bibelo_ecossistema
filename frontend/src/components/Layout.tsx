@@ -95,6 +95,7 @@ const navGroups: NavGroup[] = [
       { to: '/marketing', label: 'Automações', icon: Sparkles },
       { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
       { to: '/consumo-email', label: 'Consumo Email', icon: Mail },
+      { to: '/inteligencia', label: 'Inteligência', icon: Target },
     ],
   },
   {

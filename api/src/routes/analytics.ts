@@ -572,3 +572,504 @@ analyticsRouter.post("/reviews/refresh", async (_req: Request, res: Response) =>
   }
   res.json(data);
 });
+
+// ══════════════════════════════════════════════════════════════════
+// INTELIGÊNCIA — RFM, Conversão de Fluxos, ROI por Canal
+// ══════════════════════════════════════════════════════════════════
+
+// ── GET /api/analytics/rfm — Segmentação RFM completa ───────────
+
+analyticsRouter.get("/rfm", async (_req: Request, res: Response) => {
+  // Classificação RFM: divide em quintis (1-5) baseado na distribuição real
+  const clientes = await query<{
+    id: string; nome: string; email: string; canal_origem: string;
+    ultima_compra: string; dias_sem_compra: number; frequencia_dias: number;
+    total_pedidos: number; ltv: number; ticket_medio: number;
+    score: number; segmento: string; risco_churn: string;
+  }>(`
+    SELECT
+      c.id, c.nome, c.email, c.canal_origem,
+      cs.ultima_compra,
+      EXTRACT(DAY FROM NOW() - cs.ultima_compra)::int AS dias_sem_compra,
+      COALESCE(cs.frequencia_dias, 0) AS frequencia_dias,
+      COALESCE(cs.total_pedidos, 0) AS total_pedidos,
+      COALESCE(cs.ltv, 0)::float AS ltv,
+      COALESCE(cs.ticket_medio, 0)::float AS ticket_medio,
+      COALESCE(cs.score, 0) AS score,
+      COALESCE(cs.segmento, 'novo') AS segmento,
+      COALESCE(cs.risco_churn, 'baixo') AS risco_churn
+    FROM crm.customers c
+    LEFT JOIN crm.customer_scores cs ON cs.customer_id = c.id
+    WHERE c.ativo = true AND c.email IS NOT NULL
+    ORDER BY cs.score DESC NULLS LAST
+  `);
+
+  // Calcular scores RFM (1-5) via percentis
+  const comPedidos = clientes.filter(c => c.total_pedidos > 0);
+
+  function quintil(arr: number[], val: number): number {
+    if (arr.length === 0) return 1;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const pos = sorted.filter(v => v <= val).length / sorted.length;
+    if (pos <= 0.2) return 1;
+    if (pos <= 0.4) return 2;
+    if (pos <= 0.6) return 3;
+    if (pos <= 0.8) return 4;
+    return 5;
+  }
+
+  const diasArr = comPedidos.map(c => c.dias_sem_compra);
+  const freqArr = comPedidos.map(c => c.total_pedidos);
+  const monArr = comPedidos.map(c => c.ltv);
+
+  // Classificação RFM → segmento descritivo
+  function rfmSegmento(r: number, f: number, m: number): string {
+    if (r >= 4 && f >= 4 && m >= 4) return "Campeões";
+    if (r >= 3 && f >= 3 && m >= 3) return "Leais";
+    if (r >= 4 && f <= 2) return "Novos Promissores";
+    if (r >= 3 && f >= 2) return "Potenciais Leais";
+    if (r <= 2 && f >= 3 && m >= 3) return "Em Risco";
+    if (r <= 2 && f >= 4) return "Não Pode Perder";
+    if (r <= 2 && f <= 2 && m <= 2) return "Perdidos";
+    if (r <= 2 && f <= 2) return "Hibernando";
+    return "Precisam Atenção";
+  }
+
+  const rfmClientes = comPedidos.map(c => {
+    // Recência: INVERTIDO — menos dias = melhor = score maior
+    const r = 6 - quintil(diasArr, c.dias_sem_compra);
+    const f = quintil(freqArr, c.total_pedidos);
+    const m = quintil(monArr, c.ltv);
+    return {
+      id: c.id,
+      nome: c.nome,
+      email: c.email,
+      canal_origem: c.canal_origem,
+      r, f, m,
+      rfm_score: r + f + m,
+      rfm_segmento: rfmSegmento(r, f, m),
+      dias_sem_compra: c.dias_sem_compra,
+      total_pedidos: c.total_pedidos,
+      ltv: c.ltv,
+      ticket_medio: c.ticket_medio,
+      risco_churn: c.risco_churn,
+    };
+  });
+
+  // Contagem por segmento RFM
+  const segmentos: Record<string, { total: number; ltv_medio: number; ticket_medio: number }> = {};
+  for (const c of rfmClientes) {
+    if (!segmentos[c.rfm_segmento]) {
+      segmentos[c.rfm_segmento] = { total: 0, ltv_medio: 0, ticket_medio: 0 };
+    }
+    segmentos[c.rfm_segmento].total++;
+    segmentos[c.rfm_segmento].ltv_medio += c.ltv;
+    segmentos[c.rfm_segmento].ticket_medio += c.ticket_medio;
+  }
+
+  const distribuicao = Object.entries(segmentos).map(([nome, data]) => ({
+    segmento: nome,
+    total: data.total,
+    ltv_medio: Math.round(data.ltv_medio / data.total),
+    ticket_medio: Math.round(data.ticket_medio / data.total),
+  })).sort((a, b) => b.ltv_medio - a.ltv_medio);
+
+  // Resumo geral
+  const totalComPedidos = comPedidos.length;
+  const totalSemPedidos = clientes.length - totalComPedidos;
+
+  res.json({
+    total_clientes: clientes.length,
+    com_pedidos: totalComPedidos,
+    sem_pedidos: totalSemPedidos,
+    distribuicao,
+    top_clientes: rfmClientes.slice(0, 20),
+    em_risco: rfmClientes.filter(c => c.rfm_segmento === "Em Risco" || c.rfm_segmento === "Não Pode Perder")
+      .sort((a, b) => b.ltv - a.ltv).slice(0, 10),
+    perdidos: rfmClientes.filter(c => c.rfm_segmento === "Perdidos" || c.rfm_segmento === "Hibernando")
+      .sort((a, b) => b.ltv - a.ltv).slice(0, 10),
+  });
+});
+
+// ── GET /api/analytics/flow-conversion — Funil de conversão ─────
+
+analyticsRouter.get("/flow-conversion", async (req: Request, res: Response) => {
+  const { intervalo } = periodoToInterval(req.query.periodo as string);
+
+  // Métricas por fluxo: execuções, steps executados, emails abertos/clicados, conversões
+  const fluxos = await query<{
+    id: string; nome: string; gatilho: string; ativo: boolean;
+    total_execucoes: number; total_concluidas: number;
+    total_ativas: number; total_erro: number;
+  }>(`
+    SELECT
+      f.id, f.nome, f.gatilho, f.ativo,
+      COUNT(DISTINCT fe.id) FILTER (WHERE fe.iniciado_em >= NOW() - $1::interval) AS total_execucoes,
+      COUNT(DISTINCT fe.id) FILTER (WHERE fe.status = 'concluido' AND fe.iniciado_em >= NOW() - $1::interval) AS total_concluidas,
+      COUNT(DISTINCT fe.id) FILTER (WHERE fe.status = 'ativo' AND fe.iniciado_em >= NOW() - $1::interval) AS total_ativas,
+      COUNT(DISTINCT fe.id) FILTER (WHERE fe.status = 'erro' AND fe.iniciado_em >= NOW() - $1::interval) AS total_erro
+    FROM marketing.flows f
+    LEFT JOIN marketing.flow_executions fe ON fe.flow_id = f.id
+    GROUP BY f.id, f.nome, f.gatilho, f.ativo
+    ORDER BY total_execucoes DESC
+  `, [intervalo]);
+
+  // Para cada fluxo: emails enviados, abertos, clicados, conversões
+  const detalhes = await Promise.all(fluxos.map(async (fluxo) => {
+    // Emails enviados neste fluxo
+    const emailStats = await queryOne<{
+      emails_enviados: number; emails_abertos: number; emails_clicados: number;
+    }>(`
+      SELECT
+        COUNT(*) FILTER (WHERE fse.status = 'concluido' AND fse.tipo = 'email') AS emails_enviados,
+        COUNT(DISTINCT fse.id) FILTER (
+          WHERE fse.tipo = 'email' AND fse.status = 'concluido'
+            AND EXISTS (
+              SELECT 1 FROM marketing.email_events ee
+              WHERE ee.message_id = fse.resultado->>'messageId' AND ee.tipo = 'opened'
+            )
+        ) AS emails_abertos,
+        COUNT(DISTINCT fse.id) FILTER (
+          WHERE fse.tipo = 'email' AND fse.status = 'concluido'
+            AND EXISTS (
+              SELECT 1 FROM marketing.email_events ee
+              WHERE ee.message_id = fse.resultado->>'messageId' AND ee.tipo = 'clicked'
+            )
+        ) AS emails_clicados
+      FROM marketing.flow_step_executions fse
+      JOIN marketing.flow_executions fe ON fe.id = fse.execution_id
+      WHERE fe.flow_id = $1 AND fe.iniciado_em >= NOW() - $2::interval
+    `, [fluxo.id, intervalo]);
+
+    // Conversões: clientes que compraram APÓS entrar no fluxo
+    const conversoes = await queryOne<{ total: number; receita: number }>(`
+      SELECT
+        COUNT(DISTINCT fe.customer_id) AS total,
+        COALESCE(SUM(sub.valor), 0)::float AS receita
+      FROM marketing.flow_executions fe
+      JOIN LATERAL (
+        SELECT valor FROM sync.bling_orders bo
+        WHERE bo.customer_id = fe.customer_id AND bo.criado_bling > fe.iniciado_em
+        UNION ALL
+        SELECT valor FROM sync.nuvemshop_orders no2
+        WHERE no2.customer_id = fe.customer_id AND no2.webhook_em > fe.iniciado_em AND no2.status = 'paid'
+      ) sub ON true
+      WHERE fe.flow_id = $1 AND fe.iniciado_em >= NOW() - $2::interval
+    `, [fluxo.id, intervalo]);
+
+    return {
+      ...fluxo,
+      emails_enviados: Number(emailStats?.emails_enviados || 0),
+      emails_abertos: Number(emailStats?.emails_abertos || 0),
+      emails_clicados: Number(emailStats?.emails_clicados || 0),
+      conversoes: Number(conversoes?.total || 0),
+      receita_gerada: Number(conversoes?.receita || 0),
+      taxa_conversao: fluxo.total_execucoes > 0
+        ? Math.round((Number(conversoes?.total || 0) / Number(fluxo.total_execucoes)) * 100 * 10) / 10
+        : 0,
+      taxa_abertura: Number(emailStats?.emails_enviados || 0) > 0
+        ? Math.round((Number(emailStats?.emails_abertos || 0) / Number(emailStats?.emails_enviados || 0)) * 100)
+        : 0,
+    };
+  }));
+
+  // Totais gerais
+  const totais = {
+    execucoes: detalhes.reduce((s, f) => s + Number(f.total_execucoes), 0),
+    conversoes: detalhes.reduce((s, f) => s + f.conversoes, 0),
+    receita: detalhes.reduce((s, f) => s + f.receita_gerada, 0),
+    emails: detalhes.reduce((s, f) => s + f.emails_enviados, 0),
+  };
+
+  res.json({ detalhes, totais });
+});
+
+// ── GET /api/analytics/roi-canal — ROI por canal de aquisição ───
+
+analyticsRouter.get("/roi-canal", async (req: Request, res: Response) => {
+  const { intervalo, dias } = periodoToInterval(req.query.periodo as string);
+
+  // ROI por canal de venda (onde o pedido foi feito)
+  const porCanalVenda = await query<{
+    canal: string; pedidos: number; receita: number; ticket_medio: number; clientes: number;
+  }>(`
+    SELECT
+      COALESCE(NULLIF(canal, ''), 'desconhecido') AS canal,
+      COUNT(*)::int AS pedidos,
+      COALESCE(SUM(valor), 0)::float AS receita,
+      ROUND(AVG(valor) FILTER (WHERE valor > 0), 2)::float AS ticket_medio,
+      COUNT(DISTINCT customer_id)::int AS clientes
+    FROM sync.bling_orders
+    WHERE criado_bling >= NOW() - $1::interval
+    GROUP BY COALESCE(NULLIF(canal, ''), 'desconhecido')
+    ORDER BY receita DESC
+  `, [intervalo]);
+
+  // ROI por canal de origem (como o cliente chegou)
+  const porCanalOrigem = await query<{
+    canal_origem: string; total_clientes: number; compradores: number;
+    taxa_conversao: number; receita_total: number; ltv_medio: number; ticket_medio: number;
+  }>(`
+    SELECT
+      COALESCE(NULLIF(c.canal_origem, ''), 'desconhecido') AS canal_origem,
+      COUNT(*)::int AS total_clientes,
+      COUNT(*) FILTER (WHERE cs.total_pedidos > 0)::int AS compradores,
+      CASE WHEN COUNT(*) > 0
+        THEN ROUND(COUNT(*) FILTER (WHERE cs.total_pedidos > 0) * 100.0 / COUNT(*), 1)
+        ELSE 0
+      END::float AS taxa_conversao,
+      COALESCE(SUM(cs.ltv) FILTER (WHERE cs.total_pedidos > 0), 0)::float AS receita_total,
+      ROUND(AVG(cs.ltv) FILTER (WHERE cs.total_pedidos > 0), 0)::float AS ltv_medio,
+      ROUND(AVG(cs.ticket_medio) FILTER (WHERE cs.total_pedidos > 0), 0)::float AS ticket_medio
+    FROM crm.customers c
+    LEFT JOIN crm.customer_scores cs ON cs.customer_id = c.id
+    WHERE c.ativo = true
+    GROUP BY COALESCE(NULLIF(c.canal_origem, ''), 'desconhecido')
+    ORDER BY receita_total DESC
+  `);
+
+  // Receita por canal no período vs período anterior
+  const receitaAtual = await queryOne<{ total: number }>(`
+    SELECT COALESCE(SUM(valor), 0)::float AS total
+    FROM sync.bling_orders WHERE criado_bling >= NOW() - $1::interval
+  `, [intervalo]);
+
+  const receitaAnterior = await queryOne<{ total: number }>(`
+    SELECT COALESCE(SUM(valor), 0)::float AS total
+    FROM sync.bling_orders
+    WHERE criado_bling >= NOW() - make_interval(days => $1)
+      AND criado_bling < NOW() - $2::interval
+  `, [dias * 2, intervalo]);
+
+  const variacao = (receitaAnterior?.total || 0) > 0
+    ? Math.round(((receitaAtual?.total || 0) - (receitaAnterior?.total || 0)) / (receitaAnterior?.total || 1) * 100)
+    : 0;
+
+  // Evolução mensal por canal de venda (últimos 6 meses)
+  const evolucaoMensal = await query<{
+    mes: string; canal: string; receita: number; pedidos: number;
+  }>(`
+    SELECT
+      TO_CHAR(criado_bling, 'YYYY-MM') AS mes,
+      COALESCE(NULLIF(canal, ''), 'desconhecido') AS canal,
+      SUM(valor)::float AS receita,
+      COUNT(*)::int AS pedidos
+    FROM sync.bling_orders
+    WHERE criado_bling >= NOW() - INTERVAL '6 months'
+    GROUP BY mes, canal
+    ORDER BY mes, canal
+  `);
+
+  // Leads por fonte
+  const leadsPorFonte = await query<{
+    fonte: string; total: number; verificados: number; convertidos: number;
+  }>(`
+    SELECT
+      COALESCE(fonte, 'desconhecido') AS fonte,
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE email_verificado = true)::int AS verificados,
+      COUNT(*) FILTER (WHERE convertido = true)::int AS convertidos
+    FROM marketing.leads
+    GROUP BY COALESCE(fonte, 'desconhecido')
+    ORDER BY total DESC
+  `);
+
+  res.json({
+    receita_periodo: receitaAtual?.total || 0,
+    variacao,
+    por_canal_venda: porCanalVenda,
+    por_canal_origem: porCanalOrigem,
+    evolucao_mensal: evolucaoMensal,
+    leads_por_fonte: leadsPorFonte,
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// CROSS-SELL — Produtos frequentemente comprados juntos
+// ══════════════════════════════════════════════════════════════════
+
+// ── GET /api/analytics/cross-sell — Pares frequentes + insights ──
+
+analyticsRouter.get("/cross-sell", async (_req: Request, res: Response) => {
+  // Top pares de produtos comprados juntos (excluindo variações do mesmo produto)
+  const pares = await query<{
+    sku_a: string; nome_a: string; valor_a: number;
+    sku_b: string; nome_b: string; valor_b: number;
+    vezes_juntos: number;
+  }>(`
+    WITH item_pairs AS (
+      SELECT
+        a.value->>'codigo' AS sku_a,
+        a.value->>'descricao' AS nome_a,
+        (a.value->>'valor')::numeric AS valor_a,
+        b.value->>'codigo' AS sku_b,
+        b.value->>'descricao' AS nome_b,
+        (b.value->>'valor')::numeric AS valor_b
+      FROM sync.bling_orders o,
+        jsonb_array_elements(o.itens) WITH ORDINALITY AS a(value, ord_a),
+        jsonb_array_elements(o.itens) WITH ORDINALITY AS b(value, ord_b)
+      WHERE jsonb_array_length(o.itens) >= 2
+        AND a.ord_a < b.ord_b
+        AND a.value->>'codigo' IS NOT NULL
+        AND b.value->>'codigo' IS NOT NULL
+    )
+    SELECT sku_a, nome_a, ROUND(AVG(valor_a), 2)::float AS valor_a,
+           sku_b, nome_b, ROUND(AVG(valor_b), 2)::float AS valor_b,
+           COUNT(*)::int AS vezes_juntos
+    FROM item_pairs
+    WHERE LEFT(sku_a, GREATEST(POSITION('_' IN sku_a) - 1, 4)) != LEFT(sku_b, GREATEST(POSITION('_' IN sku_b) - 1, 4))
+    GROUP BY sku_a, nome_a, sku_b, nome_b
+    HAVING COUNT(*) >= 2
+    ORDER BY vezes_juntos DESC
+    LIMIT 30
+  `);
+
+  // Stats gerais
+  const stats = await queryOne<{
+    total_pedidos: number; multi_item: number; media_itens: number;
+  }>(`
+    SELECT
+      COUNT(*)::int AS total_pedidos,
+      COUNT(*) FILTER (WHERE jsonb_array_length(itens) >= 2)::int AS multi_item,
+      ROUND(AVG(jsonb_array_length(itens)), 1)::float AS media_itens
+    FROM sync.bling_orders
+    WHERE itens IS NOT NULL AND jsonb_array_length(itens) > 0
+  `);
+
+  // Produtos mais vendidos (para recomendar quando não há par)
+  const topProdutos = await query<{
+    sku: string; nome: string; valor: number; vendas: number;
+  }>(`
+    SELECT
+      item->>'codigo' AS sku,
+      item->>'descricao' AS nome,
+      ROUND(AVG((item->>'valor')::numeric), 2)::float AS valor,
+      COUNT(*)::int AS vendas
+    FROM sync.bling_orders o,
+      jsonb_array_elements(o.itens) AS item
+    WHERE item->>'codigo' IS NOT NULL
+      AND o.criado_bling >= NOW() - INTERVAL '3 months'
+    GROUP BY item->>'codigo', item->>'descricao'
+    ORDER BY vendas DESC
+    LIMIT 20
+  `);
+
+  // Imagens dos produtos (do Bling)
+  const skus = new Set([
+    ...pares.flatMap(p => [p.sku_a, p.sku_b]),
+    ...topProdutos.map(p => p.sku),
+  ]);
+  const imagensRows = await query<{ sku: string; img: string }>(
+    `SELECT sku, imagens->0->>'url' AS img FROM sync.bling_products WHERE sku = ANY($1) AND imagens IS NOT NULL AND jsonb_array_length(imagens) > 0`,
+    [Array.from(skus)],
+  );
+  const imagens: Record<string, string> = {};
+  for (const r of imagensRows) if (r.img) imagens[r.sku] = r.img;
+
+  res.json({
+    stats: {
+      total_pedidos: stats?.total_pedidos || 0,
+      multi_item: stats?.multi_item || 0,
+      pct_multi: stats?.total_pedidos ? Math.round((stats.multi_item / stats.total_pedidos) * 100) : 0,
+      media_itens: stats?.media_itens || 0,
+    },
+    pares: pares.map(p => ({
+      ...p,
+      img_a: imagens[p.sku_a] || null,
+      img_b: imagens[p.sku_b] || null,
+    })),
+    top_produtos: topProdutos.map(p => ({
+      ...p,
+      img: imagens[p.sku] || null,
+    })),
+  });
+});
+
+// ── GET /api/analytics/cross-sell/recommend/:customerId ─────────
+// Recomendações para um cliente específico baseado em sua última compra
+
+analyticsRouter.get("/cross-sell/recommend/:customerId", async (req: Request, res: Response) => {
+  const { customerId } = req.params;
+
+  // Última compra do cliente
+  const ultimaCompra = await queryOne<{
+    id: string; itens: any; criado_bling: string;
+  }>(`
+    SELECT id, itens, criado_bling
+    FROM sync.bling_orders
+    WHERE customer_id = $1 AND itens IS NOT NULL AND jsonb_array_length(itens) > 0
+    ORDER BY criado_bling DESC LIMIT 1
+  `, [customerId]);
+
+  if (!ultimaCompra) {
+    res.json({ recomendacoes: [], motivo: "Sem pedidos" });
+    return;
+  }
+
+  // SKUs da última compra
+  const skusComprados: string[] = [];
+  for (const item of ultimaCompra.itens) {
+    if (item.codigo) skusComprados.push(item.codigo);
+  }
+
+  if (skusComprados.length === 0) {
+    res.json({ recomendacoes: [], motivo: "Pedido sem SKUs" });
+    return;
+  }
+
+  // Buscar produtos frequentemente comprados junto com os itens da última compra
+  const recomendacoes = await query<{
+    sku: string; nome: string; valor: number; score: number;
+  }>(`
+    WITH comprados AS (
+      SELECT unnest($1::text[]) AS sku
+    ),
+    pares AS (
+      SELECT
+        CASE WHEN a.value->>'codigo' = ANY($1::text[]) THEN b.value->>'codigo' ELSE a.value->>'codigo' END AS sku_recom,
+        CASE WHEN a.value->>'codigo' = ANY($1::text[]) THEN b.value->>'descricao' ELSE a.value->>'descricao' END AS nome,
+        CASE WHEN a.value->>'codigo' = ANY($1::text[]) THEN (b.value->>'valor')::numeric ELSE (a.value->>'valor')::numeric END AS valor
+      FROM sync.bling_orders o,
+        jsonb_array_elements(o.itens) WITH ORDINALITY AS a(value, ord_a),
+        jsonb_array_elements(o.itens) WITH ORDINALITY AS b(value, ord_b)
+      WHERE jsonb_array_length(o.itens) >= 2
+        AND a.ord_a < b.ord_a
+        AND (a.value->>'codigo' = ANY($1::text[]) OR b.value->>'codigo' = ANY($1::text[]))
+    )
+    SELECT sku_recom AS sku, nome, ROUND(AVG(valor), 2)::float AS valor, COUNT(*)::int AS score
+    FROM pares
+    WHERE sku_recom != ALL($1::text[])
+      AND sku_recom IS NOT NULL
+    GROUP BY sku_recom, nome
+    ORDER BY score DESC
+    LIMIT 6
+  `, [skusComprados]);
+
+  // Imagens
+  const imgRows = await query<{ sku: string; img: string }>(
+    `SELECT sku, imagens->0->>'url' AS img FROM sync.bling_products WHERE sku = ANY($1) AND imagens IS NOT NULL AND jsonb_array_length(imagens) > 0`,
+    [recomendacoes.map(r => r.sku)],
+  );
+  const imgs: Record<string, string> = {};
+  for (const r of imgRows) if (r.img) imgs[r.sku] = r.img;
+
+  // URL da NuvemShop para cada produto
+  const nsRows = await query<{ sku: string; url: string }>(
+    `SELECT bp.sku, 'https://www.papelariabibelo.com.br/produtos/' || bp.sku AS url
+     FROM sync.bling_products bp WHERE bp.sku = ANY($1)`,
+    [recomendacoes.map(r => r.sku)],
+  );
+  const urls: Record<string, string> = {};
+  for (const r of nsRows) urls[r.sku] = r.url;
+
+  res.json({
+    customer_id: customerId,
+    ultima_compra: ultimaCompra.criado_bling,
+    skus_comprados: skusComprados,
+    recomendacoes: recomendacoes.map(r => ({
+      ...r,
+      img: imgs[r.sku] || null,
+      url: urls[r.sku] || null,
+    })),
+  });
+});

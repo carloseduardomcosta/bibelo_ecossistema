@@ -1156,6 +1156,9 @@ async function buildFlowEmail(nome: string, templateName: string, metadata: Reco
   if (lower.includes("prova social") || lower.includes("avaliações")) {
     return await buildSocialProofEmail(nome, metadata);
   }
+  if (lower.includes("cross-sell") || lower.includes("combina com") || lower.includes("complemento")) {
+    return await buildCrossSellEmail(nome, metadata);
+  }
 
   // Fallback genérico
   return emailWrapper(`
@@ -1199,6 +1202,9 @@ function getFlowSubject(templateName: string, nome: string): string {
   }
   if (lower.includes("prova social") || lower.includes("avaliações")) {
     return `${nome || "Oi"}, veja o que nossas clientes estão dizendo! ⭐`;
+  }
+  if (lower.includes("cross-sell") || lower.includes("combina com") || lower.includes("complemento")) {
+    return `${nome || "Oi"}, produtos que combinam com sua compra! ✨`;
   }
   return `Novidades da Papelaria Bibelô para você!`;
 }
@@ -1675,4 +1681,149 @@ export async function checkUnverifiedLeads(): Promise<number> {
     logger.info("Lembretes de verificação enviados", { total: leads.length, enviados });
   }
   return enviados;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// CROSS-SELL — Email com produtos complementares
+// ══════════════════════════════════════════════════════════════════
+
+async function buildCrossSellEmail(nome: string, metadata: Record<string, unknown>): Promise<string> {
+  const customerId = metadata.customer_id as string;
+  if (!customerId) {
+    return emailWrapper(`
+      <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>!</p>
+      <p style="font-size:15px;color:#555;line-height:1.6;">
+        Selecionamos produtos que combinam com você! Venha conferir as novidades da Bibelô.
+      </p>
+      ${ctaButton("Ver novidades", "https://www.papelariabibelo.com.br/novidades?utm_source=email&utm_medium=flow&utm_campaign=cross_sell")}
+    `);
+  }
+
+  // Buscar última compra do cliente
+  const ultimaCompra = await queryOne<{ itens: any }>(`
+    SELECT itens FROM sync.bling_orders
+    WHERE customer_id = $1 AND itens IS NOT NULL AND jsonb_array_length(itens) > 0
+    ORDER BY criado_bling DESC LIMIT 1
+  `, [customerId]);
+
+  const skusComprados: string[] = [];
+  const itensComprados: Array<{ nome: string; sku: string }> = [];
+  if (ultimaCompra?.itens) {
+    for (const item of ultimaCompra.itens) {
+      if (item.codigo) {
+        skusComprados.push(item.codigo);
+        itensComprados.push({ nome: item.descricao || item.codigo, sku: item.codigo });
+      }
+    }
+  }
+
+  // Buscar recomendações baseadas nos itens comprados
+  let recomendacoes: Array<{ sku: string; nome: string; valor: number; img: string | null }> = [];
+
+  if (skusComprados.length > 0) {
+    const recs = await query<{ sku: string; nome: string; valor: number }>(`
+      WITH pares AS (
+        SELECT
+          CASE WHEN a.value->>'codigo' = ANY($1::text[]) THEN b.value->>'codigo' ELSE a.value->>'codigo' END AS sku_recom,
+          CASE WHEN a.value->>'codigo' = ANY($1::text[]) THEN b.value->>'descricao' ELSE a.value->>'descricao' END AS nome,
+          CASE WHEN a.value->>'codigo' = ANY($1::text[]) THEN (b.value->>'valor')::numeric ELSE (a.value->>'valor')::numeric END AS valor
+        FROM sync.bling_orders o,
+          jsonb_array_elements(o.itens) WITH ORDINALITY AS a(value, ord_a),
+          jsonb_array_elements(o.itens) WITH ORDINALITY AS b(value, ord_b)
+        WHERE jsonb_array_length(o.itens) >= 2
+          AND a.ord_a < b.ord_a
+          AND (a.value->>'codigo' = ANY($1::text[]) OR b.value->>'codigo' = ANY($1::text[]))
+      )
+      SELECT sku_recom AS sku, nome, ROUND(AVG(valor), 2)::float AS valor
+      FROM pares
+      WHERE sku_recom != ALL($1::text[]) AND sku_recom IS NOT NULL
+      GROUP BY sku_recom, nome
+      ORDER BY COUNT(*) DESC
+      LIMIT 4
+    `, [skusComprados]);
+
+    // Buscar imagens
+    if (recs.length > 0) {
+      const imgRows = await query<{ sku: string; img: string }>(
+        `SELECT sku, imagens->0->>'url' AS img FROM sync.bling_products WHERE sku = ANY($1) AND imagens IS NOT NULL AND jsonb_array_length(imagens) > 0`,
+        [recs.map(r => r.sku)],
+      );
+      const imgs: Record<string, string> = {};
+      for (const r of imgRows) if (r.img) imgs[r.sku] = r.img;
+
+      recomendacoes = recs.map(r => ({
+        ...r,
+        img: imgs[r.sku] || null,
+      }));
+    }
+  }
+
+  // Se não achou recomendações, busca top produtos recentes
+  if (recomendacoes.length === 0) {
+    const topRows = await query<{ sku: string; nome: string; valor: number }>(`
+      SELECT item->>'codigo' AS sku, item->>'descricao' AS nome, ROUND(AVG((item->>'valor')::numeric), 2)::float AS valor
+      FROM sync.bling_orders o, jsonb_array_elements(o.itens) AS item
+      WHERE item->>'codigo' IS NOT NULL AND item->>'codigo' != ALL($1::text[])
+        AND o.criado_bling >= NOW() - INTERVAL '2 months'
+      GROUP BY item->>'codigo', item->>'descricao'
+      ORDER BY COUNT(*) DESC LIMIT 4
+    `, [skusComprados]);
+
+    const imgRows2 = topRows.length > 0 ? await query<{ sku: string; img: string }>(
+      `SELECT sku, imagens->0->>'url' AS img FROM sync.bling_products WHERE sku = ANY($1) AND imagens IS NOT NULL AND jsonb_array_length(imagens) > 0`,
+      [topRows.map(r => r.sku)],
+    ) : [];
+    const imgs2: Record<string, string> = {};
+    for (const r of imgRows2) if (r.img) imgs2[r.sku] = r.img;
+
+    recomendacoes = topRows.map(r => ({ ...r, img: imgs2[r.sku] || null }));
+  }
+
+  // Montar HTML dos produtos recomendados
+  let productsHtml = "";
+  if (recomendacoes.length > 0) {
+    const cards = recomendacoes.map(p => {
+      const imgTag = p.img
+        ? `<img src="${safeImageUrl(p.img)}" alt="${escHtml(p.nome)}" style="width:100%;height:140px;object-fit:contain;border-radius:8px;margin-bottom:8px;" />`
+        : `<div style="width:100%;height:140px;background:#ffe5ec;border-radius:8px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;font-size:40px;">🎀</div>`;
+
+      return `<td style="width:50%;padding:6px;vertical-align:top;">
+        <div style="background:#fafafa;border-radius:12px;padding:12px;text-align:center;border:1px solid #fee;">
+          ${imgTag}
+          <p style="font-size:12px;color:#333;margin:0 0 4px;line-height:1.3;min-height:32px;">${escHtml(p.nome.length > 50 ? p.nome.slice(0, 47) + "..." : p.nome)}</p>
+          <p style="font-size:15px;color:#fe68c4;font-weight:700;margin:0;">${formatBRL(p.valor)}</p>
+        </div>
+      </td>`;
+    });
+
+    // Grid 2x2
+    productsHtml = `<table style="width:100%;border-collapse:collapse;margin:16px 0;"><tr>${cards.slice(0, 2).join("")}</tr>`;
+    if (cards.length > 2) {
+      productsHtml += `<tr>${cards.slice(2, 4).join("")}</tr>`;
+    }
+    productsHtml += "</table>";
+  }
+
+  // Mencionar o que compraram
+  const compradosText = itensComprados.length > 0
+    ? itensComprados.slice(0, 2).map(i => `<strong>${escHtml(i.nome.length > 40 ? i.nome.slice(0, 37) + "..." : i.nome)}</strong>`).join(", ")
+    : "sua última compra";
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 💕</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Adoramos sua compra de ${compradosText}!
+      Separamos produtos que <strong>combinam perfeitamente</strong> com o que você levou:
+    </p>
+    <div style="background:linear-gradient(135deg,#fff7c1,#ffe5ec);border-radius:12px;padding:2px;">
+      <div style="text-align:center;padding:10px;">
+        <span style="background:#fe68c4;color:#fff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;">COMBINA COM VOCÊ ✨</span>
+      </div>
+      ${productsHtml}
+    </div>
+    ${ctaButton("Ver todos os produtos", "https://www.papelariabibelo.com.br/novidades?utm_source=email&utm_medium=flow&utm_campaign=cross_sell&utm_content=cta_ver_produtos")}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      Aproveite enquanto tem em estoque! 🎀
+    </p>
+  `);
 }
