@@ -263,16 +263,7 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
     }
 
     .avatar-ring {
-      position: absolute;
-      inset: -8px;
-      border-radius: 50%;
-      border: 2px solid var(--pink-main);
-      opacity: 0;
-      animation: pulse-ring 2.5s ease-out infinite;
-    }
-    @keyframes pulse-ring {
-      0%   { transform: scale(0.9); opacity: 0.6; }
-      100% { transform: scale(1.3); opacity: 0; }
+      display: none;
     }
 
     .nome {
@@ -541,7 +532,7 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
         <img src="/logo.png" alt="Papelaria Bibelô" class="avatar">
       </a>
       <h1 class="nome">Papelaria Bibelô</h1>
-      <p class="boas-vindas">Curadoria especial em papelaria</p>
+      <p class="boas-vindas">A sua papelaria fofa como bibelôs</p>
       <p class="bio">Timbó/SC &middot; Entregamos para todo o Brasil</p>
     </div>
 

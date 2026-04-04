@@ -422,3 +422,4 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Provider switchável (SES/Resend) via EMAIL_PROVIDER no .env
   - Webhook SES para tracking de eventos
   - Página ConsumoEmail no frontend
+- feat: ajustes visuais menu — novo slogan e remove pulsante da logo
