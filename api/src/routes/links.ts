@@ -954,6 +954,12 @@ linksRouter.get("/grupo-vip", (_req: Request, res: Response) => {
         Entrar no Clube VIP
       </button>
 
+      <div style="text-align:center;margin-top:6px;">
+        <a href="${GRUPO_VIP_URL}" style="color:#1da851;font-size:12px;font-weight:700;text-decoration:none;opacity:0.65;" onmouseover="this.style.opacity='1';this.style.textDecoration='underline'" onmouseout="this.style.opacity='0.65';this.style.textDecoration='none'">
+          Quero apenas entrar no grupo, sem cadastro &rarr;
+        </a>
+      </div>
+
       <a href="/" class="back-link">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
         Voltar ao menu
