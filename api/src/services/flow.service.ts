@@ -585,6 +585,9 @@ async function executeEmailStep(
     return { skipped: true, reason: "Cliente sem email" };
   }
 
+  // Garantir que customer_id esteja no metadata (necessário para cross-sell/recompra)
+  if (!metadata.customer_id) metadata.customer_id = customer.id;
+
   // Busca template pelo nome
   const template = await queryOne<{ id: string; assunto: string; html: string; texto: string }>(
     "SELECT id, assunto, html, texto FROM marketing.templates WHERE nome ILIKE $1 AND ativo = true LIMIT 1",
@@ -1728,17 +1731,24 @@ export async function checkRepurchaseDue(): Promise<number> {
 
   for (const c of candidates) {
     // Buscar produtos que o cliente costuma comprar (comprou 2+ vezes)
+    // Prioriza produtos com imagem HD na NuvemShop
     const produtosFrequentes = await query<{
       sku: string; nome: string; valor: number; vezes: number;
     }>(`
-      SELECT item->>'codigo' AS sku, item->>'descricao' AS nome,
-        ROUND(AVG((item->>'valor')::numeric), 2)::float AS valor,
-        COUNT(*)::int AS vezes
-      FROM sync.bling_orders o, jsonb_array_elements(o.itens) AS item
-      WHERE o.customer_id = $1 AND item->>'codigo' IS NOT NULL
-      GROUP BY item->>'codigo', item->>'descricao'
-      HAVING COUNT(*) >= 2
-      ORDER BY COUNT(*) DESC
+      SELECT sub.sku, sub.nome, sub.valor, sub.vezes
+      FROM (
+        SELECT item->>'codigo' AS sku, item->>'descricao' AS nome,
+          ROUND(AVG((item->>'valor')::numeric), 2)::float AS valor,
+          COUNT(*)::int AS vezes
+        FROM sync.bling_orders o, jsonb_array_elements(o.itens) AS item
+        WHERE o.customer_id = $1 AND item->>'codigo' IS NOT NULL
+        GROUP BY item->>'codigo', item->>'descricao'
+        HAVING COUNT(*) >= 2
+      ) sub
+      LEFT JOIN sync.nuvemshop_products np ON LOWER(np.sku) = LOWER(sub.sku)
+      ORDER BY
+        CASE WHEN np.imagens IS NOT NULL AND jsonb_array_length(np.imagens) > 0 THEN 0 ELSE 1 END,
+        sub.vezes DESC
       LIMIT 4
     `, [c.customer_id]);
 
@@ -1780,14 +1790,24 @@ async function fetchProductImages(skus: string[]): Promise<Record<string, string
   );
   for (const r of nsRows) if (r.img) imgs[r.sku.toUpperCase()] = r.img;
 
-  // Prioridade 2: Bling (fallback para SKUs sem imagem na NuvemShop)
+  // Prioridade 2: Bling → converter thumbnail para CDN NuvemShop HD
+  // Bling URL: .../t/{hash}?... → NuvemShop CDN: .../products/{hash}-...-1024-1024.jpg
   const missing = skus.filter(s => !imgs[s] && !imgs[s.toUpperCase()]);
   if (missing.length > 0) {
     const blingRows = await query<{ sku: string; img: string }>(
       `SELECT sku, imagens->0->>'url' AS img FROM sync.bling_products WHERE sku = ANY($1) AND imagens IS NOT NULL AND jsonb_array_length(imagens) > 0`,
       [missing],
     );
-    for (const r of blingRows) if (r.img) imgs[r.sku] = r.img;
+    for (const r of blingRows) {
+      if (!r.img) continue;
+      // Extrair hash do thumbnail Bling e montar URL HD via CDN NuvemShop
+      const hashMatch = r.img.match(/\/t\/([a-f0-9]{32})/);
+      if (hashMatch) {
+        imgs[r.sku] = `https://dcdn-us.mitiendanube.com/stores/007/290/881/products/${hashMatch[1]}-1024-1024.jpg`;
+      } else {
+        imgs[r.sku] = r.img; // fallback para URL original
+      }
+    }
   }
 
   // Normalizar: garantir que o SKU original (case-sensitive) tenha a imagem
