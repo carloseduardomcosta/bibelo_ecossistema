@@ -104,6 +104,7 @@ const navGroups: NavGroup[] = [
     label: 'Sistema',
     items: [
       { to: '/sync', label: 'Sync', icon: RefreshCw },
+      { to: '/filas', label: 'Filas', icon: Clock },
     ],
   },
 ];

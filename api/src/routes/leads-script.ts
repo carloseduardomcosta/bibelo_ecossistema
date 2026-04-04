@@ -1,10 +1,13 @@
 import { Router, Request, Response } from "express";
+import rateLimit from "express-rate-limit";
 
 export const leadsScriptRouter = Router();
 
+const scriptLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false, message: "// rate limited" });
+
 // ── GET /api/leads/popup.js — script JS servido para a NuvemShop ──
 
-leadsScriptRouter.get("/popup.js", (_req: Request, res: Response) => {
+leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response) => {
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
   res.setHeader("Cache-Control", "public, max-age=300");
   res.removeHeader("Cross-Origin-Resource-Policy");

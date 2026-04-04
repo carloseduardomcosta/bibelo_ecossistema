@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { getCachedReviews, refreshReviewsCache } from "../integrations/google/reviews";
+import { cached } from "../utils/cache";
 
 export const analyticsRouter = Router();
 analyticsRouter.use(authMiddleware);
@@ -580,6 +581,7 @@ analyticsRouter.post("/reviews/refresh", async (_req: Request, res: Response) =>
 // ── GET /api/analytics/rfm — Segmentação RFM completa ───────────
 
 analyticsRouter.get("/rfm", async (_req: Request, res: Response) => {
+  const data = await cached("analytics:rfm", 300, async () => {
   // Classificação RFM: divide em quintis (1-5) baseado na distribuição real
   const clientes = await query<{
     id: string; nome: string; email: string; canal_origem: string;
@@ -678,7 +680,7 @@ analyticsRouter.get("/rfm", async (_req: Request, res: Response) => {
   const totalComPedidos = comPedidos.length;
   const totalSemPedidos = clientes.length - totalComPedidos;
 
-  res.json({
+  return {
     total_clientes: clientes.length,
     com_pedidos: totalComPedidos,
     sem_pedidos: totalSemPedidos,
@@ -688,7 +690,9 @@ analyticsRouter.get("/rfm", async (_req: Request, res: Response) => {
       .sort((a, b) => b.ltv - a.ltv).slice(0, 10),
     perdidos: rfmClientes.filter(c => c.rfm_segmento === "Perdidos" || c.rfm_segmento === "Hibernando")
       .sort((a, b) => b.ltv - a.ltv).slice(0, 10),
+  };
   });
+  res.json(data);
 });
 
 // ── GET /api/analytics/flow-conversion — Funil de conversão ─────
@@ -891,6 +895,7 @@ analyticsRouter.get("/roi-canal", async (req: Request, res: Response) => {
 // ── GET /api/analytics/cross-sell — Pares frequentes + insights ──
 
 analyticsRouter.get("/cross-sell", async (_req: Request, res: Response) => {
+  const data = await cached("analytics:cross-sell", 600, async () => {
   // Top pares de produtos comprados juntos (excluindo variações do mesmo produto)
   const pares = await query<{
     sku_a: string; nome_a: string; valor_a: number;
@@ -970,7 +975,7 @@ analyticsRouter.get("/cross-sell", async (_req: Request, res: Response) => {
   const imagens: Record<string, string> = {};
   for (const r of imagensRows) if (r.img) imagens[r.sku] = r.img;
 
-  res.json({
+  return {
     stats: {
       total_pedidos: stats?.total_pedidos || 0,
       multi_item: stats?.multi_item || 0,
@@ -986,7 +991,9 @@ analyticsRouter.get("/cross-sell", async (_req: Request, res: Response) => {
       ...p,
       img: imagens[p.sku] || null,
     })),
+  };
   });
+  res.json(data);
 });
 
 // ── GET /api/analytics/cross-sell/recommend/:customerId ─────────
