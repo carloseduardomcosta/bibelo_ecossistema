@@ -155,13 +155,14 @@ Toda comunicação **DEVE ser em português brasileiro (pt-BR)**. Commits, mensa
 
 ### Regras de negócio (emails e fluxos)
 - Motor condicional: steps tipo "condicao" avaliam 7 tipos (email_aberto, email_clicado, comprou, visitou_site, viu_produto, abandonou_cart, score_minimo) e fazem branching (sim/nao → targetIndex)
-- 7 fluxos inteligentes: carrinho abandonado (12 steps), nutrição lead (12 steps), reativação (10 steps), produto visitado (10 steps), lead quente (10 steps), pós-compra (8 steps), **lembrete de verificação** (cron 2h, máx 2 lembretes)
+- 9 fluxos inteligentes: carrinho abandonado (12 steps), nutrição lead (12 steps), reativação (10 steps), produto visitado (10 steps), lead quente (10 steps), pós-compra (8 steps), **lembrete de verificação** (cron 2h), **cross-sell pós-compra** (cron via order.paid, 3d delay), **recompra inteligente** (cron 6h, clientes com ciclo atrasado)
 - **Lembrete de verificação**: automação do sistema (cron a cada 2h) que reenvia email de confirmação para leads que não verificaram. 1º lembrete após 3h, 2º (último) após 24h. Campos: `lembretes_enviados`, `ultimo_lembrete_em` em `marketing.leads`. Código: `checkUnverifiedLeads()` em `flow.service.ts`, job `flow-check-unverified-leads` em `flow.queue.ts`
 - Cupons únicos por lead: gerarCupomUnico() cria BIB-NOME-XXXX na NuvemShop API (max_uses:1, first_consumer_purchase:true, expiry automático)
 - 3 cenários de cupom: carrinho abandonado (5%, 24h), nutrição lead (10%, 48h), reativação (10%, 7d)
 - Cupom do popup Clube Bibelô: `CLUBEBIBELO` = frete grátis (não é percentual)
 - triggerFlow nunca re-executa (ignora se já existe execução)
 - Reativação só para quem tem pelo menos 1 pedido
+- **Novo fluxo = preview obrigatório**: ao criar qualquer fluxo novo, SEMPRE enviar um email de teste/preview para `carloseduardocostatj@gmail.com` com dados reais (imagens HD NuvemShop, links reais, nome do cliente). O dono precisa aprovar o visual antes de ir para produção.
 - Testes de email: SEMPRE em `carloseduardocostatj@gmail.com`
 - Captura de lead vincula visitor_id ao customer
 - Cada email de fluxo registra interação em `crm.interactions`
