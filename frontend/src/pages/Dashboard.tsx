@@ -7,11 +7,12 @@ import {
   DollarSign, ShoppingCart, TrendingUp, TrendingDown,
   AlertTriangle, PackageX, Users, ArrowUpRight, ArrowDownRight,
   ArrowDown, ArrowUp, Wallet, Minus, UserCheck, MapPin,
+  Mail, Clock, Zap, Eye, MousePointerClick, Send,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
-import { formatCurrency, formatMonth } from '../lib/format';
+import { formatCurrency, formatMonth, timeAgo } from '../lib/format';
 
 interface Overview {
   receita_periodo: number;
@@ -54,6 +55,29 @@ interface GeoData {
   byCountry: Array<{ country: string; visitors: number }>;
 }
 
+interface FlowActivity {
+  recentSends: Array<{
+    customer_nome: string; customer_email: string;
+    flow_nome: string; executado_em: string;
+  }>;
+  upcoming: Array<{
+    customer_nome: string; customer_email: string;
+    flow_nome: string; step_tipo: string; agendado_para: string;
+  }>;
+  activeFlows: Array<{
+    id: string; nome: string; gatilho: string;
+    execucoes_ativas: number; execucoes_concluidas: number;
+    execucoes_erro: number; emails_enviados: number;
+  }>;
+  emailInteractions: {
+    opened: number; clicked: number; bounced: number; complained: number;
+    recentEvents: Array<{
+      tipo: string; customer_nome: string | null;
+      customer_email: string; link: string | null; criado_em: string;
+    }>;
+  };
+}
+
 const ESTADO_NOMES: Record<string, string> = {
   AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia',
   CE: 'Ceará', DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás',
@@ -94,6 +118,7 @@ export default function Dashboard() {
   const [revenue, setRevenue] = useState<RevenuePoint[]>([]);
   const [insights, setInsights] = useState<Insights | null>(null);
   const [geoData, setGeoData] = useState<GeoData | null>(null);
+  const [flowActivity, setFlowActivity] = useState<FlowActivity | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -105,12 +130,14 @@ export default function Dashboard() {
       api.get(`/analytics/revenue?${p}`),
       api.get(`/analytics/insights?${p}`),
       api.get(`/tracking/geo?dias=${geoDias}`),
+      api.get(`/analytics/flow-activity?${p}`),
     ])
-      .then(([ovRes, revRes, insRes, geoRes]) => {
+      .then(([ovRes, revRes, insRes, geoRes, flowRes]) => {
         setOv(ovRes.data);
         setRevenue(revRes.data.data);
         setInsights(insRes.data);
         setGeoData(geoRes.data);
+        setFlowActivity(flowRes.data);
       })
       .catch(() => { showError('Erro ao carregar dados do dashboard'); })
       .finally(() => setLoading(false));
@@ -519,6 +546,194 @@ export default function Dashboard() {
               )}
             </div>
           </div>
+          {/* ── Atividade de Fluxos ─────────────────────────────── */}
+          {flowActivity && (
+            <>
+              <div className="mt-8 mb-4">
+                <h2 className="text-lg font-semibold text-bibelo-text flex items-center gap-2" style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}>
+                  <Mail size={18} className="text-pink-400" />
+                  Automações & Emails
+                </h2>
+                <p className="text-xs text-bibelo-muted mt-0.5">Fluxos automáticos, agendamentos e interações — {periodoLabel}</p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Card 1: Emails Recentes */}
+                <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+                  <h3 className="text-sm font-medium text-bibelo-muted mb-3 flex items-center gap-2">
+                    <Send size={14} className="text-pink-400" /> Emails Enviados
+                  </h3>
+                  {!flowActivity.recentSends.length ? (
+                    <p className="text-sm text-bibelo-muted py-6 text-center">Nenhum email de fluxo enviado no período</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {flowActivity.recentSends.slice(0, 10).map((s, i) => (
+                        <div key={i} className="flex items-center justify-between py-2 border-b border-bibelo-border/50 last:border-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-7 h-7 rounded-full bg-pink-400/15 flex items-center justify-center shrink-0">
+                              <Mail size={13} className="text-pink-400" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm text-bibelo-text truncate">{s.customer_nome}</p>
+                              <p className="text-xs text-bibelo-muted truncate">{s.customer_email}</p>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0 ml-2">
+                            <span className="inline-block text-[10px] font-medium bg-pink-400/15 text-pink-400 px-2 py-0.5 rounded-full truncate max-w-[140px]">
+                              {s.flow_nome}
+                            </span>
+                            <p className="text-[10px] text-bibelo-muted mt-0.5">{timeAgo(s.executado_em)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Card 2: Próximos Envios */}
+                <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+                  <h3 className="text-sm font-medium text-bibelo-muted mb-3 flex items-center gap-2">
+                    <Clock size={14} className="text-amber-400" /> Próximos Agendados
+                  </h3>
+                  {!flowActivity.upcoming.length ? (
+                    <p className="text-sm text-bibelo-muted py-6 text-center">Nenhuma automação agendada</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {flowActivity.upcoming.slice(0, 10).map((u, i) => {
+                        const diffMs = new Date(u.agendado_para).getTime() - Date.now();
+                        const diffH = Math.max(0, Math.floor(diffMs / 3600000));
+                        const diffM = Math.max(0, Math.floor((diffMs % 3600000) / 60000));
+                        const tempoRestante = diffH > 24 ? `${Math.floor(diffH / 24)}d ${diffH % 24}h` : diffH > 0 ? `${diffH}h ${diffM}min` : `${diffM}min`;
+                        return (
+                          <div key={i} className="flex items-center justify-between py-2 border-b border-bibelo-border/50 last:border-0">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-7 h-7 rounded-full bg-amber-400/15 flex items-center justify-center shrink-0">
+                                {u.step_tipo === 'email' ? <Mail size={13} className="text-amber-400" /> : <Clock size={13} className="text-amber-400" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm text-bibelo-text truncate">{u.customer_nome}</p>
+                                <p className="text-xs text-bibelo-muted truncate">{u.customer_email}</p>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0 ml-2">
+                              <span className="inline-block text-[10px] font-medium bg-amber-400/15 text-amber-400 px-2 py-0.5 rounded-full truncate max-w-[140px]">
+                                {u.flow_nome}
+                              </span>
+                              <p className="text-[10px] text-bibelo-muted mt-0.5">em {tempoRestante}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Card 3: Fluxos Ativos */}
+                <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+                  <h3 className="text-sm font-medium text-bibelo-muted mb-3 flex items-center gap-2">
+                    <Zap size={14} className="text-emerald-400" /> Fluxos Ativos
+                  </h3>
+                  {!flowActivity.activeFlows.length ? (
+                    <p className="text-sm text-bibelo-muted py-6 text-center">Nenhum fluxo ativo</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {flowActivity.activeFlows.map((f) => (
+                        <div key={f.id} className="flex items-center justify-between py-2 border-b border-bibelo-border/50 last:border-0">
+                          <div className="min-w-0">
+                            <p className="text-sm text-bibelo-text truncate">{f.nome}</p>
+                            <p className="text-[10px] text-bibelo-muted">{f.gatilho}</p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 ml-2">
+                            {f.execucoes_ativas > 0 && (
+                              <span className="text-[10px] font-medium bg-emerald-400/15 text-emerald-400 px-2 py-0.5 rounded-full">
+                                {f.execucoes_ativas} ativo{f.execucoes_ativas !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                            {f.execucoes_concluidas > 0 && (
+                              <span className="text-[10px] font-medium bg-blue-400/15 text-blue-400 px-2 py-0.5 rounded-full">
+                                {f.execucoes_concluidas} ok
+                              </span>
+                            )}
+                            {f.emails_enviados > 0 && (
+                              <span className="text-[10px] font-medium bg-pink-400/15 text-pink-400 px-2 py-0.5 rounded-full">
+                                {f.emails_enviados} <Mail size={10} className="inline" />
+                              </span>
+                            )}
+                            {f.execucoes_erro > 0 && (
+                              <span className="text-[10px] font-medium bg-red-400/15 text-red-400 px-2 py-0.5 rounded-full">
+                                {f.execucoes_erro} erro
+                              </span>
+                            )}
+                            {f.execucoes_ativas === 0 && f.execucoes_concluidas === 0 && f.emails_enviados === 0 && (
+                              <span className="text-[10px] text-bibelo-muted">aguardando</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Card 4: Interações de Email */}
+                <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+                  <h3 className="text-sm font-medium text-bibelo-muted mb-3 flex items-center gap-2">
+                    <Eye size={14} className="text-violet-400" /> Interações de Email
+                  </h3>
+                  <div className="grid grid-cols-4 gap-2 mb-3">
+                    <div className="text-center rounded-lg py-2 bg-emerald-400/10">
+                      <p className="text-lg font-bold text-emerald-400">{flowActivity.emailInteractions.opened}</p>
+                      <p className="text-[10px] text-bibelo-muted">Abertos</p>
+                    </div>
+                    <div className="text-center rounded-lg py-2 bg-blue-400/10">
+                      <p className="text-lg font-bold text-blue-400">{flowActivity.emailInteractions.clicked}</p>
+                      <p className="text-[10px] text-bibelo-muted">Cliques</p>
+                    </div>
+                    <div className="text-center rounded-lg py-2 bg-red-400/10">
+                      <p className="text-lg font-bold text-red-400">{flowActivity.emailInteractions.bounced}</p>
+                      <p className="text-[10px] text-bibelo-muted">Bounce</p>
+                    </div>
+                    <div className="text-center rounded-lg py-2 bg-amber-400/10">
+                      <p className="text-lg font-bold text-amber-400">{flowActivity.emailInteractions.complained}</p>
+                      <p className="text-[10px] text-bibelo-muted">Spam</p>
+                    </div>
+                  </div>
+                  {!flowActivity.emailInteractions.recentEvents.length ? (
+                    <p className="text-sm text-bibelo-muted py-4 text-center">Nenhuma interação no período</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {flowActivity.emailInteractions.recentEvents.slice(0, 8).map((e, i) => {
+                        const tipoMap: Record<string, { bg: string; text: string; label: string }> = {
+                          opened: { bg: 'bg-emerald-400/15', text: 'text-emerald-400', label: 'Abriu' },
+                          clicked: { bg: 'bg-blue-400/15', text: 'text-blue-400', label: 'Clicou' },
+                          bounced: { bg: 'bg-red-400/15', text: 'text-red-400', label: 'Bounce' },
+                          complained: { bg: 'bg-amber-400/15', text: 'text-amber-400', label: 'Spam' },
+                          delivered: { bg: 'bg-gray-400/15', text: 'text-gray-400', label: 'Entregue' },
+                        };
+                        const cfg = tipoMap[e.tipo] || { bg: 'bg-gray-400/15', text: 'text-gray-400', label: e.tipo };
+                        const Icon = e.tipo === 'opened' ? Eye : e.tipo === 'clicked' ? MousePointerClick : e.tipo === 'delivered' ? Send : AlertTriangle;
+                        return (
+                          <div key={i} className="flex items-center justify-between py-1.5 border-b border-bibelo-border/50 last:border-0">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className={`w-6 h-6 rounded-full ${cfg.bg} flex items-center justify-center shrink-0`}>
+                                <Icon size={12} className={cfg.text} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs text-bibelo-text truncate">{e.customer_nome || e.customer_email}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0 ml-2">
+                              <span className={`text-[10px] font-medium ${cfg.text}`}>{cfg.label}</span>
+                              <span className="text-[10px] text-bibelo-muted">{timeAgo(e.criado_em)}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>

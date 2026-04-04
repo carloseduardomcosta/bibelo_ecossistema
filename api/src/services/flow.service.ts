@@ -123,19 +123,23 @@ export async function triggerFlow(
     return [];
   }
 
-  // Rate limit: max 1 email por 12h por cliente (across all flows)
-  const recentEmail = await queryOne<{ id: string }>(
-    `SELECT fse.id FROM marketing.flow_step_executions fse
-     JOIN marketing.flow_executions fe ON fe.id = fse.execution_id
-     WHERE fe.customer_id = $1 AND fse.tipo = 'email' AND fse.status = 'concluido'
-       AND fse.executado_em > NOW() - INTERVAL '12 hours'
-     LIMIT 1`,
-    [customerId]
-  );
+  // Rate limit: max 1 email por 12h por cliente — exceto gatilhos transacionais
+  // Transacionais (pós-compra, carrinho, boas-vindas) são urgentes e não devem ser bloqueados
+  const gatilhosTransacionais = ["order.paid", "order.first", "order.abandoned", "order.delivered"];
+  if (!gatilhosTransacionais.includes(gatilho)) {
+    const recentEmail = await queryOne<{ id: string }>(
+      `SELECT fse.id FROM marketing.flow_step_executions fse
+       JOIN marketing.flow_executions fe ON fe.id = fse.execution_id
+       WHERE fe.customer_id = $1 AND fse.tipo = 'email' AND fse.status = 'concluido'
+         AND fse.executado_em > NOW() - INTERVAL '12 hours'
+       LIMIT 1`,
+      [customerId]
+    );
 
-  if (recentEmail) {
-    logger.info("triggerFlow: cliente recebeu email há menos de 12h, fluxo adiado", { customerId, gatilho });
-    return [];
+    if (recentEmail) {
+      logger.info("triggerFlow: cliente recebeu email há menos de 12h, fluxo adiado", { customerId, gatilho });
+      return [];
+    }
   }
 
   const executionIds: string[] = [];
@@ -318,7 +322,7 @@ async function evaluateCondition(
 export async function executeStep(executionId: string): Promise<boolean> {
   const execution = await queryOne<FlowExecution>(
     `SELECT fe.id, fe.flow_id, fe.customer_id, fe.step_atual, fe.status, fe.metadata, fe.proximo_step_em
-     FROM marketing.flow_executions fe WHERE fe.id = $1 AND fe.status = 'ativo'`,
+     FROM marketing.flow_executions fe WHERE fe.id = $1 AND fe.status IN ('ativo', 'executando')`,
     [executionId]
   );
 
@@ -535,9 +539,9 @@ async function advanceFlow(
   const delayMs = (nextStep.delay_horas || 0) * 3600 * 1000;
   const proximoStepEm = new Date(Date.now() + delayMs);
 
-  // Atualiza execução
+  // Atualiza execução — volta para 'ativo' para o worker processar o próximo step
   await query(
-    `UPDATE marketing.flow_executions SET step_atual = $2, proximo_step_em = $3
+    `UPDATE marketing.flow_executions SET step_atual = $2, proximo_step_em = $3, status = 'ativo'
      WHERE id = $1`,
     [executionId, nextIndex, proximoStepEm]
   );
@@ -1247,8 +1251,6 @@ export async function processReadySteps(): Promise<number> {
   let processed = 0;
 
   for (const exec of executions) {
-    // Restaura status para 'ativo' antes de executar (executeStep espera 'ativo')
-    await query("UPDATE marketing.flow_executions SET status = 'ativo' WHERE id = $1", [exec.id]);
     const success = await executeStep(exec.id);
     if (success) processed++;
   }

@@ -252,17 +252,18 @@ describe("triggerFlow — validações", () => {
       );
     }
 
-    // Cria outro fluxo com gatilho diferente para testar rate limit
+    // Cria outro fluxo com gatilho NÃO-transacional para testar rate limit
+    // Gatilhos transacionais (order.paid, order.abandoned, etc.) são isentos do rate limit
     const flow2 = await queryOne<{ id: string }>(
       `INSERT INTO marketing.flows (nome, gatilho, steps, ativo)
-       VALUES ($1, 'order.abandoned', '[{"tipo":"email","template":"Carrinho","delay_horas":0}]'::jsonb, true)
+       VALUES ($1, 'product.interested', '[{"tipo":"email","template":"Produto","delay_horas":0}]'::jsonb, true)
        RETURNING id`,
       [`${FLOW_TEST_PREFIX}rate-limit-test`]
     );
     createdFlowIds.push(flow2!.id);
 
-    const ids = await triggerFlow("order.abandoned", testCustomerId);
-    // Deve bloquear pelo rate limit de 12h
+    const ids = await triggerFlow("product.interested", testCustomerId);
+    // Deve bloquear pelo rate limit de 12h (gatilho não-transacional)
     expect(ids).toEqual([]);
   });
 });

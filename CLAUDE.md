@@ -410,7 +410,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 4 de Abril de 2026 — Meta Ads dashboard (Facebook + Instagram), integração Meta Graph API v21.0, KPIs/demográfico/geográfico/plataformas*
+*Última atualização: 4 de Abril de 2026 — auditoria fluxos (fix race condition, Redis noeviction, rate limit transacional), seção Automações & Emails no Dashboard, reativação clientes inativos*
 
 ---
 

@@ -1081,3 +1081,106 @@ analyticsRouter.get("/cross-sell/recommend/:customerId", async (req: Request, re
     })),
   });
 });
+
+// ── GET /api/analytics/flow-activity — atividade de fluxos para o Dashboard ───
+
+analyticsRouter.get("/flow-activity", async (req: Request, res: Response) => {
+  const { intervalo } = periodoToInterval(req.query.periodo as string);
+
+  const [recentSends, upcoming, activeFlows, eventCounts, recentEvents] = await Promise.all([
+    // 1. Emails enviados recentemente via fluxos
+    query<{
+      customer_nome: string; customer_email: string;
+      flow_nome: string; executado_em: string;
+    }>(
+      `SELECT c.nome AS customer_nome, c.email AS customer_email,
+              f.nome AS flow_nome, fse.executado_em
+       FROM marketing.flow_step_executions fse
+       JOIN marketing.flow_executions fe ON fe.id = fse.execution_id
+       JOIN marketing.flows f ON f.id = fe.flow_id
+       JOIN crm.customers c ON c.id = fe.customer_id
+       WHERE fse.tipo = 'email' AND fse.status = 'concluido'
+         AND fse.executado_em >= NOW() - $1::interval
+       ORDER BY fse.executado_em DESC
+       LIMIT 20`,
+      [intervalo]
+    ),
+
+    // 2. Próximos envios agendados
+    query<{
+      customer_nome: string; customer_email: string;
+      flow_nome: string; step_tipo: string; agendado_para: string;
+    }>(
+      `SELECT c.nome AS customer_nome, c.email AS customer_email,
+              f.nome AS flow_nome, fse.tipo AS step_tipo, fse.agendado_para
+       FROM marketing.flow_step_executions fse
+       JOIN marketing.flow_executions fe ON fe.id = fse.execution_id
+       JOIN marketing.flows f ON f.id = fe.flow_id
+       JOIN crm.customers c ON c.id = fe.customer_id
+       WHERE fse.status = 'pendente' AND fse.agendado_para > NOW()
+         AND fe.status IN ('ativo', 'executando')
+       ORDER BY fse.agendado_para ASC
+       LIMIT 15`
+    ),
+
+    // 3. Panorama dos fluxos ativos
+    query<{
+      id: string; nome: string; gatilho: string;
+      execucoes_ativas: number; execucoes_concluidas: number;
+      execucoes_erro: number; emails_enviados: number;
+    }>(
+      `SELECT f.id, f.nome, f.gatilho,
+              COUNT(DISTINCT fe.id) FILTER (WHERE fe.status IN ('ativo','executando'))::int AS execucoes_ativas,
+              COUNT(DISTINCT fe.id) FILTER (WHERE fe.status = 'concluido')::int AS execucoes_concluidas,
+              COUNT(DISTINCT fe.id) FILTER (WHERE fe.status = 'erro')::int AS execucoes_erro,
+              COUNT(DISTINCT fse.id) FILTER (
+                WHERE fse.tipo = 'email' AND fse.status = 'concluido'
+                  AND fse.executado_em >= NOW() - $1::interval
+              )::int AS emails_enviados
+       FROM marketing.flows f
+       LEFT JOIN marketing.flow_executions fe ON fe.flow_id = f.id
+       LEFT JOIN marketing.flow_step_executions fse ON fse.execution_id = fe.id
+       WHERE f.ativo = true
+       GROUP BY f.id, f.nome, f.gatilho
+       ORDER BY execucoes_ativas DESC, emails_enviados DESC`,
+      [intervalo]
+    ),
+
+    // 4a. Contagem de interações de email (fluxos + campanhas)
+    queryOne<{ opened: number; clicked: number; bounced: number; complained: number }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE tipo = 'opened')::int AS opened,
+         COUNT(*) FILTER (WHERE tipo = 'clicked')::int AS clicked,
+         COUNT(*) FILTER (WHERE tipo = 'bounced')::int AS bounced,
+         COUNT(*) FILTER (WHERE tipo = 'complained')::int AS complained
+       FROM marketing.email_events
+       WHERE criado_em >= NOW() - $1::interval`,
+      [intervalo]
+    ),
+
+    // 4b. Eventos recentes de interação
+    query<{
+      tipo: string; customer_nome: string | null;
+      customer_email: string; link: string | null; criado_em: string;
+    }>(
+      `SELECT ee.tipo, c.nome AS customer_nome, c.email AS customer_email,
+              ee.link, ee.criado_em
+       FROM marketing.email_events ee
+       LEFT JOIN crm.customers c ON c.id = ee.customer_id
+       WHERE ee.criado_em >= NOW() - $1::interval
+       ORDER BY ee.criado_em DESC
+       LIMIT 20`,
+      [intervalo]
+    ),
+  ]);
+
+  res.json({
+    recentSends,
+    upcoming,
+    activeFlows,
+    emailInteractions: {
+      ...(eventCounts || { opened: 0, clicked: 0, bounced: 0, complained: 0 }),
+      recentEvents,
+    },
+  });
+});

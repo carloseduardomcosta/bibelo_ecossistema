@@ -29,6 +29,7 @@ Referência completa de todos os endpoints.
 - `GET  /api/analytics/overview` — KPIs gerais
 - `GET  /api/analytics/revenue` — receita por mês
 - `GET  /api/analytics/segments` — clientes por segmento
+- `GET  /api/analytics/flow-activity?periodo=30d` — atividade de fluxos: emails recentes, próximos agendados, fluxos ativos, interações
 
 ### Campanhas
 - `GET  /api/campaigns` — listar campanhas (paginada, filtro status/canal)

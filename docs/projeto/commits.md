@@ -444,3 +444,10 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Diagnóstico: catálogo dinâmico precisa 24-48h + Pixel ativo + volume de dados
   - Demográfico: mulheres 35-54 melhor engajamento, Instagram 99%
   - Geográfico: RJ lidera, seguido de RS e DF
+- feat: auditoria fluxos + dashboard automações + reativação clientes
+  - Fix: Redis noeviction (BullMQ exige), removidos 8 flows de teste do banco
+  - Fix: race condition processReadySteps — lock atômico não era revertido
+  - Fix: rate limit 12h isenta gatilhos transacionais (order.paid, order.abandoned)
+  - Novo endpoint: GET /api/analytics/flow-activity (emails recentes, agendados, fluxos, interações)
+  - Dashboard: seção "Automações & Emails" com 4 cards (envios, agendados, fluxos ativos, interações)
+  - Reativação disparada para 2 clientes risco alto (Bruna Caroline + Maria Luiza)
