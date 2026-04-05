@@ -308,5 +308,17 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
     };
   }
 })();
+
+// ── Auto-load tracking script (bibelo.js) ──
+(function() {
+  if (window.__bibelo_tracking_loaded) return;
+  window.__bibelo_tracking_loaded = true;
+  // Não carrega dentro de iframes (GTM preview)
+  if (window.self !== window.top) return;
+  var s = document.createElement('script');
+  s.src = '${apiBase}/api/tracking/bibelo.js';
+  s.defer = true;
+  document.head.appendChild(s);
+})();
 `);
 });

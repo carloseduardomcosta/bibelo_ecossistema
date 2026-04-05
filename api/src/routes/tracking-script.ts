@@ -22,6 +22,12 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
 (function() {
   'use strict';
 
+  // Não rodar dentro de iframes (GTM preview, etc)
+  if (window.self !== window.top) return;
+  // Não rodar duplicado
+  if (window.__bibelo_tracking_init) return;
+  window.__bibelo_tracking_init = true;
+
   var API = '${apiBase}/api/tracking';
   var VID_COOKIE = '_bibelo_vid';
   var DEBOUNCE_MS = 3000;
@@ -330,11 +336,19 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
           text.includes('adicionar') ||
           text.includes('add to cart') ||
           text.includes('agregar') ||
+          text.includes('buy') ||
           cls.includes('add-to-cart') ||
           cls.includes('js-addtocart') ||
+          cls.includes('js-add-to-cart') ||
           cls.includes('btn-add') ||
+          cls.includes('js-prod-submit') ||
+          cls.includes('product-buy-btn') ||
+          cls.includes('js-buy-btn') ||
+          cls.includes('js-product-buy') ||
           id.includes('addtocart') ||
-          target.getAttribute('data-action') === 'add-to-cart';
+          id.includes('buy-btn') ||
+          target.getAttribute('data-action') === 'add-to-cart' ||
+          (target.type === 'submit' && target.closest('form[action*=\"/cart\"], form.js-product-form, form[data-product-form]'));
 
         if (isCartButton && (target.tagName === 'BUTTON' || target.tagName === 'A' || target.tagName === 'INPUT')) {
           var productData = { pagina_tipo: 'product' };
@@ -399,6 +413,34 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
 
         target = target.parentElement;
       }
+    }, true);
+
+    // Fallback: interceptar submit de forms de produto (NuvemShop Amazonas e outros temas)
+    document.addEventListener('submit', function(e) {
+      var form = e.target;
+      if (!form || !form.tagName || form.tagName !== 'FORM') return;
+      var action = (form.action || '').toLowerCase();
+      var cls = (form.className || '').toLowerCase();
+      var isProductForm = action.includes('/cart') || action.includes('agregar') ||
+        cls.includes('js-product-form') || cls.includes('product-form') ||
+        form.getAttribute('data-product-form') !== null ||
+        form.querySelector('input[name="add_to_cart"], input[name="quantity"]');
+      if (!isProductForm) return;
+
+      var pd = { pagina_tipo: 'product' };
+      var ogT = document.querySelector('meta[property="og:title"]');
+      if (ogT) pd.resource_nome = ogT.getAttribute('content');
+      var ogI = document.querySelector('meta[property="og:image"]');
+      if (ogI) pd.resource_imagem = ogI.getAttribute('content');
+      var ogP = document.querySelector('meta[property="product:price:amount"]');
+      if (ogP) pd.resource_preco = parseFloat(ogP.getAttribute('content') || '0');
+      var pIdEl = form.querySelector('input[name="product_id"], [data-product-id]') || document.querySelector('[data-product-id]');
+      if (pIdEl) pd.resource_id = pIdEl.value || pIdEl.getAttribute('data-product-id');
+      if (!pd.resource_id) {
+        var slug = window.location.pathname.split('/').filter(Boolean).pop();
+        if (window.location.pathname.match(/^\\/(produtos|products)\\//)) pd.resource_id = slug;
+      }
+      track('add_to_cart', pd);
     }, true);
   }
 
