@@ -117,7 +117,7 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
         if (!targetPopup) targetPopup = timerPopup;
         if (targetPopup) {
           shown = true;
-          var bannerNome = forceDesconto ? '7% OFF' : 'Frete Grátis';
+          var bannerNome = forceDesconto ? '7% OFF' : '7% OFF';
           trackEvent(vid, 'banner_click', { banner: bannerNome, popup_id: targetPopup.id });
           showPopup(targetPopup, vid);
           // Limpa params da URL sem recarregar
@@ -182,7 +182,7 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
     var card = document.createElement('div');
     card.style.cssText = 'background:#fff;border-radius:20px;max-width:420px;width:100%;overflow:hidden;box-shadow:0 20px 60px rgba(254,104,196,0.25);transform:translateY(20px);transition:transform 0.4s ease;font-family:Jost,Arial,sans-serif;';
 
-    var isClube = (config.desconto_texto || '').indexOf('FRETE') !== -1;
+    var isClube = config.id === 'clube_bibelo';
     var btnText = isClube ? 'Quero fazer parte \\uD83C\\uDF80' : 'Quero meu cupom \\uD83C\\uDF89';
     var inputStyle = 'width:100%;padding:13px 16px 13px 42px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:10px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;background:#fff;';
 
@@ -194,10 +194,10 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
         '<div style="position:absolute;bottom:-10px;left:-10px;width:50px;height:50px;background:rgba(254,104,196,0.06);border-radius:50%;"></div>' +
         '<button id="bibelo-popup-close" style="position:absolute;top:10px;right:12px;background:rgba(255,255,255,0.7);border:none;width:28px;height:28px;border-radius:50%;font-size:18px;cursor:pointer;color:#999;line-height:1;display:flex;align-items:center;justify-content:center;">&times;</button>' +
         // Badge
-        '<div style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:6px 18px;border-radius:50px;font-size:12px;font-weight:600;margin-bottom:14px;letter-spacing:1.5px;text-transform:uppercase;font-family:Jost,sans-serif;">' + esc(config.desconto_texto || 'FRETE GR\\u00C1TIS') + '</div>' +
+        '<div style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:6px 18px;border-radius:50px;font-size:12px;font-weight:600;margin-bottom:14px;letter-spacing:1.5px;text-transform:uppercase;font-family:Jost,sans-serif;">' + esc(config.desconto_texto || '7% OFF') + '</div>' +
         // T\\u00EDtulo em Cormorant Garamond
         '<h2 style="color:#2d2d2d;margin:0 0 8px;font-size:28px;font-weight:600;font-family:Cormorant Garamond,Georgia,serif;line-height:1.2;">' + esc(config.titulo || 'Entre pro Clube Bibel\\u00F4!') + '</h2>' +
-        '<p style="color:#888;margin:0;font-size:13px;line-height:1.5;font-family:Jost,sans-serif;max-width:320px;display:inline-block;">' + esc(config.subtitulo || 'Frete gr\\u00E1tis na 1\\u00AA compra + novidades em primeira m\\u00E3o!') + '</p>' +
+        '<p style="color:#888;margin:0;font-size:13px;line-height:1.5;font-family:Jost,sans-serif;max-width:320px;display:inline-block;">' + esc(config.subtitulo || '7% de desconto na 1\\u00AA compra + novidades em primeira m\\u00E3o!') + '</p>' +
       '</div>' +
       // ── Divider rosa ──
       '<div style="height:3px;background:linear-gradient(90deg,#fe68c4,#f472b6,#fe68c4);"></div>' +
@@ -291,9 +291,9 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
           document.getElementById('bibelo-popup-submsg').innerHTML = 'Voc\\u00EA j\\u00E1 faz parte da fam\\u00EDlia!' + vipBtn;
         } else if (data.verificacao === 'ja_verificado') {
           document.getElementById('bibelo-popup-emoji').textContent = '\\u2705';
-          document.getElementById('bibelo-popup-submsg').innerHTML = 'Seu frete gr\\u00E1tis j\\u00E1 est\\u00E1 ativo!' + vipBtn;
+          document.getElementById('bibelo-popup-submsg').innerHTML = 'Seu desconto de 7% j\\u00E1 est\\u00E1 ativo!' + vipBtn;
         } else {
-          document.getElementById('bibelo-popup-submsg').innerHTML = 'Verifique seu e-mail para ativar o frete gr\\u00E1tis.<br>Verifique tamb\\u00E9m a pasta de spam.' + vipBtn;
+          document.getElementById('bibelo-popup-submsg').innerHTML = 'Verifique seu e-mail para ativar o desconto de 7%.<br>Verifique tamb\\u00E9m a pasta de spam.' + vipBtn;
         }
         setCookie(COOKIE_NAME, '1', COOKIE_DAYS);
         setCookie('_bibelo_lead', '1', 365);
