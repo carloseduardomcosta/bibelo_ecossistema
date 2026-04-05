@@ -9,7 +9,7 @@ const scriptLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: tr
 
 leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response) => {
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-  res.setHeader("Cache-Control", "public, max-age=300");
+  res.setHeader("Cache-Control", "public, max-age=60");
   res.removeHeader("Cross-Origin-Resource-Policy");
   res.removeHeader("Cross-Origin-Opener-Policy");
   res.removeHeader("Cross-Origin-Embedder-Policy");
