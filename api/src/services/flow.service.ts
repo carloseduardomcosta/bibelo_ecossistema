@@ -1013,7 +1013,7 @@ async function buildPopularProductsEmail(nome: string): Promise<string> {
   let productsHtml = "";
   if (topProducts.length >= 2) {
     productsHtml = topProducts.map(p => {
-      const img = (p.resource_imagem || "").replace(/^http:\/\//i, "https://");
+      const img = safeImageUrl(p.resource_imagem);
       const link = p.pagina || "https://www.papelariabibelo.com.br";
       const preco = p.resource_preco ? `R$ ${Number(p.resource_preco).toFixed(2).replace(".", ",")}` : "";
       return `
