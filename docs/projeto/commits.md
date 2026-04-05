@@ -451,3 +451,21 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Novo endpoint: GET /api/analytics/flow-activity (emails recentes, agendados, fluxos, interações)
   - Dashboard: seção "Automações & Emails" com 4 cards (envios, agendados, fluxos ativos, interações)
   - Reativação disparada para 2 clientes risco alto (Bruna Caroline + Maria Luiza)
+- feat: visibilidade tracking leads + cupom CLUBEBIBELO shipping→percentage 7%
+  - Timeline do cliente agora inclui tracking_events (page_view, product_view, add_to_cart)
+  - Novo endpoint GET /customers/:id/tracking com stats comportamentais
+  - Perfil do cliente: card "Comportamento no Site" + filtro timeline (Todos/Site/Pedidos)
+  - Link direto do lead para perfil do cliente na aba Marketing
+  - Cupom CLUBEBIBELO migrado: type:shipping → type:percentage 7% OFF (1ª compra)
+  - Frete grátis agora é nativo NuvemShop (Sul/Sudeste, R$79+, opção mais barata)
+  - Todos os emails, templates, popup e páginas atualizados para "7% OFF"
+  - URLs do footer padronizadas: /privacidade/ e /termos-de-uso/ (8 ocorrências)
+  - Footer completo adicionado em checkUnverifiedLeads, paginaClienteExistente, paginaErroVerificacao
+  - Template "Lead boas-vindas clube" corrigido no banco (assunto + HTML)
+  - Popup delay: 8s → 3s
+- fix: tracking carrega via popup.js + anti-iframe + add_to_cart form submit
+  - popup.js auto-carrega bibelo.js (sem depender de tag GTM separada)
+  - bibelo.js ignora iframes (GTM preview gerava eventos falsos)
+  - Seletores add_to_cart ampliados (NuvemShop Amazonas)
+  - Fallback: intercepta form submit de produto
+  - Teste automatizado do pipeline completo: 6 eventos → lead → verificação → fluxo disparado
