@@ -566,7 +566,7 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
       btn.target = '_blank';
       btn.rel = 'noopener';
       btn.innerHTML = '\\uD83D\\uDCAC D\\u00FAvidas? Fale conosco';
-      btn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99998;background:#25D366;color:#fff;padding:12px 20px;border-radius:50px;text-decoration:none;font-size:13px;font-weight:600;font-family:Jost,Arial,sans-serif;box-shadow:0 4px 15px rgba(37,211,102,0.4);display:flex;align-items:center;gap:6px;transition:transform 0.2s;';
+      btn.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:99998;background:#25D366;color:#fff;padding:12px 20px;border-radius:50px;text-decoration:none;font-size:13px;font-weight:600;font-family:Jost,Arial,sans-serif;box-shadow:0 4px 15px rgba(37,211,102,0.4);display:flex;align-items:center;gap:6px;transition:transform 0.2s;';
       btn.onmouseover = function() { btn.style.transform = 'scale(1.05)'; };
       btn.onmouseout = function() { btn.style.transform = 'scale(1)'; };
       btn.onclick = function() { track('whatsapp_click', { resource_nome: nome }); };
