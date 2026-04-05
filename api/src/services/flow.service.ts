@@ -806,7 +806,7 @@ function emailWrapper(content: string, email?: string): string {
       <p style="color:#777;font-size:13px;margin:0;font-weight:500;">Papelaria Bibelô</p>
       <p style="color:#aaa;font-size:11px;margin:4px 0 0;">CNPJ 63.961.764/0001-63 · contato@papelariabibelo.com.br · (47) 9 3386-2514</p>
       <p style="margin:8px 0 0;"><a href="https://www.papelariabibelo.com.br" style="color:#fe68c4;text-decoration:none;font-size:12px;font-weight:500;">papelariabibelo.com.br</a> · <a href="https://instagram.com/papelariabibelo" style="color:#fe68c4;text-decoration:none;font-size:12px;">@papelariabibelo</a></p>
-      <p style="margin:8px 0 0;"><a href="https://www.papelariabibelo.com.br/politica-de-privacidade" style="color:#ccc;text-decoration:none;font-size:10px;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso" style="color:#ccc;text-decoration:none;font-size:10px;">Termos de Uso</a></p>
+      <p style="margin:8px 0 0;"><a href="https://www.papelariabibelo.com.br/privacidade/" style="color:#ccc;text-decoration:none;font-size:10px;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso/" style="color:#ccc;text-decoration:none;font-size:10px;">Termos de Uso</a></p>
       <p style="margin:6px 0 0;"><a href="${unsubLink}" style="color:#ccc;text-decoration:underline;font-size:10px;">Não quero mais receber emails</a></p>
     </div>
   </div>
@@ -985,7 +985,7 @@ function buildLeadCartEmail(nome: string, metadata: Record<string, unknown>): st
     <div style="background:#fff3e0;border:2px dashed #fe68c4;border-radius:10px;padding:18px;text-align:center;margin:20px 0;">
       <p style="font-size:14px;color:#888;margin:0 0 6px;">Use o cupom:</p>
       <p style="font-size:26px;font-weight:800;color:#fe68c4;margin:0;letter-spacing:2px;">${cupom}</p>
-      <p style="font-size:14px;color:#888;margin:6px 0 0;">10% de desconto na primeira compra!</p>
+      <p style="font-size:14px;color:#888;margin:6px 0 0;">7% de desconto na primeira compra!</p>
     </div>
     ${ctaButton("Aproveitar agora", productUrl)}
     <p style="font-size:13px;color:#999;text-align:center;">
@@ -1062,7 +1062,7 @@ function buildCouponReminderEmail(nome: string, metadata: Record<string, unknown
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! ⏰</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
-      Passando para lembrar: seu cupom de <strong>10% de desconto</strong>
+      Passando para lembrar: seu cupom de <strong>7% de desconto</strong>
       ainda está ativo, mas não vai durar para sempre!
     </p>
     <div style="background:linear-gradient(135deg,#fff3e0,#fce4ec);border-radius:12px;padding:24px;text-align:center;margin:20px 0;">
@@ -1668,6 +1668,7 @@ export async function checkUnverifiedLeads(): Promise<number> {
     </div>
     <div style="padding:14px 30px;background:#fafafa;text-align:center;border-top:1px solid #ffe5ec;">
       <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibelô · <span style="color:#fe68c4;">papelariabibelo.com.br</span></p>
+      <p style="color:#ccc;font-size:10px;margin:4px 0 0;"><a href="https://www.papelariabibelo.com.br/privacidade/" style="color:#ccc;text-decoration:none;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso/" style="color:#ccc;text-decoration:none;">Termos de Uso</a></p>
     </div>
   </div>
 </div>

@@ -138,7 +138,7 @@ async function enviarEmailVerificacao(email: string, cupom: string | null, nome:
     </div>
     <div style="padding:14px 30px;background:#fafafa;text-align:center;border-top:1px solid #ffe5ec;">
       <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibelô · <span style="color:#fe68c4;">papelariabibelo.com.br</span></p>
-      <p style="color:#ccc;font-size:10px;margin:4px 0 0;"><a href="https://www.papelariabibelo.com.br/politica-de-privacidade" style="color:#ccc;text-decoration:none;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso" style="color:#ccc;text-decoration:none;">Termos de Uso</a></p>
+      <p style="color:#ccc;font-size:10px;margin:4px 0 0;"><a href="https://www.papelariabibelo.com.br/privacidade/" style="color:#ccc;text-decoration:none;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso/" style="color:#ccc;text-decoration:none;">Termos de Uso</a></p>
     </div>
   </div>
 </div>
@@ -424,7 +424,7 @@ function paginaCupomVerificado(email: string, cupom: string | null): string {
     </div>
     <div style="padding:14px;border-top:1px solid #ffe5ec;background:#fafafa;">
       <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibelô · <span style="color:#fe68c4;">papelariabibelo.com.br</span></p>
-      <p style="color:#ccc;font-size:10px;margin:4px 0 0;"><a href="https://www.papelariabibelo.com.br/politica-de-privacidade" style="color:#ccc;text-decoration:none;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso" style="color:#ccc;text-decoration:none;">Termos de Uso</a></p>
+      <p style="color:#ccc;font-size:10px;margin:4px 0 0;"><a href="https://www.papelariabibelo.com.br/privacidade/" style="color:#ccc;text-decoration:none;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso/" style="color:#ccc;text-decoration:none;">Termos de Uso</a></p>
     </div>
   </div>
 </body>
@@ -457,6 +457,7 @@ function paginaClienteExistente(_email: string): string {
     </div>
     <div style="padding:16px;border-top:1px solid #f0e0f0;">
       <p style="color:#ccc;font-size:11px;margin:0;">Papelaria Bibelô · papelariabibelo.com.br</p>
+      <p style="color:#ccc;font-size:10px;margin:4px 0 0;"><a href="https://www.papelariabibelo.com.br/privacidade/" style="color:#ccc;text-decoration:none;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso/" style="color:#ccc;text-decoration:none;">Termos de Uso</a></p>
     </div>
   </div>
 </body>
@@ -468,14 +469,23 @@ function paginaErroVerificacao(msg: string): string {
 <html lang="pt-BR">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Erro - Papelaria Bibelô</title></head>
-<body style="margin:0;padding:0;background:#f5f0f2;font-family:'Segoe UI',Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;">
-  <div style="background:#fff;border-radius:16px;padding:40px;max-width:440px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
-    <div style="width:64px;height:64px;background:#fff0f0;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px;">!</div>
-    <h1 style="color:#333;font-size:22px;margin:0 0 10px;">Algo deu errado</h1>
-    <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 20px;">${esc(msg)}</p>
-    <a href="https://www.papelariabibelo.com.br" style="display:inline-block;background:#fe68c4;color:#fff;padding:12px 30px;border-radius:30px;text-decoration:none;font-weight:600;font-size:14px;">
-      Voltar para a loja
-    </a>
+<body style="margin:0;padding:0;background:#f5f0f2;font-family:Jost,'Segoe UI',Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+  <div style="background:#fff;border-radius:20px;padding:0;max-width:440px;width:90%;text-align:center;box-shadow:0 8px 30px rgba(254,104,196,0.15);overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#fe68c4,#ff8fd3);padding:28px 20px;">
+      <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" width="56" height="56" style="width:56px;height:56px;border-radius:50%;border:3px solid #fff;" />
+    </div>
+    <div style="padding:30px 24px 20px;">
+      <div style="font-size:40px;margin:0 0 12px;">😕</div>
+      <h1 style="color:#333;font-size:22px;margin:0 0 10px;font-family:'Cormorant Garamond',Georgia,serif;">Algo deu errado</h1>
+      <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 20px;">${esc(msg)}</p>
+      <a href="https://www.papelariabibelo.com.br" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:14px 36px;border-radius:30px;text-decoration:none;font-weight:700;font-size:15px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
+        Voltar para a loja
+      </a>
+    </div>
+    <div style="padding:16px;border-top:1px solid #f0e0f0;">
+      <p style="color:#ccc;font-size:11px;margin:0;">Papelaria Bibelô · papelariabibelo.com.br</p>
+      <p style="color:#ccc;font-size:10px;margin:4px 0 0;"><a href="https://www.papelariabibelo.com.br/privacidade/" style="color:#ccc;text-decoration:none;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso/" style="color:#ccc;text-decoration:none;">Termos de Uso</a></p>
+    </div>
   </div>
 </body>
 </html>`;
