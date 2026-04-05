@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
@@ -9,7 +10,7 @@ import {
   Play, ToggleLeft, ToggleRight, ChevronRight,
   Send, Target, TrendingUp, ArrowUpRight, Activity,
   Package, Search, Globe, Filter, Mail, Phone, RefreshCw,
-  ChevronLeft,
+  ChevronLeft, ExternalLink,
 } from 'lucide-react';
 import api from '../lib/api';
 import { timeAgo } from '../lib/format';
@@ -82,6 +83,7 @@ interface Lead {
   fonte: string;
   convertido: boolean;
   criado_em: string;
+  customer_id: string | null;
 }
 
 interface Execution {
@@ -1050,7 +1052,7 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
                 <div className="w-full max-w-sm p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl text-center">
                   <span className="text-lg">📧</span>
                   <p className="text-xs font-medium text-blue-400 mt-1">1º Lembrete</p>
-                  <p className="text-[10px] text-bibelo-muted">"Você esqueceu de confirmar seu frete grátis!"</p>
+                  <p className="text-[10px] text-bibelo-muted">"Você esqueceu de confirmar seu desconto de 10%!"</p>
                 </div>
                 <div className="w-px h-6 bg-bibelo-border"></div>
 
@@ -1066,7 +1068,7 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
                 <div className="w-full max-w-sm p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-center">
                   <span className="text-lg">📧</span>
                   <p className="text-xs font-medium text-red-400 mt-1">2º Lembrete (último)</p>
-                  <p className="text-[10px] text-bibelo-muted">"Última chance! Seu frete grátis vai expirar!"</p>
+                  <p className="text-[10px] text-bibelo-muted">"Última chance! Seu desconto de 10% vai expirar!"</p>
                 </div>
                 <div className="w-px h-6 bg-bibelo-border"></div>
 
@@ -1121,7 +1123,7 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
       <div style="position:absolute;top:-20px;right:-20px;width:80px;height:80px;background:rgba(254,104,196,0.06);border-radius:50%;"></div>
       <div style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:5px 16px;border-radius:50px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">LEMBRETE</div>
       <h1 style="color:#2d2d2d;margin:0 0 6px;font-size:26px;font-weight:600;font-family:Cormorant Garamond,Georgia,serif;line-height:1.2;">Ainda d&aacute; tempo!</h1>
-      <p style="color:#999;margin:0;font-size:13px;">Seu frete gr&aacute;tis est&aacute; esperando</p>
+      <p style="color:#999;margin:0;font-size:13px;">Seu desconto de 10% est&aacute; esperando</p>
     </div>
     <div style="height:3px;background:linear-gradient(90deg,#fe68c4,#f472b6,#fe68c4);"></div>
     <div style="padding:32px 30px;text-align:center;">
@@ -1132,7 +1134,8 @@ function FluxosTab({ flows, executions, selectedFlow, onFlowClick, onRefresh }: 
         Notamos que voc&ecirc; ainda n&atilde;o confirmou seu e-mail. Falta s&oacute; um clique!
       </p>
       <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:12px;padding:16px 20px;margin:0 0 24px;text-align:left;">
-        <p style="margin:0 0 6px;font-size:13px;color:#555;">&#x1F69A; Frete gr&aacute;tis acima de R$79</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#555;">&#x1F3F7;&#xFE0F; 10% de desconto na 1&ordf; compra</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#555;">&#x1F69A; Frete gr&aacute;tis Sul/Sudeste acima de R$79</p>
         <p style="margin:0 0 6px;font-size:13px;color:#555;">&#x1F381; Mimo surpresa em toda compra</p>
         <p style="margin:0;font-size:13px;color:#555;">&#x2728; Novidades antes de todo mundo</p>
       </div>
@@ -1378,16 +1381,17 @@ function LeadsTab({ leadStats }: {
                 <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3">Fonte</th>
                 <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3">Status</th>
                 <th className="text-right text-xs font-semibold text-bibelo-muted py-2 px-3">Data</th>
+                <th className="text-center text-xs font-semibold text-bibelo-muted py-2 px-3 w-10"></th>
               </tr>
             </thead>
             <tbody>
               {loadingLeads && filteredLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-sm text-bibelo-muted">Carregando...</td>
+                  <td colSpan={7} className="py-8 text-center text-sm text-bibelo-muted">Carregando...</td>
                 </tr>
               ) : filteredLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-sm text-bibelo-muted">
+                  <td colSpan={7} className="py-8 text-center text-sm text-bibelo-muted">
                     {search || statusFilter ? 'Nenhum lead encontrado com esses filtros' : 'Nenhum lead capturado ainda'}
                   </td>
                 </tr>
@@ -1442,6 +1446,17 @@ function LeadsTab({ leadStats }: {
                       </span>
                     </td>
                     <td className="py-3 px-3 text-right text-xs text-bibelo-muted whitespace-nowrap">{fmtDateShort(l.criado_em)}</td>
+                    <td className="py-3 px-3 text-center">
+                      {l.customer_id && (
+                        <Link
+                          to={`/clientes/${l.customer_id}`}
+                          className="inline-flex items-center gap-1 text-[11px] text-pink-400 hover:text-pink-300 transition-colors"
+                          title="Ver perfil e atividade no site"
+                        >
+                          <ExternalLink size={12} />
+                        </Link>
+                      )}
+                    </td>
                   </tr>
                 ))
               )}

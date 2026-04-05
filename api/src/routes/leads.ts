@@ -18,9 +18,9 @@ function esc(s: string): string {
 
 export const leadsRouter = Router();
 
-// ── NuvemShop: garantir cupom de frete ─────────────────────────
+// ── NuvemShop: garantir cupom Clube Bibelô (10% OFF 1ª compra) ──
 
-async function garantirCupomFrete(): Promise<string | null> {
+async function garantirCupomClube(): Promise<string | null> {
   try {
     const token = await getNuvemShopToken();
     if (!token) return null;
@@ -38,24 +38,23 @@ async function garantirCupomFrete(): Promise<string | null> {
       if (axErr.response?.status !== 404) throw searchErr;
     }
 
-    // Cria cupom de frete grátis
+    // Cria cupom de 10% OFF na primeira compra
     await nsRequest<{ id: number }>("post", "coupons", token, {
       code: cupomCode,
-      type: "shipping",
-      min_price: 79,
+      type: "percentage",
+      value: "10.00",
       first_consumer_purchase: true,
-      only_cheapest_shipping: true,
       max_uses: 5000,
       end_date: "2026-12-31",
       valid: true,
       combines_with_other_discounts: true,
     });
 
-    logger.info("NuvemShop: cupom CLUBEBIBELO criado");
+    logger.info("NuvemShop: cupom CLUBEBIBELO (10% OFF) criado");
     return cupomCode;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error("NuvemShop: erro ao criar cupom frete", { error: msg });
+    logger.error("NuvemShop: erro ao criar cupom clube", { error: msg });
     return null;
   }
 }
@@ -92,12 +91,12 @@ export function gerarLinkVerificacao(email: string): string {
 async function enviarEmailVerificacao(email: string, cupom: string | null, nome: string | null): Promise<void> {
   const link = gerarLinkVerificacao(email);
   const isClube = cupom === "CLUBEBIBELO";
-  const descontoTexto = isClube ? "frete grátis" : cupom === "BIBELO10" ? "10% OFF" : "7% OFF";
+  const descontoTexto = isClube ? "10% OFF" : cupom === "BIBELO10" ? "10% OFF" : "7% OFF";
   const nomeDisplay = (nome || "Cliente").replace(/[<>"'&]/g, "");
 
   await sendEmail({
     to: email,
-    subject: isClube ? `🎀 ${nomeDisplay}, confirme e ative seu frete grátis!` : `Confirme seu e-mail e ganhe ${descontoTexto}!`,
+    subject: isClube ? `🎀 ${nomeDisplay}, confirme e ganhe 10% OFF na 1ª compra!` : `Confirme seu e-mail e ganhe ${descontoTexto}!`,
     html: `<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -120,17 +119,18 @@ async function enviarEmailVerificacao(email: string, cupom: string | null, nome:
       </p>
       <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 24px;">
         ${isClube
-          ? 'Confirme seu e-mail para ativar seu <strong style="color:#fe68c4;">frete grátis</strong> na 1ª compra acima de R$79 + acesso às novidades em primeira mão!'
+          ? 'Confirme seu e-mail para ativar seu <strong style="color:#fe68c4;">cupom de 10% OFF</strong> na 1ª compra + acesso às novidades em primeira mão!'
           : `Confirme seu e-mail para receber seu cupom exclusivo de <strong style="color:#fe68c4;">${descontoTexto}</strong> na Papelaria Bibelô.`}
       </p>
       ${isClube ? `
       <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:12px;padding:16px 20px;margin:0 0 24px;text-align:left;">
-        <p style="margin:0 0 6px;font-size:13px;color:#555;">🚚 Frete grátis acima de R$79</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#555;">🏷️ 10% de desconto na 1ª compra</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#555;">🚚 Frete grátis Sul/Sudeste acima de R$79</p>
         <p style="margin:0 0 6px;font-size:13px;color:#555;">🎁 Mimo surpresa em toda compra</p>
         <p style="margin:0;font-size:13px;color:#555;">✨ Novidades antes de todo mundo</p>
       </div>` : ''}
       <a href="${link}" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:16px 44px;border-radius:50px;text-decoration:none;font-weight:600;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
-        ${isClube ? 'Confirmar e ativar frete grátis' : 'Confirmar e ganhar cupom'}
+        ${isClube ? 'Confirmar e ativar 10% OFF' : 'Confirmar e ganhar cupom'}
       </a>
       <p style="color:#aaa;font-size:12px;margin:20px 0 0;">
         Se você não se cadastrou na Papelaria Bibelô, ignore este e-mail.
@@ -288,7 +288,7 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
   }
 
   // ── NuvemShop: garantir cupom de frete (background) ──
-  garantirCupomFrete().catch(() => {});
+  garantirCupomClube().catch(() => {});
 
   logger.info("Lead capturado — aguardando verificação", { email, popup_id, cupom, customerId: customer.id });
   res.json({ ok: true, verificacao: "pendente", mensagem: "Verifique seu e-mail para receber o cupom!" });
@@ -397,20 +397,21 @@ function paginaCupomVerificado(email: string, cupom: string | null): string {
       <h1 style="color:#2d2d2d;font-size:26px;margin:0 0 8px;font-weight:600;font-family:'Cormorant Garamond',Georgia,serif;">${isClube ? "Bem-vinda ao Clube Bibelô!" : "E-mail confirmado!"}</h1>
       ${isClube ? `
       <p style="color:#666;font-size:15px;margin:0 0 20px;line-height:1.6;">
-        Seu <strong style="color:#fe68c4;">frete grátis</strong> na 1ª compra acima de R$79 já está ativo! Use o cupom abaixo no checkout:
+        Seu cupom de <strong style="color:#fe68c4;">10% OFF</strong> na 1ª compra já está ativo! Use o cupom abaixo no checkout:
       </p>` : `
       <p style="color:#666;font-size:15px;margin:0 0 20px;line-height:1.6;">
         Seu cupom está pronto para usar:
       </p>`}
       <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border:2px dashed #fe68c4;border-radius:14px;padding:20px;margin:0 0 20px;">
-        <p style="margin:0 0 4px;color:#999;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">${isClube ? "Seu cupom de frete grátis" : "Seu cupom"}</p>
+        <p style="margin:0 0 4px;color:#999;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">${isClube ? "Seu cupom de 10% OFF" : "Seu cupom"}</p>
         <p style="margin:0;color:#fe68c4;font-size:32px;font-weight:700;letter-spacing:3px;">${cupomCode}</p>
-        ${isClube ? '<p style="margin:6px 0 0;color:#888;font-size:12px;">Frete grátis na transportadora mais econômica</p>' : ""}
+        ${isClube ? '<p style="margin:6px 0 0;color:#888;font-size:12px;">10% de desconto na primeira compra</p>' : ""}
       </div>
       ${isClube ? `
       <div style="background:#fff7c1;border-radius:10px;padding:14px 16px;margin:0 0 20px;text-align:left;">
         <p style="margin:0 0 8px;font-size:13px;color:#2d2d2d;font-weight:600;">O que você ganhou:</p>
-        <p style="margin:0 0 4px;font-size:13px;color:#555;">🚚 Frete grátis acima de R$79</p>
+        <p style="margin:0 0 4px;font-size:13px;color:#555;">🏷️ 10% de desconto na 1ª compra</p>
+        <p style="margin:0 0 4px;font-size:13px;color:#555;">🚚 Frete grátis Sul/Sudeste acima de R$79</p>
         <p style="margin:0 0 4px;font-size:13px;color:#555;">🎁 Mimo surpresa em toda compra</p>
         <p style="margin:0;font-size:13px;color:#555;">✨ Novidades em primeira mão</p>
       </div>` : ""}

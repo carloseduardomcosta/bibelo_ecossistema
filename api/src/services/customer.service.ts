@@ -259,14 +259,27 @@ export async function getTimeline(
   offset = 0
 ): Promise<Record<string, unknown>[]> {
   const rows = await query<Record<string, unknown>>(
-    `SELECT id, tipo, canal, descricao, valor, metadata, criado_em, 'interacao' AS origem
-     FROM crm.interactions WHERE customer_id = $1
-     UNION ALL
-     SELECT id, 'pedido_bling' AS tipo, canal, numero AS descricao, valor, itens AS metadata, criado_bling AS criado_em, 'bling' AS origem
-     FROM sync.bling_orders WHERE customer_id = $1
-     UNION ALL
-     SELECT id, 'pedido_nuvemshop' AS tipo, 'online' AS canal, numero AS descricao, valor, itens AS metadata, webhook_em AS criado_em, 'nuvemshop' AS origem
-     FROM sync.nuvemshop_orders WHERE customer_id = $1
+    `SELECT id, tipo, canal, descricao, valor, metadata, criado_em, origem FROM (
+       SELECT id, tipo, canal, descricao, valor, metadata, criado_em, 'interacao' AS origem
+       FROM crm.interactions WHERE customer_id = $1
+       UNION ALL
+       SELECT id, 'pedido_bling' AS tipo, canal, numero AS descricao, valor, itens AS metadata, criado_bling AS criado_em, 'bling' AS origem
+       FROM sync.bling_orders WHERE customer_id = $1
+       UNION ALL
+       SELECT id, 'pedido_nuvemshop' AS tipo, 'online' AS canal, numero AS descricao, valor, itens AS metadata, webhook_em AS criado_em, 'nuvemshop' AS origem
+       FROM sync.nuvemshop_orders WHERE customer_id = $1
+       UNION ALL
+       SELECT id, evento AS tipo, 'site' AS canal,
+         COALESCE(resource_nome, pagina, evento) AS descricao,
+         resource_preco AS valor,
+         jsonb_build_object(
+           'resource_id', resource_id, 'resource_imagem', resource_imagem,
+           'pagina', pagina, 'pagina_tipo', pagina_tipo,
+           'geo_city', geo_city, 'geo_region', geo_region
+         ) AS metadata,
+         criado_em, 'tracking' AS origem
+       FROM crm.tracking_events WHERE customer_id = $1
+     ) combined
      ORDER BY criado_em DESC
      LIMIT $2 OFFSET $3`,
     [customerId, limit, offset]

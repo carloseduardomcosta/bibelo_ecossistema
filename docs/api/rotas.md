@@ -23,7 +23,8 @@ Referência completa de todos os endpoints.
 - `POST /api/customers` — criar/atualizar (upsert por email)
 - `PUT  /api/customers/:id` — atualizar dados
 - `POST /api/customers/:id/reativar-email` — reverter opt-out (LGPD) com auditoria na timeline
-- `GET  /api/customers/:id/timeline` — histórico de interações
+- `GET  /api/customers/:id/timeline` — histórico unificado (interações + pedidos + tracking)
+- `GET  /api/customers/:id/tracking` — histórico comportamental no site (eventos + stats)
 
 ### Analytics
 - `GET  /api/analytics/overview` — KPIs gerais

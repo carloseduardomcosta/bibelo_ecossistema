@@ -287,6 +287,48 @@ customersRouter.post("/:id/reativar-email", async (req: Request, res: Response) 
   res.json({ message: "Email reativado com sucesso", email_optout: false });
 });
 
+// ── GET /api/customers/:id/tracking — histórico comportamental ─
+
+customersRouter.get("/:id/tracking", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const limit = Math.min(Number(req.query.limit) || 100, 200);
+  const offset = Number(req.query.offset) || 0;
+
+  const customer = await queryOne("SELECT id FROM crm.customers WHERE id = $1", [id]);
+  if (!customer) {
+    res.status(404).json({ error: "Cliente não encontrado" });
+    return;
+  }
+
+  const events = await query<Record<string, unknown>>(
+    `SELECT t.id, t.visitor_id, t.evento, t.pagina, t.pagina_tipo,
+            t.resource_id, t.resource_nome, t.resource_preco, t.resource_imagem,
+            t.metadata, t.referrer, t.ip, t.criado_em,
+            t.geo_city, t.geo_region, t.geo_country,
+            t.utm_source, t.utm_medium, t.utm_campaign
+     FROM crm.tracking_events t
+     WHERE t.customer_id = $1
+     ORDER BY t.criado_em DESC
+     LIMIT $2 OFFSET $3`,
+    [id, limit, offset]
+  );
+
+  const stats = await queryOne<Record<string, unknown>>(
+    `SELECT
+       COUNT(*)::int AS total_eventos,
+       COUNT(DISTINCT DATE(criado_em))::int AS dias_ativos,
+       COUNT(*) FILTER (WHERE evento = 'product_view')::int AS produtos_vistos,
+       COUNT(*) FILTER (WHERE evento = 'add_to_cart')::int AS add_carrinho,
+       COUNT(*) FILTER (WHERE evento = 'checkout_start')::int AS checkouts,
+       MIN(criado_em) AS primeiro_evento,
+       MAX(criado_em) AS ultimo_evento
+     FROM crm.tracking_events WHERE customer_id = $1`,
+    [id]
+  );
+
+  res.json({ events, stats });
+});
+
 // ── GET /api/customers/:id/timeline ────────────────────────────
 
 customersRouter.get("/:id/timeline", async (req: Request, res: Response) => {

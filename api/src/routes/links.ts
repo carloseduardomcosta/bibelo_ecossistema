@@ -927,7 +927,8 @@ linksRouter.get("/grupo-vip", (_req: Request, res: Response) => {
 
     <div class="benefits">
       <ul>
-        <li>🚚 Frete grátis em pedidos acima de R$ 79</li>
+        <li>🏷️ 10% de desconto na primeira compra</li>
+        <li>🚚 Frete grátis Sul/Sudeste acima de R$ 79</li>
         <li>🎁 Mimo surpresa em toda compra</li>
         <li>✨ Lançamentos antes de todo mundo</li>
         <li>💖 Promoções exclusivas para o clube</li>
@@ -1137,7 +1138,8 @@ linksRouter.post("/grupo-vip", limiter, async (req: Request, res: Response) => {
         Oi, <strong style="color:#fe68c4;">${nome}</strong>! Que bom ter voc&ecirc; no nosso Clube VIP!
       </p>
       <div style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border-radius:12px;padding:16px 20px;margin:0 0 24px;text-align:left;">
-        <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x1F69A; Frete gr&aacute;tis acima de R$79</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x1F3F7;&#xFE0F; 10% de desconto na 1&ordf; compra</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x1F69A; Frete gr&aacute;tis Sul/Sudeste acima de R$79</p>
         <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x1F381; Mimo surpresa em toda compra</p>
         <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x2728; Lan&ccedil;amentos antes de todo mundo</p>
         <p style="margin:0;font-size:13px;color:#166534;">&#x1F496; Promo&ccedil;&otilde;es exclusivas para o clube</p>

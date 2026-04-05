@@ -1619,8 +1619,8 @@ export async function checkUnverifiedLeads(): Promise<number> {
       const isSegundo = lead.lembretes_enviados === 1;
 
       const subject = isSegundo
-        ? `⏰ ${nomeDisplay}, seu ${isClube ? "frete grátis" : "cupom"} vai expirar!`
-        : `💌 ${nomeDisplay}, você esqueceu de confirmar seu ${isClube ? "frete grátis" : "cupom"}!`;
+        ? `⏰ ${nomeDisplay}, seu ${isClube ? "desconto de 10%" : "cupom"} vai expirar!`
+        : `💌 ${nomeDisplay}, você esqueceu de confirmar seu ${isClube ? "desconto de 10%" : "cupom"}!`;
 
       const urgencia = isSegundo
         ? "Este é nosso <strong>último lembrete</strong> — não queremos que você perca essa oportunidade!"
@@ -1642,7 +1642,7 @@ export async function checkUnverifiedLeads(): Promise<number> {
       <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" width="52" height="52" style="width:52px;height:52px;border-radius:50%;border:2px solid rgba(254,104,196,0.3);margin-bottom:12px;" />
       ${isSegundo ? '<div style="background:#ff6b6b;color:#fff;display:inline-block;padding:5px 16px;border-radius:50px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">ÚLTIMO LEMBRETE</div>' : '<div style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:5px 16px;border-radius:50px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">LEMBRETE</div>'}
       <h1 style="color:#2d2d2d;margin:0 0 6px;font-size:26px;font-weight:600;font-family:Cormorant Garamond,Georgia,serif;line-height:1.2;">${isSegundo ? "Última chance!" : "Ainda dá tempo!"}</h1>
-      <p style="color:#999;margin:0;font-size:13px;">Seu ${isClube ? "frete grátis está esperando" : "cupom está esperando"}</p>
+      <p style="color:#999;margin:0;font-size:13px;">Seu ${isClube ? "desconto de 10% está esperando" : "cupom está esperando"}</p>
     </div>
     <div style="height:3px;background:linear-gradient(90deg,#fe68c4,#f472b6,#fe68c4);"></div>
     <div style="padding:32px 30px;text-align:center;">
@@ -1654,7 +1654,8 @@ export async function checkUnverifiedLeads(): Promise<number> {
       </p>
       ${isClube ? `
       <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:12px;padding:16px 20px;margin:0 0 24px;text-align:left;">
-        <p style="margin:0 0 6px;font-size:13px;color:#555;">🚚 Frete grátis acima de R$79</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#555;">🏷️ 10% de desconto na 1ª compra</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#555;">🚚 Frete grátis Sul/Sudeste acima de R$79</p>
         <p style="margin:0 0 6px;font-size:13px;color:#555;">🎁 Mimo surpresa em toda compra</p>
         <p style="margin:0;font-size:13px;color:#555;">✨ Novidades antes de todo mundo</p>
       </div>` : ''}

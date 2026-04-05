@@ -171,7 +171,7 @@ describe("GET /api/leads/config — popup configs", () => {
     const clube = res.body.popups.find((p: Record<string, unknown>) => p.id === "clube_bibelo");
     expect(clube).toBeDefined();
     expect(clube.cupom).toBe("CLUBEBIBELO");
-    expect(clube.desconto_texto).toBe("FRETE GRÁTIS");
+    expect(clube.desconto_texto).toBe("10% OFF");
   });
 
   it("retorna popup desconto_primeira_compra ativo", async () => {
