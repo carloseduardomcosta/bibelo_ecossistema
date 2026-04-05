@@ -52,6 +52,10 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  // localStorage fallback (cookies podem falhar em aba anônima/cross-page)
+  function tryGet(k) { try { return localStorage.getItem(k); } catch(e) { return null; } }
+  function trySet(k, v) { try { localStorage.setItem(k, v); } catch(e) {} }
+
   function trackEvent(visitorId, evento, metadata) {
     var params = new URLSearchParams(window.location.search);
     fetch(TRACK_API + '/event', {
@@ -78,10 +82,10 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
   var forceOpen = forceClube || forceDesconto;
 
   // ── Já é lead cadastrado? Não mostrar popup de captura ──
-  if (!forceOpen && getCookie('_bibelo_lead')) return;
+  if (!forceOpen && (getCookie('_bibelo_lead') || tryGet('_bibelo_lead'))) return;
 
   // ── Já mostrou popup nesta sessão? ─────────────────────
-  if (!forceOpen && getCookie(COOKIE_NAME)) return;
+  if (!forceOpen && (getCookie(COOKIE_NAME) || tryGet(COOKIE_NAME))) return;
 
   // ── Visitor ID ──────────────────────────────────────────
   var vid = getCookie(VID_COOKIE);
@@ -152,8 +156,9 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
   // ── Renderizar popup ────────────────────────────────────
   function showPopup(config, visitorId) {
     // Registrar exibição
-    // Marca cookie imediatamente ao exibir (evita mostrar 2x)
+    // Marca cookie + localStorage imediatamente ao exibir (evita mostrar 2x)
     setCookie(COOKIE_NAME, '1', COOKIE_DAYS);
+    trySet(COOKIE_NAME, '1');
 
     fetch(API + '/view', {
       method: 'POST',
@@ -244,6 +249,7 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
       card.style.transform = 'translateY(20px)';
       setTimeout(function() { overlay.remove(); }, 300);
       setCookie(COOKIE_NAME, '1', COOKIE_DAYS);
+      trySet(COOKIE_NAME, '1');
     }
 
     document.getElementById('bibelo-popup-close').onclick = closePopup;
@@ -285,18 +291,21 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
 
         var vipLink = 'https://boasvindas.papelariabibelo.com.br/api/links/grupo-vip';
         var vipBtn = '<a href="' + vipLink + '" target="_blank" style="display:inline-block;background:#25D366;color:#fff;padding:10px 24px;border-radius:50px;text-decoration:none;font-size:13px;font-weight:600;margin-top:12px;font-family:Jost,sans-serif;">Entrar no Clube VIP \\uD83D\\uDCAC</a>';
+        var shopBtn = '<div style="margin-top:10px;"><a href="javascript:void(0)" onclick="document.getElementById(\\'bibelo-popup-overlay\\').querySelector(\\'[id=bibelo-popup-close]\\').click()" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:10px 24px;border-radius:50px;text-decoration:none;font-size:13px;font-weight:600;font-family:Jost,sans-serif;">Continuar comprando \\uD83D\\uDECD\\uFE0F</a></div>';
 
         if (data.verificacao === 'cliente_existente') {
           document.getElementById('bibelo-popup-emoji').textContent = '\\uD83D\\uDC95';
-          document.getElementById('bibelo-popup-submsg').innerHTML = 'Voc\\u00EA j\\u00E1 faz parte da fam\\u00EDlia!' + vipBtn;
+          document.getElementById('bibelo-popup-submsg').innerHTML = 'Voc\\u00EA j\\u00E1 faz parte da fam\\u00EDlia!' + shopBtn + vipBtn;
         } else if (data.verificacao === 'ja_verificado') {
           document.getElementById('bibelo-popup-emoji').textContent = '\\u2705';
-          document.getElementById('bibelo-popup-submsg').innerHTML = 'Seu desconto de 7% j\\u00E1 est\\u00E1 ativo!' + vipBtn;
+          document.getElementById('bibelo-popup-submsg').innerHTML = 'Seu desconto de 7% j\\u00E1 est\\u00E1 ativo!' + shopBtn + vipBtn;
         } else {
-          document.getElementById('bibelo-popup-submsg').innerHTML = 'Verifique seu e-mail para ativar o desconto de 7%.<br>Verifique tamb\\u00E9m a pasta de spam.' + vipBtn;
+          document.getElementById('bibelo-popup-submsg').innerHTML = 'Verifique seu e-mail para ativar o desconto de 7%.<br><span style="font-size:11px;color:#999;">Verifique tamb\\u00E9m a pasta de spam.</span>' + shopBtn + vipBtn;
         }
         setCookie(COOKIE_NAME, '1', COOKIE_DAYS);
         setCookie('_bibelo_lead', '1', 365);
+        trySet(COOKIE_NAME, '1');
+        trySet('_bibelo_lead', '1');
 
         // Não fecha sozinho — tem link VIP pra clicar
         setTimeout(closePopup, 30000);
