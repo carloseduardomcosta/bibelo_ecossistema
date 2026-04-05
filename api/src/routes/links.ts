@@ -877,7 +877,9 @@ linksRouter.get("/grupo-vip", (_req: Request, res: Response) => {
   <title>Clube VIP Bibelô — Papelaria Bibelô</title>
   <meta name="description" content="Entre no Clube VIP da Papelaria Bibelô no WhatsApp e receba novidades em primeira mão">
   <link rel="icon" href="/logo.png">
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800&display=swap" rel="stylesheet">
   <style>
     *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
     :root{--pink:#fe68c4;--pink-dark:#e550aa;--green:#25D366;--green-dark:#1da851;--rosa:#ffe5ec;--amarelo:#fff7c1;--dark:#2d2d2d;--mid:#6b4c6b;--soft:#a07090;--white:#fff}
@@ -927,7 +929,7 @@ linksRouter.get("/grupo-vip", (_req: Request, res: Response) => {
 
     <div class="benefits">
       <ul>
-        <li>🏷️ 10% de desconto na primeira compra</li>
+        <li>🏷️ 7% de desconto na primeira compra</li>
         <li>🚚 Frete grátis Sul/Sudeste acima de R$ 79</li>
         <li>🎁 Mimo surpresa em toda compra</li>
         <li>✨ Lançamentos antes de todo mundo</li>
@@ -1138,7 +1140,7 @@ linksRouter.post("/grupo-vip", limiter, async (req: Request, res: Response) => {
         Oi, <strong style="color:#fe68c4;">${nome}</strong>! Que bom ter voc&ecirc; no nosso Clube VIP!
       </p>
       <div style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border-radius:12px;padding:16px 20px;margin:0 0 24px;text-align:left;">
-        <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x1F3F7;&#xFE0F; 10% de desconto na 1&ordf; compra</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x1F3F7;&#xFE0F; 7% de desconto na 1&ordf; compra</p>
         <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x1F69A; Frete gr&aacute;tis Sul/Sudeste acima de R$79</p>
         <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x1F381; Mimo surpresa em toda compra</p>
         <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x2728; Lan&ccedil;amentos antes de todo mundo</p>
