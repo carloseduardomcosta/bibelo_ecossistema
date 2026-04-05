@@ -419,7 +419,7 @@ function paginaCupomVerificado(email: string, cupom: string | null): string {
         ${isClube ? "Começar a comprar" : "Ir para a loja"}
       </a>
       ${isClube ? `<div style="margin-top:16px;">
-        <a href="https://chat.whatsapp.com/DzOJHBZ2vECF1taXiRRv6g" style="display:inline-block;background:#25D366;color:#fff;padding:12px 32px;border-radius:30px;text-decoration:none;font-weight:600;font-size:14px;font-family:Jost,sans-serif;">Entrar no Clube VIP WhatsApp 💬</a>
+        <a href="https://boasvindas.papelariabibelo.com.br/api/links/grupo-vip" style="display:inline-block;background:#25D366;color:#fff;padding:12px 32px;border-radius:30px;text-decoration:none;font-weight:600;font-size:14px;font-family:Jost,sans-serif;">Entrar no Clube VIP WhatsApp 💬</a>
       </div>` : ""}
     </div>
     <div style="padding:14px;border-top:1px solid #ffe5ec;background:#fafafa;">
