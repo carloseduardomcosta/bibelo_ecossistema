@@ -65,6 +65,9 @@ interface BriefingData {
     funil_travado: boolean;
     leads_sem_verificar: number;
   };
+  fontes_trafego: Array<{ fonte: string; visitantes: number; eventos: number; media_minutos: number }>;
+  produtos_carrinho: Array<{ produto: string; preco: number; vezes: number }>;
+  dicas: string[];
 }
 
 // ── Fetch briefing data (exportado para uso no job agendado) ───
@@ -84,6 +87,8 @@ export async function fetchBriefingData(horas: number): Promise<BriefingData> {
       proximas,
       syncs,
       descadastros,
+      fontesTrafego,
+      produtosCarrinho,
     ] = await Promise.all([
       // 1. Site stats
       queryOne<{
@@ -231,6 +236,31 @@ export async function fetchBriefingData(horas: number): Promise<BriefingData> {
         WHERE email_optout = true
           AND email_optout_em >= NOW() - make_interval(hours => $1)
       `, [horas]),
+
+      // 14. Fontes de tráfego (UTM)
+      query<{ fonte: string; visitantes: string; eventos: string; media_minutos: string }>(`
+        SELECT utm_source AS fonte,
+          COUNT(DISTINCT visitor_id)::text AS visitantes,
+          COUNT(*)::text AS eventos,
+          ROUND(AVG(sub.tempo_min), 1)::text AS media_minutos
+        FROM (
+          SELECT visitor_id, utm_source,
+            EXTRACT(EPOCH FROM MAX(criado_em) - MIN(criado_em)) / 60.0 AS tempo_min
+          FROM crm.tracking_events
+          WHERE criado_em >= NOW() - make_interval(hours => $1) AND utm_source IS NOT NULL
+          GROUP BY visitor_id, utm_source
+        ) sub
+        GROUP BY utm_source ORDER BY COUNT(DISTINCT visitor_id) DESC
+      `, [horas]),
+
+      // 15. Produtos no carrinho (add_to_cart)
+      query<{ produto: string; preco: string; vezes: string }>(`
+        SELECT resource_nome AS produto, resource_preco::text AS preco, COUNT(*)::text AS vezes
+        FROM crm.tracking_events
+        WHERE evento = 'add_to_cart' AND criado_em >= NOW() - make_interval(hours => $1)
+          AND resource_nome IS NOT NULL
+        GROUP BY resource_nome, resource_preco ORDER BY COUNT(*) DESC LIMIT 10
+      `, [horas]),
     ]);
 
     const errosSyncCount = syncs.filter((s) => s.status === "erro").length;
@@ -304,10 +334,87 @@ export async function fetchBriefingData(horas: number): Promise<BriefingData> {
         funil_travado: funilTravado,
         leads_sem_verificar: leadsSemVerificar,
       },
+      fontes_trafego: fontesTrafego.map((f) => ({
+        fonte: f.fonte,
+        visitantes: Number(f.visitantes),
+        eventos: Number(f.eventos),
+        media_minutos: Number(f.media_minutos || 0),
+      })),
+      produtos_carrinho: produtosCarrinho.map((p) => ({
+        produto: p.produto,
+        preco: Number(p.preco || 0),
+        vezes: Number(p.vezes),
+      })),
+      dicas: gerarDicas({
+        visitantes: Number(siteStats?.visitantes_unicos || 0),
+        produtoViews: Number(siteStats?.produto_views || 0),
+        addToCart: addToCart,
+        checkouts: checkoutsN,
+        compras: Number(siteStats?.compras || 0),
+        leads: Number(leadsStats?.novos || 0),
+        funilTravado,
+        fontes: fontesTrafego,
+        carrinhosMedio: produtosCarrinho.length > 0
+          ? produtosCarrinho.reduce((s, p) => s + Number(p.preco || 0), 0) / produtosCarrinho.length
+          : 0,
+      }),
     };
 
     logger.info("Briefing gerado", { horas, visitantes: data.site.visitantes_unicos });
     return data;
+}
+
+// ── Dicas acionáveis baseadas nos dados ──────────────────────────
+
+function gerarDicas(d: {
+  visitantes: number; produtoViews: number; addToCart: number;
+  checkouts: number; compras: number; leads: number;
+  funilTravado: boolean; fontes: Array<{ fonte: string; visitantes: string; media_minutos: string }>;
+  carrinhosMedio: number;
+}): string[] {
+  const dicas: string[] = [];
+
+  // Funil travado: add to cart sem checkout
+  if (d.funilTravado) {
+    dicas.push("Funil travado: clientes adicionam ao carrinho mas não avançam pro checkout. Verifique se o frete está visível antes do checkout e considere reduzir o valor mínimo para frete grátis.");
+  }
+
+  // Muitas views sem add to cart
+  if (d.produtoViews > 10 && d.addToCart === 0) {
+    dicas.push("Muitas visualizações de produto mas ninguém adicionou ao carrinho. Revise preços, fotos e descrições dos produtos mais vistos.");
+  }
+
+  // Visitantes sem ver produto
+  if (d.visitantes > 10 && d.produtoViews < d.visitantes * 0.3) {
+    dicas.push(`Apenas ${Math.round((d.produtoViews / d.visitantes) * 100)}% dos visitantes viram um produto. A homepage pode não estar direcionando bem para os produtos.`);
+  }
+
+  // Preço médio do carrinho vs frete grátis
+  if (d.carrinhosMedio > 0 && d.carrinhosMedio < 79) {
+    dicas.push(`Preço médio no carrinho (R$ ${d.carrinhosMedio.toFixed(0)}) está abaixo do frete grátis (R$ 79). Considere sugerir produtos complementares para atingir o valor mínimo.`);
+  }
+
+  // Tráfego raso de Ads
+  const fbFonte = d.fontes.find(f => f.fonte === "FB" || f.fonte === "fb");
+  if (fbFonte && Number(fbFonte.media_minutos) < 0.5 && Number(fbFonte.visitantes) > 5) {
+    dicas.push("Tráfego do Facebook Ads está raso (menos de 30s no site). Considere direcionar anúncios para páginas de produto específicas ao invés do catálogo geral.");
+  }
+
+  // Zero leads com visitantes
+  if (d.visitantes > 20 && d.leads === 0) {
+    dicas.push("Nenhum lead capturado com " + d.visitantes + " visitantes. Verifique se o popup está aparecendo corretamente.");
+  }
+
+  // Tudo bom
+  if (d.compras > 0) {
+    dicas.push("Vendas acontecendo! Continue monitorando o funil e as taxas de abertura dos emails automáticos.");
+  }
+
+  if (dicas.length === 0) {
+    dicas.push("Sem alertas críticos. Foque em trazer mais tráfego qualificado via Instagram e Meta Ads.");
+  }
+
+  return dicas;
 }
 
 // ── HTML do email do briefing ──────────────────────────────────

@@ -66,6 +66,9 @@ interface BriefingData {
     erro: string | null;
     criado_em: string;
   }>;
+  fontes_trafego: Array<{ fonte: string; visitantes: number; eventos: number; media_minutos: number }>;
+  produtos_carrinho: Array<{ produto: string; preco: number; vezes: number }>;
+  dicas: string[];
   alertas: {
     descadastros: number;
     erros_sync: number;
@@ -188,7 +191,7 @@ export default function Briefing() {
     );
   }
 
-  const { site, leads, vendas, automacoes, proximas, syncs, alertas } = data;
+  const { site, leads, vendas, automacoes, proximas, syncs, alertas, fontes_trafego, produtos_carrinho, dicas } = data;
   const totalAlertas = alertas.descadastros + alertas.erros_sync + (alertas.funil_travado ? 1 : 0) + alertas.leads_sem_verificar;
   const hoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -246,6 +249,21 @@ export default function Briefing() {
       )}
       {totalAlertas === 0 && (
         <AlertBadge label="Tudo em dia — nenhum alerta" tipo="ok" />
+      )}
+
+      {/* Dicas acionáveis */}
+      {dicas?.length > 0 && (
+        <div className="bg-violet-500/10 border border-violet-500/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles size={16} className="text-violet-400" />
+            <h2 className="text-sm font-medium text-violet-300">Dicas do dia</h2>
+          </div>
+          <div className="space-y-1.5">
+            {dicas.map((d: string, i: number) => (
+              <p key={i} className="text-xs text-bibelo-muted leading-relaxed">• {d}</p>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* KPIs */}
@@ -355,6 +373,54 @@ export default function Briefing() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Fontes de tráfego + Produtos no carrinho */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Fontes */}
+        {fontes_trafego?.length > 0 && (
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+            <h2 className="text-sm font-bold text-bibelo-text mb-3 flex items-center gap-2">
+              <TrendingUp size={16} className="text-blue-400" />
+              Fontes de trafego
+            </h2>
+            <div className="space-y-2">
+              {fontes_trafego.map((f: any, i: number) => (
+                <div key={i} className="flex items-center justify-between py-1.5 border-b border-bibelo-border last:border-0">
+                  <div>
+                    <span className="text-xs font-medium text-bibelo-text uppercase">{f.fonte}</span>
+                    <p className="text-[10px] text-bibelo-muted">{f.media_minutos > 0 ? `${f.media_minutos}min media` : '<30s media'}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-bold text-bibelo-text">{f.visitantes}</span>
+                    <p className="text-[10px] text-bibelo-muted">{f.eventos} eventos</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Produtos no carrinho */}
+        {produtos_carrinho?.length > 0 && (
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+            <h2 className="text-sm font-bold text-bibelo-text mb-3 flex items-center gap-2">
+              <ShoppingCart size={16} className="text-amber-400" />
+              Produtos no carrinho (nao convertidos)
+            </h2>
+            <div className="space-y-2">
+              {produtos_carrinho.map((p: any, i: number) => (
+                <div key={i} className="flex items-center justify-between py-1.5 border-b border-bibelo-border last:border-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-bibelo-text truncate">{p.produto}</p>
+                    <p className="text-[10px] text-bibelo-muted">{formatCurrency(p.preco)}</p>
+                  </div>
+                  <span className="text-xs font-bold text-amber-400 ml-2">{p.vezes}x</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Leads recentes */}

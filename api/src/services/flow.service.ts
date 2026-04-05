@@ -1169,6 +1169,9 @@ async function buildFlowEmail(nome: string, templateName: string, metadata: Reco
   if (lower.includes("recompra") || lower.includes("repor") || lower.includes("favoritos")) {
     return await buildRepurchaseEmail(nome, metadata);
   }
+  if (lower.includes("carrinho tracking") || lower.includes("itens esperando")) {
+    return buildTrackingCartEmail(nome, metadata);
+  }
 
   // Fallback genérico
   return emailWrapper(`
@@ -1221,6 +1224,9 @@ function getFlowSubject(templateName: string, nome: string): string {
   }
   if (lower.includes("lembrete recompra") || lower.includes("favoritos esperando")) {
     return `${nome || "Oi"}, seus favoritos estão esperando! 💕`;
+  }
+  if (lower.includes("carrinho tracking") || lower.includes("itens esperando")) {
+    return `${nome || "Oi"}, seus itens estão esperando no carrinho! 🛒`;
   }
   return `Novidades da Papelaria Bibelô para você!`;
 }
@@ -1698,6 +1704,88 @@ export async function checkUnverifiedLeads(): Promise<number> {
 }
 
 // ══════════════════════════════════════════════════════════════════
+// CARRINHO ABANDONADO VIA TRACKING (sem depender de checkout NuvemShop)
+// ══════════════════════════════════════════════════════════════════
+
+export async function checkTrackingCartAbandoned(): Promise<number> {
+  // Buscar visitantes que fizeram add_to_cart há mais de 30min mas não fizeram checkout
+  // E que têm um customer vinculado (via visitor_customers)
+  const abandoned = await query<{
+    visitor_id: string; customer_id: string; nome: string; email: string;
+    produtos: number; ultimo_add: string;
+  }>(`
+    SELECT
+      te.visitor_id,
+      vc.customer_id,
+      c.nome,
+      c.email,
+      COUNT(DISTINCT te.resource_nome) AS produtos,
+      MAX(te.criado_em) AS ultimo_add
+    FROM crm.tracking_events te
+    JOIN crm.visitor_customers vc ON vc.visitor_id = te.visitor_id
+    JOIN crm.customers c ON c.id = vc.customer_id
+    WHERE te.evento = 'add_to_cart'
+      AND te.criado_em >= NOW() - INTERVAL '4 hours'
+      AND te.criado_em <= NOW() - INTERVAL '30 minutes'
+      AND c.email IS NOT NULL
+      AND c.email_optout = false
+      -- Sem checkout após o add_to_cart
+      AND NOT EXISTS (
+        SELECT 1 FROM crm.tracking_events te2
+        WHERE te2.visitor_id = te.visitor_id
+          AND te2.evento IN ('checkout', 'purchase')
+          AND te2.criado_em > te.criado_em
+      )
+      -- Não já notificado por esse fluxo recentemente
+      AND NOT EXISTS (
+        SELECT 1 FROM marketing.flow_executions fe
+        JOIN marketing.flows f ON f.id = fe.flow_id
+        WHERE f.gatilho = 'cart.tracking'
+          AND fe.customer_id = vc.customer_id
+          AND fe.iniciado_em > NOW() - INTERVAL '24 hours'
+      )
+    GROUP BY te.visitor_id, vc.customer_id, c.nome, c.email
+    ORDER BY MAX(te.criado_em) DESC
+    LIMIT 10
+  `);
+
+  if (abandoned.length === 0) return 0;
+
+  let triggered = 0;
+
+  for (const cart of abandoned) {
+    // Buscar os produtos que adicionou ao carrinho
+    const itens = await query<{ nome: string; preco: number }>(`
+      SELECT DISTINCT resource_nome AS nome, resource_preco::float AS preco
+      FROM crm.tracking_events
+      WHERE visitor_id = $1 AND evento = 'add_to_cart'
+        AND criado_em >= NOW() - INTERVAL '4 hours'
+        AND resource_nome IS NOT NULL
+      ORDER BY preco DESC
+      LIMIT 4
+    `, [cart.visitor_id]);
+
+    const executionIds = await triggerFlow("cart.tracking", cart.customer_id, {
+      customer_id: cart.customer_id,
+      visitor_id: cart.visitor_id,
+      produtos_carrinho: itens,
+      total_produtos: cart.produtos,
+    });
+
+    if (executionIds.length > 0) {
+      triggered++;
+      logger.info("Carrinho tracking abandonado detectado", {
+        customerId: cart.customer_id,
+        nome: cart.nome,
+        produtos: cart.produtos,
+      });
+    }
+  }
+
+  return triggered;
+}
+
+// ══════════════════════════════════════════════════════════════════
 // RECOMPRA INTELIGENTE — Dispara para clientes com ciclo de recompra
 // ══════════════════════════════════════════════════════════════════
 
@@ -2049,6 +2137,46 @@ async function buildRepurchaseEmail(nome: string, metadata: Record<string, unkno
     ${ctaButton("Visitar a loja", "https://www.papelariabibelo.com.br/novidades?utm_source=email&utm_medium=flow&utm_campaign=recompra&utm_content=cta_visitar")}
     <p style="font-size:13px;color:#999;text-align:center;">
       Garantimos estoque reservado para nossas clientes fiéis! 💖
+    </p>
+  `);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// CARRINHO TRACKING — Email para quem adicionou ao carrinho mas não fez checkout
+// ══════════════════════════════════════════════════════════════════
+
+function buildTrackingCartEmail(nome: string, metadata: Record<string, unknown>): string {
+  const produtos = (metadata.produtos_carrinho as Array<{ nome: string; preco: number }>) || [];
+
+  let productsHtml = "";
+  if (produtos.length > 0) {
+    const rows = produtos.map(p => {
+      const preco = formatBRL(p.preco);
+      return `<tr>
+        <td style="padding:8px 0;border-bottom:1px solid #fee;">
+          <span style="font-size:13px;color:#333;">${escHtml(p.nome.length > 50 ? p.nome.slice(0, 47) + "..." : p.nome)}</span>
+        </td>
+        <td style="padding:8px 0;border-bottom:1px solid #fee;text-align:right;">
+          <span style="font-size:14px;color:#fe68c4;font-weight:700;">${preco}</span>
+        </td>
+      </tr>`;
+    });
+    productsHtml = `<table style="width:100%;border-collapse:collapse;margin:16px 0;">${rows.join("")}</table>`;
+  }
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🛒</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Vimos que você estava dando uma olhada nos nossos produtos e adicionou alguns ao carrinho.
+      Eles ainda estão esperando por você!
+    </p>
+    ${productsHtml}
+    <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:16px 0;">
+      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+    </div>
+    ${ctaButton("Finalizar minha compra", "https://www.papelariabibelo.com.br/produtos?utm_source=email&utm_medium=flow&utm_campaign=cart_tracking&utm_content=cta_finalizar")}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      Precisa de ajuda? <a href="https://wa.me/5547933862514" style="color:#fe68c4;text-decoration:none;">Fale com a gente no WhatsApp</a> 💬
     </p>
   `);
 }

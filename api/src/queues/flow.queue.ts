@@ -1,6 +1,6 @@
 import { Queue, Worker } from "bullmq";
 import { logger } from "../utils/logger";
-import { processReadySteps, checkAbandonedCarts, checkProductInterest, checkLeadCartAbandoned, checkUnverifiedLeads, checkRepurchaseDue } from "../services/flow.service";
+import { processReadySteps, checkAbandonedCarts, checkProductInterest, checkLeadCartAbandoned, checkUnverifiedLeads, checkRepurchaseDue, checkTrackingCartAbandoned } from "../services/flow.service";
 import { query } from "../db";
 
 // ── Redis connection ───────────────────────────────────────────
@@ -67,6 +67,12 @@ export const flowWorker = new Worker(
 
         case "flow-check-recompra": {
           const triggered = await checkRepurchaseDue();
+          result = { triggered };
+          break;
+        }
+
+        case "flow-check-tracking-cart": {
+          const triggered = await checkTrackingCartAbandoned();
           result = { triggered };
           break;
         }
@@ -144,6 +150,11 @@ export async function registerFlowJobs(): Promise<void> {
   // Recompra inteligente: a cada 6 horas (09h, 15h, 21h, 03h)
   await flowQueue.add("flow-check-recompra", {}, {
     repeat: { pattern: "0 */6 * * *" },
+  });
+
+  // Carrinho abandonado via tracking: a cada 15 minutos
+  await flowQueue.add("flow-check-tracking-cart", {}, {
+    repeat: { pattern: "*/15 * * * *" },
   });
 
   logger.info("Flow jobs registrados: process-steps (1min), check-abandoned (5min), check-interest (15min), check-lead-cart (10min), check-unverified (2h), check-recompra (6h)");
