@@ -456,7 +456,7 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
     if (document.getElementById('bibelo-frete-bar')) return;
     var bar = document.createElement('div');
     bar.id = 'bibelo-frete-bar';
-    bar.innerHTML = '\\uD83D\\uDE9A <strong>FRETE GR\\u00C1TIS</strong> para Sul e Sudeste acima de R$ 79 &nbsp;|&nbsp; Toda compra vai com mimo surpresa! \\uD83C\\uDF80';
+    bar.innerHTML = '\\uD83D\\uDE9A <strong>FRETE GR\\u00C1TIS</strong> para Sul e Sudeste em compras acima de R$ 79,00 &nbsp;|&nbsp; Toda compra vai com mimo surpresa! \\uD83C\\uDF80';
     bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;text-align:center;padding:8px 16px;font-size:12px;font-family:Jost,Arial,sans-serif;font-weight:500;letter-spacing:0.3px;box-shadow:0 2px 8px rgba(254,104,196,0.3);';
     document.body.prepend(bar);
     // Empurrar o conteúdo pra baixo
