@@ -457,14 +457,26 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
     var bar = document.createElement('div');
     bar.id = 'bibelo-frete-bar';
     bar.innerHTML = '\\uD83D\\uDE9A <strong>FRETE GR\\u00C1TIS</strong> para Sul e Sudeste em compras acima de R$ 79,00 &nbsp;|&nbsp; Toda compra vai com mimo surpresa! \\uD83C\\uDF80';
-    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;text-align:center;padding:8px 16px;font-size:12px;font-family:Jost,Arial,sans-serif;font-weight:500;letter-spacing:0.3px;box-shadow:0 2px 8px rgba(254,104,196,0.3);';
+    bar.style.cssText = 'position:relative;top:0;left:0;right:0;z-index:99999;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;text-align:center;padding:8px 16px;font-size:12px;font-family:Jost,Arial,sans-serif;font-weight:500;letter-spacing:0.3px;transition:all 0.3s ease;';
     document.body.prepend(bar);
-    // Empurrar o conteúdo pra baixo
-    document.body.style.paddingTop = (bar.offsetHeight) + 'px';
-    // Fechar após 15s em mobile (ocupa espaço)
-    if (window.innerWidth < 768) {
-      setTimeout(function() { bar.style.display = 'none'; document.body.style.paddingTop = '0'; }, 15000);
-    }
+
+    // Ao scrollar: esconde a barra suavemente
+    var lastScroll = 0;
+    var barHeight = bar.offsetHeight;
+    window.addEventListener('scroll', function() {
+      var scrollY = window.pageYOffset || document.documentElement.scrollTop;
+      if (scrollY > 100) {
+        bar.style.maxHeight = '0';
+        bar.style.padding = '0 16px';
+        bar.style.overflow = 'hidden';
+        bar.style.opacity = '0';
+      } else {
+        bar.style.maxHeight = barHeight + 'px';
+        bar.style.padding = '8px 16px';
+        bar.style.opacity = '1';
+      }
+      lastScroll = scrollY;
+    }, { passive: true });
   }
 
   // ══════════════════════════════════════════════════════════
