@@ -448,17 +448,151 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
     }, 2000);
   }
 
+  // ══════════════════════════════════════════════════════════
+  // BARRA DE FRETE GRÁTIS NO TOPO
+  // ══════════════════════════════════════════════════════════
+
+  function injectFreteBar() {
+    if (document.getElementById('bibelo-frete-bar')) return;
+    var bar = document.createElement('div');
+    bar.id = 'bibelo-frete-bar';
+    bar.innerHTML = '\\uD83D\\uDE9A <strong>FRETE GR\\u00C1TIS</strong> para Sul e Sudeste acima de R$ 79 &nbsp;|&nbsp; Toda compra vai com mimo surpresa! \\uD83C\\uDF80';
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;text-align:center;padding:8px 16px;font-size:12px;font-family:Jost,Arial,sans-serif;font-weight:500;letter-spacing:0.3px;box-shadow:0 2px 8px rgba(254,104,196,0.3);';
+    document.body.prepend(bar);
+    // Empurrar o conteúdo pra baixo
+    document.body.style.paddingTop = (bar.offsetHeight) + 'px';
+    // Fechar após 15s em mobile (ocupa espaço)
+    if (window.innerWidth < 768) {
+      setTimeout(function() { bar.style.display = 'none'; document.body.style.paddingTop = '0'; }, 15000);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // BARRA DE PROGRESSO + UP-SELL NO CARRINHO
+  // ══════════════════════════════════════════════════════════
+
+  function injectCartProgress() {
+    var path = window.location.pathname;
+    if (!path.includes('/cart') && !path.includes('/carrito') && !path.includes('/carrinho')) return;
+
+    function renderProgress() {
+      if (document.getElementById('bibelo-cart-progress')) return;
+
+      // Detectar valor total do carrinho
+      var totalEl = document.querySelector('.js-cart-total, .cart-total, [data-cart-total], .total-price, .subtotal-price, .js-total-price');
+      var totalText = totalEl ? (totalEl.textContent || '') : '';
+      var total = parseFloat(totalText.replace(/[^0-9,.]/g, '').replace('.', '').replace(',', '.')) || 0;
+
+      if (total <= 0) return;
+
+      var FRETE_GRATIS = 79;
+      var falta = Math.max(0, FRETE_GRATIS - total);
+      var pct = Math.min(100, (total / FRETE_GRATIS) * 100);
+
+      var container = document.createElement('div');
+      container.id = 'bibelo-cart-progress';
+      container.style.cssText = 'background:#fff;border:2px solid #fe68c4;border-radius:12px;padding:16px;margin:12px 0;font-family:Jost,Arial,sans-serif;';
+
+      if (falta <= 0) {
+        container.innerHTML = '<div style="text-align:center;"><span style="font-size:20px;">\\uD83C\\uDF89</span><p style="color:#fe68c4;font-weight:700;font-size:14px;margin:4px 0 0;">Parab\\u00E9ns! Voc\\u00EA ganhou FRETE GR\\u00C1TIS!</p></div>';
+      } else {
+        container.innerHTML = '<p style="color:#333;font-size:13px;margin:0 0 8px;text-align:center;font-weight:600;">Faltam <span style="color:#fe68c4;font-size:16px;">R$ ' + falta.toFixed(2).replace('.', ',') + '</span> para <strong>FRETE GR\\u00C1TIS!</strong></p>' +
+          '<div style="background:#ffe5ec;border-radius:20px;height:10px;overflow:hidden;"><div style="background:linear-gradient(90deg,#fe68c4,#f472b6);height:100%;border-radius:20px;width:' + pct + '%;transition:width 0.5s;"></div></div>' +
+          '<p style="color:#999;font-size:10px;text-align:center;margin:6px 0 0;">R$ ' + total.toFixed(2).replace('.', ',') + ' / R$ ' + FRETE_GRATIS + ',00</p>';
+
+        // Up-sell: sugestões de produtos baratos para completar
+        if (falta > 0 && falta < 50) {
+          var upSell = '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #ffe5ec;">' +
+            '<p style="color:#333;font-size:12px;margin:0 0 8px;font-weight:600;">\\u2728 Adicione e ganhe frete gr\\u00E1tis:</p>' +
+            '<div style="display:flex;gap:8px;overflow-x:auto;">';
+
+          var sugestoes = [
+            { nome: 'Caneta Gel Ursinhos', preco: 'R$ 6,90', url: '/produtos/caneta-leonora-0-7-gel-ursinhos-colors-apagavel-premium/' },
+            { nome: 'Marca Texto Fini', preco: 'R$ 7,90', url: '/produtos/marca-texto-leonora-aroma-fini-ponta-fina-premium/' },
+            { nome: 'Clips Love Tris', preco: 'R$ 3,64', url: '/produtos/clips-prendedor-25mm-love-tris/' },
+            { nome: 'Borracha Food Trends', preco: 'R$ 5,40', url: '/produtos/borracha-leonora-formas-food-trends-premium/' },
+          ];
+
+          sugestoes.forEach(function(p) {
+            upSell += '<a href="' + p.url + '?utm_source=cart_upsell&utm_medium=progress_bar" style="flex-shrink:0;background:#fff7c1;border-radius:10px;padding:8px 12px;text-decoration:none;text-align:center;min-width:100px;border:1px solid #fee;">' +
+              '<p style="font-size:11px;color:#333;margin:0;line-height:1.2;">' + p.nome + '</p>' +
+              '<p style="font-size:12px;color:#fe68c4;font-weight:700;margin:2px 0 0;">' + p.preco + '</p>' +
+              '</a>';
+          });
+
+          upSell += '</div></div>';
+          container.innerHTML += upSell;
+        }
+      }
+
+      // Inserir antes da tabela do carrinho
+      var cartTable = document.querySelector('.js-cart-table, .cart-table, .cart-body, [data-store=cart-table], form[action*=cart], .cart-item-list, main');
+      if (cartTable) {
+        cartTable.parentNode.insertBefore(container, cartTable);
+      } else {
+        var main = document.querySelector('main, .page-content, #content, .container');
+        if (main) main.prepend(container);
+      }
+    }
+
+    // NuvemShop renderiza via JS — aguardar
+    if (document.readyState === 'complete') {
+      setTimeout(renderProgress, 1500);
+    } else {
+      window.addEventListener('load', function() { setTimeout(renderProgress, 1500); });
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // BOTÃO WHATSAPP FLUTUANTE NA PÁGINA DE PRODUTO
+  // ══════════════════════════════════════════════════════════
+
+  function injectWhatsApp() {
+    var path = window.location.pathname;
+    if (!path.match(/^\\/(produtos|products)\\/[^/]+\\/?$/)) return;
+
+    function render() {
+      if (document.getElementById('bibelo-wa-btn')) return;
+
+      var nome = '';
+      var ogTitle = document.querySelector('meta[property="og:title"]');
+      if (ogTitle) nome = ogTitle.getAttribute('content') || '';
+      if (!nome) nome = (document.title || '').split(/\\s*[-\\u2013|]\\s*/)[0] || 'este produto';
+
+      var msg = encodeURIComponent('Oi! Estou vendo o produto ' + nome + ' no site e gostaria de mais informa\\u00E7\\u00F5es!');
+      var btn = document.createElement('a');
+      btn.id = 'bibelo-wa-btn';
+      btn.href = 'https://wa.me/5547933862514?text=' + msg;
+      btn.target = '_blank';
+      btn.rel = 'noopener';
+      btn.innerHTML = '\\uD83D\\uDCAC D\\u00FAvidas? Fale conosco';
+      btn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99998;background:#25D366;color:#fff;padding:12px 20px;border-radius:50px;text-decoration:none;font-size:13px;font-weight:600;font-family:Jost,Arial,sans-serif;box-shadow:0 4px 15px rgba(37,211,102,0.4);display:flex;align-items:center;gap:6px;transition:transform 0.2s;';
+      btn.onmouseover = function() { btn.style.transform = 'scale(1.05)'; };
+      btn.onmouseout = function() { btn.style.transform = 'scale(1)'; };
+      btn.onclick = function() { track('whatsapp_click', { resource_nome: nome }); };
+      document.body.appendChild(btn);
+    }
+
+    setTimeout(render, 2000);
+  }
+
   // ── Inicializar ─────────────────────────────────────────
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
       detectPage();
       watchAddToCart();
       watchIdentify();
+      injectFreteBar();
+      injectCartProgress();
+      injectWhatsApp();
     });
   } else {
     detectPage();
     watchAddToCart();
     watchIdentify();
+    injectFreteBar();
+    injectCartProgress();
+    injectWhatsApp();
   }
 
 })();
