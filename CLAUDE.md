@@ -159,7 +159,8 @@ Toda comunicação **DEVE ser em português brasileiro (pt-BR)**. Commits, mensa
 - **Lembrete de verificação**: automação do sistema (cron a cada 2h) que reenvia email de confirmação para leads que não verificaram. 1º lembrete após 3h, 2º (último) após 24h. Campos: `lembretes_enviados`, `ultimo_lembrete_em` em `marketing.leads`. Código: `checkUnverifiedLeads()` em `flow.service.ts`, job `flow-check-unverified-leads` em `flow.queue.ts`
 - Cupons únicos por lead: gerarCupomUnico() cria BIB-NOME-XXXX na NuvemShop API (max_uses:1, first_consumer_purchase:true, expiry automático)
 - 3 cenários de cupom: carrinho abandonado (5%, 24h), nutrição lead (10%, 48h), reativação (10%, 7d)
-- Cupom do popup Clube Bibelô: `CLUBEBIBELO` = frete grátis (não é percentual)
+- Cupom do popup Clube Bibelô: `CLUBEBIBELO` = 7% OFF na 1ª compra (type:percentage na NuvemShop)
+- Frete grátis: configuração nativa NuvemShop (Sul/Sudeste, R$79+, opção mais barata) — não depende de cupom
 - triggerFlow nunca re-executa (ignora se já existe execução)
 - Reativação só para quem tem pelo menos 1 pedido
 - **Novo fluxo = preview obrigatório**: ao criar qualquer fluxo novo, SEMPRE enviar um email de teste/preview para `carloseduardocostatj@gmail.com` com dados reais (imagens HD NuvemShop, links reais, nome do cliente). O dono precisa aprovar o visual antes de ir para produção.
@@ -410,7 +411,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 4 de Abril de 2026 — auditoria fluxos (fix race condition, Redis noeviction, rate limit transacional), seção Automações & Emails no Dashboard, reativação clientes inativos*
+*Última atualização: 5 de Abril de 2026 — visibilidade tracking leads, cupom CLUBEBIBELO 7% OFF, frete grátis nativo NuvemShop, template boas-vindas com produtos reais e reviews Google, tracking via popup.js (anti-iframe), add_to_cart form submit, popup anti-duplicação localStorage*
 
 ---
 

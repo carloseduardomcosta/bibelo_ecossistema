@@ -469,3 +469,21 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Seletores add_to_cart ampliados (NuvemShop Amazonas)
   - Fallback: intercepta form submit de produto
   - Teste automatizado do pipeline completo: 6 eventos → lead → verificação → fluxo disparado
+- fix: popup não repete entre páginas + botão "Continuar comprando"
+  - localStorage como fallback do cookie (aba anônima/cross-page)
+  - Botão "Continuar comprando" aparece após preencher popup
+  - Cache popup.js reduzido de 5min para 1min
+- fix: template "Lead boas-vindas clube" redesenhado
+  - 6 produtos mais vendidos (últimos 6 meses, dados reais Bling) em grid 3x2
+  - 3 reviews reais do Google com foto do perfil + foto de produto compartilhada
+    - Bruna Caroline, Sonia Ewald, Bruna Penz (todas 5⭐, com fotos reais)
+  - Link "Ver todas as avaliações no Google →" para Google Maps da Bibelô
+  - "⭐ 5.0 no Google · 23 avaliações reais" (dado real via Places API)
+  - Removidos textos fictícios ("4.9 no Google", "+500 clientes", review inventado)
+  - Imagem quebrada (Caneta Glitter 403) substituída por Marca Texto Picnic Bombom
+  - Benefícios com emojis: 🏷️ 7% OFF, 🚚 frete, 🎁 mimo, ✨ novidades, 💬 WhatsApp
+  - Footer com Privacidade + Termos de Uso + Descadastrar
+- Teste manual completo validado (celular, guia normal):
+  - Pipeline: page_view → popup_view → popup_submit → product_view → add_to_cart → verificação email → fluxo disparado → email boas-vindas enviado
+  - 7 eventos captados, todos vinculados ao customer
+  - Fluxo "Lead boas-vindas clube" concluído + "Nutrição de lead inteligente" ativo
