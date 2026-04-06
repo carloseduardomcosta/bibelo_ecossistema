@@ -3,7 +3,9 @@ import {
   Download, Trash2, Settings2, Loader2, Search,
   CheckCircle2, AlertTriangle, ArrowRight, FileImage,
   ZoomIn, X, UploadCloud, Store, Send, Package, CloudDownload, Eraser,
+  Archive,
 } from 'lucide-react';
+import JSZip from 'jszip';
 import api from '../lib/api';
 
 // ── Tipos ──────────────────────────────────────────────────
@@ -386,11 +388,34 @@ export default function EditorImagens() {
     link.click();
   };
 
-  const downloadAll = () => {
+  const [zipping, setZipping] = useState(false);
+
+  const downloadAllZip = async () => {
     if (!results) return;
-    results.results
-      .filter(r => r.format !== 'erro')
-      .forEach((r, i) => { setTimeout(() => downloadOne(r), i * 200); });
+    const valid = results.results.filter(r => r.format !== 'erro');
+    if (valid.length === 0) return;
+
+    setZipping(true);
+    try {
+      const zip = new JSZip();
+      for (const r of valid) {
+        // Extrair bytes do base64 data URI
+        const base64 = r.data.split(',')[1];
+        const baseName = r.originalName.replace(/\.[^.]+$/, '');
+        zip.file(`${baseName}_converted.${r.format}`, base64, { base64: true });
+      }
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      const preset = selectedPresets[0] || 'custom';
+      link.download = `imagens_${preset}_${valid.length}fotos.zip`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch {
+      setError('Erro ao gerar arquivo ZIP');
+    } finally {
+      setZipping(false);
+    }
   };
 
   // ── Render ───────────────────────────────────────────────
@@ -895,9 +920,17 @@ export default function EditorImagens() {
                 </p>
               </div>
             </div>
-            {results.convertidos > 1 && (
-              <button onClick={downloadAll} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors">
-                <Download className="w-4 h-4" /> Baixar todas ({results.convertidos})
+            {results.convertidos > 0 && (
+              <button
+                onClick={downloadAllZip}
+                disabled={zipping}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+              >
+                {zipping ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Gerando ZIP...</>
+                ) : (
+                  <><Archive className="w-4 h-4" /> Baixar todas em .zip ({results.convertidos})</>
+                )}
               </button>
             )}
           </div>

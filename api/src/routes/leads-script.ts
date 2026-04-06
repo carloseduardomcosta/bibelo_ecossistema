@@ -38,7 +38,10 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
   function setCookie(name, value, days) {
     var d = new Date();
     d.setTime(d.getTime() + days * 86400000);
-    document.cookie = name + '=' + value + ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
+    // domain com ponto = cobre www. e sem www.
+    var domain = '';
+    try { domain = ';domain=.' + window.location.hostname.replace(/^www\\./, ''); } catch(e) {}
+    document.cookie = name + '=' + value + ';expires=' + d.toUTCString() + ';path=/' + domain + ';SameSite=Lax';
   }
 
   function uuid() {
@@ -81,10 +84,10 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
   var forceDesconto = /[?&]desconto=1/.test(qs);
   var forceOpen = forceClube || forceDesconto;
 
-  // ── Já é lead cadastrado? Não mostrar popup de captura ──
-  if (!forceOpen && (getCookie('_bibelo_lead') || tryGet('_bibelo_lead'))) return;
+  // ── Já é lead cadastrado? NUNCA mostrar de novo (nem via banner) ──
+  if (getCookie('_bibelo_lead') || tryGet('_bibelo_lead')) return;
 
-  // ── Já mostrou popup nesta sessão? ─────────────────────
+  // ── Já mostrou popup nesta sessão? (forceOpen ignora pra abrir via banner) ──
   if (!forceOpen && (getCookie(COOKIE_NAME) || tryGet(COOKIE_NAME))) return;
 
   // ── Visitor ID ──────────────────────────────────────────
@@ -111,20 +114,17 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
 
       // Forçar abertura imediata via banner (clube=1 ou desconto=1)
       if (forceOpen) {
-        // Seleciona popup certo: desconto=1 → popup com % OFF, clube=1 → popup Clube Bibelô
         var targetPopup = null;
         if (forceDesconto) {
           for (var j = 0; j < data.popups.length; j++) {
-            if (data.popups[j].id === 'desconto_primeira_compra') { targetPopup = data.popups[j]; break; }
+            if (data.popups[j].id === 'clube_bibelo') { targetPopup = data.popups[j]; break; }
           }
         }
         if (!targetPopup) targetPopup = timerPopup;
         if (targetPopup) {
           shown = true;
-          var bannerNome = forceDesconto ? '7% OFF' : '7% OFF';
-          trackEvent(vid, 'banner_click', { banner: bannerNome, popup_id: targetPopup.id });
+          trackEvent(vid, 'banner_click', { banner: '10% OFF', popup_id: targetPopup.id });
           showPopup(targetPopup, vid);
-          // Limpa params da URL sem recarregar
           if (window.history && window.history.replaceState) {
             var cleanUrl = window.location.href.replace(/[?&](clube|desconto)=1/g, '').replace(/\\?$/, '');
             window.history.replaceState(null, '', cleanUrl);
@@ -137,7 +137,7 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
       if (timerPopup) {
         setTimeout(function() {
           if (!shown) { shown = true; showPopup(timerPopup, vid); }
-        }, (timerPopup.delay_segundos || 8) * 1000);
+        }, (timerPopup.delay_segundos || 5) * 1000);
       }
 
       // Exit intent popup: aparece quando mouse sai da janela (desktop only)
@@ -155,8 +155,6 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
 
   // ── Renderizar popup ────────────────────────────────────
   function showPopup(config, visitorId) {
-    // Registrar exibição
-    // Marca cookie + localStorage imediatamente ao exibir (evita mostrar 2x)
     setCookie(COOKIE_NAME, '1', COOKIE_DAYS);
     trySet(COOKIE_NAME, '1');
 
@@ -166,7 +164,6 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
       body: JSON.stringify({ popup_id: config.id })
     }).catch(function() {});
 
-    // Tracking: popup exibido
     trackEvent(visitorId, 'popup_view', { popup_id: config.id, desconto: config.desconto_texto });
 
     // Google Fonts
@@ -182,46 +179,47 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
     // Overlay
     var overlay = document.createElement('div');
     overlay.id = 'bibelo-popup-overlay';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999998;opacity:0;transition:opacity 0.3s ease;display:flex;align-items:center;justify-content:center;padding:16px;';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:999998;opacity:0;transition:opacity 0.3s ease;display:flex;align-items:center;justify-content:center;padding:16px;';
 
     var card = document.createElement('div');
-    card.style.cssText = 'background:#fff;border-radius:20px;max-width:420px;width:100%;overflow:hidden;box-shadow:0 20px 60px rgba(254,104,196,0.25);transform:translateY(20px);transition:transform 0.4s ease;font-family:Jost,Arial,sans-serif;';
+    card.style.cssText = 'background:#fff;border-radius:24px;max-width:430px;width:100%;overflow:hidden;box-shadow:0 25px 80px rgba(254,104,196,0.35);transform:translateY(30px) scale(0.95);transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);font-family:Jost,Arial,sans-serif;';
 
-    var isClube = config.id === 'clube_bibelo';
-    var btnText = isClube ? 'Quero fazer parte \\uD83C\\uDF80' : 'Quero meu cupom \\uD83C\\uDF89';
-    var inputStyle = 'width:100%;padding:13px 16px 13px 42px;border:2px solid #ffe5ec;border-radius:12px;font-size:15px;margin-bottom:10px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s;background:#fff;';
+    var inputStyle = 'width:100%;padding:14px 16px 14px 44px;border:2px solid #ffe5ec;border-radius:14px;font-size:15px;margin-bottom:10px;outline:none;font-family:Jost,Arial,sans-serif;box-sizing:border-box;transition:border-color 0.2s,box-shadow 0.2s;background:#fff;';
 
     card.innerHTML =
-      // ── Header premium com Cormorant Garamond ──
-      '<div style="background:linear-gradient(160deg,#ffe5ec 0%,#fff7c1 50%,#ffe5ec 100%);padding:32px 28px 24px;text-align:center;position:relative;overflow:hidden;">' +
-        // Decoração sutil de fundo
-        '<div style="position:absolute;top:-20px;right:-20px;width:80px;height:80px;background:rgba(254,104,196,0.08);border-radius:50%;"></div>' +
-        '<div style="position:absolute;bottom:-10px;left:-10px;width:50px;height:50px;background:rgba(254,104,196,0.06);border-radius:50%;"></div>' +
-        '<button id="bibelo-popup-close" style="position:absolute;top:10px;right:12px;background:rgba(255,255,255,0.7);border:none;width:28px;height:28px;border-radius:50%;font-size:18px;cursor:pointer;color:#999;line-height:1;display:flex;align-items:center;justify-content:center;">&times;</button>' +
-        // Badge
-        '<div style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:6px 18px;border-radius:50px;font-size:12px;font-weight:600;margin-bottom:14px;letter-spacing:1.5px;text-transform:uppercase;font-family:Jost,sans-serif;">' + esc(config.desconto_texto || '7% OFF') + '</div>' +
-        // T\\u00EDtulo em Cormorant Garamond
-        '<h2 style="color:#2d2d2d;margin:0 0 8px;font-size:28px;font-weight:600;font-family:Cormorant Garamond,Georgia,serif;line-height:1.2;">' + esc(config.titulo || 'Entre pro Clube Bibel\\u00F4!') + '</h2>' +
-        '<p style="color:#888;margin:0;font-size:13px;line-height:1.5;font-family:Jost,sans-serif;max-width:320px;display:inline-block;">' + esc(config.subtitulo || '7% de desconto na 1\\u00AA compra + novidades em primeira m\\u00E3o!') + '</p>' +
+      // ── Header com impacto visual ──
+      '<div style="background:linear-gradient(160deg,#ffe5ec 0%,#fff7c1 40%,#ffe5ec 100%);padding:30px 28px 22px;text-align:center;position:relative;overflow:hidden;">' +
+        '<div style="position:absolute;top:-30px;right:-30px;width:100px;height:100px;background:rgba(254,104,196,0.08);border-radius:50%;"></div>' +
+        '<div style="position:absolute;bottom:-15px;left:-15px;width:60px;height:60px;background:rgba(254,104,196,0.06);border-radius:50%;"></div>' +
+        '<button id="bibelo-popup-close" style="position:absolute;top:12px;right:14px;background:rgba(255,255,255,0.8);border:none;width:30px;height:30px;border-radius:50%;font-size:20px;cursor:pointer;color:#999;line-height:1;display:flex;align-items:center;justify-content:center;transition:background 0.2s;">&times;</button>' +
+        // Badge grande pulsante
+        '<div id="bibelo-popup-badge" style="background:linear-gradient(135deg,#fe68c4,#e91e63);color:#fff;display:inline-block;padding:10px 28px;border-radius:50px;font-size:22px;font-weight:700;margin-bottom:14px;letter-spacing:1px;font-family:Jost,sans-serif;box-shadow:0 4px 20px rgba(254,104,196,0.4);">' + esc(config.desconto_texto || '10% OFF') + '</div>' +
+        '<style>@keyframes bibpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}#bibelo-popup-badge{animation:bibpulse 2s ease-in-out infinite}</style>' +
+        // Titulo
+        '<h2 style="color:#2d2d2d;margin:0 0 6px;font-size:26px;font-weight:700;font-family:Cormorant Garamond,Georgia,serif;line-height:1.2;">' + esc(config.titulo || 'Oferta exclusiva pra voc\\u00EA!') + '</h2>' +
+        '<p style="color:#777;margin:0;font-size:14px;line-height:1.5;font-family:Jost,sans-serif;max-width:340px;display:inline-block;">' + esc(config.subtitulo || '10% de desconto na 1\\u00AA compra \\u2014 s\\u00F3 pra quem cadastra aqui!') + '</p>' +
       '</div>' +
-      // ── Divider rosa ──
-      '<div style="height:3px;background:linear-gradient(90deg,#fe68c4,#f472b6,#fe68c4);"></div>' +
+      // ── Faixa de exclusividade ──
+      '<div style="background:linear-gradient(90deg,#fe68c4,#e91e63,#fe68c4);padding:8px 20px;text-align:center;">' +
+        '<span style="color:#fff;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;font-family:Jost,sans-serif;">\\u2728 s\\u00F3 pra quem cadastra aqui \\u2728</span>' +
+      '</div>' +
       // ── Form ──
-      '<div style="padding:24px 24px 20px;">' +
+      '<div style="padding:22px 24px 18px;">' +
         '<form id="bibelo-popup-form">' +
-          // Input nome com \\u00EDcone
-          (temNome ? '<div style="position:relative;margin-bottom:10px;"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;opacity:0.4;">\\uD83D\\uDC64</span><input type="text" name="nome" placeholder="Seu nome" required style="' + inputStyle + '" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" /></div>' : '') +
-          // Input email com \\u00EDcone
-          '<div style="position:relative;margin-bottom:10px;"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;opacity:0.4;">\\u2709\\uFE0F</span><input type="email" name="email" placeholder="Seu melhor e-mail" required style="' + inputStyle + '" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" /></div>' +
-          // Input WhatsApp com \\u00EDcone
-          (temTelefone ? '<div style="position:relative;margin-bottom:14px;"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;opacity:0.4;">\\uD83D\\uDCF1</span><input type="tel" name="telefone" placeholder="WhatsApp (47 999999999)" required style="' + inputStyle + '" onfocus="this.style.borderColor=\\'#fe68c4\\'" onblur="this.style.borderColor=\\'#ffe5ec\\'" /></div>' : '') +
-          // Bot\\u00E3o
-          '<button type="submit" id="bibelo-popup-btn" style="width:100%;padding:15px;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;font-family:Jost,Arial,sans-serif;box-shadow:0 4px 15px rgba(254,104,196,0.3);transition:transform 0.2s,box-shadow 0.2s;letter-spacing:0.3px;" onmouseover="this.style.transform=\\'translateY(-2px)\\';this.style.boxShadow=\\'0 8px 25px rgba(254,104,196,0.4)\\'" onmouseout="this.style.transform=\\'none\\';this.style.boxShadow=\\'0 4px 15px rgba(254,104,196,0.3)\\'">' +
-            btnText +
+          (temNome ? '<div style="position:relative;margin-bottom:10px;"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;opacity:0.5;">\\uD83D\\uDC64</span><input type="text" name="nome" placeholder="Seu nome" required style="' + inputStyle + '" onfocus="this.style.borderColor=\\'#fe68c4\\';this.style.boxShadow=\\'0 0 0 3px rgba(254,104,196,0.1)\\'" onblur="this.style.borderColor=\\'#ffe5ec\\';this.style.boxShadow=\\'none\\'" /></div>' : '') +
+          '<div style="position:relative;margin-bottom:10px;"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;opacity:0.5;">\\u2709\\uFE0F</span><input type="email" name="email" placeholder="Seu melhor e-mail" required style="' + inputStyle + '" onfocus="this.style.borderColor=\\'#fe68c4\\';this.style.boxShadow=\\'0 0 0 3px rgba(254,104,196,0.1)\\'" onblur="this.style.borderColor=\\'#ffe5ec\\';this.style.boxShadow=\\'none\\'" /></div>' +
+          (temTelefone ? '<div style="position:relative;margin-bottom:14px;"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;opacity:0.5;">\\uD83D\\uDCF1</span><input type="tel" name="telefone" placeholder="WhatsApp (opcional)" style="' + inputStyle + '" onfocus="this.style.borderColor=\\'#fe68c4\\';this.style.boxShadow=\\'0 0 0 3px rgba(254,104,196,0.1)\\'" onblur="this.style.borderColor=\\'#ffe5ec\\';this.style.boxShadow=\\'none\\'" /></div>' : '') +
+          // Botao principal
+          '<button type="submit" id="bibelo-popup-btn" style="width:100%;padding:16px;background:linear-gradient(135deg,#fe68c4,#e91e63);color:#fff;border:none;border-radius:14px;font-size:17px;font-weight:700;cursor:pointer;font-family:Jost,Arial,sans-serif;box-shadow:0 6px 25px rgba(254,104,196,0.4);transition:transform 0.2s,box-shadow 0.2s;letter-spacing:0.3px;" onmouseover="this.style.transform=\\'translateY(-2px)\\';this.style.boxShadow=\\'0 10px 35px rgba(254,104,196,0.5)\\'" onmouseout="this.style.transform=\\'none\\';this.style.boxShadow=\\'0 6px 25px rgba(254,104,196,0.4)\\'">' +
+            'Quero meu desconto \\uD83C\\uDF89' +
           '</button>' +
         '</form>' +
-        // Mimo surpresa
-        (isClube ? '<div style="text-align:center;margin:14px 0 0;padding:8px 12px;background:#fff7c1;border-radius:8px;"><span style="font-size:12px;color:#2d2d2d;font-family:Jost,sans-serif;">\\uD83C\\uDF81 Toda compra vai com <strong>mimo surpresa</strong> na caixa!</span></div>' : '') +
+        // Beneficios rapidos
+        '<div style="display:flex;justify-content:center;gap:12px;margin-top:14px;flex-wrap:wrap;">' +
+          '<span style="font-size:11px;color:#888;font-family:Jost,sans-serif;">\\uD83C\\uDFF7\\uFE0F 10% OFF</span>' +
+          '<span style="font-size:11px;color:#888;font-family:Jost,sans-serif;">\\uD83D\\uDE9A Frete gr\\u00E1tis*</span>' +
+          '<span style="font-size:11px;color:#888;font-family:Jost,sans-serif;">\\uD83C\\uDF81 Mimo surpresa</span>' +
+        '</div>' +
         // Success
         '<div id="bibelo-popup-success" style="display:none;text-align:center;padding:16px 0;">' +
           '<p style="font-size:40px;margin:0 0 12px;" id="bibelo-popup-emoji">\\u2709\\uFE0F</p>' +
@@ -230,30 +228,29 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
         '</div>' +
       '</div>' +
       // ── Footer ──
-      '<div style="padding:12px 24px;background:#fafafa;text-align:center;border-top:1px solid #ffe5ec;">' +
+      '<div style="padding:10px 24px;background:#fafafa;text-align:center;border-top:1px solid #ffe5ec;">' +
         '<p style="margin:0;font-size:11px;color:#bbb;font-family:Jost,sans-serif;">Papelaria Bibel\\u00F4 \\u00B7 <span style="color:#fe68c4;">papelariabibelo.com.br</span></p>' +
       '</div>';
 
     overlay.appendChild(card);
     document.body.appendChild(overlay);
 
-    // Animação de entrada
+    // Animacao de entrada (bounce)
     requestAnimationFrame(function() {
       overlay.style.opacity = '1';
-      card.style.transform = 'translateY(0)';
+      card.style.transform = 'translateY(0) scale(1)';
     });
 
     // Fechar
     function closePopup() {
       overlay.style.opacity = '0';
-      card.style.transform = 'translateY(20px)';
+      card.style.transform = 'translateY(30px) scale(0.95)';
       setTimeout(function() { overlay.remove(); }, 300);
       setCookie(COOKIE_NAME, '1', COOKIE_DAYS);
       trySet(COOKIE_NAME, '1');
     }
 
     document.getElementById('bibelo-popup-close').onclick = closePopup;
-    // Não fecha ao clicar fora — só pelo X ou preenchendo
 
     // Submit
     document.getElementById('bibelo-popup-form').onsubmit = function(e) {
@@ -282,7 +279,6 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
       })
       .then(function(r) { return r.json(); })
       .then(function(data) {
-        // Tracking: lead preencheu popup
         trackEvent(visitorId, 'popup_submit', { popup_id: config.id, desconto: config.desconto_texto, verificacao: data.verificacao });
         form.style.display = 'none';
         var success = document.getElementById('bibelo-popup-success');
@@ -291,23 +287,22 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
 
         var vipLink = 'https://boasvindas.papelariabibelo.com.br/api/links/grupo-vip';
         var vipBtn = '<a href="' + vipLink + '" target="_blank" style="display:inline-block;background:#25D366;color:#fff;padding:10px 24px;border-radius:50px;text-decoration:none;font-size:13px;font-weight:600;margin-top:12px;font-family:Jost,sans-serif;">Entrar no Clube VIP \\uD83D\\uDCAC</a>';
-        var shopBtn = '<div style="margin-top:10px;"><a href="javascript:void(0)" onclick="document.getElementById(\\'bibelo-popup-overlay\\').querySelector(\\'[id=bibelo-popup-close]\\').click()" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:10px 24px;border-radius:50px;text-decoration:none;font-size:13px;font-weight:600;font-family:Jost,sans-serif;">Continuar comprando \\uD83D\\uDECD\\uFE0F</a></div>';
+        var shopBtn = '<div style="margin-top:10px;"><a href="javascript:void(0)" onclick="document.getElementById(\\'bibelo-popup-overlay\\').querySelector(\\'[id=bibelo-popup-close]\\').click()" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#e91e63);color:#fff;padding:10px 24px;border-radius:50px;text-decoration:none;font-size:13px;font-weight:600;font-family:Jost,sans-serif;">Continuar comprando \\uD83D\\uDECD\\uFE0F</a></div>';
 
         if (data.verificacao === 'cliente_existente') {
           document.getElementById('bibelo-popup-emoji').textContent = '\\uD83D\\uDC95';
           document.getElementById('bibelo-popup-submsg').innerHTML = 'Voc\\u00EA j\\u00E1 faz parte da fam\\u00EDlia!' + shopBtn + vipBtn;
         } else if (data.verificacao === 'ja_verificado') {
           document.getElementById('bibelo-popup-emoji').textContent = '\\u2705';
-          document.getElementById('bibelo-popup-submsg').innerHTML = 'Seu desconto de 7% j\\u00E1 est\\u00E1 ativo!' + shopBtn + vipBtn;
+          document.getElementById('bibelo-popup-submsg').innerHTML = 'Seu desconto de 10% j\\u00E1 est\\u00E1 ativo!' + shopBtn + vipBtn;
         } else {
-          document.getElementById('bibelo-popup-submsg').innerHTML = 'Verifique seu e-mail para ativar o desconto de 7%.<br><span style="font-size:11px;color:#999;">Verifique tamb\\u00E9m a pasta de spam.</span>' + shopBtn + vipBtn;
+          document.getElementById('bibelo-popup-submsg').innerHTML = 'Verifique seu e-mail para ativar o desconto de 10%.<br><span style="font-size:11px;color:#999;">Verifique tamb\\u00E9m a pasta de spam.</span>' + shopBtn + vipBtn;
         }
         setCookie(COOKIE_NAME, '1', COOKIE_DAYS);
         setCookie('_bibelo_lead', '1', 365);
         trySet(COOKIE_NAME, '1');
         trySet('_bibelo_lead', '1');
 
-        // Não fecha sozinho — tem link VIP pra clicar
         setTimeout(closePopup, 30000);
       })
       .catch(function() {

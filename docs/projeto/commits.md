@@ -487,3 +487,56 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Pipeline: page_view → popup_view → popup_submit → product_view → add_to_cart → verificação email → fluxo disparado → email boas-vindas enviado
   - 7 eventos captados, todos vinculados ao customer
   - Fluxo "Lead boas-vindas clube" concluído + "Nutrição de lead inteligente" ativo
+- feat: auditoria completa emails NuvemShop vs CRM + refatoração templates
+  - Mapeamento NuvemShop vs BibelôCRM: 9 transacionais ficam na Nuvem, CRM faz marketing/nurture
+  - Carrinho abandonado: NuvemShop (~30min) primeiro toque + CRM (2h+) fluxo completo — cadeia sem duplicação
+  - Delay step 1 carrinho abandonado: 1h → 2h (evita colisão com NuvemShop)
+  - 4 templates de carrinho melhorados:
+    - buildAbandonedCartEmail: +banner frete grátis, +escHtml, emoji 🎀 rosa
+    - buildLastChanceEmail: +imagens produtos, +social proof urgência, +frete
+    - buildCartReminderEmail: NOVO (antes fallback genérico) — social proof Google 4.9 + frete
+    - buildCartCouponEmail: NOVO (antes fallback genérico) — cupom 5% em destaque visual
+  - 7 templates que caíam no fallback genérico corrigidos:
+    - buildNewsEmail: "Novidades da Semana" — produtos recentes do tracking
+    - buildLeadCouponEmail: "Lead cupom exclusivo" — cupom em destaque
+    - buildFomoVipEmail: "Lead FOMO grupo VIP" — grupo WhatsApp 115 membros
+    - buildProductVisitedEmail: "Produto visitado" — imagem + preço + link do produto
+    - buildVipInviteEmail: "Lead convite VIP" — convite WhatsApp VIP
+    - buildReviewRequestEmail: "Pedido de avaliação" — 5 estrelas + CTA Google Reviews
+    - "Sentimos sua falta" agora matcha buildReactivationEmail
+  - buildCartProductsTable(): helper reutilizável para tabela de produtos com imagem
+  - buildTopProductsGrid(): helper async para grid de produtos mais vistos do tracking
+  - Boas-vindas e Reativação agora mostram produtos reais (top 3-4 do tracking)
+  - Proxy de imagens: webp → jpg automático via Sharp (compatibilidade Outlook/Yahoo)
+  - cleanProductUrl(): remove fbclid/UTMs de ads, adiciona utm_source=email
+  - escHtml() aplicado em todos os 23 templates (nomes de clientes e produtos)
+  - Fallback genérico agora loga warning para detecção futura
+  - 23/23 templates matchando corretamente, 0 fallbacks
+  - Nova documentação: docs/marketing/email-templates.md (referência completa)
+
+### Sessão 06/04/2026
+
+- **Editor de Imagens: download ZIP**
+  - JSZip adicionado ao frontend para gerar .zip no navegador
+  - Botão "Baixar todas em .zip" substitui downloads individuais sequenciais
+  - Nome do ZIP: `imagens_{preset}_{N}fotos.zip`
+
+- **Popup 10% OFF (substituiu 7%)**
+  - Popup `clube_bibelo` atualizado: 7% → 10% OFF, cupom BIBELO10
+  - Popup `exit_intent` também atualizado para 10% OFF
+  - Popup `desconto_primeira_compra` (7%) desativado
+  - Novo design: badge pulsante 22px, faixa "só pra quem cadastra aqui", botão "Quero meu desconto 🎉"
+  - Animação de entrada com bounce (scale + translateY)
+  - Benefícios rápidos embaixo do botão (10% OFF, Frete grátis, Mimo)
+  - Email de verificação e página de confirmação atualizados para 10%
+  - Cupom BIBELO10 criado automaticamente na NuvemShop (10%, 1ª compra)
+  - garantirCupomClube() → garantirCupomPopup() (refatorado)
+
+- **Fix: popup repetindo para mesma pessoa**
+  - forceOpen (banner ?desconto=1) agora respeita `_bibelo_lead` — nunca reabre para quem já preencheu
+  - Cookie com `domain=.papelariabibelo.com.br` — funciona em www e sem www
+
+- **Barra de frete no topo**
+  - Texto atualizado: "🚚 FRETE GRÁTIS - Leia as Políticas de Frete 🚚" com link para /politica-de-frete/
+  - Barra agora usa a topbar nativa do tema (.js-topbar) — ícones sociais à esquerda, frete centralizado
+  - Visível no mobile (removido d-none do tema)

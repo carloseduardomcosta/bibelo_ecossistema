@@ -496,29 +496,39 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
 
   function injectFreteBar() {
     if (document.getElementById('bibelo-frete-bar')) return;
+
+    // Usa a barra nativa do tema (.js-topbar) — desktop: ícones + frete | mobile: só frete
+    var topbar = document.querySelector('.js-topbar.section-topbar');
+    if (topbar) {
+      // Garante que a topbar aparece em todas as telas
+      topbar.classList.remove('d-none', 'd-md-block');
+      topbar.style.display = 'block';
+      var row = topbar.querySelector('.row');
+      if (row) {
+        // Remove todos os col.text-right vazios/duplicados
+        var rightCols = row.querySelectorAll('.col.text-right');
+        for (var rc = 0; rc < rightCols.length; rc++) rightCols[rc].remove();
+        // Ícones sociais: só desktop (col-auto + d-none d-md-block)
+        var leftCol = row.querySelector('.col.text-left');
+        if (leftCol) { leftCol.classList.remove('col'); leftCol.classList.add('col-auto'); }
+        // Frete: aparece em todas as telas, centralizado
+        var freteCol = document.createElement('div');
+        freteCol.className = 'col text-center';
+        freteCol.innerHTML = '<a id="bibelo-frete-bar" href="https://www.papelariabibelo.com.br/politica-de-frete/" style="color:#fe68c4;text-decoration:none;font-size:12px;font-family:Jost,Arial,sans-serif;font-weight:600;letter-spacing:0.3px;">' +
+          '\\uD83D\\uDE9A <strong>FRETE GR\\u00C1TIS</strong> - Leia as Pol\\u00EDticas de Frete \\uD83D\\uDE9A' +
+          '</a>';
+        row.appendChild(freteCol);
+      }
+      return;
+    }
+
+    // Fallback: barra injetada no topo (caso tema mude)
     var bar = document.createElement('div');
     bar.id = 'bibelo-frete-bar';
-    bar.innerHTML = '\\uD83D\\uDE9A <strong>FRETE GR\\u00C1TIS</strong> para Sul e Sudeste em compras acima de R$ 79,00 &nbsp;|&nbsp; Toda compra vai com mimo surpresa! \\uD83C\\uDF80';
-    bar.style.cssText = 'position:relative;top:0;left:0;right:0;z-index:99999;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;text-align:center;padding:8px 16px;font-size:12px;font-family:Jost,Arial,sans-serif;font-weight:500;letter-spacing:0.3px;transition:all 0.3s ease;';
+    bar.innerHTML = '\\uD83D\\uDE9A <a href="https://www.papelariabibelo.com.br/politica-de-frete/" style="color:#fff;text-decoration:none;"><strong>FRETE GR\\u00C1TIS</strong> - Leia as Pol\\u00EDticas de Frete \\uD83D\\uDE9A</a>';
+    bar.style.cssText = 'position:relative;top:0;left:0;right:0;z-index:99999;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;text-align:center;padding:8px 16px;font-size:12px;font-family:Jost,Arial,sans-serif;font-weight:500;letter-spacing:0.3px;cursor:pointer;';
+    bar.onclick = function(e) { if (e.target.tagName !== 'A') window.location.href = 'https://www.papelariabibelo.com.br/politica-de-frete/'; };
     document.body.prepend(bar);
-
-    // Ao scrollar: esconde a barra suavemente
-    var lastScroll = 0;
-    var barHeight = bar.offsetHeight;
-    window.addEventListener('scroll', function() {
-      var scrollY = window.pageYOffset || document.documentElement.scrollTop;
-      if (scrollY > 100) {
-        bar.style.maxHeight = '0';
-        bar.style.padding = '0 16px';
-        bar.style.overflow = 'hidden';
-        bar.style.opacity = '0';
-      } else {
-        bar.style.maxHeight = barHeight + 'px';
-        bar.style.padding = '8px 16px';
-        bar.style.opacity = '1';
-      }
-      lastScroll = scrollY;
-    }, { passive: true });
   }
 
   // ══════════════════════════════════════════════════════════
