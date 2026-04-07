@@ -1502,6 +1502,7 @@ const EVENTO_CONFIG: Record<string, { icon: typeof Eye; label: string; color: st
   add_to_cart: { icon: ShoppingCart, label: 'Adicionou ao carrinho', color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
   search: { icon: Search, label: 'Buscou', color: 'text-amber-400', bg: 'bg-amber-400/10' },
   checkout_start: { icon: ShoppingCart, label: 'Iniciou checkout', color: 'text-orange-400', bg: 'bg-orange-400/10' },
+  purchase: { icon: ShoppingCart, label: 'Comprou', color: 'text-green-500', bg: 'bg-green-500/10' },
   banner_click: { icon: MousePointerClick, label: 'Clicou no banner', color: 'text-rose-400', bg: 'bg-rose-400/10' },
   popup_view: { icon: Eye, label: 'Popup exibido', color: 'text-indigo-400', bg: 'bg-indigo-400/10' },
   popup_submit: { icon: UserPlus, label: 'Preencheu popup', color: 'text-green-400', bg: 'bg-green-400/10' },

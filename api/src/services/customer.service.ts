@@ -266,9 +266,6 @@ export async function getTimeline(
        SELECT id, 'pedido_bling' AS tipo, canal, numero AS descricao, valor, itens AS metadata, criado_bling AS criado_em, 'bling' AS origem
        FROM sync.bling_orders WHERE customer_id = $1
        UNION ALL
-       SELECT id, 'pedido_nuvemshop' AS tipo, 'online' AS canal, numero AS descricao, valor, itens AS metadata, webhook_em AS criado_em, 'nuvemshop' AS origem
-       FROM sync.nuvemshop_orders WHERE customer_id = $1
-       UNION ALL
        SELECT id, evento AS tipo, 'site' AS canal,
          COALESCE(resource_nome, pagina, evento) AS descricao,
          resource_preco AS valor,

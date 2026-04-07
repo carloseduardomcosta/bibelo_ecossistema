@@ -144,6 +144,14 @@ Toda comunicação **DEVE ser em português brasileiro (pt-BR)**. Commits, mensa
 6. **Inputs** — validar com Zod
 7. **Dados em HTML** — escapar nomes, emails, produtos do banco
 
+### Proteção de dados Bling — CRÍTICO (NUNCA violar)
+- **NUNCA** alterar estrutura de **estoque** no Bling (quantidades, depósitos, saldos)
+- **NUNCA** alterar estrutura de **preços** no Bling (preço de custo, venda, atacado, tabelas de preço)
+- **Editor de imagens / Conversor**: antes de qualquer operação que envie ou modifique imagens no Bling via API, **AVALIAR IMPACTOS e PERGUNTAR ao dono** antes de executar. Listar: quais produtos serão afetados, se imagens existentes serão substituídas, e se a operação é reversível
+- **Motivo**: incidente em 05/04/2026 onde uma operação afetou números, estoque e imagens de produtos no Bling — impacto grave no ERP
+- Qualquer PATCH no endpoint `/produtos/{id}` do Bling que inclua campos de estoque, preço ou imagens deve ser **explicitamente autorizado** pelo dono
+- Em caso de dúvida, **NÃO executar** — perguntar primeiro
+
 ### Protocolo de testes com clientes reais — OBRIGATÓRIO
 - **NUNCA** executar testes, disparos de email, envios de SMS/WhatsApp, ou qualquer ação que impacte clientes reais sem autorização **EXPLÍCITA** do dono (Carlos Eduardo)
 - Antes de qualquer ação que toque clientes reais, **PERGUNTAR em pt-BR**: "Deseja que eu execute isso com clientes reais? Os impactos serão: [lista de impactos]"
@@ -154,20 +162,26 @@ Toda comunicação **DEVE ser em português brasileiro (pt-BR)**. Commits, mensa
 - Se o agent executar algo por engano com cliente real, notificar **imediatamente** o dono com detalhes do impacto
 
 ### Regras de negócio (emails e fluxos)
+- **Documentação completa**: `docs/marketing/email-templates.md` — referência de todos os 23 templates, fluxos, layout, proxy de imagens
 - Motor condicional: steps tipo "condicao" avaliam 7 tipos (email_aberto, email_clicado, comprou, visitou_site, viu_produto, abandonou_cart, score_minimo) e fazem branching (sim/nao → targetIndex)
-- 9 fluxos inteligentes: carrinho abandonado (12 steps), nutrição lead (12 steps), reativação (10 steps), produto visitado (10 steps), lead quente (10 steps), pós-compra (8 steps), **lembrete de verificação** (cron 2h), **cross-sell pós-compra** (cron via order.paid, 3d delay), **recompra inteligente** (cron 6h, clientes com ciclo atrasado)
-- **Lembrete de verificação**: automação do sistema (cron a cada 2h) que reenvia email de confirmação para leads que não verificaram. 1º lembrete após 3h, 2º (último) após 24h. Campos: `lembretes_enviados`, `ultimo_lembrete_em` em `marketing.leads`. Código: `checkUnverifiedLeads()` em `flow.service.ts`, job `flow-check-unverified-leads` em `flow.queue.ts`
-- Cupons únicos por lead: gerarCupomUnico() cria BIB-NOME-XXXX na NuvemShop API (max_uses:1, first_consumer_purchase:true, expiry automático)
+- 11 fluxos ativos: carrinho abandonado (12 steps), nutrição lead (12 steps), reativação (10 steps), produto visitado (10 steps), lead quente (10 steps), pós-compra (8 steps), boas-vindas 1ª compra (3 steps), lead boas-vindas (1 step), cross-sell (6 steps), carrinho tracking (4 steps), recompra (4 steps)
+- **23 templates de email** — todos usam `emailWrapper()` (header/footer padrão Bibelô), `escHtml()` em nomes, proxy de imagens webp→jpg
+- **NuvemShop vs CRM**: NuvemShop = transacionais (confirmações, segurança). CRM = marketing/nurture/recuperação. Carrinho: NuvemShop ~30min (toque leve) + CRM 2h+ (fluxo completo). Sem duplicação.
+- **Triggers sem fluxo** (de propósito): `customer.created` (NuvemShop já envia boas-vindas conta), `order.delivered` (candidato futuro para avaliação pós-entrega)
+- **Lembrete de verificação**: cron 2h reenvia confirmação para leads não verificados. 1º lembrete 3h, 2º (último) 24h. Campos: `lembretes_enviados`, `ultimo_lembrete_em` em `marketing.leads`
+- **Proxy de imagens**: `proxyImageUrl()` em `email.ts` — cacheia + converte webp→jpg via Sharp (Outlook/Yahoo não suportam webp). URL: `webhook.papelariabibelo.com.br/api/email/img/{hash}.jpg`
+- **cleanProductUrl()**: remove fbclid/UTMs de ads das URLs de produto, adiciona `utm_source=email&utm_medium=flow`
+- Cupons únicos: gerarCupomUnico() cria BIB-NOME-XXXX na NuvemShop API (max_uses:1, first_consumer_purchase:true)
 - 3 cenários de cupom: carrinho abandonado (5%, 24h), nutrição lead (10%, 48h), reativação (10%, 7d)
 - Cupom do popup Clube Bibelô: `CLUBEBIBELO` = 7% OFF na 1ª compra (type:percentage na NuvemShop)
-- Frete grátis: configuração nativa NuvemShop (Sul/Sudeste, R$79+, opção mais barata) — não depende de cupom
-- triggerFlow nunca re-executa (ignora se já existe execução)
+- Frete grátis: configuração nativa NuvemShop (Sul/Sudeste, R$79+, opção mais barata) — não depende de cupom. Banner presente em todos os emails de carrinho/produto
+- triggerFlow nunca re-executa (ignora se já existe execução dentro de 90 dias)
 - Reativação só para quem tem pelo menos 1 pedido
-- **Novo fluxo = preview obrigatório**: ao criar qualquer fluxo novo, SEMPRE enviar um email de teste/preview para `carloseduardocostatj@gmail.com` com dados reais (imagens HD NuvemShop, links reais, nome do cliente). O dono precisa aprovar o visual antes de ir para produção.
+- **Novo fluxo = preview obrigatório**: SEMPRE enviar preview para `carloseduardocostatj@gmail.com` com dados reais antes de produção
+- **Novo template = registrar** em `buildFlowEmail()` e `getFlowSubject()` — se não registrar, cai no fallback genérico (loga warning)
 - Testes de email: SEMPRE em `carloseduardocostatj@gmail.com`
 - Captura de lead vincula visitor_id ao customer
 - Cada email de fluxo registra interação em `crm.interactions`
-- Cupom único por lead (BIB-NOME-XXXX via NuvemShop API, max_uses:1, first_consumer_purchase:true)
 - Cupom só após verificação de email (HMAC link)
 - Cliente cria conta no checkout (sem criação automática de conta NuvemShop)
 - Opt-out LGPD respeitado em campanhas e fluxos
@@ -343,6 +357,11 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 | `whatsapp-estrategia.md` | Estratégia WhatsApp Business |
 | `whatsapp-chatwoot.md` | Plano completo: Chatwoot + Meta Cloud API + Instagram |
 
+### `docs/marketing/`
+| Arquivo | Conteúdo |
+|---------|----------|
+| `email-templates.md` | Referência completa: 23 templates, 11 fluxos, layout, proxy, NuvemShop vs CRM |
+
 ### `docs/ecommerce/`
 | Arquivo | Conteúdo |
 |---------|----------|
@@ -411,7 +430,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 5 de Abril de 2026 — visibilidade tracking leads, cupom CLUBEBIBELO 7% OFF, frete grátis nativo NuvemShop, template boas-vindas com produtos reais e reviews Google, tracking via popup.js (anti-iframe), add_to_cart form submit, popup anti-duplicação localStorage*
+*Última atualização: 5 de Abril de 2026 — auditoria NuvemShop vs CRM, 23 templates email (7 fallbacks corrigidos), proxy webp→jpg, cleanProductUrl, produtos reais nos templates estáticos, docs/marketing/email-templates.md*
 
 ---
 

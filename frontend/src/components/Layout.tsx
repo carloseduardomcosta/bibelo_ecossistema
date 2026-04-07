@@ -37,6 +37,7 @@ import {
   MousePointerClick,
   MailX,
   Radar,
+  Globe,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -77,6 +78,7 @@ const navGroups: NavGroup[] = [
       { to: '/pedidos', label: 'Pedidos', icon: ShoppingCart },
       { to: '/vendas', label: 'Vendas', icon: ShoppingBag },
       { to: '/editor-imagens', label: 'Editor Imagens', icon: ImagePlus },
+      { to: '/seo', label: 'SEO', icon: Globe },
     ],
   },
   {
@@ -214,6 +216,18 @@ interface EmailEvent {
   timestamp: string;
 }
 
+interface VendaNotif {
+  ns_id: string;
+  numero: string;
+  valor: string;
+  status: string;
+  cupom: string | null;
+  webhook_em: string;
+  itens: { name?: string }[];
+  nome: string | null;
+  email: string | null;
+}
+
 function NotificationBell() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -221,15 +235,17 @@ function NotificationBell() {
   const [leads, setLeads] = useState<LeadNotif[]>([]);
   const [emailEvents, setEmailEvents] = useState<EmailEvent[]>([]);
   const [emailResumo, setEmailResumo] = useState({ abertos: 0, clicados: 0, bounces: 0, spam: 0 });
+  const [vendas, setVendas] = useState<VendaNotif[]>([]);
   const [resumo, setResumo] = useState({ atrasados: 0, vence_em_breve: 0, pagos: 0, pendentes: 0, total: 0 });
   const ref = useRef<HTMLDivElement>(null);
 
   const fetchAlertas = useCallback(async (signal?: AbortSignal) => {
     try {
-      const [finResp, leadsResp, emailResp] = await Promise.all([
+      const [finResp, leadsResp, emailResp, vendasResp] = await Promise.all([
         api.get('/financeiro/despesas-fixas/alertas', { signal }),
         api.get('/leads?limit=5', { signal }),
         api.get('/campaigns/email-events?hours=48', { signal }),
+        api.get('/tracking/vendas-recentes?horas=48', { signal }),
       ]);
       setAlertas(finResp.data.data.filter((d: Notificacao) => d.alerta !== 'pago'));
       setResumo(finResp.data.resumo);
@@ -241,6 +257,7 @@ function NotificationBell() {
       setLeads(recentes);
       setEmailEvents(emailResp.data.events || []);
       setEmailResumo(emailResp.data.resumo || { abertos: 0, clicados: 0, bounces: 0, spam: 0 });
+      setVendas(vendasResp.data.vendas || []);
     } catch (err) {
       if ((err as Error).name !== 'AbortError' && (err as Error).name !== 'CanceledError') {
         console.error('Erro ao buscar notificações:', err);
@@ -273,7 +290,7 @@ function NotificationBell() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const urgentes = resumo.atrasados + resumo.vence_em_breve + leads.length + emailEvents.length;
+  const urgentes = vendas.length + resumo.atrasados + resumo.vence_em_breve + leads.length + emailEvents.length;
 
   return (
     <div ref={ref} className="relative">
@@ -294,6 +311,11 @@ function NotificationBell() {
           <div className="px-4 py-3 border-b border-bibelo-border flex items-center justify-between">
             <h3 className="text-sm font-bold text-bibelo-text">Notificações</h3>
             <div className="flex items-center gap-2">
+              {vendas.length > 0 && (
+                <span className="text-[10px] px-2 py-0.5 bg-emerald-400/10 text-emerald-400 rounded-full font-medium animate-pulse">
+                  {vendas.length} venda{vendas.length > 1 ? 's' : ''}
+                </span>
+              )}
               {leads.length > 0 && (
                 <span className="text-[10px] px-2 py-0.5 bg-pink-400/10 text-pink-400 rounded-full font-medium">
                   {leads.length} lead{leads.length > 1 ? 's' : ''} novo{leads.length > 1 ? 's' : ''}
@@ -318,6 +340,45 @@ function NotificationBell() {
           </div>
 
           <div className="max-h-80 overflow-y-auto">
+            {/* ── Vendas recentes ── */}
+            {vendas.length > 0 && (
+              <>
+                <div className="px-4 py-2 bg-emerald-400/5 border-b border-bibelo-border/50">
+                  <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                    Vendas Online
+                    <span className="ml-2 text-emerald-300">
+                      R$ {vendas.reduce((s, v) => s + parseFloat(v.valor), 0).toFixed(2).replace('.', ',')}
+                    </span>
+                  </p>
+                </div>
+                {vendas.map((v) => (
+                  <button
+                    key={v.ns_id}
+                    onClick={() => { setOpen(false); navigate(`/pedidos`); }}
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bibelo-border/30 transition-colors text-left border-b border-bibelo-border/50"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-emerald-400/20 flex items-center justify-center shrink-0">
+                      <ShoppingBag size={14} className="text-emerald-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-bibelo-text truncate">
+                        {v.nome || 'Cliente'}
+                        <span className="font-bold text-emerald-400 ml-1">R$ {parseFloat(v.valor).toFixed(2).replace('.', ',')}</span>
+                      </p>
+                      <p className="text-xs text-bibelo-muted truncate">
+                        Pedido #{v.numero}
+                        {v.cupom && <span className="ml-1 text-pink-400">· cupom {v.cupom}</span>}
+                        {Array.isArray(v.itens) && v.itens.length > 0 && (
+                          <span className="ml-1">· {v.itens.length} {v.itens.length === 1 ? 'item' : 'itens'}</span>
+                        )}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-emerald-400 font-medium shrink-0">{timeAgo(v.webhook_em)}</span>
+                  </button>
+                ))}
+              </>
+            )}
+
             {/* ── Leads recentes ── */}
             {leads.length > 0 && (
               <>
@@ -434,16 +495,24 @@ function NotificationBell() {
               </>
             )}
 
-            {alertas.length === 0 && leads.length === 0 && emailEvents.length === 0 && (
+            {alertas.length === 0 && leads.length === 0 && emailEvents.length === 0 && vendas.length === 0 && (
               <div className="px-4 py-8 text-center">
                 <CheckCircle2 size={24} className="mx-auto mb-2 text-emerald-400" />
                 <p className="text-sm text-bibelo-muted">Tudo em dia!</p>
-                <p className="text-xs text-bibelo-muted/60 mt-1">Nenhum lead, email ou despesa pendente</p>
+                <p className="text-xs text-bibelo-muted/60 mt-1">Nenhuma venda, lead, email ou despesa pendente</p>
               </div>
             )}
           </div>
 
           <div className="px-4 py-2.5 border-t border-bibelo-border flex gap-2">
+            {vendas.length > 0 && (
+              <button
+                onClick={() => { setOpen(false); navigate('/pedidos'); }}
+                className="flex-1 text-center text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+              >
+                Ver pedidos
+              </button>
+            )}
             {leads.length > 0 && (
               <button
                 onClick={() => { setOpen(false); navigate('/marketing'); }}

@@ -361,3 +361,30 @@ trackingRouter.get("/funnel", authMiddleware, async (req: Request, res: Response
 
   res.json({ dias, steps, taxa_conversao_geral: visitantes > 0 ? Math.round(compraram / visitantes * 1000) / 10 : 0 });
 });
+
+// ── GET /api/tracking/vendas-recentes — vendas para sininho ───
+trackingRouter.get("/vendas-recentes", authMiddleware, async (req: Request, res: Response) => {
+  const horas = parseInt(String(req.query.horas || "48"), 10);
+  const rows = await query<{
+    ns_id: string;
+    numero: string;
+    valor: string;
+    status: string;
+    cupom: string | null;
+    webhook_em: string;
+    itens: unknown[];
+    nome: string | null;
+    email: string | null;
+  }>(
+    `SELECT ns.ns_id, ns.numero, ns.valor::text, ns.status, ns.cupom, ns.webhook_em,
+            ns.itens, c.nome, c.email
+     FROM sync.nuvemshop_orders ns
+     LEFT JOIN crm.customers c ON c.id = ns.customer_id
+     WHERE ns.webhook_em > NOW() - make_interval(hours => $1)
+       AND ns.status IN ('paid', 'open')
+     ORDER BY ns.webhook_em DESC
+     LIMIT 10`,
+    [horas]
+  );
+  res.json({ vendas: rows });
+});
