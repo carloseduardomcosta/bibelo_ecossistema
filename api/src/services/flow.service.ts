@@ -1032,8 +1032,9 @@ function buildThankYouEmail(nome: string, metadata: Record<string, unknown>): st
 // ── Helper: grid de produtos reais do tracking ───────────────
 
 async function buildNfProductsGrid(limit = 4): Promise<string> {
+  // 1. Busca produtos da última NF cruzando com NuvemShop (ns_id para imagem fresca)
   const produtos = await query<{
-    ns_nome: string; ns_preco: string; ns_imagem: string; ns_url: string;
+    ns_nome: string; ns_preco: string; ns_url: string; ns_id: string;
   }>(
     `WITH ultima_nf AS (
        SELECT id FROM financeiro.notas_entrada
@@ -1045,8 +1046,8 @@ async function buildNfProductsGrid(limit = 4): Promise<string> {
        SELECT DISTINCT ON (COALESCE(ns.dados_raw->>'canonical_url', ni.descricao))
          ns.nome as ns_nome,
          ns.preco::text as ns_preco,
-         ns.imagens->>0 as ns_imagem,
-         ns.dados_raw->>'canonical_url' as ns_url
+         ns.dados_raw->>'canonical_url' as ns_url,
+         ns.ns_id::text as ns_id
        FROM financeiro.notas_entrada_itens ni
        JOIN ultima_nf un ON un.id = ni.nota_id
        LEFT JOIN LATERAL (
@@ -1057,7 +1058,7 @@ async function buildNfProductsGrid(limit = 4): Promise<string> {
          LIMIT 1
        ) bp ON true
        LEFT JOIN LATERAL (
-         SELECT np.nome, np.preco, np.imagens, np.dados_raw, np.estoque
+         SELECT np.nome, np.preco, np.dados_raw, np.estoque, np.ns_id
          FROM sync.nuvemshop_products np
          WHERE np.sku = bp.sku
            OR LOWER(np.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 20)) || '%'
@@ -1065,7 +1066,6 @@ async function buildNfProductsGrid(limit = 4): Promise<string> {
          LIMIT 1
        ) ns ON true
        WHERE ns.nome IS NOT NULL
-         AND ns.imagens->>0 IS NOT NULL
          AND ns.preco > 0
          AND (ns.estoque IS NULL OR ns.estoque > 0)
        ORDER BY COALESCE(ns.dados_raw->>'canonical_url', ni.descricao), ni.numero_item
@@ -1076,21 +1076,40 @@ async function buildNfProductsGrid(limit = 4): Promise<string> {
 
   if (produtos.length === 0) return "";
 
+  // 2. Busca imagens frescas via NuvemShop API (URLs do banco podem estar expiradas na CDN)
+  const freshImages: Record<string, string> = {};
+  try {
+    const token = await getNuvemShopToken();
+    if (token) {
+      for (const p of produtos) {
+        try {
+          const res = await nsRequest("get", `/products/${p.ns_id}/images?fields=id,src`, token);
+          if (Array.isArray(res) && res.length > 0 && res[0].src) {
+            freshImages[p.ns_id] = res[0].src;
+          }
+        } catch { /* ignora — usa fallback */ }
+      }
+    }
+  } catch { /* sem token — segue sem imagens frescas */ }
+
   const linkBase = "https://www.papelariabibelo.com.br";
 
   return produtos.map(p => {
     const nome = p.ns_nome;
-    // CDN NuvemShop: 1024-1024 retorna 403, usar 480-0 que é acessível e suficiente para email
-    const nsImg = p.ns_imagem.replace(/-\d+-\d+\.webp$/, "-480-0.webp");
-    const img = safeImageUrl(nsImg);
+    const freshImg = freshImages[p.ns_id];
+    const img = freshImg ? safeImageUrl(freshImg) : "";
     const link = p.ns_url ? cleanProductUrl(p.ns_url) : linkBase;
     const preco = p.ns_preco ? `R$ ${Number(p.ns_preco).toFixed(2).replace(".", ",")}` : "";
+
+    const imgBlock = img
+      ? `<img src="${img}" alt="${escHtml(nome)}" width="80" height="80" style="width:80px;height:80px;object-fit:cover;border-radius:10px;display:block;" />`
+      : `<div style="width:80px;height:80px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:28px;">🎀</div>`;
 
     return `
       <a href="${link}" style="display:block;text-decoration:none;background:#fff;border:1px solid #f0e0f0;border-radius:12px;padding:14px;margin:10px 0;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
         <table width="100%" cellpadding="0" cellspacing="0"><tr>
           <td width="90" style="vertical-align:top;">
-            <img src="${img}" alt="${escHtml(nome)}" width="80" height="80" style="width:80px;height:80px;object-fit:cover;border-radius:10px;display:block;" />
+            ${imgBlock}
           </td>
           <td style="vertical-align:middle;padding-left:14px;">
             <p style="font-size:14px;color:#333;font-weight:600;margin:0 0 4px;line-height:1.3;">${escHtml(nome)}</p>
