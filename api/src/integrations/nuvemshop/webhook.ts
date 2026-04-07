@@ -222,20 +222,27 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
       }
 
       // ── Registrar evento "purchase" no tracking (Atividade em Tempo Real) ──
-      const itemNomes = products.map((p) => p.name).filter(Boolean).join(", ");
-      await query(
-        `INSERT INTO crm.tracking_events (visitor_id, customer_id, evento, pagina, resource_id, resource_nome, resource_preco, metadata)
-         VALUES ($1, $2, 'purchase', $3, $4, $5, $6, $7)`,
-        [
-          visitorId,
-          customerId,
-          `https://www.papelariabibelo.com.br/checkout/v3/proxy/${resourceId}`,
-          resourceId,
-          itemNomes.substring(0, 300) || "Pedido NuvemShop",
-          valor,
-          JSON.stringify({ numero: String(order.number || ""), itens_qty: products.length, cupom: cupomUsado }),
-        ]
+      // Só insere se não existir (evita duplicado em retries/order_updated)
+      const existingPurchase = await queryOne<{ id: string }>(
+        "SELECT id FROM crm.tracking_events WHERE evento = 'purchase' AND resource_id = $1 LIMIT 1",
+        [resourceId]
       );
+      if (!existingPurchase) {
+        const itemNomes = products.map((p) => p.name).filter(Boolean).join(", ");
+        await query(
+          `INSERT INTO crm.tracking_events (visitor_id, customer_id, evento, pagina, resource_id, resource_nome, resource_preco, metadata)
+           VALUES ($1, $2, 'purchase', $3, $4, $5, $6, $7)`,
+          [
+            visitorId,
+            customerId,
+            `https://www.papelariabibelo.com.br/pedidos`,
+            resourceId,
+            itemNomes.substring(0, 300) || "Pedido NuvemShop",
+            valor,
+            JSON.stringify({ numero: String(order.number || ""), itens_qty: products.length, cupom: cupomUsado }),
+          ]
+        );
+      }
 
       // Primeiro pedido? Disparar boas-vindas
       const scoreData = await queryOne<{ total_pedidos: string }>(

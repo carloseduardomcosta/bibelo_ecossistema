@@ -1729,6 +1729,22 @@ function AtividadeTab({ events, stats, funnel, onRefresh, lastUpdate }: {
                         </div>
                       )}
 
+                      {/* Compra realizada */}
+                      {ev.evento === 'purchase' && (() => {
+                        const meta = (ev.metadata || {}) as Record<string, unknown>;
+                        return (
+                          <div className="mt-1.5 bg-emerald-400/10 rounded-lg px-3 py-2">
+                            <p className="text-xs font-bold text-emerald-400">
+                              Pedido #{String(meta.numero || '')}
+                              {ev.resource_preco && <span className="ml-2 text-sm">R$ {Number(ev.resource_preco).toFixed(2).replace('.', ',')}</span>}
+                            </p>
+                            {ev.resource_nome && (
+                              <p className="text-[10px] text-bibelo-muted mt-1 truncate">{ev.resource_nome}</p>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* Categoria visitada */}
                       {ev.evento === 'category_view' && ev.resource_nome && (
                         <p className="text-xs font-medium text-violet-300 mt-1">{ev.resource_nome}</p>
