@@ -96,12 +96,18 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
   let customerId: string | null = null;
 
   if (customer) {
+    // Extrair endereço do billing_address ou shipping_address do pedido
+    const billing = (order.billing_address || order.shipping_address) as Record<string, unknown> | undefined;
     const upserted = await upsertCustomer({
       nome: (customer.name as string) || "Sem nome",
       email: (customer.email as string) || undefined,
       telefone: (customer.phone as string) || undefined,
+      cpf: (customer.identification as string) || undefined,
       canal_origem: "nuvemshop",
       nuvemshop_id: String(customer.id),
+      cidade: (billing?.city as string) || undefined,
+      estado: (billing?.province_code as string) || (billing?.province as string)?.substring(0, 2)?.toUpperCase() || undefined,
+      cep: (billing?.zipcode as string) || undefined,
     });
     customerId = upserted.id;
   }

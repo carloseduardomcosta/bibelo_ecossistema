@@ -54,7 +54,18 @@ export interface CustomerScore {
 
 // ── Upsert por email ou bling_id ────────────────────────────────
 
+// NuvemShop province_code não segue padrão IBGE — mapa de correção
+const PROVINCE_FIX: Record<string, string> = {
+  SA: "SC", DI: "DF", BA_: "BA", RG: "RS", PA_: "PA",
+};
+
 export async function upsertCustomer(dados: CustomerData): Promise<Customer> {
+  // Normalizar estado (NuvemShop envia códigos não-padrão)
+  if (dados.estado) {
+    const uf = dados.estado.toUpperCase().trim().substring(0, 2);
+    dados.estado = PROVINCE_FIX[uf] || uf;
+  }
+
   // Classificação automática: CNPJ (>11 dígitos) = fornecedor
   if (dados.cpf && !dados.tipo) {
     const docDigits = dados.cpf.replace(/\D/g, "");

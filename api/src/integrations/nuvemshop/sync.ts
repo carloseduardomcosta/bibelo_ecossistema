@@ -30,7 +30,8 @@ export async function syncNsCustomers(): Promise<number> {
         canal_origem: "nuvemshop",
         nuvemshop_id: String(c.id),
         cidade: (addr?.city as string) || undefined,
-        estado: (addr?.province as string) || undefined,
+        estado: (addr?.province_code as string) || (addr?.province as string)?.substring(0, 2)?.toUpperCase() || undefined,
+        cep: (addr?.zipcode as string) || undefined,
       });
 
       total++;
