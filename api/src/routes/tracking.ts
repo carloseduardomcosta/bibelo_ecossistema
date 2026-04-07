@@ -209,7 +209,8 @@ trackingRouter.get("/timeline", authMiddleware, async (req: Request, res: Respon
             c.nome AS customer_nome, c.email AS customer_email
      FROM crm.tracking_events t
      LEFT JOIN crm.customers c ON c.id = t.customer_id
-     WHERE TRUE ${INTERNAL_FILTER} ${ipFilter}
+     WHERE t.criado_em > NOW() - INTERVAL '24 hours'
+       ${INTERNAL_FILTER} ${ipFilter}
      ORDER BY t.criado_em DESC
      LIMIT $1 OFFSET $2`,
     [limit, offset, ...ips]
