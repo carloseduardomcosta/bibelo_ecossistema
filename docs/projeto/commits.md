@@ -540,3 +540,69 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Texto atualizado: "🚚 FRETE GRÁTIS - Leia as Políticas de Frete 🚚" com link para /politica-de-frete/
   - Barra agora usa a topbar nativa do tema (.js-topbar) — ícones sociais à esquerda, frete centralizado
   - Visível no mobile (removido d-none do tema)
+
+### Sessão 07/04/2026
+
+- **Evento `purchase` no tracking**
+  - Webhook order/paid insere evento `purchase` no tracking_events (antes funil parava em checkout_start)
+  - Guarda de idempotência: não insere duplicado em retries/order_updated
+  - Exibição: card verde "Pedido #104 · R$ 147,90" na Atividade em Tempo Real
+
+- **Vendas no sininho (NotificationBell)**
+  - Novo endpoint GET /api/tracking/vendas-recentes (NuvemShop orders últimas 48h)
+  - Seção verde pulsante no dropdown — primeira da lista, com nome, valor, itens, cupom
+  - Botão "Ver pedidos" no footer do dropdown
+
+- **Timeline sem duplicata**
+  - Removido nuvemshop_orders do UNION da timeline — Bling é fonte da verdade
+  - Antes mostrava "Pedido Online" + "Pedido Bling" para a mesma venda
+
+- **Vinculação automática visitor→customer**
+  - Webhook order/paid busca checkout_start (URL contém ns_id) → descobre visitor_id
+  - Cria vínculo visitor_customers + retroativamente marca tracking_events
+  - Unifica visitor_ids fragmentados (webviews Instagram/Facebook) comparando IP
+  - Facebook crawler (173.252.x) corretamente excluído
+
+- **Bloqueio de bots/crawlers**
+  - Filtro em 3 camadas: bibelo.js, popup.js (client-side) + POST /event (backend)
+  - Regex: facebookexternalhit, googlebot, semrushbot, ahrefsbot + 12 crawlers
+  - 330 eventos falsos de bots removidos do banco (US, IE, CN, etc)
+
+- **Bloqueio IPs internos (empresa)**
+  - IP empresa 187.85.161.250 adicionado ao INTERNAL_IPS
+  - IP Netskope 163.116.230.117 adicionado
+  - Nova função isInternalIp() com matching por prefixo de rede
+  - 82 eventos do IP da empresa removidos
+
+- **Enriquecimento de dados do cliente (NuvemShop)**
+  - Webhook order/paid agora captura: CPF, cidade, estado, CEP do billing_address
+  - Sync manual de clientes também captura CEP
+  - Mapa province_code NuvemShop → UF IBGE (SA→SC, DI→DF)
+  - Clientes existentes enriquecidos retroativamente
+
+- **Painel de inteligência de tráfego (Marketing → Atividade)**
+  - Endpoint GET /api/tracking/analytics com 6 datasets
+  - Heatmap dia×hora (CSS grid, 6 níveis de intensidade rosa)
+  - AreaChart tráfego por dia (visitantes rosa + eventos azul, badge tendência semanal)
+  - Barras de visitantes por hora (hora atual destacada)
+  - Top fontes de tráfego (Instagram, Facebook, Google, Direto)
+  - Insights automáticos: pico, tendência, conversão, oportunidade de produto
+  - Timeline filtrada para últimas 24h (dados históricos preservados para analytics)
+
+- **Sistema de ponto de restauração**
+  - Script restore-point.sh: create, list, info, restore
+  - pg_dump completo + dumps por tabela (15 tabelas críticas) + tag git + metadados
+  - Restauração com confirmação manual + auto-backup do estado atual
+  - Cron diário às 3h, retenção 30 dias
+  - Primeiro ponto: 20260407_120040
+
+- **Commits pendentes de sessões anteriores commitados**
+  - 12 arquivos: templates email, proxy webp→jpg, editor imagens batch, SEO, Medusa desabilitado
+
+- **Análise da 1ª venda rastreada end-to-end (Daniela Oliveira)**
+  - Ad Instagram (Caneta Rainbow R$7) → 14 categorias em 5min → R$147,90
+  - Compradora decidida, comércio local Timbó/SC, ignorou popup
+  - 3 fluxos disparados: Boas-vindas, Pós-compra, Cross-sell
+
+- **Limpeza de dados de teste**
+  - Removidos: Macedo Teste, cupom-test-vitest, Cliente anônimo, test-123
