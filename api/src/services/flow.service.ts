@@ -1033,45 +1033,44 @@ function buildThankYouEmail(nome: string, metadata: Record<string, unknown>): st
 
 async function buildNfProductsGrid(limit = 4): Promise<string> {
   const produtos = await query<{
-    descricao: string; preco_venda: string | null;
-    ns_imagem: string | null; ns_url: string | null; ns_nome: string | null;
-    imagem_url: string | null;
+    ns_nome: string; ns_preco: string; ns_imagem: string; ns_url: string;
   }>(
     `WITH ultima_nf AS (
        SELECT id FROM financeiro.notas_entrada
        WHERE status != 'cancelada'
        ORDER BY data_emissao DESC NULLS LAST, criado_em DESC NULLS LAST
        LIMIT 1
+     ),
+     matched AS (
+       SELECT DISTINCT ON (COALESCE(ns.dados_raw->>'canonical_url', ni.descricao))
+         ns.nome as ns_nome,
+         ns.preco::text as ns_preco,
+         ns.imagens->>0 as ns_imagem,
+         ns.dados_raw->>'canonical_url' as ns_url
+       FROM financeiro.notas_entrada_itens ni
+       JOIN ultima_nf un ON un.id = ni.nota_id
+       LEFT JOIN LATERAL (
+         SELECT p.sku
+         FROM sync.bling_products p
+         WHERE p.sku = ni.codigo_produto
+           OR LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 20)) || '%'
+         LIMIT 1
+       ) bp ON true
+       LEFT JOIN LATERAL (
+         SELECT np.nome, np.preco, np.imagens, np.dados_raw, np.estoque
+         FROM sync.nuvemshop_products np
+         WHERE np.sku = bp.sku
+           OR LOWER(np.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 20)) || '%'
+         ORDER BY similarity(LOWER(np.nome), LOWER(ni.descricao)) DESC
+         LIMIT 1
+       ) ns ON true
+       WHERE ns.nome IS NOT NULL
+         AND ns.imagens->>0 IS NOT NULL
+         AND ns.preco > 0
+         AND (ns.estoque IS NULL OR ns.estoque > 0)
+       ORDER BY COALESCE(ns.dados_raw->>'canonical_url', ni.descricao), ni.numero_item
      )
-     SELECT DISTINCT ON (LOWER(ni.descricao))
-       ni.descricao,
-       bp.preco_venda::text,
-       bp.dados_raw->>'imagemURL' as imagem_url,
-       ns.imagens->>0 as ns_imagem,
-       ns.dados_raw->>'canonical_url' as ns_url,
-       ns.nome as ns_nome
-     FROM financeiro.notas_entrada_itens ni
-     JOIN ultima_nf un ON un.id = ni.nota_id
-     LEFT JOIN LATERAL (
-       SELECT p.preco_venda, p.dados_raw, p.sku
-       FROM sync.bling_products p
-       WHERE LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 20)) || '%'
-         OR p.sku = ni.codigo_produto
-       ORDER BY CASE WHEN p.dados_raw->>'imagemURL' <> '' THEN 0 ELSE 1 END
-       LIMIT 1
-     ) bp ON true
-     LEFT JOIN LATERAL (
-       SELECT np.imagens, np.dados_raw, np.nome
-       FROM sync.nuvemshop_products np
-       WHERE np.sku = bp.sku
-         OR LOWER(np.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 15)) || '%'
-       LIMIT 1
-     ) ns ON true
-     ORDER BY LOWER(ni.descricao),
-       CASE WHEN ns.imagens->>0 IS NOT NULL THEN 0
-            WHEN bp.dados_raw->>'imagemURL' <> '' THEN 1
-            ELSE 2 END
-     LIMIT $1`,
+     SELECT * FROM matched LIMIT $1`,
     [limit]
   );
 
@@ -1080,21 +1079,18 @@ async function buildNfProductsGrid(limit = 4): Promise<string> {
   const linkBase = "https://www.papelariabibelo.com.br";
 
   return produtos.map(p => {
-    const nome = p.ns_nome || p.descricao.split(" C/")[0].split(" CART.")[0].replace(/\s+miolo:.*$/i, "").replace(/\s+Cor:.*$/i, "").trim();
-    const rawImg = p.ns_imagem || (p.imagem_url && p.imagem_url.startsWith("http") ? p.imagem_url : null);
-    const img = rawImg ? safeImageUrl(rawImg) : "";
+    const nome = p.ns_nome;
+    // CDN NuvemShop: 1024-1024 retorna 403, usar 480-0 que é acessível e suficiente para email
+    const nsImg = p.ns_imagem.replace(/-\d+-\d+\.webp$/, "-480-0.webp");
+    const img = safeImageUrl(nsImg);
     const link = p.ns_url ? cleanProductUrl(p.ns_url) : linkBase;
-    const preco = p.preco_venda ? `R$ ${Number(p.preco_venda).toFixed(2).replace(".", ",")}` : "";
-
-    const imgBlock = img
-      ? `<img src="${img}" alt="${escHtml(nome)}" width="80" height="80" style="width:80px;height:80px;object-fit:cover;border-radius:10px;display:block;" />`
-      : `<div style="width:80px;height:80px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:28px;">🎀</div>`;
+    const preco = p.ns_preco ? `R$ ${Number(p.ns_preco).toFixed(2).replace(".", ",")}` : "";
 
     return `
       <a href="${link}" style="display:block;text-decoration:none;background:#fff;border:1px solid #f0e0f0;border-radius:12px;padding:14px;margin:10px 0;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
         <table width="100%" cellpadding="0" cellspacing="0"><tr>
           <td width="90" style="vertical-align:top;">
-            ${imgBlock}
+            <img src="${img}" alt="${escHtml(nome)}" width="80" height="80" style="width:80px;height:80px;object-fit:cover;border-radius:10px;display:block;" />
           </td>
           <td style="vertical-align:middle;padding-left:14px;">
             <p style="font-size:14px;color:#333;font-weight:600;margin:0 0 4px;line-height:1.3;">${escHtml(nome)}</p>
@@ -1458,30 +1454,91 @@ function buildVipInviteEmail(nome: string): string {
   `);
 }
 
-// ── Template: Pedido de Avaliação (Google Reviews) ────────────
+// ── Template: Pedido de Avaliação (Google + NuvemShop) ────────
 
 function buildReviewRequestEmail(nome: string, metadata: Record<string, unknown>): string {
-  const valor = formatBRL(metadata.valor);
+  const itens = Array.isArray(metadata.itens) ? metadata.itens as Array<Record<string, unknown>> : [];
+
+  // Montar cards dos produtos comprados (para avaliação na loja)
+  let productsHtml = "";
+  if (itens.length > 0) {
+    const cards = itens.slice(0, 4).map((item) => {
+      const itemName = escHtml(String(item.name || "Produto"));
+      const imgUrl = safeImageUrl(item.image_url as string);
+      const productId = item.product_id;
+      const productUrl = productId
+        ? `https://www.papelariabibelo.com.br/produtos/${productId}/?utm_source=email&utm_medium=flow&utm_campaign=avaliacao#reviews`
+        : "https://www.papelariabibelo.com.br";
+      return `
+        <a href="${productUrl}" style="display:block;text-decoration:none;background:#fef6fa;border:1px solid #f0e0f0;border-radius:10px;padding:10px;margin:6px 0;">
+          <table width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td width="55" style="vertical-align:middle;">
+              ${imgUrl ? `<img src="${imgUrl}" alt="" width="50" height="50" style="width:50px;height:50px;object-fit:cover;border-radius:8px;" />` : `<div style="width:50px;height:50px;background:#ffe5ec;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;">🎀</div>`}
+            </td>
+            <td style="vertical-align:middle;padding-left:10px;">
+              <p style="font-size:13px;color:#333;font-weight:600;margin:0;">${itemName}</p>
+              <p style="font-size:11px;color:#fe68c4;margin:4px 0 0;font-weight:600;">Avaliar este produto →</p>
+            </td>
+          </tr></table>
+        </a>`;
+    }).join("");
+
+    productsHtml = `
+      <p style="font-size:14px;color:#555;font-weight:600;margin:20px 0 8px;">Avalie seus produtos na nossa loja:</p>
+      ${cards}`;
+  }
 
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 💕</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
-      Esperamos que você tenha amado seus produtos${valor ? ` (pedido de ${valor})` : ""}!
-      Sua opinião é muito importante para nós.
+      Seus produtos já chegaram! Esperamos que você tenha amado cada um.
+      A sua opinião é muito importante — ela ajuda outras pessoas a descobrirem a Bibelô.
     </p>
+
     <div style="background:#fff7c1;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
       <p style="font-size:36px;margin:0;">⭐⭐⭐⭐⭐</p>
       <p style="font-size:16px;color:#333;font-weight:700;margin:10px 0 4px;">Conta pra gente: o que achou?</p>
-      <p style="font-size:13px;color:#555;margin:0;">Leva menos de 1 minuto e ajuda muito!</p>
+      <p style="font-size:13px;color:#555;margin:0;">Leva menos de 1 minuto e faz toda a diferença!</p>
     </div>
+
+    ${ctaButton("Avaliar no Google", "https://g.page/r/CdahFa43hhIXEAE/review")}
+    <p style="font-size:12px;color:#999;text-align:center;margin:8px 0 0;">
+      Avaliação rápida pelo Google — ajuda a Bibelô a ser encontrada por mais pessoas
+    </p>
+
+    ${productsHtml}
+
+    <div style="background:#fef6fa;border-radius:10px;padding:16px;text-align:center;margin:24px 0;">
+      <p style="font-size:13px;color:#555;margin:0;">
+        Teve algum problema com o pedido? Fale com a gente antes de avaliar!
+      </p>
+      <p style="font-size:13px;margin:6px 0 0;">
+        <a href="https://wa.me/5547933862514?text=Oi!%20Preciso%20de%20ajuda%20com%20meu%20pedido" style="color:#fe68c4;text-decoration:none;font-weight:600;">
+          Falar pelo WhatsApp →
+        </a>
+      </p>
+    </div>
+  `);
+}
+
+// ── Template: Lembrete de Avaliação (reenvio gentil) ──────────
+
+function buildReviewReminderEmail(nome: string, metadata: Record<string, unknown>): string {
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>!</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
-      Cada avaliação nos ajuda a encantar ainda mais pessoas que amam papelaria.
-      Ficaríamos muito felizes com a sua! 🙏
+      Passando só pra lembrar: sua avaliação ainda está esperando! 😊
     </p>
-    ${ctaButton("Deixar minha avaliação", "https://g.page/r/CdahFa43hhIXEAE/review")}
-    <p style="font-size:13px;color:#999;text-align:center;">
-      A avaliação é feita pelo Google — rápida e segura.
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Sabemos que o dia a dia é corrido, mas leva menos de 1 minuto
+      e ajuda muito outras pessoas que amam papelaria a nos encontrar.
     </p>
+    <div style="background:linear-gradient(135deg,#fff7c1,#ffe5ec);border-radius:12px;padding:20px;text-align:center;margin:20px 0;">
+      <p style="font-size:28px;margin:0;">⭐💕</p>
+      <p style="font-size:15px;color:#333;font-weight:700;margin:8px 0 4px;">Sua opinião vale muito pra nós</p>
+      <p style="font-size:12px;color:#888;margin:0;">23 clientes já avaliaram com 5 estrelas</p>
+    </div>
+    ${ctaButton("Avaliar agora (1 min)", "https://g.page/r/CdahFa43hhIXEAE/review")}
   `);
 }
 
@@ -1529,6 +1586,9 @@ export async function buildFlowEmail(nome: string, templateName: string, metadat
   }
   if (lower.includes("convite vip") || lower.includes("convite whatsapp")) {
     return buildVipInviteEmail(nome);
+  }
+  if (lower.includes("lembrete") && (lower.includes("avalia") || lower.includes("review"))) {
+    return buildReviewReminderEmail(nome, metadata);
   }
   if (lower.includes("avaliação") || lower.includes("review") || lower.includes("pedido de avalia")) {
     return buildReviewRequestEmail(nome, metadata);
@@ -1607,6 +1667,9 @@ function getFlowSubject(templateName: string, nome: string): string {
   }
   if (lower.includes("convite vip") || lower.includes("convite whatsapp")) {
     return `${nome || "Oi"}, você foi convidada para o grupo VIP! 🎀`;
+  }
+  if (lower.includes("lembrete") && (lower.includes("avalia") || lower.includes("review"))) {
+    return `${nome || "Oi"}, sua avaliação ainda está esperando! ⭐`;
   }
   if (lower.includes("avaliação") || lower.includes("review") || lower.includes("pedido de avalia")) {
     return `${nome || "Oi"}, conta pra gente: o que achou? ⭐`;

@@ -158,7 +158,13 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
         ns_order_id: resourceId,
         valor,
         numero: String(order.number || ""),
-        itens: products.map((p) => ({ name: p.name, quantity: p.quantity })),
+        itens: products.map((p) => ({
+          name: p.name,
+          quantity: p.quantity,
+          price: p.price,
+          image_url: (p.image as Record<string, unknown>)?.src || null,
+          product_id: p.product_id,
+        })),
       });
     }
 
