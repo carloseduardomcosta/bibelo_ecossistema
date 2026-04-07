@@ -76,6 +76,13 @@ trackingRouter.post("/event", publicLimiter, async (req: Request, res: Response)
 
   const d = parsed.data;
 
+  // Bloquear bots/crawlers pelo User-Agent do request HTTP
+  const userAgent = (req.headers["user-agent"] || "").toLowerCase();
+  if (/facebookexternalhit|facebot|facebookbot|metainspector|googlebot|bingbot|yandexbot|baiduspider|twitterbot|linkedinbot|slurp|duckduckbot|ia_archiver|semrushbot|ahrefsbot|mj12bot|dotbot|petalbot|bytespider|headlesschrome|phantomjs/.test(userAgent)) {
+    res.json({ ok: true });
+    return;
+  }
+
   // Busca customer_id vinculado ao visitor
   const link = await queryOne<{ customer_id: string }>(
     "SELECT customer_id FROM crm.visitor_customers WHERE visitor_id = $1",

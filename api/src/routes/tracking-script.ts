@@ -24,6 +24,9 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
 
   // Não rodar dentro de iframes (GTM preview, etc)
   if (window.self !== window.top) return;
+  // Bloquear bots/crawlers (Facebook, Google, Bing, etc)
+  var ua = (navigator.userAgent || '').toLowerCase();
+  if (/facebookexternalhit|facebot|facebookbot|metainspector|googlebot|bingbot|yandexbot|baiduspider|twitterbot|linkedinbot|slurp|duckduckbot|ia_archiver|semrushbot|ahrefsbot|mj12bot|dotbot|petalbot|bytespider/.test(ua)) return;
   // Não rodar duplicado
   if (window.__bibelo_tracking_init) return;
   window.__bibelo_tracking_init = true;

@@ -22,6 +22,10 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
 (function() {
   'use strict';
 
+  // Bloquear bots/crawlers (Facebook, Google, Bing, etc)
+  var ua = (navigator.userAgent || '').toLowerCase();
+  if (/facebookexternalhit|facebot|facebookbot|metainspector|googlebot|bingbot|yandexbot|baiduspider|twitterbot|linkedinbot|slurp|duckduckbot|ia_archiver|semrushbot|ahrefsbot|mj12bot|dotbot|petalbot|bytespider/.test(ua)) return;
+
   // ── Config ──────────────────────────────────────────────
   var API = '${apiBase}/api/leads';
   var TRACK_API = '${apiBase}/api/tracking';
