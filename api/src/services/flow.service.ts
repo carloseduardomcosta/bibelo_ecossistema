@@ -598,6 +598,25 @@ async function executeEmailStep(
     [`%${step.template || ""}%`]
   );
 
+  // ── Pré-gerar cupom para templates de agradecimento (1ª compra) ──
+  const tplLowerPre = (step.template || "").toLowerCase();
+  const isAgradecimentoPre = tplLowerPre.includes("agradecimento") || tplLowerPre.includes("obrigad") || (tplLowerPre.includes("pós-compra") && !tplLowerPre.includes("cross"));
+  if (isAgradecimentoPre && !metadata.cupom) {
+    const scoreData = await queryOne<{ total_pedidos: string }>(
+      "SELECT total_pedidos::text FROM crm.customer_scores WHERE customer_id = $1",
+      [customer.id]
+    );
+    const totalPedidos = parseInt(scoreData?.total_pedidos || "0", 10);
+    if (totalPedidos <= 1) {
+      metadata.primeira_compra = true;
+      const cupom = await gerarCupomUnico(customer.nome, "percentage", 7, 30);
+      if (cupom) {
+        metadata.cupom = cupom;
+        logger.info("Cupom 7% OFF 1ª compra gerado", { cupom, customerId: customer.id });
+      }
+    }
+  }
+
   if (!template) {
     // Usa templates built-in ricos (com fotos, recovery_url, etc.)
     _currentRecipientEmail = customer.email || "";
@@ -971,56 +990,116 @@ function buildCartCouponEmail(nome: string, metadata: Record<string, unknown>): 
 // ── Template: Pós-compra Agradecimento ────────────────────────
 
 function buildThankYouEmail(nome: string, metadata: Record<string, unknown>): string {
-  const valor = formatBRL(metadata.valor);
+  const cupom = metadata.cupom ? escHtml(String(metadata.cupom)) : "";
+  const isPrimeiraCompra = metadata.primeira_compra === true;
+
+  const cupomBlock = cupom ? `
+    <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border:2px dashed #fe68c4;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
+      <p style="font-size:13px;color:#888;margin:0;text-transform:uppercase;letter-spacing:1px;">Presente especial pra você</p>
+      <p style="font-size:28px;font-weight:700;color:#fe68c4;margin:8px 0;letter-spacing:2px;">${cupom}</p>
+      <p style="font-size:15px;color:#555;margin:0;font-weight:600;">7% OFF na sua próxima compra</p>
+      <p style="font-size:12px;color:#999;margin:6px 0 0;">Cupom de uso único · Válido por 30 dias</p>
+    </div>` : "";
 
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 💕</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
-      Muito obrigada pela sua compra${valor ? ` de <strong>${valor}</strong>` : ""}!
-      Seu pedido já está sendo preparado com todo carinho.
+      ${isPrimeiraCompra
+        ? "Que alegria ter você como cliente! Sua primeira compra na Bibelô tem um significado especial pra gente."
+        : "Obrigada por comprar na Bibelô de novo! Cada pedido nos mostra que estamos no caminho certo."}
     </p>
-    <div style="background:#E8F5E9;border-radius:8px;padding:20px;text-align:center;margin:20px 0;">
-      <p style="font-size:40px;margin:0;">📦✨</p>
-      <p style="color:#2E7D32;font-weight:600;margin:10px 0 0;">Pedido confirmado!</p>
-    </div>
     <p style="font-size:15px;color:#555;line-height:1.6;">
-      Qualquer dúvida, estamos à disposição pelo WhatsApp ou e-mail.
-      Esperamos que você adore os produtos!
+      Seu pedido já está sendo preparado com todo carinho e atenção.
+      A gente ama cuidar de cada detalhe — do produto à embalagem.
     </p>
-    ${ctaButton("Ver mais produtos", "https://www.papelariabibelo.com.br")}
+    <div style="background:#fef6fa;border-radius:12px;padding:20px;text-align:center;margin:20px 0;">
+      <p style="font-size:36px;margin:0;">🎀📦</p>
+      <p style="color:#fe68c4;font-weight:700;font-size:16px;margin:10px 0 4px;">Pedido confirmado!</p>
+      <p style="color:#888;font-size:13px;margin:0;">Já estamos separando tudo com carinho</p>
+    </div>
+    ${cupomBlock}
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      A Bibelô é feita de pessoas que amam papelaria tanto quanto você.
+      Estamos sempre aqui — no WhatsApp, no Instagram ou por e-mail.
+    </p>
+    ${ctaButton("Conhecer mais produtos", "https://www.papelariabibelo.com.br/novidades")}
+    <p style="font-size:13px;color:#999;text-align:center;margin-top:16px;">
+      Obrigada pela confiança 💕
+    </p>
   `);
 }
 
 // ── Helper: grid de produtos reais do tracking ───────────────
 
-async function buildTopProductsGrid(limit = 4): Promise<string> {
-  const topProducts = await query<{
-    resource_nome: string; resource_preco: number; resource_imagem: string; pagina: string;
+async function buildNfProductsGrid(limit = 4): Promise<string> {
+  const produtos = await query<{
+    descricao: string; preco_venda: string | null;
+    ns_imagem: string | null; ns_url: string | null; ns_nome: string | null;
+    imagem_url: string | null;
   }>(
-    `SELECT resource_nome, MAX(resource_preco) AS resource_preco,
-            MAX(resource_imagem) AS resource_imagem, MAX(pagina) AS pagina
-     FROM crm.tracking_events
-     WHERE evento = 'product_view' AND resource_nome IS NOT NULL
-       AND resource_imagem IS NOT NULL AND criado_em > NOW() - INTERVAL '30 days'
-     GROUP BY resource_nome ORDER BY COUNT(*) DESC LIMIT $1`,
+    `WITH ultima_nf AS (
+       SELECT id FROM financeiro.notas_entrada
+       WHERE status != 'cancelada'
+       ORDER BY data_emissao DESC NULLS LAST, criado_em DESC NULLS LAST
+       LIMIT 1
+     )
+     SELECT DISTINCT ON (LOWER(ni.descricao))
+       ni.descricao,
+       bp.preco_venda::text,
+       bp.dados_raw->>'imagemURL' as imagem_url,
+       ns.imagens->>0 as ns_imagem,
+       ns.dados_raw->>'canonical_url' as ns_url,
+       ns.nome as ns_nome
+     FROM financeiro.notas_entrada_itens ni
+     JOIN ultima_nf un ON un.id = ni.nota_id
+     LEFT JOIN LATERAL (
+       SELECT p.preco_venda, p.dados_raw, p.sku
+       FROM sync.bling_products p
+       WHERE LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 20)) || '%'
+         OR p.sku = ni.codigo_produto
+       ORDER BY CASE WHEN p.dados_raw->>'imagemURL' <> '' THEN 0 ELSE 1 END
+       LIMIT 1
+     ) bp ON true
+     LEFT JOIN LATERAL (
+       SELECT np.imagens, np.dados_raw, np.nome
+       FROM sync.nuvemshop_products np
+       WHERE np.sku = bp.sku
+         OR LOWER(np.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 15)) || '%'
+       LIMIT 1
+     ) ns ON true
+     ORDER BY LOWER(ni.descricao),
+       CASE WHEN ns.imagens->>0 IS NOT NULL THEN 0
+            WHEN bp.dados_raw->>'imagemURL' <> '' THEN 1
+            ELSE 2 END
+     LIMIT $1`,
     [limit]
   );
 
-  if (topProducts.length < 2) return "";
+  if (produtos.length === 0) return "";
 
-  return topProducts.map(p => {
-    const img = safeImageUrl(p.resource_imagem);
-    const link = cleanProductUrl(p.pagina);
-    const preco = p.resource_preco ? `R$ ${Number(p.resource_preco).toFixed(2).replace(".", ",")}` : "";
+  const linkBase = "https://www.papelariabibelo.com.br";
+
+  return produtos.map(p => {
+    const nome = p.ns_nome || p.descricao.split(" C/")[0].split(" CART.")[0].replace(/\s+miolo:.*$/i, "").replace(/\s+Cor:.*$/i, "").trim();
+    const rawImg = p.ns_imagem || (p.imagem_url && p.imagem_url.startsWith("http") ? p.imagem_url : null);
+    const img = rawImg ? safeImageUrl(rawImg) : "";
+    const link = p.ns_url ? cleanProductUrl(p.ns_url) : linkBase;
+    const preco = p.preco_venda ? `R$ ${Number(p.preco_venda).toFixed(2).replace(".", ",")}` : "";
+
+    const imgBlock = img
+      ? `<img src="${img}" alt="${escHtml(nome)}" width="80" height="80" style="width:80px;height:80px;object-fit:cover;border-radius:10px;display:block;" />`
+      : `<div style="width:80px;height:80px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:28px;">🎀</div>`;
+
     return `
-      <a href="${link}" style="display:block;text-decoration:none;background:#fff;border:1px solid #f0e0f0;border-radius:10px;padding:12px;margin:8px 0;">
+      <a href="${link}" style="display:block;text-decoration:none;background:#fff;border:1px solid #f0e0f0;border-radius:12px;padding:14px;margin:10px 0;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
         <table width="100%" cellpadding="0" cellspacing="0"><tr>
-          <td width="70" style="vertical-align:top;">
-            <img src="${img}" alt="" width="60" height="60" style="width:60px;height:60px;object-fit:cover;border-radius:8px;" />
+          <td width="90" style="vertical-align:top;">
+            ${imgBlock}
           </td>
-          <td style="vertical-align:middle;padding-left:12px;">
-            <p style="font-size:14px;color:#333;font-weight:600;margin:0 0 4px;">${escHtml(p.resource_nome)}</p>
-            ${preco ? `<p style="font-size:14px;color:#fe68c4;font-weight:700;margin:0;">${preco}</p>` : ""}
+          <td style="vertical-align:middle;padding-left:14px;">
+            <p style="font-size:14px;color:#333;font-weight:600;margin:0 0 4px;line-height:1.3;">${escHtml(nome)}</p>
+            ${preco ? `<p style="font-size:15px;color:#fe68c4;font-weight:700;margin:0 0 6px;">${preco}</p>` : ""}
+            <span style="font-size:12px;color:#fe68c4;font-weight:600;">Ver produto →</span>
           </td>
         </tr></table>
       </a>`;
@@ -1537,7 +1616,7 @@ function getFlowSubject(templateName: string, nome: string): string {
     return `⏰ Última chance, ${nome || "Cliente"} — estoque quase esgotado!`;
   }
   if (lower.includes("agradecimento") || lower.includes("pós-compra")) {
-    return `Obrigada pela compra, ${nome || "Cliente"}! 💕`;
+    return `Obrigada pela confiança, ${nome || "Cliente"}! 💕`;
   }
   if (lower.includes("boas-vindas")) {
     return `Bem-vinda à Papelaria Bibelô, ${nome || "Cliente"}! 🎀`;
