@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
+  AreaChart, Area,
 } from 'recharts';
 import {
   Zap, Users, MousePointerClick, ShoppingCart,
@@ -10,7 +11,7 @@ import {
   Play, ToggleLeft, ToggleRight, ChevronRight,
   Send, Target, TrendingUp, ArrowUpRight, Activity,
   Package, Search, Globe, Filter, Mail, Phone, RefreshCw,
-  ChevronLeft, ExternalLink,
+  ChevronLeft, ExternalLink, Lightbulb, Clock,
 } from 'lucide-react';
 import api from '../lib/api';
 import { timeAgo } from '../lib/format';
@@ -127,6 +128,15 @@ interface TrackingStats {
   clientes_identificados_7d: number;
   topProdutos: Array<{ resource_nome: string; resource_preco: number; resource_imagem: string; views: number }>;
   porTipo: Array<{ evento: string; total: number }>;
+}
+
+interface TrackingAnalytics {
+  heatmap: Array<{ dia_semana: number; hora: number; total: number }>;
+  por_hora: Array<{ hora: number; eventos: number; visitors: number }>;
+  por_dia: Array<{ dia: string; eventos: number; visitors: number; carrinhos: number; compras: number }>;
+  fontes: Array<{ fonte: string; total: number }>;
+  pico: { hora: number; visitors: number; dia_semana: string; dia_pico: string };
+  insights: string[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -1595,6 +1605,14 @@ function AtividadeTab({ events, stats, funnel, onRefresh, lastUpdate }: {
   onRefresh: () => void;
   lastUpdate: Date;
 }) {
+  const [analytics, setAnalytics] = useState<TrackingAnalytics | null>(null);
+
+  useEffect(() => {
+    api.get('/tracking/analytics?dias=14')
+      .then(res => setAnalytics(res.data))
+      .catch(() => setAnalytics(null));
+  }, []);
+
   const kpis = [
     { label: 'Eventos (24h)', value: stats?.eventos_24h || 0, icon: Activity, color: 'text-blue-400', bg: 'bg-blue-400/10' },
     { label: 'Visitantes (24h)', value: stats?.visitantes_24h || 0, icon: Users, color: 'text-pink-400', bg: 'bg-pink-400/10' },
@@ -1662,6 +1680,244 @@ function AtividadeTab({ events, stats, funnel, onRefresh, lastUpdate }: {
           <p className="text-sm text-bibelo-muted text-center py-8">Coletando dados do funil...</p>
         )}
       </div>
+
+      {/* ── Analytics Avançado ── */}
+      {analytics && (
+        <>
+          {/* 1. Gráfico de Tráfego por Dia (AreaChart) */}
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-bibelo-text">Tráfego por Dia (14 dias)</h3>
+              {(() => {
+                const dias = analytics.por_dia || [];
+                if (dias.length >= 14) {
+                  const semanaAtual = dias.slice(-7).reduce((s, d) => s + d.visitors, 0);
+                  const semanaAnterior = dias.slice(-14, -7).reduce((s, d) => s + d.visitors, 0);
+                  const pct = semanaAnterior > 0 ? Math.round(((semanaAtual - semanaAnterior) / semanaAnterior) * 100) : 0;
+                  const up = pct >= 0;
+                  return (
+                    <span className={`text-xs px-3 py-1 rounded-full font-semibold ${up ? 'bg-emerald-400/10 text-emerald-400' : 'bg-red-400/10 text-red-400'}`}>
+                      {up ? '↑' : '↓'} {Math.abs(pct)}% vs semana anterior
+                    </span>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+            <ResponsiveContainer width="100%" height={260}>
+              <AreaChart data={(analytics.por_dia || []).map(d => ({
+                ...d,
+                label: new Date(d.dia + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+              }))}>
+                <defs>
+                  <linearGradient id="gradVisitors" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#fe68c4" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#fe68c4" stopOpacity={0.05} />
+                  </linearGradient>
+                  <linearGradient id="gradEventos" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#999' }} />
+                <YAxis tick={{ fontSize: 11, fill: '#999' }} />
+                <Tooltip
+                  contentStyle={{ background: '#1a1a2e', border: '1px solid #333', borderRadius: 8, fontSize: 12 }}
+                  labelStyle={{ color: '#ccc' }}
+                />
+                <Area type="monotone" dataKey="visitors" name="Visitantes" stroke="#fe68c4" fill="url(#gradVisitors)" strokeWidth={2} />
+                <Area type="monotone" dataKey="eventos" name="Eventos" stroke="#60a5fa" fill="url(#gradEventos)" strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+            <div className="flex items-center justify-center gap-6 mt-2">
+              <span className="flex items-center gap-1.5 text-xs text-bibelo-muted">
+                <span className="w-3 h-1 rounded bg-[#fe68c4]" /> Visitantes
+              </span>
+              <span className="flex items-center gap-1.5 text-xs text-bibelo-muted">
+                <span className="w-3 h-1 rounded bg-[#60a5fa]" /> Eventos
+              </span>
+            </div>
+          </div>
+
+          {/* Grid 2 colunas: Heatmap + Horário de Pico */}
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* 2. Heatmap de Horários */}
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-bibelo-text mb-4">Mapa de Calor — Atividade por Horário</h3>
+              <div className="overflow-y-auto max-h-[420px]">
+                {(() => {
+                  const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+                  const heatData = analytics.heatmap || [];
+                  const maxVal = Math.max(...heatData.map(h => h.total), 1);
+
+                  const getColor = (val: number) => {
+                    if (val === 0) return 'rgba(254,104,196,0.04)';
+                    const ratio = val / maxVal;
+                    if (ratio < 0.2) return 'rgba(254,104,196,0.12)';
+                    if (ratio < 0.4) return 'rgba(254,104,196,0.28)';
+                    if (ratio < 0.6) return 'rgba(254,104,196,0.48)';
+                    if (ratio < 0.8) return 'rgba(254,104,196,0.70)';
+                    return 'rgba(254,104,196,0.95)';
+                  };
+
+                  const getVal = (dia: number, hora: number) => {
+                    const found = heatData.find(h => h.dia_semana === dia && h.hora === hora);
+                    return found ? found.total : 0;
+                  };
+
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: '32px repeat(7, 1fr)', gap: '2px' }}>
+                      {/* Header com dias */}
+                      <div />
+                      {DIAS_SEMANA.map(d => (
+                        <div key={d} className="text-[10px] text-bibelo-muted text-center font-medium py-1">{d}</div>
+                      ))}
+                      {/* Linhas por hora */}
+                      {Array.from({ length: 24 }, (_, hora) => (
+                        <React.Fragment key={hora}>
+                          <div className="text-[10px] text-bibelo-muted text-right pr-1 flex items-center justify-end" style={{ height: 20 }}>
+                            {String(hora).padStart(2, '0')}h
+                          </div>
+                          {Array.from({ length: 7 }, (_, dia) => {
+                            const val = getVal(dia, hora);
+                            return (
+                              <div
+                                key={`${dia}-${hora}`}
+                                title={`${DIAS_SEMANA[dia]} ${String(hora).padStart(2, '0')}h: ${val} eventos`}
+                                className="rounded-sm cursor-default transition-colors"
+                                style={{
+                                  height: 20,
+                                  backgroundColor: getColor(val),
+                                }}
+                              />
+                            );
+                          })}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+              {/* Legenda */}
+              <div className="flex items-center gap-2 mt-3 justify-end">
+                <span className="text-[10px] text-bibelo-muted">Menos</span>
+                {[0.04, 0.12, 0.28, 0.48, 0.70, 0.95].map((op, i) => (
+                  <div key={i} className="w-3 h-3 rounded-sm" style={{ backgroundColor: `rgba(254,104,196,${op})` }} />
+                ))}
+                <span className="text-[10px] text-bibelo-muted">Mais</span>
+              </div>
+            </div>
+
+            {/* 3. Barra de Horário de Pico (últimas 24h) */}
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-bibelo-text">Visitantes por Hora (hoje)</h3>
+                {analytics.pico && (
+                  <span className="text-xs px-3 py-1 rounded-full bg-bibelo-primary/10 text-bibelo-primary font-semibold flex items-center gap-1">
+                    <Clock size={12} /> Pico: {String(analytics.pico.hora).padStart(2, '0')}h ({analytics.pico.visitors} visitantes)
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1 max-h-[420px] overflow-y-auto">
+                {(() => {
+                  const porHora = analytics.por_hora || [];
+                  const maxVisitors = Math.max(...porHora.map(h => h.visitors), 1);
+                  const horaAtual = new Date().getHours();
+                  return porHora.map(h => (
+                    <div key={h.hora} className="flex items-center gap-2">
+                      <span className="text-[10px] text-bibelo-muted w-7 text-right shrink-0">{String(h.hora).padStart(2, '0')}h</span>
+                      <div className="flex-1 h-5 relative">
+                        <div
+                          className={`h-full rounded-r transition-all ${h.hora === horaAtual ? 'ring-1 ring-bibelo-primary ring-offset-1 ring-offset-transparent' : ''}`}
+                          style={{
+                            width: `${Math.max((h.visitors / maxVisitors) * 100, 2)}%`,
+                            background: h.hora === horaAtual
+                              ? 'linear-gradient(90deg, #fe68c4, #ff8dd6)'
+                              : `rgba(254,104,196,${0.2 + (h.visitors / maxVisitors) * 0.6})`,
+                          }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-bibelo-muted w-6 text-right shrink-0">{h.visitors}</span>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+          </div>
+
+          {/* Grid 2 colunas: Fontes de Tráfego + Insights */}
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* 4. Top Fontes de Tráfego */}
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-bibelo-text mb-4">Top Fontes de Tráfego (14 dias)</h3>
+              {(() => {
+                const fontes = (analytics.fontes || []).slice(0, 6);
+                const totalFontes = fontes.reduce((s, f) => s + f.total, 0) || 1;
+                const FONTE_CORES: Record<string, string> = {
+                  instagram: '#E1306C',
+                  facebook: '#1877F2',
+                  google: '#60a5fa',
+                  direto: '#6b7280',
+                  email: '#f59e0b',
+                  whatsapp: '#25D366',
+                };
+
+                return fontes.length > 0 ? (
+                  <div className="space-y-3">
+                    {fontes.map((f, i) => {
+                      const pct = Math.round((f.total / totalFontes) * 100);
+                      const corKey = f.fonte.toLowerCase();
+                      const cor = FONTE_CORES[corKey] || '#a78bfa';
+                      return (
+                        <div key={i}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-medium text-bibelo-text capitalize">{f.fonte || 'Desconhecido'}</span>
+                            <span className="text-xs text-bibelo-muted">{pct}% ({f.total})</span>
+                          </div>
+                          <div className="h-2.5 rounded-full bg-bibelo-bg overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{ width: `${pct}%`, backgroundColor: cor }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-bibelo-muted text-center py-8">Sem dados de fontes ainda</p>
+                );
+              })()}
+            </div>
+
+            {/* 5. Card de Insights Automaticos */}
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5 relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-bibelo-primary/5 via-transparent to-blue-500/5 pointer-events-none" />
+              <div className="relative">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-amber-400/10 flex items-center justify-center">
+                    <Lightbulb size={16} className="text-amber-400" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-bibelo-text">Insights Automaticos</h3>
+                </div>
+                {(analytics.insights || []).length > 0 ? (
+                  <ul className="space-y-2.5">
+                    {analytics.insights.map((insight, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-bibelo-primary mt-0.5 shrink-0">•</span>
+                        <span className="text-sm text-bibelo-text/90">{insight}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-bibelo-muted text-center py-8">Coletando dados para gerar insights...</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Timeline */}

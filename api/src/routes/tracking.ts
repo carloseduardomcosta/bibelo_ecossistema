@@ -395,3 +395,227 @@ trackingRouter.get("/vendas-recentes", authMiddleware, async (req: Request, res:
   );
   res.json({ vendas: rows });
 });
+
+// ── GET /api/tracking/analytics — inteligência de tráfego ────
+
+trackingRouter.get("/analytics", authMiddleware, async (req: Request, res: Response) => {
+  const dias = Math.min(parseInt(String(req.query.dias || "14"), 10), 365);
+  const ips = getInternalIps();
+  // ipFilter com $1 = dias (queries que usam make_interval)
+  const ipFilter = ips.length > 0
+    ? `AND (t.ip IS NULL OR t.ip::text NOT IN (${ips.map((_, i) => `$${i + 2}`).join(",")}))`
+    : "";
+  // ipFilterNoParam para queries sem parâmetro de dias (intervalo hardcoded)
+  const ipFilterNoParam = ips.length > 0
+    ? `AND (t.ip IS NULL OR t.ip::text NOT IN (${ips.map((_, i) => `$${i + 1}`).join(",")}))`
+    : "";
+
+  // 1. Heatmap — 7 dias da semana × 24 horas
+  const heatmap = await query<{ dia_semana: number; hora: number; total: number }>(
+    `SELECT EXTRACT(DOW FROM t.criado_em)::int AS dia_semana,
+            EXTRACT(HOUR FROM t.criado_em)::int AS hora,
+            COUNT(*)::int AS total
+     FROM crm.tracking_events t
+     WHERE t.criado_em > NOW() - make_interval(days => $1)
+       ${INTERNAL_FILTER} ${ipFilter}
+     GROUP BY dia_semana, hora
+     ORDER BY dia_semana, hora`,
+    [dias, ...ips]
+  );
+
+  // 2. Por hora — visitantes nas últimas 24h (gráfico de barras ao vivo)
+  const por_hora = await query<{ hora: number; eventos: number; visitors: number }>(
+    `SELECT EXTRACT(HOUR FROM t.criado_em)::int AS hora,
+            COUNT(*)::int AS eventos,
+            COUNT(DISTINCT t.visitor_id)::int AS visitors
+     FROM crm.tracking_events t
+     WHERE t.criado_em > NOW() - INTERVAL '24 hours'
+       ${INTERNAL_FILTER} ${ipFilterNoParam}
+     GROUP BY hora
+     ORDER BY hora`,
+    [...ips]
+  );
+
+  // 3. Por dia — visitantes + eventos + carrinhos + compras (gráfico de linha/área)
+  const por_dia = await query<{
+    dia: string; eventos: number; visitors: number; carrinhos: number; compras: number;
+  }>(
+    `SELECT DATE(t.criado_em)::text AS dia,
+            COUNT(*)::int AS eventos,
+            COUNT(DISTINCT t.visitor_id)::int AS visitors,
+            COUNT(DISTINCT CASE WHEN t.evento = 'add_to_cart' THEN t.visitor_id END)::int AS carrinhos,
+            COUNT(CASE WHEN t.evento = 'purchase' THEN 1 END)::int AS compras
+     FROM crm.tracking_events t
+     WHERE t.criado_em > NOW() - make_interval(days => $1)
+       ${INTERNAL_FILTER} ${ipFilter}
+     GROUP BY dia
+     ORDER BY dia`,
+    [dias, ...ips]
+  );
+
+  // 4. Fontes — top origens de tráfego (referrer agrupado)
+  const fontesRaw = await query<{ referrer: string | null; total: number }>(
+    `SELECT t.referrer, COUNT(*)::int AS total
+     FROM crm.tracking_events t
+     WHERE t.criado_em > NOW() - make_interval(days => $1)
+       ${INTERNAL_FILTER} ${ipFilter}
+     GROUP BY t.referrer
+     ORDER BY total DESC`,
+    [dias, ...ips]
+  );
+
+  // Agrupar referrers por hostname amigável
+  const fonteMap = new Map<string, number>();
+  for (const row of fontesRaw) {
+    let nome = "Direto";
+    if (row.referrer) {
+      try {
+        const host = new URL(row.referrer).hostname.toLowerCase();
+        if (host.includes("instagram")) nome = "Instagram";
+        else if (host.includes("facebook") || host.includes("fb.com")) nome = "Facebook";
+        else if (host.includes("google")) nome = "Google";
+        else if (host.includes("tiktok")) nome = "TikTok";
+        else if (host.includes("pinterest")) nome = "Pinterest";
+        else if (host.includes("youtube")) nome = "YouTube";
+        else if (host.includes("twitter") || host.includes("x.com")) nome = "Twitter/X";
+        else if (host.includes("whatsapp") || host.includes("wa.me")) nome = "WhatsApp";
+        else if (host.includes("papelariabibelo")) nome = "Bibelô (interno)";
+        else nome = host;
+      } catch {
+        nome = "Outro";
+      }
+    }
+    fonteMap.set(nome, (fonteMap.get(nome) || 0) + Number(row.total));
+  }
+  const fontes = Array.from(fonteMap.entries())
+    .map(([fonte, total]) => ({ fonte, total }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 8);
+
+  // 5. Pico — hora e dia com mais visitantes
+  const picoHora = await queryOne<{ hora: number; visitors: number }>(
+    `SELECT EXTRACT(HOUR FROM t.criado_em)::int AS hora,
+            COUNT(DISTINCT t.visitor_id)::int AS visitors
+     FROM crm.tracking_events t
+     WHERE t.criado_em > NOW() - make_interval(days => $1)
+       ${INTERNAL_FILTER} ${ipFilter}
+     GROUP BY hora
+     ORDER BY visitors DESC
+     LIMIT 1`,
+    [dias, ...ips]
+  );
+
+  const picoDia = await queryOne<{ dia_semana: number; visitors: number }>(
+    `SELECT EXTRACT(DOW FROM t.criado_em)::int AS dia_semana,
+            COUNT(DISTINCT t.visitor_id)::int AS visitors
+     FROM crm.tracking_events t
+     WHERE t.criado_em > NOW() - make_interval(days => $1)
+       ${INTERNAL_FILTER} ${ipFilter}
+     GROUP BY dia_semana
+     ORDER BY visitors DESC
+     LIMIT 1`,
+    [dias, ...ips]
+  );
+
+  const diasSemana = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+  const pico = {
+    hora: picoHora?.hora ?? null,
+    hora_visitors: picoHora?.visitors ?? 0,
+    dia_semana: picoDia?.dia_semana ?? null,
+    dia_semana_nome: picoDia ? diasSemana[picoDia.dia_semana] : null,
+    dia_visitors: picoDia?.visitors ?? 0,
+  };
+
+  // 6. Insights automáticos
+  const insights: string[] = [];
+
+  // Insight: hora de pico
+  if (picoHora) {
+    insights.push(`Horário de pico: ${picoHora.hora}h com ${picoHora.visitors} visitantes únicos nos últimos ${dias} dias.`);
+  }
+
+  // Insight: dia de pico
+  if (picoDia) {
+    insights.push(`Dia mais movimentado: ${diasSemana[picoDia.dia_semana]} com ${picoDia.visitors} visitantes.`);
+  }
+
+  // Insight: tendência de tráfego (última semana vs semana anterior)
+  const semanaAtual = await queryOne<{ visitors: number }>(
+    `SELECT COUNT(DISTINCT t.visitor_id)::int AS visitors
+     FROM crm.tracking_events t
+     WHERE t.criado_em > NOW() - INTERVAL '7 days'
+       ${INTERNAL_FILTER} ${ipFilterNoParam}`,
+    [...ips]
+  );
+  const semanaAnterior = await queryOne<{ visitors: number }>(
+    `SELECT COUNT(DISTINCT t.visitor_id)::int AS visitors
+     FROM crm.tracking_events t
+     WHERE t.criado_em BETWEEN NOW() - INTERVAL '14 days' AND NOW() - INTERVAL '7 days'
+       ${INTERNAL_FILTER} ${ipFilterNoParam}`,
+    [...ips]
+  );
+
+  const visAtual = semanaAtual?.visitors ?? 0;
+  const visAnterior = semanaAnterior?.visitors ?? 0;
+  if (visAnterior > 0) {
+    const variacao = Math.round(((visAtual - visAnterior) / visAnterior) * 100);
+    if (variacao > 0) {
+      insights.push(`Tráfego crescendo: +${variacao}% de visitantes esta semana vs semana anterior (${visAtual} vs ${visAnterior}).`);
+    } else if (variacao < 0) {
+      insights.push(`Tráfego em queda: ${variacao}% de visitantes esta semana vs semana anterior (${visAtual} vs ${visAnterior}).`);
+    } else {
+      insights.push(`Tráfego estável: mesma quantidade de visitantes esta semana e na anterior (${visAtual}).`);
+    }
+  }
+
+  // Insight: dia da semana que mais converte (add_to_cart)
+  const melhorConversao = await queryOne<{ dia_semana: number; carrinhos: number; visitors: number }>(
+    `SELECT EXTRACT(DOW FROM t.criado_em)::int AS dia_semana,
+            COUNT(DISTINCT CASE WHEN t.evento = 'add_to_cart' THEN t.visitor_id END)::int AS carrinhos,
+            COUNT(DISTINCT t.visitor_id)::int AS visitors
+     FROM crm.tracking_events t
+     WHERE t.criado_em > NOW() - make_interval(days => $1)
+       ${INTERNAL_FILTER} ${ipFilter}
+     GROUP BY dia_semana
+     ORDER BY carrinhos DESC
+     LIMIT 1`,
+    [dias, ...ips]
+  );
+  if (melhorConversao && melhorConversao.carrinhos > 0) {
+    const taxa = melhorConversao.visitors > 0
+      ? Math.round((melhorConversao.carrinhos / melhorConversao.visitors) * 100)
+      : 0;
+    insights.push(`${diasSemana[melhorConversao.dia_semana]} é o dia que mais converte: ${melhorConversao.carrinhos} carrinhos (${taxa}% dos visitantes do dia).`);
+  }
+
+  // Insight: produto mais visto sem compra (oportunidade)
+  const produtoOportunidade = await queryOne<{ resource_nome: string; views: number }>(
+    `SELECT t.resource_nome, COUNT(*)::int AS views
+     FROM crm.tracking_events t
+     WHERE t.evento = 'product_view'
+       AND t.resource_id IS NOT NULL
+       AND t.criado_em > NOW() - make_interval(days => $1)
+       AND t.resource_id NOT IN (
+         SELECT t2.resource_id FROM crm.tracking_events t2
+         WHERE t2.evento = 'purchase' AND t2.resource_id IS NOT NULL
+           AND t2.criado_em > NOW() - make_interval(days => $1)
+       )
+       ${INTERNAL_FILTER} ${ipFilter}
+     GROUP BY t.resource_nome
+     ORDER BY views DESC
+     LIMIT 1`,
+    [dias, ...ips]
+  );
+  if (produtoOportunidade && produtoOportunidade.views > 0) {
+    insights.push(`Oportunidade: "${produtoOportunidade.resource_nome}" teve ${produtoOportunidade.views} visualizações mas nenhuma compra — considere destaque ou desconto.`);
+  }
+
+  // Insight: principal fonte de tráfego
+  if (fontes.length > 0 && fontes[0].fonte !== "Direto") {
+    insights.push(`Principal fonte de tráfego externo: ${fontes[0].fonte} com ${fontes[0].total} eventos.`);
+  } else if (fontes.length > 1) {
+    insights.push(`Principal fonte de tráfego externo: ${fontes[1]?.fonte || "N/A"} com ${fontes[1]?.total || 0} eventos.`);
+  }
+
+  res.json({ dias, heatmap, por_hora, por_dia, fontes, pico, insights });
+});
