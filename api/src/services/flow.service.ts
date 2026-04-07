@@ -1109,7 +1109,7 @@ async function buildNfProductsGrid(limit = 4): Promise<string> {
 // ── Template: Boas-vindas ──────────────────────────────────────
 
 async function buildWelcomeEmail(nome: string): Promise<string> {
-  const productsGrid = await buildTopProductsGrid(3);
+  const productsGrid = await buildNfProductsGrid(3);
 
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🎀</p>
@@ -1135,7 +1135,7 @@ async function buildWelcomeEmail(nome: string): Promise<string> {
 // ── Template: Reativação de Inativo ────────────────────────────
 
 async function buildReactivationEmail(nome: string): Promise<string> {
-  const productsGrid = await buildTopProductsGrid(4);
+  const productsGrid = await buildNfProductsGrid(4);
 
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 👋</p>
@@ -1328,46 +1328,15 @@ async function buildSocialProofEmail(nome: string, _metadata: Record<string, unk
 // ── Template: Novidades da Semana ─────────────────────────────
 
 async function buildNewsEmail(nome: string): Promise<string> {
-  // Busca 4 produtos adicionados/atualizados recentemente no tracking
-  const recentProducts = await query<{
-    resource_nome: string; resource_preco: number; resource_imagem: string; pagina: string;
-  }>(
-    `SELECT resource_nome, MAX(resource_preco) AS resource_preco,
-            MAX(resource_imagem) AS resource_imagem, MAX(pagina) AS pagina
-     FROM crm.tracking_events
-     WHERE evento = 'product_view' AND resource_nome IS NOT NULL
-       AND resource_imagem IS NOT NULL AND criado_em > NOW() - INTERVAL '14 days'
-     GROUP BY resource_nome ORDER BY MAX(criado_em) DESC LIMIT 4`
-  );
+  const productsHtml = await buildNfProductsGrid(4);
 
-  let productsHtml = "";
-  if (recentProducts.length >= 2) {
-    productsHtml = recentProducts.map(p => {
-      const img = safeImageUrl(p.resource_imagem);
-      const link = cleanProductUrl(p.pagina);
-      const preco = p.resource_preco ? `R$ ${Number(p.resource_preco).toFixed(2).replace(".", ",")}` : "";
-      return `
-        <a href="${link}" style="display:block;text-decoration:none;background:#fff;border:1px solid #f0e0f0;border-radius:10px;padding:12px;margin:8px 0;">
-          <table width="100%" cellpadding="0" cellspacing="0"><tr>
-            <td width="70" style="vertical-align:top;">
-              <img src="${img}" alt="" width="60" height="60" style="width:60px;height:60px;object-fit:cover;border-radius:8px;" />
-            </td>
-            <td style="vertical-align:middle;padding-left:12px;">
-              <p style="font-size:14px;color:#333;font-weight:600;margin:0 0 4px;">${escHtml(p.resource_nome)}</p>
-              ${preco ? `<p style="font-size:14px;color:#fe68c4;font-weight:700;margin:0;">${preco}</p>` : ""}
-            </td>
-          </tr></table>
-        </a>`;
-    }).join("");
-  } else {
-    productsHtml = `
+  const fallback = !productsHtml ? `
       <div style="background:#fef6fa;border-radius:12px;padding:20px;margin:10px 0;">
         <p style="font-size:15px;color:#555;margin:0 0 10px;">🎀 Agendas e planners decorados</p>
         <p style="font-size:15px;color:#555;margin:0 0 10px;">✏️ Canetas e marcadores fofos</p>
         <p style="font-size:15px;color:#555;margin:0 0 10px;">📒 Cadernos e blocos especiais</p>
         <p style="font-size:15px;color:#555;margin:0;">🎁 Presentes criativos e kits</p>
-      </div>`;
-  }
+      </div>` : "";
 
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🆕</p>
@@ -1375,7 +1344,7 @@ async function buildNewsEmail(nome: string): Promise<string> {
       Chegaram <strong>novidades fresquinhas</strong> na Papelaria Bibelô!
       Dá uma olhada no que separamos para você esta semana:
     </p>
-    ${productsHtml}
+    ${productsHtml || fallback}
     <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
       <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
     </div>
