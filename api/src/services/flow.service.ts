@@ -145,6 +145,12 @@ export async function triggerFlow(
   const executionIds: string[] = [];
 
   for (const flow of flows) {
+    // Leads VIP já recebem boas-vindas inline — pular fluxo duplicado
+    if (metadata.fonte === "grupo_vip" && flow.nome.toLowerCase().includes("boas-vindas")) {
+      logger.info("triggerFlow: pular boas-vindas para lead VIP (já recebeu inline)", { flowId: flow.id, customerId });
+      continue;
+    }
+
     let steps: FlowStep[];
     try {
       steps = typeof flow.steps === "string" ? JSON.parse(flow.steps) : flow.steps;
@@ -621,7 +627,7 @@ async function executeEmailStep(
     // Usa templates built-in ricos (com fotos, recovery_url, etc.)
     _currentRecipientEmail = customer.email || "";
     const html = await buildFlowEmail(customer.nome, step.template || "", metadata);
-    const subject = getFlowSubject(step.template || "", customer.nome);
+    const subject = getFlowSubject(step.template || "", customer.nome, metadata);
 
     const result = await sendEmail({
       to: customer.email,
@@ -1032,97 +1038,103 @@ function buildThankYouEmail(nome: string, metadata: Record<string, unknown>): st
 // ── Helper: grid de produtos reais do tracking ───────────────
 
 async function buildNfProductsGrid(limit = 4): Promise<string> {
-  // 1. Busca produtos da última NF cruzando com NuvemShop (ns_id para imagem fresca)
-  const produtos = await query<{
-    ns_nome: string; ns_preco: string; ns_url: string; ns_id: string;
+  // 1. Busca candidatos de TODAS as NFs (mais recente primeiro), 3x o limite para ter margem
+  const candidatos = await query<{
+    ns_nome: string; ns_preco: string; ns_url: string | null; ns_id: string;
   }>(
-    `WITH ultima_nf AS (
-       SELECT id FROM financeiro.notas_entrada
-       WHERE status != 'cancelada'
-       ORDER BY data_emissao DESC NULLS LAST, criado_em DESC NULLS LAST
+    `SELECT DISTINCT ON (COALESCE(ns.dados_raw->>'canonical_url', ni.descricao))
+       ns.nome as ns_nome,
+       ns.preco::text as ns_preco,
+       ns.dados_raw->>'canonical_url' as ns_url,
+       ns.ns_id::text as ns_id
+     FROM financeiro.notas_entrada_itens ni
+     JOIN financeiro.notas_entrada ne ON ne.id = ni.nota_id AND ne.status != 'cancelada'
+     LEFT JOIN LATERAL (
+       SELECT p.sku
+       FROM sync.bling_products p
+       WHERE p.sku = ni.codigo_produto
+         OR LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 20)) || '%'
        LIMIT 1
-     ),
-     matched AS (
-       SELECT DISTINCT ON (COALESCE(ns.dados_raw->>'canonical_url', ni.descricao))
-         ns.nome as ns_nome,
-         ns.preco::text as ns_preco,
-         ns.dados_raw->>'canonical_url' as ns_url,
-         ns.ns_id::text as ns_id
-       FROM financeiro.notas_entrada_itens ni
-       JOIN ultima_nf un ON un.id = ni.nota_id
-       LEFT JOIN LATERAL (
-         SELECT p.sku
-         FROM sync.bling_products p
-         WHERE p.sku = ni.codigo_produto
-           OR LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 20)) || '%'
-         LIMIT 1
-       ) bp ON true
-       LEFT JOIN LATERAL (
-         SELECT np.nome, np.preco, np.dados_raw, np.estoque, np.ns_id
-         FROM sync.nuvemshop_products np
-         WHERE np.sku = bp.sku
-           OR LOWER(np.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 20)) || '%'
-         ORDER BY similarity(LOWER(np.nome), LOWER(ni.descricao)) DESC
-         LIMIT 1
-       ) ns ON true
-       WHERE ns.nome IS NOT NULL
-         AND ns.preco > 0
-         AND (ns.estoque IS NULL OR ns.estoque > 0)
-       ORDER BY COALESCE(ns.dados_raw->>'canonical_url', ni.descricao), ni.numero_item
-     )
-     SELECT * FROM matched LIMIT $1`,
-    [limit]
+     ) bp ON true
+     LEFT JOIN LATERAL (
+       SELECT np.nome, np.preco, np.dados_raw, np.estoque, np.ns_id
+       FROM sync.nuvemshop_products np
+       WHERE np.sku = bp.sku
+         OR LOWER(np.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 20)) || '%'
+       ORDER BY similarity(LOWER(np.nome), LOWER(ni.descricao)) DESC
+       LIMIT 1
+     ) ns ON true
+     WHERE ns.nome IS NOT NULL
+       AND ns.preco > 0
+       AND (ns.estoque IS NULL OR ns.estoque > 0)
+     ORDER BY COALESCE(ns.dados_raw->>'canonical_url', ni.descricao),
+       ne.data_emissao DESC NULLS LAST`,
+    []
   );
 
-  if (produtos.length === 0) return "";
+  if (candidatos.length === 0) return "";
 
-  // 2. Busca imagens frescas via NuvemShop API (URLs do banco podem estar expiradas na CDN)
-  //    Usa search por nome (GET /products/{id} retorna 404 na NS API, search funciona)
-  const freshImages: Record<string, string> = {};
-  try {
-    const token = await getNuvemShopToken();
+  // 2. Valida cada candidato na NuvemShop API: precisa ter imagem + link + preço
+  //    Percorre até ter `limit` produtos validados, depois para
+  interface ValidProduct { nome: string; preco: string; img: string; link: string }
+  const valid: ValidProduct[] = [];
+  const seenUrls = new Set<string>();
+
+  let token: Awaited<ReturnType<typeof getNuvemShopToken>> = null;
+  try { token = await getNuvemShopToken(); } catch { /* sem token */ }
+
+  for (const c of candidatos) {
+    if (valid.length >= limit) break;
+
+    // Deduplica por URL
+    const urlKey = c.ns_url || c.ns_nome;
+    if (seenUrls.has(urlKey)) continue;
+
+    // Precisa ter link no site
+    if (!c.ns_url) continue;
+
+    // Valida imagem fresca via NuvemShop API
+    let imgSrc = "";
     if (token) {
-      for (const p of produtos) {
-        try {
-          const term = encodeURIComponent(p.ns_nome.substring(0, 30));
-          const res = await nsRequest<Array<{ id: number; images?: Array<{ src: string }> }>>(
-            "get", `/products?q=${term}&fields=id,images&per_page=1`, token
-          );
-          if (Array.isArray(res) && res[0]?.images?.[0]?.src) {
-            freshImages[p.ns_id] = res[0].images[0].src;
-          }
-        } catch { /* ignora — usa fallback */ }
-      }
+      try {
+        const term = encodeURIComponent(c.ns_nome.substring(0, 30));
+        const res = await nsRequest<Array<{ id: number; images?: Array<{ src: string }>; canonical_url?: string }>>(
+          "get", `/products?q=${term}&fields=id,images,canonical_url&per_page=1`, token
+        );
+        const p = res?.[0];
+        if (p?.images?.[0]?.src) {
+          imgSrc = p.images[0].src;
+        }
+      } catch { /* API falhou, pula este produto */ }
     }
-  } catch { /* sem token — segue sem imagens frescas */ }
 
-  const linkBase = "https://www.papelariabibelo.com.br";
+    // Só inclui se tiver imagem confirmada
+    if (!imgSrc) continue;
 
-  return produtos.map(p => {
-    const nome = p.ns_nome;
-    const freshImg = freshImages[p.ns_id];
-    const img = freshImg ? safeImageUrl(freshImg) : "";
-    const link = p.ns_url ? cleanProductUrl(p.ns_url) : linkBase;
-    const preco = p.ns_preco ? `R$ ${Number(p.ns_preco).toFixed(2).replace(".", ",")}` : "";
+    seenUrls.add(urlKey);
+    valid.push({
+      nome: c.ns_nome,
+      preco: `R$ ${Number(c.ns_preco).toFixed(2).replace(".", ",")}`,
+      img: safeImageUrl(imgSrc),
+      link: cleanProductUrl(c.ns_url),
+    });
+  }
 
-    const imgBlock = img
-      ? `<img src="${img}" alt="${escHtml(nome)}" width="80" height="80" style="width:80px;height:80px;object-fit:cover;border-radius:10px;display:block;" />`
-      : `<div style="width:80px;height:80px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:28px;">🎀</div>`;
+  if (valid.length === 0) return "";
 
-    return `
-      <a href="${link}" style="display:block;text-decoration:none;background:#fff;border:1px solid #f0e0f0;border-radius:12px;padding:14px;margin:10px 0;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+  return valid.map(p => `
+      <a href="${p.link}" style="display:block;text-decoration:none;background:#fff;border:1px solid #f0e0f0;border-radius:12px;padding:14px;margin:10px 0;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
         <table width="100%" cellpadding="0" cellspacing="0"><tr>
           <td width="90" style="vertical-align:top;">
-            ${imgBlock}
+            <img src="${p.img}" alt="${escHtml(p.nome)}" width="80" height="80" style="width:80px;height:80px;object-fit:cover;border-radius:10px;display:block;" />
           </td>
           <td style="vertical-align:middle;padding-left:14px;">
-            <p style="font-size:14px;color:#333;font-weight:600;margin:0 0 4px;line-height:1.3;">${escHtml(nome)}</p>
-            ${preco ? `<p style="font-size:15px;color:#fe68c4;font-weight:700;margin:0 0 6px;">${preco}</p>` : ""}
+            <p style="font-size:14px;color:#333;font-weight:600;margin:0 0 4px;line-height:1.3;">${escHtml(p.nome)}</p>
+            <p style="font-size:15px;color:#fe68c4;font-weight:700;margin:0 0 6px;">${p.preco}</p>
             <span style="font-size:12px;color:#fe68c4;font-weight:600;">Ver produto →</span>
           </td>
         </tr></table>
-      </a>`;
-  }).join("");
+      </a>`).join("");
 }
 
 // ── Template: Boas-vindas ──────────────────────────────────────
@@ -1400,7 +1412,34 @@ function buildLeadCouponEmail(nome: string, metadata: Record<string, unknown>): 
 
 // ── Template: FOMO Grupo VIP WhatsApp ─────────────────────────
 
-function buildFomoVipEmail(nome: string): string {
+function buildFomoVipEmail(nome: string, metadata: Record<string, unknown> = {}): string {
+  const isVip = metadata.fonte === "grupo_vip";
+
+  if (isVip) {
+    // Já é VIP — mostrar benefícios de compra e urgência
+    return emailWrapper(`
+      <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🔥</p>
+      <p style="font-size:15px;color:#555;line-height:1.6;">
+        Como membro do <strong>Clube VIP Bibelô</strong>, você tem acesso
+        antecipado às nossas novidades — e essa semana tem coisa boa!
+      </p>
+      <div style="background:linear-gradient(135deg,#E8F5E9,#fff7c1);border-radius:12px;padding:20px;text-align:center;margin:20px 0;">
+        <p style="font-size:32px;margin:0;">🎀✨</p>
+        <p style="font-size:16px;color:#2E7D32;font-weight:700;margin:10px 0 4px;">Vantagens VIP ativas</p>
+        <p style="font-size:13px;color:#555;margin:0;line-height:1.6;">
+          7% OFF na 1ª compra · Frete grátis Sul/SE acima de R$ 79<br/>
+          Mimo surpresa em todo pedido · Lançamentos antes de todo mundo
+        </p>
+      </div>
+      <p style="font-size:15px;color:#555;line-height:1.6;">
+        Semana passada, alguns lançamentos esgotaram em poucas horas.
+        As VIPs que compram primeiro sempre garantem! 💕
+      </p>
+      ${ctaButton("Ver novidades na loja", "https://www.papelariabibelo.com.br/?utm_source=email&utm_medium=flow&utm_campaign=vip_fomo")}
+    `);
+  }
+
+  // Lead normal — convencer a entrar no grupo
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🔥</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
@@ -1454,7 +1493,31 @@ function buildProductVisitedEmail(nome: string, metadata: Record<string, unknown
 
 // ── Template: Convite VIP WhatsApp ────────────────────────────
 
-function buildVipInviteEmail(nome: string): string {
+function buildVipInviteEmail(nome: string, metadata: Record<string, unknown> = {}): string {
+  const isVip = metadata.fonte === "grupo_vip";
+
+  if (isVip) {
+    // Já é VIP — reforçar engajamento com a loja
+    return emailWrapper(`
+      <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🎀</p>
+      <p style="font-size:15px;color:#555;line-height:1.6;">
+        Que bom ter você no <strong>Clube VIP Bibelô</strong>!
+        Preparamos uma seleção especial pra você conhecer a loja.
+      </p>
+      <div style="background:#fef6fa;border-radius:12px;padding:24px;text-align:center;margin:20px 0;">
+        <p style="font-size:36px;margin:0;">🎁💕</p>
+        <p style="font-size:18px;color:#fe68c4;font-weight:700;margin:12px 0 6px;">Sua 1ª compra especial</p>
+        <p style="font-size:14px;color:#555;margin:0;line-height:1.5;">
+          Use o cupom <strong style="color:#fe68c4;">CLUBEBIBELO</strong> e ganhe 7% OFF<br/>
+          Frete grátis Sul/Sudeste acima de R$ 79<br/>
+          Mimo surpresa em todo pedido
+        </p>
+      </div>
+      ${ctaButton("Conhecer a loja", "https://www.papelariabibelo.com.br/?utm_source=email&utm_medium=flow&utm_campaign=vip_convite")}
+    `);
+  }
+
+  // Lead normal — convite para o grupo
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🎀</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
@@ -1602,13 +1665,13 @@ export async function buildFlowEmail(nome: string, templateName: string, metadat
     return buildLeadCouponEmail(nome, metadata);
   }
   if (lower.includes("fomo") || lower.includes("grupo vip")) {
-    return buildFomoVipEmail(nome);
+    return buildFomoVipEmail(nome, metadata);
   }
   if (lower.includes("produto visitado") || lower.includes("viu produto")) {
     return buildProductVisitedEmail(nome, metadata);
   }
   if (lower.includes("convite vip") || lower.includes("convite whatsapp")) {
-    return buildVipInviteEmail(nome);
+    return buildVipInviteEmail(nome, metadata);
   }
   if (lower.includes("lembrete") && (lower.includes("avalia") || lower.includes("review"))) {
     return buildReviewReminderEmail(nome, metadata);
@@ -1648,7 +1711,7 @@ export async function buildFlowEmail(nome: string, templateName: string, metadat
 
 // ── Subject por template name ──────────────────────────────────
 
-function getFlowSubject(templateName: string, nome: string): string {
+function getFlowSubject(templateName: string, nome: string, metadata: Record<string, unknown> = {}): string {
   const lower = (templateName || "").toLowerCase();
 
   // Lead quente ANTES de carrinho (ambos contêm "carrinho")
@@ -1683,12 +1746,18 @@ function getFlowSubject(templateName: string, nome: string): string {
     return `🎁 ${nome || "Oi"}, seu cupom exclusivo está esperando!`;
   }
   if (lower.includes("fomo") || lower.includes("grupo vip")) {
+    if (metadata.fonte === "grupo_vip") {
+      return `${nome || "Oi"}, novidades exclusivas pra você, VIP! 🔥`;
+    }
     return `${nome || "Oi"}, +115 membros já garantiram — e você? 🔥`;
   }
   if (lower.includes("produto visitado") || lower.includes("viu produto")) {
     return `${nome || "Oi"}, ainda de olho? Temos boas notícias! 👀`;
   }
   if (lower.includes("convite vip") || lower.includes("convite whatsapp")) {
+    if (metadata.fonte === "grupo_vip") {
+      return `${nome || "Oi"}, sua 1ª compra VIP com 7% OFF! 🎁`;
+    }
     return `${nome || "Oi"}, você foi convidada para o grupo VIP! 🎀`;
   }
   if (lower.includes("lembrete") && (lower.includes("avalia") || lower.includes("review"))) {
