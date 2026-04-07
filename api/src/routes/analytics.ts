@@ -11,6 +11,8 @@ analyticsRouter.use(authMiddleware);
 
 function periodoToInterval(periodo?: string): { intervalo: string; dias: number } {
   switch (periodo) {
+    case "1d":  return { intervalo: "1 day", dias: 1 };
+    case "3d":  return { intervalo: "3 days", dias: 3 };
     case "7d":  return { intervalo: "7 days", dias: 7 };
     case "15d": return { intervalo: "15 days", dias: 15 };
     case "30d": return { intervalo: "30 days", dias: 30 };

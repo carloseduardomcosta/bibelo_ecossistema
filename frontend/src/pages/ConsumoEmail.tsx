@@ -11,6 +11,8 @@ import {
 } from 'recharts';
 
 const PERIODOS = [
+  { value: '1d', label: 'Hoje' },
+  { value: '3d', label: '3 dias' },
   { value: '7d', label: '7 dias' },
   { value: '15d', label: '15 dias' },
   { value: '30d', label: '30 dias' },

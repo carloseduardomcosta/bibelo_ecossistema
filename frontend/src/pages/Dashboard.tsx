@@ -102,6 +102,8 @@ function VariacaoBadge({ valor }: { valor: number }) {
 }
 
 const PERIODOS = [
+  { value: '1d', label: 'Hoje' },
+  { value: '3d', label: '3 dias' },
   { value: '7d', label: '7 dias' },
   { value: '15d', label: '15 dias' },
   { value: '30d', label: '30 dias' },
@@ -124,7 +126,7 @@ export default function Dashboard() {
   useEffect(() => {
     setLoading(true);
     const p = `periodo=${periodo}`;
-    const geoDias = periodo === '7d' ? 7 : periodo === '15d' ? 15 : periodo === '30d' ? 30 : periodo === '3m' ? 90 : periodo === '6m' ? 180 : 365;
+    const geoDias = periodo === '1d' ? 1 : periodo === '3d' ? 3 : periodo === '7d' ? 7 : periodo === '15d' ? 15 : periodo === '30d' ? 30 : periodo === '3m' ? 90 : periodo === '6m' ? 180 : 365;
     Promise.all([
       api.get(`/analytics/overview?${p}`),
       api.get(`/analytics/revenue?${p}`),

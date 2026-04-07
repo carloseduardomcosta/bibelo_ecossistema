@@ -263,6 +263,8 @@ productsRouter.get("/:id", async (req: Request, res: Response) => {
 
 function periodoToInterval(periodo?: string): string {
   switch (periodo) {
+    case "1d":  return "1 day";
+    case "3d":  return "3 days";
     case "7d":  return "7 days";
     case "15d": return "15 days";
     case "30d": return "30 days";
