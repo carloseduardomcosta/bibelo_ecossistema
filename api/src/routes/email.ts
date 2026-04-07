@@ -231,15 +231,17 @@ export function proxyImageUrl(externalUrl: string): string {
   // Hash determinístico da URL
   const hash = crypto.createHash("sha256").update(externalUrl).digest("hex");
   const urlPath = externalUrl.split("?")[0];
-  let ext = "jpg";
-  if (urlPath.endsWith(".png")) ext = "png";
-  else if (urlPath.endsWith(".webp")) ext = "webp";
-  else if (urlPath.endsWith(".gif")) ext = "gif";
+  const originalExt = urlPath.endsWith(".png") ? "png"
+    : urlPath.endsWith(".gif") ? "gif"
+    : urlPath.endsWith(".webp") ? "webp"
+    : "jpg";
 
+  // Emails: webp → jpg (Outlook/Yahoo não suportam webp)
+  const ext = originalExt === "webp" ? "jpg" : originalExt;
   const fileName = `${hash}.${ext}`;
   const filePath = path.join(IMG_CACHE_DIR, fileName);
 
-  // Baixar em background se não cacheado
+  // Baixar e converter em background se não cacheado
   if (!fs.existsSync(filePath)) {
     (async () => {
       try {
@@ -248,8 +250,17 @@ export function proxyImageUrl(externalUrl: string): string {
           responseType: "arraybuffer",
           timeout: 15000,
         });
-        fs.writeFileSync(filePath, Buffer.from(resp.data));
-      } catch {
+        const buf = Buffer.from(resp.data);
+
+        // Converter webp → jpg via sharp (compatibilidade email)
+        if (originalExt === "webp") {
+          const sharp = (await import("sharp")).default;
+          const converted = await sharp(buf).jpeg({ quality: 90 }).toBuffer();
+          fs.writeFileSync(filePath, converted);
+        } else {
+          fs.writeFileSync(filePath, buf);
+        }
+      } catch (err) {
         logger.error("Erro ao cachear imagem para email", { url: externalUrl.substring(0, 80) });
       }
     })();

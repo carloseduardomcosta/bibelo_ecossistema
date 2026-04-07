@@ -200,10 +200,10 @@ export async function registerScheduledJobs(): Promise<void> {
     repeat: { pattern: "0 2 * * *" },
   });
 
-  // Medusa sync produtos: a cada 30 minutos (5min após Bling sync)
-  await syncQueue.add("medusa-sync-products", {}, {
-    repeat: { pattern: "5,35 * * * *" },
-  });
+  // Medusa sync DESABILITADO — homologação parada, bombardeava Bling com GETs
+  // await syncQueue.add("medusa-sync-products", {}, {
+  //   repeat: { pattern: "5,35 * * * *" },
+  // });
 
   // Google Reviews refresh: diário às 6h
   await syncQueue.add("google-reviews-refresh", {}, {

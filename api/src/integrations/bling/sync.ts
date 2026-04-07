@@ -67,7 +67,7 @@ export async function rateLimitedGet<T>(url: string, token: string): Promise<T> 
   throw new Error("Bling rateLimitedGet: max retries exceeded");
 }
 
-export async function rateLimitedPatch<T>(url: string, token: string, body: unknown): Promise<T> {
+export async function rateLimitedPatch<T>(url: string, token: string, body: unknown, timeoutMs = 15000): Promise<T> {
   const MAX_RETRIES = 3;
   const BACKOFF = [5000, 10000, 20000];
 
@@ -83,7 +83,7 @@ export async function rateLimitedPatch<T>(url: string, token: string, body: unkn
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        timeout: 15000,
+        timeout: timeoutMs,
       });
       setTimeout(() => releaseLock(), 350);
       return data;

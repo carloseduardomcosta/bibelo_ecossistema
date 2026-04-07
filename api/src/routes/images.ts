@@ -457,11 +457,38 @@ imagesRouter.post(
     }
 
     // 2. Enviar ao Bling via PATCH /produtos/{id}
+    // Bling 504 com muitas imagens de uma vez — enviar em lotes de 3
     try {
       const token = await getValidToken();
+      const BATCH_SIZE = 3;
+      const allLinks = imageUrls.map(u => ({ link: u.link }));
 
-      // Se replaceAll, primeiro limpar todas as imagens existentes
+      // Helper: enviar em lotes de BATCH_SIZE com delay entre eles
+      async function sendInBatches(links: Array<{ link: string }>): Promise<unknown> {
+        let lastResult: unknown = null;
+        for (let i = 0; i < links.length; i += BATCH_SIZE) {
+          const batch = links.slice(i, i + BATCH_SIZE);
+          lastResult = await rateLimitedPatch<{ data: unknown }>(
+            `${BLING_API}/produtos/${opts.blingProductId}`,
+            token,
+            { midia: { imagens: { imagensURL: batch } } },
+            60000,
+          );
+          logger.info("Lote de imagens enviado ao Bling", {
+            blingProductId: opts.blingProductId,
+            lote: `${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(links.length / BATCH_SIZE)}`,
+            qtd: batch.length,
+          });
+          // Delay entre lotes para o Bling processar
+          if (i + BATCH_SIZE < links.length) {
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        }
+        return lastResult;
+      }
+
       if (opts.replaceAll) {
+        // Passo 1: limpar imagens existentes
         await rateLimitedPatch<{ data: unknown }>(
           `${BLING_API}/produtos/${opts.blingProductId}`,
           token,
@@ -470,38 +497,42 @@ imagesRouter.post(
         logger.info("Imagens anteriores removidas do Bling", {
           blingProductId: opts.blingProductId,
         });
-        // Aguardar Bling processar a remoção antes de enviar as novas
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise(r => setTimeout(r, 2000));
+
+        // Passo 2: enviar as novas em lotes
+        const result = await sendInBatches(allLinks);
+
+        logger.info("Imagens substituídas no Bling", {
+          blingProductId: opts.blingProductId,
+          qtd: allLinks.length,
+        });
+
+        res.json({
+          success: true,
+          blingProductId: opts.blingProductId,
+          imagesCount: allLinks.length,
+          replaced: true,
+          images: imageUrls,
+          blingResponse: result,
+        });
+      } else {
+        // Sem replaceAll: apenas adiciona em lotes
+        const result = await sendInBatches(allLinks);
+
+        logger.info("Imagens enviadas ao Bling", {
+          blingProductId: opts.blingProductId,
+          qtd: allLinks.length,
+        });
+
+        res.json({
+          success: true,
+          blingProductId: opts.blingProductId,
+          imagesCount: allLinks.length,
+          replaced: false,
+          images: imageUrls,
+          blingResponse: result,
+        });
       }
-
-      const blingBody: Record<string, unknown> = {
-        midia: {
-          imagens: {
-            imagensURL: imageUrls.map(u => ({ link: u.link })),
-          },
-        },
-      };
-
-      const result = await rateLimitedPatch<{ data: unknown }>(
-        `${BLING_API}/produtos/${opts.blingProductId}`,
-        token,
-        blingBody,
-      );
-
-      logger.info("Imagens enviadas ao Bling", {
-        blingProductId: opts.blingProductId,
-        qtd: imageUrls.length,
-        replaceAll: !!opts.replaceAll,
-      });
-
-      res.json({
-        success: true,
-        blingProductId: opts.blingProductId,
-        imagesCount: imageUrls.length,
-        replaced: !!opts.replaceAll,
-        images: imageUrls,
-        blingResponse: result,
-      });
     } catch (err: unknown) {
       const axiosErr = err as { response?: { status?: number; data?: unknown }; message?: string };
       const msg = axiosErr.response?.data || axiosErr.message || "Erro desconhecido";

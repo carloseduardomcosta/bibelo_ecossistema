@@ -38,6 +38,7 @@ import { sesWebhookRouter }      from "./integrations/ses/webhook";
 import { emailConsumptionRouter } from "./routes/email-consumption";
 import { queueMonitorRouter } from "./routes/queue-monitor";
 import { metaAdsRouter } from "./routes/meta-ads";
+import { seoRouter } from "./routes/seo";
 import { registerScheduledJobs, closeSyncQueue } from "./queues/sync.queue";
 import { registerFlowJobs, closeFlowQueue }      from "./queues/flow.queue";
 
@@ -111,6 +112,7 @@ app.use("/api/webhooks/ses", sesWebhookRouter);
 app.use("/api/email-consumption", emailConsumptionRouter);
 app.use("/api/queues", queueMonitorRouter);
 app.use("/api/meta-ads", metaAdsRouter);
+app.use("/api/seo", seoRouter);
 
 // ── 404
 app.use((_req, res) => {

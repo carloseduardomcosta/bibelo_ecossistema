@@ -768,8 +768,26 @@ function safeImageUrl(url: string | undefined | null): string {
   let safe = url.trim();
   // Força HTTPS (Gmail bloqueia HTTP em emails)
   safe = safe.replace(/^http:\/\//i, "https://");
-  // Passa pelo proxy do nosso domínio (evita bloqueio de imagens de CDN externo)
+  // Passa pelo proxy do nosso domínio (evita bloqueio de imagens de CDN externo + converte webp→jpg)
   return proxyImageUrl(safe);
+}
+
+// ── Limpar URL de produto (remove fbclid, UTMs de ads, params redundantes) ──
+
+function cleanProductUrl(url: string | undefined | null): string {
+  if (!url) return "https://www.papelariabibelo.com.br";
+  try {
+    const parsed = new URL(url.trim());
+    // Remove params de tracking de ads/meta que poluem a URL
+    const removeParams = ["fbclid", "media_type", "utm_source", "utm_campaign", "utm_medium", "utm_content", "utm_term", "utm_id", "variant"];
+    removeParams.forEach(p => parsed.searchParams.delete(p));
+    // Adiciona nossos UTMs de email
+    parsed.searchParams.set("utm_source", "email");
+    parsed.searchParams.set("utm_medium", "flow");
+    return parsed.toString();
+  } catch {
+    return url.trim();
+  }
 }
 
 // ── Email context: email do destinatário para link de descadastro ──
@@ -827,47 +845,50 @@ function ctaButton(text: string, url: string): string {
 
 // ── Template: Carrinho Abandonado ──────────────────────────────
 
+function buildCartProductsTable(itens: Array<Record<string, unknown>>, valor?: string): string {
+  if (itens.length === 0) return "";
+  const rows = itens.map((item: Record<string, unknown>) => {
+    const itemName = escHtml(String(item.name || "Produto"));
+    const imgUrl = safeImageUrl(item.image_url as string);
+    const imgTag = imgUrl
+      ? `<img src="${imgUrl}" alt="${itemName}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid #eee;" />`
+      : `<div style="width:70px;height:70px;background:#ffe5ec;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;">🎀</div>`;
+    const price = item.price ? formatBRL(item.price) : "";
+    const qty = item.quantity || item.qtd || 1;
+    return `<tr>
+      <td style="padding:10px 0;border-bottom:1px solid #f0f0f0;vertical-align:top;width:80px;">${imgTag}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top;">
+        <p style="margin:0 0 4px;font-weight:600;color:#333;">${itemName}</p>
+        <p style="margin:0;color:#888;font-size:13px;">Qtd: ${qty}${price ? ` · ${price}` : ""}</p>
+      </td>
+    </tr>`;
+  }).join("");
+
+  return `
+  <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+    ${rows}
+  </table>
+  ${valor ? `<p style="text-align:right;font-size:18px;font-weight:700;color:#fe68c4;margin:10px 0;">Total: ${valor}</p>` : ""}`;
+}
+
 function buildAbandonedCartEmail(nome: string, metadata: Record<string, unknown>): string {
   const valor = formatBRL(metadata.valor);
   const recoveryUrl = (metadata.recovery_url as string) || "https://www.papelariabibelo.com.br";
   const itens = Array.isArray(metadata.itens) ? metadata.itens : [];
 
-  let productsHtml = "";
-  if (itens.length > 0) {
-    const rows = itens.map((item: Record<string, unknown>) => {
-      const imgUrl = safeImageUrl(item.image_url as string);
-      const imgTag = imgUrl
-        ? `<img src="${imgUrl}" alt="${item.name}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid #eee;" />`
-        : `<div style="width:70px;height:70px;background:#f0f0f0;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;">📦</div>`;
-      const price = item.price ? formatBRL(item.price) : "";
-      const qty = item.quantity || item.qtd || 1;
-
-      return `<tr>
-        <td style="padding:10px 0;border-bottom:1px solid #f0f0f0;vertical-align:top;width:80px;">${imgTag}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top;">
-          <p style="margin:0 0 4px;font-weight:600;color:#333;">${item.name || "Produto"}</p>
-          <p style="margin:0;color:#888;font-size:13px;">Qtd: ${qty}${price ? ` · ${price}` : ""}</p>
-        </td>
-      </tr>`;
-    }).join("");
-
-    productsHtml = `
-    <table style="width:100%;border-collapse:collapse;margin:20px 0;">
-      ${rows}
-    </table>
-    ${valor ? `<p style="text-align:right;font-size:18px;font-weight:700;color:#333;margin:10px 0;">Total: ${valor}</p>` : ""}`;
-  }
-
   return emailWrapper(`
-    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! 👋</p>
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 👋</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
-      Notamos que você deixou alguns itens especiais no seu carrinho.
-      Eles ainda estão esperando por você!
+      Seus itens estão reservados no carrinho, mas não vão ficar lá para sempre!
+      Finalize antes que alguém leve.
     </p>
-    ${productsHtml}
+    ${buildCartProductsTable(itens, valor)}
+    <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
+      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+    </div>
     ${ctaButton("Finalizar minha compra", recoveryUrl)}
     <p style="font-size:13px;color:#999;text-align:center;">
-      O link acima leva direto para o seu carrinho com todos os itens selecionados.
+      O link acima leva direto para o seu carrinho com todos os itens.
     </p>
   `);
 }
@@ -878,21 +899,72 @@ function buildLastChanceEmail(nome: string, metadata: Record<string, unknown>): 
   const valor = formatBRL(metadata.valor);
   const recoveryUrl = (metadata.recovery_url as string) || "https://www.papelariabibelo.com.br";
   const itens = Array.isArray(metadata.itens) ? metadata.itens : [];
-  const nomesProdutos = itens.map((i: Record<string, unknown>) => i.name || "produto").join(", ");
 
   return emailWrapper(`
-    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>!</p>
-    <div style="background:#FFF3E0;border-left:4px solid #FF9800;padding:15px 20px;border-radius:4px;margin:20px 0;">
-      <p style="margin:0;color:#E65100;font-weight:600;font-size:15px;">⏰ Seus itens estão quase esgotando!</p>
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>!</p>
+    <div style="background:#FFF3E0;border-left:4px solid #FF9800;padding:16px 20px;border-radius:8px;margin:20px 0;">
+      <p style="margin:0;color:#E65100;font-weight:700;font-size:16px;">⏰ Última chance — estoque quase esgotado!</p>
+      <p style="margin:6px 0 0;color:#E65100;font-size:13px;">Outros clientes estão visualizando os mesmos produtos agora.</p>
     </div>
-    <p style="font-size:15px;color:#555;line-height:1.6;">
-      ${nomesProdutos ? `Os produtos <strong>${nomesProdutos}</strong> continuam` : "Seus itens continuam"}
-      no seu carrinho${valor ? ` (${valor})` : ""}, mas o estoque está acabando.
+    ${buildCartProductsTable(itens, valor)}
+    <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
+      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+    </div>
+    ${ctaButton("Garantir meus produtos agora", recoveryUrl)}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      Seu carrinho será liberado em breve. Não perca!
     </p>
+  `);
+}
+
+// ── Template: Carrinho Reenvio (abordagem social proof) ───────
+
+function buildCartReminderEmail(nome: string, metadata: Record<string, unknown>): string {
+  const valor = formatBRL(metadata.valor);
+  const recoveryUrl = (metadata.recovery_url as string) || "https://www.papelariabibelo.com.br";
+  const itens = Array.isArray(metadata.itens) ? metadata.itens : [];
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 💕</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
-      Não queremos que você perca! Finalize sua compra agora:
+      Separamos seus itens com carinho, mas eles não vão ficar reservados para sempre.
     </p>
-    ${ctaButton("Garantir meus produtos", recoveryUrl)}
+    ${buildCartProductsTable(itens, valor)}
+    <div style="background:#E8F5E9;border-radius:10px;padding:16px;margin:20px 0;">
+      <p style="font-size:14px;color:#2E7D32;margin:0;text-align:center;font-weight:600;">⭐ 4.9 no Google · +500 clientes satisfeitas</p>
+      <p style="font-size:12px;color:#4CAF50;margin:6px 0 0;text-align:center;font-style:italic;">"Produtos lindos, entrega rápida e embalagem impecável!"</p>
+    </div>
+    <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:16px 0;">
+      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+    </div>
+    ${ctaButton("Voltar ao meu carrinho", recoveryUrl)}
+  `);
+}
+
+// ── Template: Cupom Recuperação Carrinho (5% OFF) ─────────────
+
+function buildCartCouponEmail(nome: string, metadata: Record<string, unknown>): string {
+  const valor = formatBRL(metadata.valor);
+  const recoveryUrl = (metadata.recovery_url as string) || "https://www.papelariabibelo.com.br";
+  const itens = Array.isArray(metadata.itens) ? metadata.itens : [];
+  const cupom = escHtml(String(metadata.cupom || ""));
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🎁</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Sabemos que às vezes precisamos de um empurrãozinho. Preparamos um
+      <strong>desconto exclusivo</strong> para você finalizar sua compra:
+    </p>
+    <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border:2px dashed #fe68c4;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
+      <p style="font-size:13px;color:#888;margin:0;text-transform:uppercase;letter-spacing:1px;">Seu cupom exclusivo</p>
+      <p style="font-size:32px;font-weight:700;color:#fe68c4;margin:8px 0;letter-spacing:2px;">${cupom || "5% OFF"}</p>
+      <p style="font-size:14px;color:#555;margin:0;">Válido por <strong>24 horas</strong> · Apenas para você</p>
+    </div>
+    ${buildCartProductsTable(itens, valor)}
+    ${ctaButton("Usar cupom e finalizar compra", recoveryUrl)}
+    <p style="font-size:12px;color:#999;text-align:center;">
+      Aplique o código no checkout. Cupom válido para uma única compra.
+    </p>
   `);
 }
 
@@ -902,7 +974,7 @@ function buildThankYouEmail(nome: string, metadata: Record<string, unknown>): st
   const valor = formatBRL(metadata.valor);
 
   return emailWrapper(`
-    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! 💕</p>
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 💕</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
       Muito obrigada pela sua compra${valor ? ` de <strong>${valor}</strong>` : ""}!
       Seu pedido já está sendo preparado com todo carinho.
@@ -919,19 +991,61 @@ function buildThankYouEmail(nome: string, metadata: Record<string, unknown>): st
   `);
 }
 
+// ── Helper: grid de produtos reais do tracking ───────────────
+
+async function buildTopProductsGrid(limit = 4): Promise<string> {
+  const topProducts = await query<{
+    resource_nome: string; resource_preco: number; resource_imagem: string; pagina: string;
+  }>(
+    `SELECT resource_nome, MAX(resource_preco) AS resource_preco,
+            MAX(resource_imagem) AS resource_imagem, MAX(pagina) AS pagina
+     FROM crm.tracking_events
+     WHERE evento = 'product_view' AND resource_nome IS NOT NULL
+       AND resource_imagem IS NOT NULL AND criado_em > NOW() - INTERVAL '30 days'
+     GROUP BY resource_nome ORDER BY COUNT(*) DESC LIMIT $1`,
+    [limit]
+  );
+
+  if (topProducts.length < 2) return "";
+
+  return topProducts.map(p => {
+    const img = safeImageUrl(p.resource_imagem);
+    const link = cleanProductUrl(p.pagina);
+    const preco = p.resource_preco ? `R$ ${Number(p.resource_preco).toFixed(2).replace(".", ",")}` : "";
+    return `
+      <a href="${link}" style="display:block;text-decoration:none;background:#fff;border:1px solid #f0e0f0;border-radius:10px;padding:12px;margin:8px 0;">
+        <table width="100%" cellpadding="0" cellspacing="0"><tr>
+          <td width="70" style="vertical-align:top;">
+            <img src="${img}" alt="" width="60" height="60" style="width:60px;height:60px;object-fit:cover;border-radius:8px;" />
+          </td>
+          <td style="vertical-align:middle;padding-left:12px;">
+            <p style="font-size:14px;color:#333;font-weight:600;margin:0 0 4px;">${escHtml(p.resource_nome)}</p>
+            ${preco ? `<p style="font-size:14px;color:#fe68c4;font-weight:700;margin:0;">${preco}</p>` : ""}
+          </td>
+        </tr></table>
+      </a>`;
+  }).join("");
+}
+
 // ── Template: Boas-vindas ──────────────────────────────────────
 
-function buildWelcomeEmail(nome: string): string {
+async function buildWelcomeEmail(nome: string): Promise<string> {
+  const productsGrid = await buildTopProductsGrid(3);
+
   return emailWrapper(`
-    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! 🎀</p>
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🎀</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
       Seja muito bem-vinda à <strong>Papelaria Bibelô</strong>!
       Estamos felizes em ter você com a gente.
     </p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
       Na nossa loja você encontra tudo em papelaria, organização e presentes
-      que encantam. Dá uma olhada nas novidades:
+      que encantam. Olha o que está bombando:
     </p>
+    ${productsGrid}
+    <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
+      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+    </div>
     ${ctaButton("Conhecer a loja", "https://www.papelariabibelo.com.br")}
     <p style="font-size:13px;color:#999;text-align:center;">
       Nos siga no Instagram: <a href="https://instagram.com/papelariabibelo" style="color:#fe68c4;">@papelariabibelo</a>
@@ -941,9 +1055,11 @@ function buildWelcomeEmail(nome: string): string {
 
 // ── Template: Reativação de Inativo ────────────────────────────
 
-function buildReactivationEmail(nome: string): string {
+async function buildReactivationEmail(nome: string): Promise<string> {
+  const productsGrid = await buildTopProductsGrid(4);
+
   return emailWrapper(`
-    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! 👋</p>
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 👋</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
       Faz um tempinho que você não aparece por aqui e sentimos sua falta!
     </p>
@@ -951,10 +1067,10 @@ function buildReactivationEmail(nome: string): string {
       <p style="font-size:40px;margin:0;">💌</p>
       <p style="color:#C2185B;font-weight:600;margin:10px 0 0;">Temos novidades para você!</p>
     </div>
-    <p style="font-size:15px;color:#555;line-height:1.6;">
-      Adicionamos muitos produtos novos na loja. Vem conferir o que preparamos
-      especialmente para quem ama papelaria!
-    </p>
+    ${productsGrid}
+    <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
+      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+    </div>
     ${ctaButton("Ver novidades", "https://www.papelariabibelo.com.br")}
   `);
 }
@@ -965,7 +1081,7 @@ function buildLeadCartEmail(nome: string, metadata: Record<string, unknown>): st
   const cupom = (metadata.cupom as string) || "CLUBEBIBELO";
   const productName = (metadata.resource_nome as string) || "";
   const productImg = safeImageUrl(metadata.resource_imagem as string);
-  const productUrl = (metadata.recovery_url as string) || "https://www.papelariabibelo.com.br";
+  const productUrl = cleanProductUrl(metadata.recovery_url as string);
 
   const productBlock = productName ? `
     <div style="background:#fef6fa;border-radius:12px;padding:20px;text-align:center;margin:20px 0;">
@@ -974,7 +1090,7 @@ function buildLeadCartEmail(nome: string, metadata: Record<string, unknown>): st
     </div>` : "";
 
   return emailWrapper(`
-    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! 👋</p>
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 👋</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
       Vimos que você se interessou por algo na nossa loja${productName ? ` — <strong>${productName}</strong>` : ""}!
     </p>
@@ -1014,7 +1130,7 @@ async function buildPopularProductsEmail(nome: string): Promise<string> {
   if (topProducts.length >= 2) {
     productsHtml = topProducts.map(p => {
       const img = safeImageUrl(p.resource_imagem);
-      const link = p.pagina || "https://www.papelariabibelo.com.br";
+      const link = cleanProductUrl(p.pagina);
       const preco = p.resource_preco ? `R$ ${Number(p.resource_preco).toFixed(2).replace(".", ",")}` : "";
       return `
         <a href="${link}" style="display:block;text-decoration:none;background:#fff;border:1px solid #f0e0f0;border-radius:10px;padding:12px;margin:8px 0;">
@@ -1023,7 +1139,7 @@ async function buildPopularProductsEmail(nome: string): Promise<string> {
               <img src="${img}" alt="" width="60" height="60" style="width:60px;height:60px;object-fit:cover;border-radius:8px;" />
             </td>
             <td style="vertical-align:middle;padding-left:12px;">
-              <p style="font-size:14px;color:#333;font-weight:600;margin:0 0 4px;">${p.resource_nome}</p>
+              <p style="font-size:14px;color:#333;font-weight:600;margin:0 0 4px;">${escHtml(p.resource_nome)}</p>
               ${preco ? `<p style="font-size:14px;color:#fe68c4;font-weight:700;margin:0;">${preco}</p>` : ""}
             </td>
           </tr></table>
@@ -1041,7 +1157,7 @@ async function buildPopularProductsEmail(nome: string): Promise<string> {
   }
 
   return emailWrapper(`
-    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! ✨</p>
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! ✨</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
       Quer saber quais são os <strong>produtos mais amados</strong> pelas nossas clientes?
       Separamos os queridinhos da Papelaria Bibelô para você:
@@ -1060,7 +1176,7 @@ function buildCouponReminderEmail(nome: string, metadata: Record<string, unknown
   const cupom = (metadata.cupom as string) || "CLUBEBIBELO";
 
   return emailWrapper(`
-    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! ⏰</p>
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! ⏰</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
       Passando para lembrar: seu cupom de <strong>7% de desconto</strong>
       ainda está ativo, mas não vai durar para sempre!
@@ -1104,7 +1220,7 @@ async function buildSocialProofEmail(nome: string, _metadata: Record<string, unk
   }).join("");
 
   return emailWrapper(`
-    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>! ⭐</p>
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! ⭐</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
       Quem compra na Papelaria Bibelô, volta sempre!
       Veja o que nossas clientes estão dizendo:
@@ -1130,6 +1246,197 @@ async function buildSocialProofEmail(nome: string, _metadata: Record<string, unk
   `);
 }
 
+// ── Template: Novidades da Semana ─────────────────────────────
+
+async function buildNewsEmail(nome: string): Promise<string> {
+  // Busca 4 produtos adicionados/atualizados recentemente no tracking
+  const recentProducts = await query<{
+    resource_nome: string; resource_preco: number; resource_imagem: string; pagina: string;
+  }>(
+    `SELECT resource_nome, MAX(resource_preco) AS resource_preco,
+            MAX(resource_imagem) AS resource_imagem, MAX(pagina) AS pagina
+     FROM crm.tracking_events
+     WHERE evento = 'product_view' AND resource_nome IS NOT NULL
+       AND resource_imagem IS NOT NULL AND criado_em > NOW() - INTERVAL '14 days'
+     GROUP BY resource_nome ORDER BY MAX(criado_em) DESC LIMIT 4`
+  );
+
+  let productsHtml = "";
+  if (recentProducts.length >= 2) {
+    productsHtml = recentProducts.map(p => {
+      const img = safeImageUrl(p.resource_imagem);
+      const link = cleanProductUrl(p.pagina);
+      const preco = p.resource_preco ? `R$ ${Number(p.resource_preco).toFixed(2).replace(".", ",")}` : "";
+      return `
+        <a href="${link}" style="display:block;text-decoration:none;background:#fff;border:1px solid #f0e0f0;border-radius:10px;padding:12px;margin:8px 0;">
+          <table width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td width="70" style="vertical-align:top;">
+              <img src="${img}" alt="" width="60" height="60" style="width:60px;height:60px;object-fit:cover;border-radius:8px;" />
+            </td>
+            <td style="vertical-align:middle;padding-left:12px;">
+              <p style="font-size:14px;color:#333;font-weight:600;margin:0 0 4px;">${escHtml(p.resource_nome)}</p>
+              ${preco ? `<p style="font-size:14px;color:#fe68c4;font-weight:700;margin:0;">${preco}</p>` : ""}
+            </td>
+          </tr></table>
+        </a>`;
+    }).join("");
+  } else {
+    productsHtml = `
+      <div style="background:#fef6fa;border-radius:12px;padding:20px;margin:10px 0;">
+        <p style="font-size:15px;color:#555;margin:0 0 10px;">🎀 Agendas e planners decorados</p>
+        <p style="font-size:15px;color:#555;margin:0 0 10px;">✏️ Canetas e marcadores fofos</p>
+        <p style="font-size:15px;color:#555;margin:0 0 10px;">📒 Cadernos e blocos especiais</p>
+        <p style="font-size:15px;color:#555;margin:0;">🎁 Presentes criativos e kits</p>
+      </div>`;
+  }
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🆕</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Chegaram <strong>novidades fresquinhas</strong> na Papelaria Bibelô!
+      Dá uma olhada no que separamos para você esta semana:
+    </p>
+    ${productsHtml}
+    <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
+      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+    </div>
+    ${ctaButton("Ver todas as novidades", "https://www.papelariabibelo.com.br")}
+  `);
+}
+
+// ── Template: Lead Cupom Exclusivo ────────────────────────────
+
+function buildLeadCouponEmail(nome: string, metadata: Record<string, unknown>): string {
+  const cupom = escHtml(String(metadata.cupom || "CLUBEBIBELO"));
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🎁</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Você faz parte do <strong>Clube Bibelô</strong> e preparamos algo especial:
+      um cupom exclusivo para a sua primeira compra!
+    </p>
+    <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border:2px dashed #fe68c4;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
+      <p style="font-size:13px;color:#888;margin:0;text-transform:uppercase;letter-spacing:1px;">Seu cupom exclusivo</p>
+      <p style="font-size:32px;font-weight:700;color:#fe68c4;margin:8px 0;letter-spacing:2px;">${cupom}</p>
+      <p style="font-size:14px;color:#555;margin:0;">Desconto na primeira compra · Use no checkout</p>
+    </div>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Temos agendas, cadernos, canetas e presentes que vão te encantar.
+      É só aplicar o cupom no carrinho!
+    </p>
+    ${ctaButton("Usar meu cupom agora", "https://www.papelariabibelo.com.br")}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      Cupom válido para primeira compra. Não acumulável.
+    </p>
+  `);
+}
+
+// ── Template: FOMO Grupo VIP WhatsApp ─────────────────────────
+
+function buildFomoVipEmail(nome: string): string {
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🔥</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Sabia que a Papelaria Bibelô tem um <strong>grupo VIP no WhatsApp</strong>
+      com mais de 115 membros?
+    </p>
+    <div style="background:linear-gradient(135deg,#E8F5E9,#fff7c1);border-radius:12px;padding:20px;text-align:center;margin:20px 0;">
+      <p style="font-size:32px;margin:0;">💬✨</p>
+      <p style="font-size:16px;color:#2E7D32;font-weight:700;margin:10px 0 4px;">Grupo VIP · +115 membros</p>
+      <p style="font-size:13px;color:#555;margin:0;">Lançamentos antecipados · Promoções exclusivas · Esgota rápido!</p>
+    </div>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      As membros do grupo sempre garantem os produtos antes de todo mundo.
+      Semana passada, alguns lançamentos esgotaram em poucas horas!
+    </p>
+    ${ctaButton("Quero entrar no grupo VIP", "https://wa.me/5547933862514?text=Oi!%20Quero%20entrar%20no%20grupo%20VIP%20da%20Bibelô!")}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      Vagas limitadas. Sem spam — só novidades e ofertas exclusivas.
+    </p>
+  `);
+}
+
+// ── Template: Produto Visitado ─────────────────────────────────
+
+function buildProductVisitedEmail(nome: string, metadata: Record<string, unknown>): string {
+  const productName = escHtml(String(metadata.resource_nome || ""));
+  const productImg = safeImageUrl(metadata.resource_imagem as string);
+  const productUrl = cleanProductUrl((metadata.resource_url as string) || (metadata.pagina as string));
+  const productPrice = metadata.resource_preco ? formatBRL(metadata.resource_preco) : "";
+
+  const productBlock = productName ? `
+    <div style="background:#fef6fa;border-radius:12px;padding:20px;text-align:center;margin:20px 0;">
+      ${productImg ? `<a href="${productUrl}" style="text-decoration:none;"><img src="${productImg}" alt="${productName}" style="max-width:280px;width:100%;height:auto;border-radius:12px;margin-bottom:12px;" /></a>` : ""}
+      <p style="font-size:16px;font-weight:600;color:#333;margin:0;">${productName}</p>
+      ${productPrice ? `<p style="font-size:18px;font-weight:700;color:#fe68c4;margin:8px 0 0;">${productPrice}</p>` : ""}
+    </div>` : "";
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 👀</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Notamos que você está de olho ${productName ? `em <strong>${productName}</strong>` : "em algo especial"}.
+      Bom gosto! Esse é um dos nossos favoritos.
+    </p>
+    ${productBlock}
+    <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
+      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+    </div>
+    ${ctaButton(productName ? "Ver este produto" : "Voltar à loja", productUrl)}
+  `);
+}
+
+// ── Template: Convite VIP WhatsApp ────────────────────────────
+
+function buildVipInviteEmail(nome: string): string {
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🎀</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Gostamos tanto de ter você por aqui que queremos te convidar para
+      o nosso <strong>grupo VIP no WhatsApp</strong>!
+    </p>
+    <div style="background:#fef6fa;border-radius:12px;padding:24px;text-align:center;margin:20px 0;">
+      <p style="font-size:36px;margin:0;">🎀💬</p>
+      <p style="font-size:18px;color:#fe68c4;font-weight:700;margin:12px 0 6px;">Convite exclusivo</p>
+      <p style="font-size:14px;color:#555;margin:0;line-height:1.5;">
+        Lançamentos antes de todo mundo<br/>
+        Promoções só para o grupo<br/>
+        Dicas de papelaria e organização
+      </p>
+    </div>
+    ${ctaButton("Aceitar convite VIP", "https://wa.me/5547933862514?text=Oi!%20Aceito%20o%20convite%20para%20o%20grupo%20VIP!")}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      Grupo com +115 membros. Sem spam, prometemos! 💕
+    </p>
+  `);
+}
+
+// ── Template: Pedido de Avaliação (Google Reviews) ────────────
+
+function buildReviewRequestEmail(nome: string, metadata: Record<string, unknown>): string {
+  const valor = formatBRL(metadata.valor);
+
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 💕</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Esperamos que você tenha amado seus produtos${valor ? ` (pedido de ${valor})` : ""}!
+      Sua opinião é muito importante para nós.
+    </p>
+    <div style="background:#fff7c1;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
+      <p style="font-size:36px;margin:0;">⭐⭐⭐⭐⭐</p>
+      <p style="font-size:16px;color:#333;font-weight:700;margin:10px 0 4px;">Conta pra gente: o que achou?</p>
+      <p style="font-size:13px;color:#555;margin:0;">Leva menos de 1 minuto e ajuda muito!</p>
+    </div>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Cada avaliação nos ajuda a encantar ainda mais pessoas que amam papelaria.
+      Ficaríamos muito felizes com a sua! 🙏
+    </p>
+    ${ctaButton("Deixar minha avaliação", "https://g.page/r/CdahFa43hhIXEAE/review")}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      A avaliação é feita pelo Google — rápida e segura.
+    </p>
+  `);
+}
+
 // ── Build email por template name ──────────────────────────────
 
 async function buildFlowEmail(nome: string, templateName: string, metadata: Record<string, unknown>): Promise<string> {
@@ -1138,6 +1445,12 @@ async function buildFlowEmail(nome: string, templateName: string, metadata: Reco
   // Lead quente ANTES de carrinho abandonado (ambos contêm "carrinho")
   if (lower.includes("lead quente") || lower.includes("lead interessado")) {
     return buildLeadCartEmail(nome, metadata);
+  }
+  if (lower.includes("cupom recupera")) {
+    return buildCartCouponEmail(nome, metadata);
+  }
+  if (lower.includes("carrinho reenvio") || lower.includes("carrinho lembrete")) {
+    return buildCartReminderEmail(nome, metadata);
   }
   if (lower.includes("carrinho abandonado") || lower.includes("recuperação")) {
     return buildAbandonedCartEmail(nome, metadata);
@@ -1149,10 +1462,28 @@ async function buildFlowEmail(nome: string, templateName: string, metadata: Reco
     return buildThankYouEmail(nome, metadata);
   }
   if (lower.includes("boas-vindas") || lower.includes("welcome") || lower.includes("bem-vind")) {
-    return buildWelcomeEmail(nome);
+    return await buildWelcomeEmail(nome);
   }
-  if (lower.includes("reativação") || lower.includes("saudade") || lower.includes("inativ")) {
-    return buildReactivationEmail(nome);
+  if (lower.includes("reativação") || lower.includes("saudade") || lower.includes("inativ") || lower.includes("sentimos")) {
+    return await buildReactivationEmail(nome);
+  }
+  if (lower.includes("novidades") || lower.includes("semana")) {
+    return await buildNewsEmail(nome);
+  }
+  if (lower.includes("lead cupom") || lower.includes("cupom exclusi")) {
+    return buildLeadCouponEmail(nome, metadata);
+  }
+  if (lower.includes("fomo") || lower.includes("grupo vip")) {
+    return buildFomoVipEmail(nome);
+  }
+  if (lower.includes("produto visitado") || lower.includes("viu produto")) {
+    return buildProductVisitedEmail(nome, metadata);
+  }
+  if (lower.includes("convite vip") || lower.includes("convite whatsapp")) {
+    return buildVipInviteEmail(nome);
+  }
+  if (lower.includes("avaliação") || lower.includes("review") || lower.includes("pedido de avalia")) {
+    return buildReviewRequestEmail(nome, metadata);
   }
   if (lower.includes("produtos populares") || lower.includes("mais vendidos")) {
     return await buildPopularProductsEmail(nome);
@@ -1174,8 +1505,9 @@ async function buildFlowEmail(nome: string, templateName: string, metadata: Reco
   }
 
   // Fallback genérico
+  logger.warn("buildFlowEmail: template sem match, usando fallback", { templateName });
   return emailWrapper(`
-    <p style="font-size:16px;color:#333;">Oi, <strong>${nome || "Cliente"}</strong>!</p>
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>!</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
       Temos novidades especiais para você na Papelaria Bibelô! Venha conferir.
     </p>
@@ -1192,11 +1524,17 @@ function getFlowSubject(templateName: string, nome: string): string {
   if (lower.includes("lead quente") || lower.includes("lead interessado")) {
     return `${nome || "Oi"}, vimos que você gostou! Use seu cupom 🛍️`;
   }
+  if (lower.includes("cupom recupera")) {
+    return `🎁 ${nome || "Oi"}, um presente para você finalizar sua compra!`;
+  }
+  if (lower.includes("carrinho reenvio") || lower.includes("carrinho lembrete")) {
+    return `${nome || "Oi"}, +500 clientes aprovam — seus itens ainda estão aqui! 💕`;
+  }
   if (lower.includes("carrinho") || lower.includes("recuperação")) {
-    return `${nome || "Oi"}, seus itens estão esperando! 🛒`;
+    return `${nome || "Oi"}, seus itens estão reservados! 🛒`;
   }
   if (lower.includes("última chance") || lower.includes("ultima chance")) {
-    return `⏰ Última chance para garantir seus produtos, ${nome || "Cliente"}!`;
+    return `⏰ Última chance, ${nome || "Cliente"} — estoque quase esgotado!`;
   }
   if (lower.includes("agradecimento") || lower.includes("pós-compra")) {
     return `Obrigada pela compra, ${nome || "Cliente"}! 💕`;
@@ -1204,8 +1542,26 @@ function getFlowSubject(templateName: string, nome: string): string {
   if (lower.includes("boas-vindas")) {
     return `Bem-vinda à Papelaria Bibelô, ${nome || "Cliente"}! 🎀`;
   }
-  if (lower.includes("reativação") || lower.includes("inativ")) {
+  if (lower.includes("reativação") || lower.includes("inativ") || lower.includes("sentimos")) {
     return `Sentimos sua falta, ${nome || "Cliente"}! 💌`;
+  }
+  if (lower.includes("novidades") || lower.includes("semana")) {
+    return `${nome || "Oi"}, novidades fresquinhas na Bibelô! 🆕`;
+  }
+  if (lower.includes("lead cupom") || lower.includes("cupom exclusi")) {
+    return `🎁 ${nome || "Oi"}, seu cupom exclusivo está esperando!`;
+  }
+  if (lower.includes("fomo") || lower.includes("grupo vip")) {
+    return `${nome || "Oi"}, +115 membros já garantiram — e você? 🔥`;
+  }
+  if (lower.includes("produto visitado") || lower.includes("viu produto")) {
+    return `${nome || "Oi"}, ainda de olho? Temos boas notícias! 👀`;
+  }
+  if (lower.includes("convite vip") || lower.includes("convite whatsapp")) {
+    return `${nome || "Oi"}, você foi convidada para o grupo VIP! 🎀`;
+  }
+  if (lower.includes("avaliação") || lower.includes("review") || lower.includes("pedido de avalia")) {
+    return `${nome || "Oi"}, conta pra gente: o que achou? ⭐`;
   }
   if (lower.includes("produtos populares") || lower.includes("mais vendidos")) {
     return `${nome || "Oi"}, esses são os queridinhos da Bibelô! ✨`;
@@ -1473,7 +1829,7 @@ export async function checkLeadCartAbandoned(): Promise<number> {
   let triggered = 0;
 
   for (const lead of hotLeads) {
-    const productUrl = lead.pagina || "https://www.papelariabibelo.com.br";
+    const productUrl = cleanProductUrl(lead.pagina);
 
     const executionIds = await triggerFlow("lead.cart_abandoned", lead.customer_id, {
       resource_nome: lead.resource_nome,
@@ -1549,7 +1905,7 @@ export async function checkProductInterest(): Promise<number> {
   let triggered = 0;
 
   for (const item of interested) {
-    const productUrl = item.pagina || `https://www.papelariabibelo.com.br`;
+    const productUrl = cleanProductUrl(item.pagina);
 
     const executionIds = await triggerFlow("product.interested", item.customer_id, {
       resource_id: item.resource_id,
