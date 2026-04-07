@@ -1077,15 +1077,19 @@ async function buildNfProductsGrid(limit = 4): Promise<string> {
   if (produtos.length === 0) return "";
 
   // 2. Busca imagens frescas via NuvemShop API (URLs do banco podem estar expiradas na CDN)
+  //    Usa search por nome (GET /products/{id} retorna 404 na NS API, search funciona)
   const freshImages: Record<string, string> = {};
   try {
     const token = await getNuvemShopToken();
     if (token) {
       for (const p of produtos) {
         try {
-          const res = await nsRequest("get", `/products/${p.ns_id}/images?fields=id,src`, token);
-          if (Array.isArray(res) && res.length > 0 && res[0].src) {
-            freshImages[p.ns_id] = res[0].src;
+          const term = encodeURIComponent(p.ns_nome.substring(0, 30));
+          const res = await nsRequest<Array<{ id: number; images?: Array<{ src: string }> }>>(
+            "get", `/products?q=${term}&fields=id,images&per_page=1`, token
+          );
+          if (Array.isArray(res) && res[0]?.images?.[0]?.src) {
+            freshImages[p.ns_id] = res[0].images[0].src;
           }
         } catch { /* ignora — usa fallback */ }
       }
