@@ -606,3 +606,28 @@ Para histórico completo e atualizado, usar `git log --oneline`.
 
 - **Limpeza de dados de teste**
   - Removidos: Macedo Teste, cupom-test-vitest, Cliente anônimo, test-123
+
+### Sessão 07/04 (parte 2) — Dashboard períodos + Emails com produtos reais
+
+- **f200d4f** — feat: filtros "Hoje" (1d) e "3 dias" (3d) nos dashboards
+  - 6 páginas: Dashboard, Lucratividade, Inteligência, ConsumoEmail, MetaAds, (+ Vendas já tinha 30d+)
+  - 2 backends: `periodoToInterval()` em analytics.ts e products.ts
+  - Comparativo automático: "Hoje" compara com ontem, "3 dias" compara com 3 anteriores
+
+- **8077fb5** — fix: emails automáticos puxam produtos da última NF entrada
+  - Substituído `buildTopProductsGrid()` (tracking_events) por `buildNfProductsGrid()` (NF entrada)
+  - Cruza itens NF → Bling (SKU) → NuvemShop (nome limpo, preço, imagem, link)
+  - Afeta templates: Novidades, Reativação, Boas-vindas
+
+- **629dc26** — fix: imagens frescas via NuvemShop API
+  - URLs de imagem no banco estavam expiradas na CDN (403)
+  - Busca imagens frescas diretamente da NuvemShop API a cada envio
+
+- **be6b5c2** — fix: busca imagens via search (GET /products/{id} retorna 404)
+  - Endpoint direto NuvemShop 404 → troca para `/products?q=nome` que funciona
+
+- **70080b1** — fix: validação completa dos produtos nos emails
+  - Cada produto precisa ter: imagem ✓, link pro site ✓, preço > 0 ✓
+  - Se produto da última NF não atende → puxa de NFs anteriores automaticamente
+  - Zero fallback lacinho — só entra produto 100% validado
+  - Candidatos de todas as NFs, ordenados por data_emissao DESC

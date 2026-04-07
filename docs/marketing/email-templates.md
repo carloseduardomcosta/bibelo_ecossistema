@@ -18,7 +18,7 @@ Referência completa dos templates de email usados nos fluxos automáticos.
 | `cleanProductUrl()` | `api/src/services/flow.service.ts` | Remove fbclid/UTMs de ads, adiciona UTMs de flow |
 | `proxyImageUrl()` | `api/src/routes/email.ts` | Proxy de imagens: cacheia + converte webp→jpg (Sharp) |
 | `buildCartProductsTable()` | `api/src/services/flow.service.ts` | Tabela de produtos reutilizável (imagem + nome + preço + qtd) |
-| `buildTopProductsGrid()` | `api/src/services/flow.service.ts` | Grid de produtos mais vistos do tracking (async, busca no banco) |
+| `buildNfProductsGrid()` | `api/src/services/flow.service.ts` | Grid de produtos validados da última NF entrada (async, valida via NuvemShop API) |
 
 ### Layout padrão (emailWrapper)
 
@@ -104,7 +104,7 @@ Todas as imagens externas passam pelo proxy `proxyImageUrl()`:
 | 12 | `Novidades da Semana` | `buildNewsEmail` | `{nome}, novidades fresquinhas na Bibelô! 🆕` |
 | 13 | `Produtos populares` | `buildPopularProductsEmail` | `{nome}, esses são os queridinhos da Bibelô! ✨` |
 
-**Dados reais**: Produto visitado usa metadata do tracking (imagem, nome, preço, URL). Novidades e Populares buscam top 4 produtos do `crm.tracking_events` dos últimos 14-30 dias.
+**Dados reais**: Produto visitado usa metadata do tracking (imagem, nome, preço, URL). Novidades usa `buildNfProductsGrid()` — busca produtos da última NF de entrada, valida cada um na NuvemShop API (imagem + link + preço > 0), e se não atende puxa de NFs anteriores. Populares busca top 4 do `crm.tracking_events` (últimos 30 dias).
 
 ### Pós-compra
 
@@ -136,7 +136,7 @@ Todas as imagens externas passam pelo proxy `proxyImageUrl()`:
 | 23 | `Sentimos sua falta` | `buildReactivationEmail` | (mesmo) |
 
 **Cupom**: step "Reativação cupom" gera cupom único BIB-NOME-XXXX (10%, 7 dias).
-**Dados reais**: mostra top 4 produtos mais vistos com imagens reais do tracking.
+**Dados reais**: mostra 4 produtos da última NF de entrada, validados via NuvemShop API (imagem + link + preço). Se NF recente não tem produtos suficientes, puxa de NFs anteriores.
 
 ### Outros
 

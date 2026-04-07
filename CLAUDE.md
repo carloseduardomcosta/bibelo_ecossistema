@@ -430,7 +430,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 5 de Abril de 2026 — auditoria NuvemShop vs CRM, 23 templates email (7 fallbacks corrigidos), proxy webp→jpg, cleanProductUrl, produtos reais nos templates estáticos, docs/marketing/email-templates.md*
+*Última atualização: 7 de Abril de 2026 — filtros "Hoje"/"3 dias" nos dashboards, emails automáticos com produtos reais da NF entrada (validação completa via NuvemShop API: imagem + link + preço), fallback para NFs anteriores*
 
 ---
 
