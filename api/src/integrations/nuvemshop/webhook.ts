@@ -165,12 +165,63 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
         itens: products.map((p) => ({ name: p.name, quantity: p.quantity })),
       });
 
-      // Registrar evento "purchase" no tracking para aparecer na Atividade em Tempo Real
-      const visitorRow = await queryOne<{ visitor_id: string }>(
+      // ── Vincular visitor_id ao customer (resolve fragmentação de IDs de ads/webviews) ──
+      // 1. Buscar visitor_id do checkout_start que contém o ns_id na URL
+      const checkoutEvent = await queryOne<{ visitor_id: string }>(
+        `SELECT visitor_id FROM crm.tracking_events
+         WHERE evento = 'checkout_start' AND pagina LIKE '%' || $1 || '%'
+         ORDER BY criado_em DESC LIMIT 1`,
+        [resourceId]
+      );
+      // 2. Fallback: visitor_customers já existente, ou gerar ID sintético
+      const existingLink = await queryOne<{ visitor_id: string }>(
         "SELECT visitor_id FROM crm.visitor_customers WHERE customer_id = $1",
         [customerId]
       );
-      const visitorId = visitorRow?.visitor_id || `ns-order-${resourceId}`;
+      const visitorId = checkoutEvent?.visitor_id || existingLink?.visitor_id || `ns-order-${resourceId}`;
+
+      // 3. Criar/atualizar vínculo visitor_customers
+      if (checkoutEvent?.visitor_id || !existingLink) {
+        await query(
+          `INSERT INTO crm.visitor_customers (visitor_id, customer_id)
+           VALUES ($1, $2)
+           ON CONFLICT (visitor_id) DO UPDATE SET customer_id = $2, vinculado_em = NOW()`,
+          [visitorId, customerId]
+        );
+      }
+
+      // 4. Retroativamente vincular todos os tracking_events deste visitor ao customer
+      await query(
+        "UPDATE crm.tracking_events SET customer_id = $2 WHERE visitor_id = $1 AND customer_id IS NULL",
+        [visitorId, customerId]
+      );
+
+      // 5. Unificar visitor_ids fragmentados (webviews de ads) —
+      //    buscar outros visitors ativos nos 30min antes do checkout que não têm customer
+      if (checkoutEvent?.visitor_id) {
+        const fragmentedVisitors = await query<{ visitor_id: string }>(
+          `SELECT DISTINCT visitor_id FROM crm.tracking_events
+           WHERE criado_em BETWEEN (
+             (SELECT criado_em FROM crm.tracking_events WHERE visitor_id = $1 ORDER BY criado_em ASC LIMIT 1) - INTERVAL '5 minutes'
+           ) AND (
+             (SELECT criado_em FROM crm.tracking_events WHERE visitor_id = $1 ORDER BY criado_em DESC LIMIT 1)
+           )
+           AND visitor_id != $1
+           AND customer_id IS NULL
+           AND ip IS NOT NULL
+           AND ip = (SELECT ip FROM crm.tracking_events WHERE visitor_id = $1 AND ip IS NOT NULL LIMIT 1)`,
+          [visitorId]
+        );
+        for (const frag of fragmentedVisitors) {
+          await query(
+            "UPDATE crm.tracking_events SET customer_id = $2 WHERE visitor_id = $1 AND customer_id IS NULL",
+            [frag.visitor_id, customerId]
+          );
+          logger.info("Visitor fragmentado vinculado ao customer", { fragmentedVisitorId: frag.visitor_id, mainVisitorId: visitorId, customerId });
+        }
+      }
+
+      // ── Registrar evento "purchase" no tracking (Atividade em Tempo Real) ──
       const itemNomes = products.map((p) => p.name).filter(Boolean).join(", ");
       await query(
         `INSERT INTO crm.tracking_events (visitor_id, customer_id, evento, pagina, resource_id, resource_nome, resource_preco, metadata)
