@@ -232,6 +232,20 @@ flowsRouter.get("/upcoming", async (_req: Request, res: Response) => {
       let preview_html: string | null = null;
       if (analysis.proximo_template) {
         try {
+          // Enriquecer metadata para preview realista
+          const tplLow = (analysis.proximo_template || "").toLowerCase();
+          const isAgradecimento = tplLow.includes("agradecimento") || tplLow.includes("pós-compra");
+          if (isAgradecimento) {
+            const scoreData = await queryOne<{ total_pedidos: string }>(
+              "SELECT total_pedidos::text FROM crm.customer_scores WHERE customer_id = (SELECT customer_id FROM marketing.flow_executions WHERE id = $1)",
+              [exec.execution_id]
+            );
+            const totalPedidos = parseInt(scoreData?.total_pedidos || "0", 10);
+            if (totalPedidos <= 2) {
+              metadata.primeira_compra = true;
+              metadata.cupom = metadata.cupom || "BIB-EXEMPLO-0000";
+            }
+          }
           preview_html = await buildFlowEmail(
             exec.cliente_nome || "Cliente",
             analysis.proximo_template,
