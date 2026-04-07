@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
@@ -7,7 +7,8 @@ import {
   DollarSign, ShoppingCart, TrendingUp, TrendingDown,
   AlertTriangle, PackageX, Users, ArrowUpRight, ArrowDownRight,
   ArrowDown, ArrowUp, Wallet, Minus, UserCheck, MapPin,
-  Mail, Clock, Zap, Eye, MousePointerClick, Send,
+  Mail, Clock, Zap, Eye, MousePointerClick, Send, X as XIcon,
+  GitBranch,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import api from '../lib/api';
@@ -111,6 +112,145 @@ const PERIODOS = [
   { value: '6m', label: '6 meses' },
   { value: '1a', label: '1 ano' },
 ];
+
+// ── Componente: Próximos Emails com Preview ──────────────────
+
+interface UpcomingEmail {
+  execution_id: string;
+  fluxo_nome: string;
+  cliente_nome: string;
+  cliente_email: string;
+  proximo_step_em: string;
+  step_atual: number;
+  proximo_tipo: string;
+  proximo_template: string | null;
+  template_alternativo: string | null;
+  condicao_descricao: string | null;
+  preview_html: string | null;
+}
+
+function UpcomingEmailsCard() {
+  const [upcoming, setUpcoming] = useState<UpcomingEmail[]>([]);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewInfo, setPreviewInfo] = useState<{ cliente: string; template: string } | null>(null);
+
+  const fetchUpcoming = useCallback(async () => {
+    try {
+      const res = await api.get('/flows/upcoming');
+      setUpcoming(res.data.upcoming || []);
+    } catch { /* silencioso */ }
+  }, []);
+
+  useEffect(() => { fetchUpcoming(); }, [fetchUpcoming]);
+  // Refresh a cada 2min
+  useEffect(() => {
+    const id = setInterval(fetchUpcoming, 120_000);
+    return () => clearInterval(id);
+  }, [fetchUpcoming]);
+
+  function tempoRestante(dt: string): string {
+    const diffMs = new Date(dt).getTime() - Date.now();
+    if (diffMs <= 0) return 'agora';
+    const diffH = Math.floor(diffMs / 3600000);
+    const diffM = Math.floor((diffMs % 3600000) / 60000);
+    if (diffH > 24) return `${Math.floor(diffH / 24)}d ${diffH % 24}h`;
+    if (diffH > 0) return `${diffH}h ${diffM}min`;
+    return `${diffM}min`;
+  }
+
+  return (
+    <>
+      <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+        <h3 className="text-sm font-medium text-bibelo-muted mb-3 flex items-center gap-2">
+          <Clock size={14} className="text-amber-400" /> Próximos Emails Agendados
+        </h3>
+        {!upcoming.length ? (
+          <p className="text-sm text-bibelo-muted py-6 text-center">Nenhum email agendado</p>
+        ) : (
+          <div className="space-y-1">
+            {upcoming.map((u) => (
+              <div key={u.execution_id} className="py-2.5 border-b border-bibelo-border/50 last:border-0">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                      u.proximo_tipo === 'condicao' ? 'bg-violet-400/15' : 'bg-amber-400/15'
+                    }`}>
+                      {u.proximo_tipo === 'condicao' ? <GitBranch size={13} className="text-violet-400" /> : <Mail size={13} className="text-amber-400" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm text-bibelo-text truncate">{u.cliente_nome}</p>
+                      <p className="text-xs text-bibelo-muted truncate">{u.cliente_email}</p>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <span className="inline-block text-[10px] font-medium bg-amber-400/15 text-amber-400 px-2 py-0.5 rounded-full truncate max-w-[140px]">
+                      {u.fluxo_nome}
+                    </span>
+                    <p className="text-[10px] text-bibelo-muted mt-0.5">em {tempoRestante(u.proximo_step_em)}</p>
+                  </div>
+                </div>
+
+                {/* Template e condição */}
+                <div className="mt-1.5 ml-9 flex items-center gap-2 flex-wrap">
+                  {u.proximo_template && (
+                    <span className="text-[10px] px-2 py-0.5 bg-pink-400/10 text-pink-400 rounded-full font-medium">
+                      {u.proximo_template}
+                    </span>
+                  )}
+                  {u.template_alternativo && (
+                    <>
+                      <span className="text-[10px] text-bibelo-muted">ou</span>
+                      <span className="text-[10px] px-2 py-0.5 bg-violet-400/10 text-violet-400 rounded-full font-medium">
+                        {u.template_alternativo}
+                      </span>
+                    </>
+                  )}
+                  {u.preview_html && (
+                    <button
+                      onClick={() => { setPreviewHtml(u.preview_html); setPreviewInfo({ cliente: u.cliente_nome, template: u.proximo_template || '' }); }}
+                      className="text-[10px] px-2 py-0.5 bg-bibelo-primary/10 text-bibelo-primary rounded-full font-medium hover:bg-bibelo-primary/20 transition-colors cursor-pointer"
+                    >
+                      Preview
+                    </button>
+                  )}
+                </div>
+
+                {u.condicao_descricao && (
+                  <p className="text-[10px] text-bibelo-muted/70 ml-9 mt-1 italic">{u.condicao_descricao}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Modal Preview */}
+      {previewHtml && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setPreviewHtml(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b bg-bibelo-bg">
+              <div>
+                <p className="text-sm font-bold text-bibelo-text">Preview do Email</p>
+                <p className="text-xs text-bibelo-muted">{previewInfo?.cliente} — {previewInfo?.template}</p>
+              </div>
+              <button onClick={() => setPreviewHtml(null)} className="p-1.5 rounded-lg hover:bg-bibelo-border/50 transition-colors">
+                <XIcon size={18} className="text-bibelo-muted" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <iframe
+                srcDoc={previewHtml}
+                title="Email Preview"
+                className="w-full h-full min-h-[600px] border-0"
+                sandbox="allow-same-origin"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -592,43 +732,8 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* Card 2: Próximos Envios */}
-                <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
-                  <h3 className="text-sm font-medium text-bibelo-muted mb-3 flex items-center gap-2">
-                    <Clock size={14} className="text-amber-400" /> Próximos Agendados
-                  </h3>
-                  {!flowActivity.upcoming.length ? (
-                    <p className="text-sm text-bibelo-muted py-6 text-center">Nenhuma automação agendada</p>
-                  ) : (
-                    <div className="space-y-1">
-                      {flowActivity.upcoming.slice(0, 10).map((u, i) => {
-                        const diffMs = new Date(u.agendado_para).getTime() - Date.now();
-                        const diffH = Math.max(0, Math.floor(diffMs / 3600000));
-                        const diffM = Math.max(0, Math.floor((diffMs % 3600000) / 60000));
-                        const tempoRestante = diffH > 24 ? `${Math.floor(diffH / 24)}d ${diffH % 24}h` : diffH > 0 ? `${diffH}h ${diffM}min` : `${diffM}min`;
-                        return (
-                          <div key={i} className="flex items-center justify-between py-2 border-b border-bibelo-border/50 last:border-0">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div className="w-7 h-7 rounded-full bg-amber-400/15 flex items-center justify-center shrink-0">
-                                {u.step_tipo === 'email' ? <Mail size={13} className="text-amber-400" /> : <Clock size={13} className="text-amber-400" />}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm text-bibelo-text truncate">{u.customer_nome}</p>
-                                <p className="text-xs text-bibelo-muted truncate">{u.customer_email}</p>
-                              </div>
-                            </div>
-                            <div className="text-right shrink-0 ml-2">
-                              <span className="inline-block text-[10px] font-medium bg-amber-400/15 text-amber-400 px-2 py-0.5 rounded-full truncate max-w-[140px]">
-                                {u.flow_nome}
-                              </span>
-                              <p className="text-[10px] text-bibelo-muted mt-0.5">em {tempoRestante}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                {/* Card 2: Próximos Envios com Preview */}
+                <UpcomingEmailsCard />
 
                 {/* Card 3: Fluxos Ativos */}
                 <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">

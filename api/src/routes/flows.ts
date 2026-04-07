@@ -3,6 +3,7 @@ import { z } from "zod";
 import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
+import { buildFlowEmail } from "../services/flow.service";
 
 export const flowsRouter = Router();
 flowsRouter.use(authMiddleware);
@@ -46,6 +47,221 @@ flowsRouter.get("/stats/reminders", async (_req: Request, res: Response) => {
   );
 
   res.json({ ...stats, pendentes });
+});
+
+// ── GET /api/flows/upcoming — próximos emails agendados ───────
+
+// Mapeamento de condição para descrição legível
+const condicaoDescricoes: Record<string, string> = {
+  email_aberto: "Se abriu o email",
+  email_clicado: "Se clicou no email",
+  comprou: "Se comprou",
+  visitou_site: "Se visitou o site",
+  viu_produto: "Se viu o produto",
+  abandonou_cart: "Se abandonou o carrinho",
+  score_minimo: "Se atingiu score mínimo",
+};
+
+interface FlowStepUpcoming {
+  tipo: "email" | "whatsapp" | "wait" | "condicao";
+  template?: string;
+  delay_horas: number;
+  condicao?: string;
+  sim?: number;
+  nao?: number;
+  proximo?: number;
+  ref_step?: number;
+  parametros?: Record<string, unknown>;
+}
+
+/**
+ * A partir do step_atual, percorre os steps do fluxo para determinar
+ * qual será o próximo email a ser disparado.
+ */
+function analyzeUpcomingEmail(
+  steps: FlowStepUpcoming[],
+  stepAtual: number,
+): {
+  proximo_tipo: string;
+  proximo_template: string | null;
+  template_alternativo: string | null;
+  condicao_descricao: string | null;
+} {
+  if (stepAtual < 0 || stepAtual >= steps.length) {
+    return { proximo_tipo: "desconhecido", proximo_template: null, template_alternativo: null, condicao_descricao: null };
+  }
+
+  const step = steps[stepAtual];
+
+  // Se o step atual é email, esse é o próximo
+  if (step.tipo === "email") {
+    return {
+      proximo_tipo: "email",
+      proximo_template: step.template || null,
+      template_alternativo: null,
+      condicao_descricao: null,
+    };
+  }
+
+  // Se é wait, o email virá DEPOIS do wait — buscar o step seguinte
+  if (step.tipo === "wait") {
+    const nextIndex = step.proximo !== undefined ? step.proximo : stepAtual + 1;
+    if (nextIndex === -1 || nextIndex >= steps.length) {
+      return { proximo_tipo: "wait", proximo_template: null, template_alternativo: null, condicao_descricao: null };
+    }
+    const nextStep = steps[nextIndex];
+    if (nextStep.tipo === "email") {
+      return {
+        proximo_tipo: "wait",
+        proximo_template: nextStep.template || null,
+        template_alternativo: null,
+        condicao_descricao: `Aguardando ${step.delay_horas}h → ${nextStep.template || "email"}`,
+      };
+    }
+    if (nextStep.tipo === "condicao") {
+      // Após o wait vem uma condição — resolver templates em profundidade
+      const simIndex = nextStep.sim ?? -1;
+      const naoIndex = nextStep.nao ?? -1;
+      const resolveT = (idx: number, d = 0): string | null => {
+        if (idx === -1 || idx >= steps.length || d > 5) return null;
+        const s = steps[idx];
+        if (s.tipo === "email") return s.template || null;
+        if (s.tipo === "wait") return resolveT(s.proximo !== undefined ? s.proximo : idx + 1, d + 1);
+        if (s.tipo === "condicao") return resolveT(s.nao ?? -1, d + 1) || resolveT(s.sim ?? -1, d + 1);
+        return null;
+      };
+      const simTemplate = resolveT(simIndex);
+      const naoTemplate = resolveT(naoIndex);
+      const descBase = condicaoDescricoes[nextStep.condicao || ""] || nextStep.condicao || "condição";
+      return {
+        proximo_tipo: "wait",
+        proximo_template: naoTemplate || simTemplate,
+        template_alternativo: naoTemplate && simTemplate && naoTemplate !== simTemplate ? simTemplate : null,
+        condicao_descricao: `Aguardando ${step.delay_horas}h → ${descBase} → sim: ${simTemplate || (simIndex === -1 ? "encerra" : `step ${simIndex}`)}, não: ${naoTemplate || (naoIndex === -1 ? "encerra" : `step ${naoIndex}`)}`,
+      };
+    }
+    return {
+      proximo_tipo: "wait",
+      proximo_template: nextStep.template || null,
+      template_alternativo: null,
+      condicao_descricao: `Aguardando ${step.delay_horas}h → step tipo ${nextStep.tipo}`,
+    };
+  }
+
+  // Se é condicao, listar os dois caminhos possíveis
+  if (step.tipo === "condicao") {
+    const simIndex = step.sim ?? -1;
+    const naoIndex = step.nao ?? -1;
+
+    // Resolve template buscando em profundidade (segue condições e waits, max 5 níveis)
+    const resolveTemplate = (idx: number, depth = 0): string | null => {
+      if (idx === -1 || idx >= steps.length || depth > 5) return null;
+      const s = steps[idx];
+      if (s.tipo === "email") return s.template || null;
+      if (s.tipo === "wait") {
+        const afterWait = s.proximo !== undefined ? s.proximo : idx + 1;
+        return resolveTemplate(afterWait, depth + 1);
+      }
+      if (s.tipo === "condicao") {
+        // Preferir caminho "não" (mais comum), fallback para "sim"
+        const naoIdx = s.nao ?? -1;
+        const simIdx = s.sim ?? -1;
+        return resolveTemplate(naoIdx, depth + 1) || resolveTemplate(simIdx, depth + 1);
+      }
+      return null;
+    };
+
+    const simTemplate = resolveTemplate(simIndex);
+    const naoTemplate = resolveTemplate(naoIndex);
+
+    const descBase = condicaoDescricoes[step.condicao || ""] || step.condicao || "condição";
+    const descSim = simTemplate || (simIndex === -1 ? "encerra" : `step ${simIndex}`);
+    const descNao = naoTemplate || (naoIndex === -1 ? "encerra" : `step ${naoIndex}`);
+
+    return {
+      proximo_tipo: "condicao",
+      proximo_template: naoTemplate || simTemplate,
+      template_alternativo: naoTemplate && simTemplate && naoTemplate !== simTemplate ? simTemplate : null,
+      condicao_descricao: `${descBase} → sim: ${descSim}, não: ${descNao}`,
+    };
+  }
+
+  return { proximo_tipo: step.tipo, proximo_template: null, template_alternativo: null, condicao_descricao: null };
+}
+
+flowsRouter.get("/upcoming", async (_req: Request, res: Response) => {
+  try {
+    const executions = await query<{
+      execution_id: string;
+      flow_id: string;
+      fluxo_nome: string;
+      steps: FlowStepUpcoming[] | string;
+      cliente_nome: string;
+      cliente_email: string;
+      proximo_step_em: string;
+      step_atual: number;
+      metadata: Record<string, unknown> | string;
+    }>(
+      `SELECT
+         fe.id AS execution_id,
+         fe.flow_id,
+         f.nome AS fluxo_nome,
+         f.steps,
+         c.nome AS cliente_nome,
+         c.email AS cliente_email,
+         fe.proximo_step_em,
+         fe.step_atual,
+         fe.metadata
+       FROM marketing.flow_executions fe
+       JOIN marketing.flows f ON f.id = fe.flow_id
+       JOIN crm.customers c ON c.id = fe.customer_id
+       WHERE fe.status = 'ativo'
+         AND fe.proximo_step_em IS NOT NULL
+       ORDER BY fe.proximo_step_em ASC
+       LIMIT 100`
+    );
+
+    const upcoming = executions.map(async (exec) => {
+      const steps: FlowStepUpcoming[] = typeof exec.steps === "string"
+        ? JSON.parse(exec.steps)
+        : exec.steps;
+      const metadata = (typeof exec.metadata === "string" ? JSON.parse(exec.metadata) : exec.metadata) || {};
+
+      const analysis = analyzeUpcomingEmail(steps, exec.step_atual);
+
+      let preview_html: string | null = null;
+      if (analysis.proximo_template) {
+        try {
+          preview_html = await buildFlowEmail(
+            exec.cliente_nome || "Cliente",
+            analysis.proximo_template,
+            metadata
+          );
+        } catch { /* preview falhou, retorna null */ }
+      }
+
+      return {
+        execution_id: exec.execution_id,
+        fluxo_nome: exec.fluxo_nome,
+        cliente_nome: exec.cliente_nome,
+        cliente_email: exec.cliente_email,
+        proximo_step_em: exec.proximo_step_em,
+        step_atual: exec.step_atual,
+        proximo_tipo: analysis.proximo_tipo,
+        proximo_template: analysis.proximo_template,
+        template_alternativo: analysis.template_alternativo,
+        condicao_descricao: analysis.condicao_descricao,
+        preview_html,
+      };
+    });
+
+    const resolved = await Promise.all(upcoming);
+    res.json({ upcoming: resolved });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido";
+    logger.error("Erro ao buscar upcoming flows", { error: message });
+    res.status(500).json({ error: "Erro ao buscar próximos emails agendados" });
+  }
 });
 
 // ── GET /api/flows — listar fluxos ────────────────────────────

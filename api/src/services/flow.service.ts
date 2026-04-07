@@ -1439,7 +1439,7 @@ function buildReviewRequestEmail(nome: string, metadata: Record<string, unknown>
 
 // ── Build email por template name ──────────────────────────────
 
-async function buildFlowEmail(nome: string, templateName: string, metadata: Record<string, unknown>): Promise<string> {
+export async function buildFlowEmail(nome: string, templateName: string, metadata: Record<string, unknown>): Promise<string> {
   const lower = (templateName || "").toLowerCase();
 
   // Lead quente ANTES de carrinho abandonado (ambos contêm "carrinho")
