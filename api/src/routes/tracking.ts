@@ -30,6 +30,12 @@ function getInternalIps(): string[] {
   return (process.env.INTERNAL_IPS || "").split(",").map(ip => ip.trim()).filter(Boolean);
 }
 
+// IPs internos que usam prefixo (ex: Netskope 163.116.230.*)
+function isInternalIp(ip: string): boolean {
+  const internals = getInternalIps();
+  return internals.some(internal => ip === internal || ip.startsWith(internal.replace(/\.\d+$/, ".")));
+}
+
 // ── Rate limit para endpoints públicos ────────────────────────
 
 const publicLimiter = rateLimit({
@@ -97,7 +103,7 @@ trackingRouter.post("/event", publicLimiter, async (req: Request, res: Response)
     : socketIp;
 
   // Ignora tráfego interno (admin) — não grava no banco
-  if (getInternalIps().includes(realIp)) {
+  if (isInternalIp(realIp)) {
     res.json({ ok: true });
     return;
   }
