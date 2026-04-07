@@ -631,3 +631,10 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Se produto da última NF não atende → puxa de NFs anteriores automaticamente
   - Zero fallback lacinho — só entra produto 100% validado
   - Candidatos de todas as NFs, ordenados por data_emissao DESC
+- **XXXXXX** — feat: triggerFlow no Clube VIP + templates adaptativos por fonte
+  - Rota `/api/links/grupo-vip` agora dispara `triggerFlow("lead.captured")`
+  - Leads VIP pulam fluxo "Lead boas-vindas clube" (já recebem welcome inline)
+  - Templates "Lead FOMO grupo VIP" e "Lead convite VIP" adaptam conteúdo por fonte
+  - VIP: vantagens de compra + cupom CLUBEBIBELO 7% / Popup: FOMO + convite grupo
+  - Subjects diferenciados por fonte (VIP vs popup)
+  - Contadores de fluxos resetados para valores reais

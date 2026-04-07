@@ -91,8 +91,10 @@ Todas as imagens externas passam pelo proxy `proxyImageUrl()`:
 |---|----------|--------|---------|
 | 7 | `Lead boas-vindas clube` | `buildWelcomeEmail` | `Bem-vinda à Papelaria Bibelô, {nome}! 🎀` |
 | 8 | `Lead cupom exclusivo` | `buildLeadCouponEmail` | `🎁 {nome}, seu cupom exclusivo está esperando!` |
-| 9 | `Lead FOMO grupo VIP` | `buildFomoVipEmail` | `{nome}, +115 membros já garantiram — e você? 🔥` |
-| 10 | `Lead convite VIP` | `buildVipInviteEmail` | `{nome}, você foi convidada para o grupo VIP! 🎀` |
+| 9 | `Lead FOMO grupo VIP` | `buildFomoVipEmail` | popup: `{nome}, +115 membros já garantiram — e você? 🔥` / VIP: `{nome}, novidades exclusivas pra você, VIP! 🔥` |
+| 10 | `Lead convite VIP` | `buildVipInviteEmail` | popup: `{nome}, você foi convidada para o grupo VIP! 🎀` / VIP: `{nome}, sua 1ª compra VIP com 7% OFF! 🎁` |
+
+**Conteúdo adaptativo por fonte**: templates 9 e 10 verificam `metadata.fonte`. Leads VIP (`grupo_vip`) recebem conteúdo sobre vantagens de compra e cupom CLUBEBIBELO. Leads popup recebem FOMO/convite para entrar no grupo.
 
 **Cupom**: step "Lead cupom exclusivo" gera cupom único BIB-NOME-XXXX (10%, 48h).
 

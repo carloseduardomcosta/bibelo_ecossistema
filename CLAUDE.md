@@ -430,7 +430,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 7 de Abril de 2026 — filtros "Hoje"/"3 dias" nos dashboards, emails automáticos com produtos reais da NF entrada (validação completa via NuvemShop API: imagem + link + preço), fallback para NFs anteriores*
+*Última atualização: 7 de Abril de 2026 — triggerFlow no Clube VIP, templates adaptativos por fonte (VIP vs popup), pular boas-vindas duplicada para VIP, contadores de fluxos corrigidos*
 
 ---
 

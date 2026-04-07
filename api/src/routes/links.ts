@@ -3,6 +3,7 @@ import { z } from "zod";
 import { query, queryOne } from "../db";
 import { resolveGeo } from "../utils/geoip";
 import { upsertCustomer } from "../services/customer.service";
+import { triggerFlow } from "../services/flow.service";
 import { sendEmail } from "../integrations/resend/email";
 import { logger } from "../utils/logger";
 import { authMiddleware } from "../middleware/auth";
@@ -1161,6 +1162,16 @@ linksRouter.post("/grupo-vip", limiter, async (req: Request, res: Response) => {
       logger.warn("Falha ao enviar boas-vindas VIP", { email, error: String(err) });
     });
   }
+
+  // Dispara fluxos lead.captured (boas-vindas + nutrição)
+  triggerFlow("lead.captured", customer.id, {
+    email,
+    nome,
+    cupom: "",
+    fonte: "grupo_vip",
+  }).catch(err => {
+    logger.warn("Falha ao disparar fluxo para VIP", { email, error: String(err) });
+  });
 
   logger.info("Nova membro no Clube VIP", { nome, email, customerId: customer.id });
 
