@@ -1037,7 +1037,7 @@ function buildThankYouEmail(nome: string, metadata: Record<string, unknown>): st
 
 // ── Helper: grid de produtos reais do tracking ───────────────
 
-async function buildNfProductsGrid(limit = 4): Promise<string> {
+export async function buildNfProductsGrid(limit = 4): Promise<string> {
   // 1. Busca candidatos de TODAS as NFs (mais recente primeiro), 3x o limite para ter margem
   const candidatos = await query<{
     ns_nome: string; ns_preco: string; ns_url: string | null; ns_id: string;
@@ -1135,6 +1135,79 @@ async function buildNfProductsGrid(limit = 4): Promise<string> {
           </td>
         </tr></table>
       </a>`).join("");
+}
+
+/** Retorna dados brutos dos produtos da última NF (para landing pages) */
+export async function getNfProducts(limit = 8): Promise<Array<{ nome: string; preco: string; img: string; link: string }>> {
+  const candidatos = await query<{
+    ns_nome: string; ns_preco: string; ns_url: string | null; ns_id: string;
+  }>(
+    `SELECT DISTINCT ON (COALESCE(ns.dados_raw->>'canonical_url', ni.descricao))
+       ns.nome as ns_nome,
+       ns.preco::text as ns_preco,
+       ns.dados_raw->>'canonical_url' as ns_url,
+       ns.ns_id::text as ns_id
+     FROM financeiro.notas_entrada_itens ni
+     JOIN financeiro.notas_entrada ne ON ne.id = ni.nota_id AND ne.status != 'cancelada'
+     LEFT JOIN LATERAL (
+       SELECT p.sku
+       FROM sync.bling_products p
+       WHERE p.sku = ni.codigo_produto
+         OR LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 20)) || '%'
+       LIMIT 1
+     ) bp ON true
+     LEFT JOIN LATERAL (
+       SELECT np.nome, np.preco, np.dados_raw, np.estoque, np.ns_id
+       FROM sync.nuvemshop_products np
+       WHERE np.sku = bp.sku
+         OR LOWER(np.nome) LIKE '%' || LOWER(SUBSTRING(ni.descricao FROM 1 FOR 20)) || '%'
+       ORDER BY similarity(LOWER(np.nome), LOWER(ni.descricao)) DESC
+       LIMIT 1
+     ) ns ON true
+     WHERE ns.nome IS NOT NULL
+       AND ns.preco > 0
+       AND (ns.estoque IS NULL OR ns.estoque > 0)
+     ORDER BY COALESCE(ns.dados_raw->>'canonical_url', ni.descricao),
+       ne.data_emissao DESC NULLS LAST`,
+    []
+  );
+
+  if (candidatos.length === 0) return [];
+
+  const valid: Array<{ nome: string; preco: string; img: string; link: string }> = [];
+  const seenUrls = new Set<string>();
+
+  let token: Awaited<ReturnType<typeof getNuvemShopToken>> = null;
+  try { token = await getNuvemShopToken(); } catch { /* sem token */ }
+
+  for (const c of candidatos) {
+    if (valid.length >= limit) break;
+    const urlKey = c.ns_url || c.ns_nome;
+    if (seenUrls.has(urlKey)) continue;
+    if (!c.ns_url) continue;
+
+    let imgSrc = "";
+    if (token) {
+      try {
+        const term = encodeURIComponent(c.ns_nome.substring(0, 30));
+        const res = await nsRequest<Array<{ id: number; images?: Array<{ src: string }> }>>(
+          "get", `/products?q=${term}&fields=id,images&per_page=1`, token
+        );
+        if (res?.[0]?.images?.[0]?.src) imgSrc = res[0].images[0].src;
+      } catch { /* API falhou */ }
+    }
+
+    if (!imgSrc) continue;
+    seenUrls.add(urlKey);
+    valid.push({
+      nome: c.ns_nome,
+      preco: `R$ ${Number(c.ns_preco).toFixed(2).replace(".", ",")}`,
+      img: imgSrc.replace(/^http:\/\//i, "https://"),
+      link: cleanProductUrl(c.ns_url),
+    });
+  }
+
+  return valid;
 }
 
 // ── Template: Boas-vindas ──────────────────────────────────────

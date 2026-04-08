@@ -4,6 +4,7 @@ import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import rateLimit from "express-rate-limit";
+import { getNfProducts } from "../services/flow.service";
 
 export const landingPagesRouter = Router();
 
@@ -38,9 +39,17 @@ landingPagesRouter.get("/:slug", publicLimiter, async (req: Request, res: Respon
   // Incrementa visitas
   await query("UPDATE marketing.landing_pages SET visitas = visitas + 1 WHERE id = $1", [page.id]);
 
+  // Carrega produtos dinâmicos da última NF (para LPs com vitrine)
+  let produtos: Array<{ nome: string; preco: string; img: string; link: string }> = [];
+  try {
+    produtos = await getNfProducts(6);
+  } catch (err) {
+    logger.warn("LP: falha ao carregar produtos NF", { slug, error: (err as Error).message });
+  }
+
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache");
-  res.send(renderLandingPage(page));
+  res.send(renderLandingPage(page, produtos));
 });
 
 // ══════════════════════════════════════════════════════════════════
@@ -148,7 +157,7 @@ function renderLandingPage(p: {
   cta_texto: string; mensagem_sucesso: string;
   redirect_url: string; redirect_delay: number;
   utm_source: string | null; utm_medium: string | null; utm_campaign: string | null;
-}): string {
+}, produtos: Array<{ nome: string; preco: string; img: string; link: string }> = []): string {
   const campos = Array.isArray(p.campos) ? p.campos : JSON.parse(p.campos as unknown as string);
   const temNome = campos.includes("nome");
   const temTelefone = campos.includes("telefone");
@@ -230,6 +239,22 @@ ${p.imagem_url ? `<meta property="og:image" content="${esc(p.imagem_url)}">` : '
       </a>
     </div>
   </div>
+
+  ${produtos.length > 0 ? `
+  <div style="padding:0 24px 20px;">
+    <p style="font-size:14px;font-weight:600;color:#2d2d2d;margin:0 0 12px;text-align:center;">Confira os últimos lançamentos:</p>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+      ${produtos.map(pr => `
+        <a href="${esc(pr.link)}" target="_blank" rel="noopener" style="text-decoration:none;background:#fafafa;border:1px solid #f0e0f0;border-radius:12px;overflow:hidden;transition:transform 0.2s;display:block;">
+          <img src="${esc(pr.img)}" alt="${esc(pr.nome)}" style="width:100%;aspect-ratio:1;object-fit:cover;" loading="lazy">
+          <div style="padding:8px 10px;">
+            <p style="font-size:12px;color:#333;margin:0 0 4px;line-height:1.3;font-weight:500;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${esc(pr.nome)}</p>
+            <p style="font-size:14px;color:${primaryColor};font-weight:700;margin:0;">${esc(pr.preco)}</p>
+          </div>
+        </a>
+      `).join('')}
+    </div>
+  </div>` : ''}
 
   <div class="footer">
     <p>Papelaria Bibelô · <span style="color:${primaryColor}">papelariabibelo.com.br</span></p>
