@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from "react"
 import { useCartStore } from "@/store/cart"
 import { useMenuStore } from "@/store/menu"
 import TopBar from "./TopBar"
+import PromoBanner from "./PromoBanner"
 
 const NAV_LINKS = [
   { label: "INÍCIO", href: "/" },
@@ -42,6 +43,7 @@ export default function Header() {
 
   return (
     <header className={`sticky top-0 inset-x-0 z-50 transition-shadow duration-300 ${scrolled ? "shadow-md" : ""}`}>
+      <PromoBanner />
       <TopBar />
 
       {/* Header principal */}

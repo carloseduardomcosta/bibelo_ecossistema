@@ -15,14 +15,6 @@ const SLIDES = [
   },
   {
     id: 2,
-    pc: "/carousel/pc/7off.webp",
-    mobile: "/carousel/pc/7off.webp", // usar PC enquanto não tem mobile
-    alt: "7% OFF na primeira compra com cupom BIBELO7",
-    href: "/produtos",
-    bg: "#fff7c1",
-  },
-  {
-    id: 3,
     pc: "/carousel/pc/grupo_vip.webp",
     mobile: "/carousel/mobile/grupovip_mobile.webp",
     alt: "Grupo VIP WhatsApp — Ofertas e Lançamentos exclusivos",
@@ -94,8 +86,8 @@ export default function HeroCarousel() {
               {...(s.external ? { target: "_blank", rel: "noreferrer" } : {})}
               className="block w-full"
             >
-              {/* Desktop — aspect 16:5 (banner largo) */}
-              <div className="hidden md:block relative w-full" style={{ aspectRatio: "16/5" }}>
+              {/* Desktop — aspect 16:6 (mais baixo) */}
+              <div className="hidden md:block relative w-full" style={{ aspectRatio: "16/6" }}>
                 <Image
                   src={s.pc}
                   alt={s.alt}
@@ -106,10 +98,10 @@ export default function HeroCarousel() {
                 />
               </div>
 
-              {/* Mobile — aspect 4:5 (portrait) ou 16:5 se não tem mobile específico */}
+              {/* Mobile — aspect 3:4 (mais compacto que 4:5) */}
               <div
                 className="block md:hidden relative w-full"
-                style={{ aspectRatio: s.mobile !== s.pc ? "4/5" : "16/7" }}
+                style={{ aspectRatio: s.mobile !== s.pc ? "3/4" : "16/7" }}
               >
                 <Image
                   src={s.mobile}
