@@ -2,7 +2,7 @@ import Link from "next/link"
 
 export default function TopBar() {
   return (
-    <div className="bg-bibelo-gray text-xs text-gray-600">
+    <div className="hidden md:block bg-bibelo-rosa text-xs text-gray-600">
       <div className="content-container">
         <div className="flex items-center justify-between h-8">
           {/* Esquerda: Redes sociais */}
