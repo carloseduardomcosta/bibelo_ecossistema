@@ -638,3 +638,29 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - VIP: vantagens de compra + cupom CLUBEBIBELO 7% / Popup: FOMO + convite grupo
   - Subjects diferenciados por fonte (VIP vs popup)
   - Contadores de fluxos resetados para valores reais
+
+### Sessão 08/04/2026 — Backlog, Backup DR, Landing Pages
+
+- **22982df** — fix: corrige 10 testes desatualizados + CI/CD com testes antes do deploy
+  - leads.test.ts: popups atualizados (BIBELO10, cache 60s, desconto_primeira_compra inativo)
+  - flows-audit.test.ts: aceita múltiplos fluxos por trigger + templates dinâmicos
+  - deploy.yml: roda testes na VPS antes de rebuild (aborta deploy se falhar)
+  - Baseline: 426/426 testes green
+
+- **b8d6e57** — feat: backup automático no Google Drive via rclone OAuth2
+  - backup.sh envia .sql.gz para Google Drive após dump local
+  - Retenção: 7 dias local, 30 dias no Drive. Cron diário 3:30 AM
+
+- **186e2de** — feat: Disaster Recovery completo — snapshot semanal no Google Drive
+  - dr-backup.sh: .env, secrets, nginx, SSL, cron, PostgreSQL (CRM+Medusa), Redis, UFW, inventário
+  - Cron: domingos 4h AM, retenção 60 dias, ~1.3MB comprimido
+
+- **e0483f9** — feat: landing pages para campanhas — captura de leads via ads
+  - Tabela marketing.landing_pages com slug, cupom, cores, UTMs, métricas
+  - Rota pública /lp/:slug serve HTML standalone
+  - CRUD admin /api/landing-pages + frontend gerenciamento com KPIs
+
+- **774ffa1** — feat: landing pages dinâmicas com produtos reais da NF + fix Nginx
+  - Vitrine: 6 produtos da última NF com validação NuvemShop (imagem + link + preço)
+  - 6 LPs criadas: novidades, canetas, marca-texto, agendas, presentes, dia-das-mães
+  - Nginx: location /lp/ no webhook subdomain

@@ -182,6 +182,15 @@ Referência completa de todos os endpoints.
 - `GET /api/email/wa` — redirect WhatsApp pelo nosso domínio (evita wa.me nos emails)
 - `GET  /api/images/bling-products` — busca produtos Bling por nome/SKU para seleção no editor
 
+### Landing Pages
+- `GET  /lp/:slug` — **(público)** página HTML da landing page com vitrine de produtos
+- `GET  /api/landing-pages` — lista todas as landing pages (admin)
+- `GET  /api/landing-pages/:id` — detalhe de uma landing page
+- `POST /api/landing-pages` — criar landing page
+- `PUT  /api/landing-pages/:id` — atualizar landing page
+- `DELETE /api/landing-pages/:id` — remover landing page
+- `POST /api/landing-pages/track/:id` — **(público)** incrementa capturas
+
 ### Webhooks (validação HMAC)
 - `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop + dispara fluxos automáticos
 - `POST /api/webhooks/bling` — recebe eventos do Bling (contatos, pedidos, estoque)

@@ -206,6 +206,57 @@ Regras: endpoint público → testes de input, token, XSS. Protegido → 401 + r
 
 ---
 
+## Landing Pages para Campanhas
+
+Páginas de captura dedicadas para ads (Instagram/Facebook). Sem distrações, focadas em conversão.
+
+### Fluxo: Ad → Landing Page → Lead → Loja
+1. Ad direciona para `webhook.papelariabibelo.com.br/lp/{slug}`
+2. Página renderiza HTML standalone (sem React, sem auth)
+3. Vitrine dinâmica: puxa 6 produtos da última NF entrada com validação NuvemShop API (imagem + link + preço > 0)
+4. Form captura nome + email → `/api/leads/capture` (popup_id: `lp_{slug}`)
+5. Após captura, redirect automático para a loja
+
+### Landing Pages ativas
+- `/lp/novidades` — últimos lançamentos
+- `/lp/canetas` — canetas premium
+- `/lp/marca-texto` — marca-textos coloridos
+- `/lp/agendas` — agendas e planners
+- `/lp/presentes` — kits e presentes
+- `/lp/dia-das-maes` — campanha sazonal
+
+### Arquivos
+- Backend: `api/src/routes/landing-pages.ts` — CRUD admin + página pública + tracking
+- Frontend: `frontend/src/pages/LandingPages.tsx` — gerenciamento com KPIs
+- Migration: `db/migrations/026_landing_pages.sql`
+- Nginx: `/etc/nginx/sites-enabled/webhook` — location `/lp/` e `/api/landing-pages/track/`
+- Dados: `marketing.landing_pages` — slug, título, cores, cupom, UTMs, visitas, capturas
+
+---
+
+## Backup e Disaster Recovery
+
+### Backup diário — Google Drive
+- **Script:** `scripts/backup.sh` — dump PostgreSQL + upload via rclone OAuth2
+- **Cron:** `30 3 * * *` (diário 3:30 AM)
+- **Destino:** Google Drive pessoal (pasta `BibeloCRM-Backups`)
+- **Retenção:** 7 dias local, 30 dias no Drive
+- **Config:** `~/.config/rclone/rclone.conf` (OAuth2 pessoal, client Desktop app)
+
+### DR semanal — Google Drive
+- **Script:** `scripts/dr-backup.sh` — snapshot completo do sistema
+- **Cron:** `0 4 * * 0` (domingos 4:00 AM)
+- **Conteúdo:** .env, secrets, nginx, SSL certs, crontab, PostgreSQL (CRM + Medusa), Redis, UFW, inventário
+- **Retenção:** 60 dias no Drive, 2 últimos locais
+- **Tamanho:** ~1.3 MB comprimido
+- **Recuperação:** VPS nova em ~30 min
+
+### CI/CD
+- **GitHub Actions:** `deploy.yml` — build CI → rsync → testes na VPS → deploy containers → health check
+- **Testes rodam ANTES do deploy** — se falharem, deploy é abortado (containers mantêm versão anterior)
+
+---
+
 ## Editor de Imagens para Marketplaces
 
 Ferramenta integrada para converter e enviar imagens de produtos para múltiplas plataformas.
@@ -430,7 +481,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 7 de Abril de 2026 — triggerFlow no Clube VIP, templates adaptativos por fonte (VIP vs popup), pular boas-vindas duplicada para VIP, contadores de fluxos corrigidos*
+*Última atualização: 8 de Abril de 2026 — landing pages para ads (6 LPs com vitrine dinâmica NF), backup Google Drive + DR semanal, CI/CD com testes, 426 testes green*
 
 ---
 
