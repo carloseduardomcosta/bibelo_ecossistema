@@ -1,4 +1,6 @@
 import Link from "next/link"
+import Image from "next/image"
+import NewsletterForm from "./NewsletterForm"
 
 export default function Footer() {
   return (
@@ -11,19 +13,7 @@ export default function Footer() {
               <h3 className="text-white font-bold text-lg">Receba novidades e ofertas exclusivas!</h3>
               <p className="text-white/80 text-sm">Cadastre seu e-mail e ganhe 7% OFF na primeira compra.</p>
             </div>
-            <form className="flex gap-2 w-full md:w-auto">
-              <input
-                type="email"
-                placeholder="Seu melhor e-mail"
-                className="flex-1 md:w-72 px-4 py-2.5 rounded-full text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-white"
-              />
-              <button
-                type="submit"
-                className="bg-white text-bibelo-pink font-bold px-6 py-2.5 rounded-full hover:bg-bibelo-yellow transition-colors whitespace-nowrap text-sm"
-              >
-                Quero desconto!
-              </button>
-            </form>
+            <NewsletterForm />
           </div>
         </div>
       </div>
@@ -110,23 +100,41 @@ export default function Footer() {
         </div>
       </div>
 
-      {/* Bottom bar */}
+      {/* Meios de pagamento e envio */}
       <div className="border-t border-gray-700">
-        <div className="content-container py-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-gray-500 text-xs text-center sm:text-left">
-              © {new Date().getFullYear()} Papelaria Bibelô. Todos os direitos reservados.
-            </p>
-            {/* Formas de pagamento */}
-            <div className="flex items-center gap-2">
-              <span className="text-gray-500 text-xs mr-1">Pagamos com:</span>
-              {["Pix", "Visa", "Master", "Elo", "Boleto"].map((method) => (
-                <span key={method} className="bg-gray-700 text-gray-300 text-[10px] px-2 py-0.5 rounded font-medium">
-                  {method}
-                </span>
-              ))}
+        <div className="content-container py-6">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-8">
+            <div className="text-center">
+              <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-3">Meios de Pagamento</p>
+              <Image
+                src="/bandeiras-aceitas.png"
+                alt="Bandeiras aceitas: Visa, Mastercard, Elo, Pix, Boleto"
+                width={280}
+                height={40}
+                className="h-8 w-auto object-contain opacity-80"
+              />
+            </div>
+            <div className="hidden sm:block w-px h-12 bg-gray-700" />
+            <div className="text-center">
+              <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-3">Meios de Envio</p>
+              <Image
+                src="/envios.png"
+                alt="Meios de envio: Correios, Jadlog, Melhor Envio"
+                width={280}
+                height={40}
+                className="h-8 w-auto object-contain opacity-80"
+              />
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Copyright */}
+      <div className="border-t border-gray-700">
+        <div className="content-container py-4">
+          <p className="text-gray-500 text-xs text-center">
+            © {new Date().getFullYear()} Papelaria Bibelô. Todos os direitos reservados.
+          </p>
         </div>
       </div>
     </footer>
