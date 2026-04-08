@@ -175,7 +175,29 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Busca mobile expandida — não precisa no mobile (bottom nav redireciona para /busca) */}
+        {/* Busca mobile */}
+        <div className="md:hidden px-4 pb-3">
+          <form onSubmit={handleSearch} className="relative">
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="O que você está buscando?"
+              className="w-full border-2 border-bibelo-pink/30 rounded-full px-4 py-2 text-sm
+                         focus:outline-none focus:border-bibelo-pink transition-colors
+                         placeholder:text-gray-400"
+            />
+            <button
+              type="submit"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-bibelo-pink"
+              aria-label="Buscar"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </button>
+          </form>
+        </div>
 
         {/* Nav bar de categorias */}
         <nav className="hidden md:block bg-bibelo-rosa/60 border-t border-bibelo-pink/10">
