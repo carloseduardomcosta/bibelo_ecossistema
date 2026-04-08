@@ -83,7 +83,7 @@ describe("GET /api/leads/confirm", () => {
     const token = gerarTokenVerificacao(TEST_EMAIL);
     const res = await request(app).get(`/api/leads/confirm?email=${encodeURIComponent(TEST_EMAIL)}&token=${token}`);
     expect(res.status).toBe(200);
-    expect(res.text).toContain("E-mail confirmado");
+    expect(res.text).toContain("Seu desconto está ativo");
   });
 
   it("é idempotente (segunda confirmação retorna 200)", async () => {
@@ -137,9 +137,10 @@ describe("GET /api/leads/popup.js", () => {
     expect(res.text).toContain("desconto=1");
   });
 
-  it("seleciona popup desconto_primeira_compra quando ?desconto=1", async () => {
+  it("seleciona popup clube_bibelo quando ?desconto=1", async () => {
     const res = await request(app).get("/api/leads/popup.js");
-    expect(res.text).toContain("desconto_primeira_compra");
+    // forceDesconto agora usa clube_bibelo (desconto_primeira_compra desativado)
+    expect(res.text).toContain("clube_bibelo");
   });
 
   it("não contém regex inválida (\\?$ deve ser escapada)", async () => {
@@ -152,7 +153,7 @@ describe("GET /api/leads/popup.js", () => {
   it("tem headers CORS corretos para cross-origin", async () => {
     const res = await request(app).get("/api/leads/popup.js");
     expect(res.headers["access-control-allow-origin"]).toBe("*");
-    expect(res.headers["cache-control"]).toContain("max-age=300");
+    expect(res.headers["cache-control"]).toContain("max-age=60");
   });
 
   it("escapa variáveis com esc() contra XSS", async () => {
@@ -170,16 +171,14 @@ describe("GET /api/leads/config — popup configs", () => {
     const res = await request(app).get("/api/leads/config");
     const clube = res.body.popups.find((p: Record<string, unknown>) => p.id === "clube_bibelo");
     expect(clube).toBeDefined();
-    expect(clube.cupom).toBe("CLUBEBIBELO");
-    expect(clube.desconto_texto).toBe("7% OFF");
+    expect(clube.cupom).toBe("BIBELO10");
+    expect(clube.desconto_texto).toBe("10% OFF");
   });
 
-  it("retorna popup desconto_primeira_compra ativo", async () => {
+  it("popup desconto_primeira_compra está inativo (não aparece na lista)", async () => {
     const res = await request(app).get("/api/leads/config");
     const desconto = res.body.popups.find((p: Record<string, unknown>) => p.id === "desconto_primeira_compra");
-    expect(desconto).toBeDefined();
-    expect(desconto.cupom).toBe("BIBELO7");
-    expect(desconto.desconto_texto).toBe("7% OFF");
+    expect(desconto).toBeUndefined();
   });
 
   it("não expõe campos sensíveis na config pública", async () => {
@@ -228,15 +227,22 @@ describe("Segurança — leads capture", () => {
     await query("DELETE FROM crm.customers WHERE email = $1", ["sqli-popup-vitest@example.com"]);
   });
 
-  it("captura com popup_id vincula ao cupom correto (BIBELO7)", async () => {
+  it("captura com popup_id vincula ao cupom correto (BIBELO10)", async () => {
+    // Limpa dados residuais de execuções anteriores
+    await query("DELETE FROM crm.deals WHERE customer_id IN (SELECT id FROM crm.customers WHERE email = $1)", ["cupom-test-vitest@example.com"]);
+    await query("DELETE FROM marketing.flow_step_executions WHERE execution_id IN (SELECT id FROM marketing.flow_executions WHERE customer_id IN (SELECT id FROM crm.customers WHERE email = $1))", ["cupom-test-vitest@example.com"]);
+    await query("DELETE FROM marketing.flow_executions WHERE customer_id IN (SELECT id FROM crm.customers WHERE email = $1)", ["cupom-test-vitest@example.com"]);
+    await query("DELETE FROM marketing.leads WHERE email = $1", ["cupom-test-vitest@example.com"]);
+    await query("DELETE FROM crm.customers WHERE email = $1", ["cupom-test-vitest@example.com"]);
+
     const res = await request(app)
       .post("/api/leads/capture")
-      .send({ email: "cupom-test-vitest@example.com", popup_id: "desconto_primeira_compra" });
+      .send({ email: "cupom-test-vitest@example.com", popup_id: "clube_bibelo" });
     expect(res.status).toBe(200);
 
     const lead = await query("SELECT cupom FROM marketing.leads WHERE email = $1", ["cupom-test-vitest@example.com"]);
     expect(lead.length).toBeGreaterThan(0);
-    expect(lead[0].cupom).toBe("BIBELO7");
+    expect(lead[0].cupom).toBe("BIBELO10");
 
     // Cleanup
     await query("DELETE FROM crm.deals WHERE customer_id IN (SELECT id FROM crm.customers WHERE email = $1)", ["cupom-test-vitest@example.com"]);
@@ -244,16 +250,16 @@ describe("Segurança — leads capture", () => {
     await query("DELETE FROM crm.customers WHERE email = $1", ["cupom-test-vitest@example.com"]);
   });
 
-  it("popup clube_bibelo tem cupom CLUBEBIBELO no banco", async () => {
+  it("popup clube_bibelo tem cupom BIBELO10 no banco", async () => {
     const popup = await query("SELECT cupom FROM marketing.popup_config WHERE id = $1 AND ativo = true", ["clube_bibelo"]);
     expect(popup.length).toBe(1);
-    expect(popup[0].cupom).toBe("CLUBEBIBELO");
+    expect(popup[0].cupom).toBe("BIBELO10");
   });
 
-  it("popup desconto_primeira_compra tem cupom BIBELO7 no banco", async () => {
-    const popup = await query("SELECT cupom FROM marketing.popup_config WHERE id = $1 AND ativo = true", ["desconto_primeira_compra"]);
+  it("popup desconto_primeira_compra está inativo no banco", async () => {
+    const popup = await query("SELECT cupom, ativo FROM marketing.popup_config WHERE id = $1", ["desconto_primeira_compra"]);
     expect(popup.length).toBe(1);
-    expect(popup[0].cupom).toBe("BIBELO7");
+    expect(popup[0].ativo).toBe(false);
   });
 
   // Rate limit DEVE ser o último teste — esgota o bucket e afeta testes seguintes

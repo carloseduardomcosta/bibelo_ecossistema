@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import { query, queryOne } from "../db";
-import { triggerFlow, executeStep, processReadySteps } from "../services/flow.service";
+import { triggerFlow, executeStep, processReadySteps, buildFlowEmail } from "../services/flow.service";
 
 // ── Constantes ─────────────────────────────────────────────────────
 
@@ -286,7 +286,8 @@ describe("Prevenção de duplicatas", () => {
 
   it("primeiro triggerFlow cria execução", async () => {
     const ids = await triggerFlow("order.delivered", testCustomerId);
-    expect(ids.length).toBe(1);
+    // Pode haver mais de 1 fluxo ativo com gatilho order.delivered (ex: Avaliação pós-entrega)
+    expect(ids.length).toBeGreaterThanOrEqual(1);
 
     const exec = await getExecucao(testFlowId, testCustomerId);
     expect(exec).not.toBeNull();
@@ -380,7 +381,7 @@ describe("Opt-out LGPD respeitado em fluxos", () => {
 // ══════════════════════════════════════════════════════════════════
 
 describe("Templates referenciados por fluxos ativos existem e estão ativos", () => {
-  it("todos os templates de email nos fluxos ativos existem no banco", async () => {
+  it("todos os templates de email nos fluxos ativos existem no banco ou são renderizados dinamicamente", async () => {
     // Busca todos os templates referenciados em steps de email de fluxos ativos
     const refs = await query<{ fluxo: string; template: string }>(
       `SELECT f.nome AS fluxo, s->>'template' AS template
@@ -400,12 +401,16 @@ describe("Templates referenciados por fluxos ativos existem e estão ativos", ()
       );
 
       if (!tpl) {
-        faltando.push(`Fluxo "${ref.fluxo}" referencia template "${ref.template}" que não existe ou está inativo`);
+        // Verifica se buildFlowEmail renderiza dinamicamente (não cai no fallback genérico)
+        const html = await buildFlowEmail("Teste", ref.template, {});
+        const isFallback = html.includes("Temos novidades especiais para você");
+        if (isFallback) {
+          faltando.push(`Fluxo "${ref.fluxo}" referencia template "${ref.template}" que não existe no banco NEM é renderizado por buildFlowEmail`);
+        }
       }
     }
 
     if (faltando.length > 0) {
-      // Falha com lista detalhada de templates faltando
       expect(faltando).toEqual([]);
     }
   });
