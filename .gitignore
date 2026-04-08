@@ -33,3 +33,4 @@ storefront/node_modules/
 # Package locks (subprojetos)
 medusa/package-lock.json
 storefront/yarn.lock
+.secrets/
