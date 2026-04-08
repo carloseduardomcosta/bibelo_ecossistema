@@ -98,10 +98,10 @@ export default function HeroCarousel() {
                 />
               </div>
 
-              {/* Mobile — aspect 4:3 (compacto, mostra cards abaixo) */}
+              {/* Mobile — aspect 5:4 (equilibrio entre imagem e cards abaixo) */}
               <div
                 className="block md:hidden relative w-full"
-                style={{ aspectRatio: "4/3" }}
+                style={{ aspectRatio: "5/4" }}
               >
                 <Image
                   src={s.mobile}
