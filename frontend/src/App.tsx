@@ -33,6 +33,7 @@ import Inteligencia from './pages/Inteligencia';
 import MetaAds from './pages/MetaAds';
 import Filas from './pages/Filas';
 import SEO from './pages/SEO';
+import LandingPages from './pages/LandingPages';
 import { ToastProvider } from './components/Toast';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
@@ -102,6 +103,7 @@ export default function App() {
               <Route path="/sync" element={<Sync />} />
               <Route path="/filas" element={<Filas />} />
               <Route path="/seo" element={<SEO />} />
+              <Route path="/landing-pages" element={<LandingPages />} />
             </Route>
           </Routes>
           </ErrorBoundary>
