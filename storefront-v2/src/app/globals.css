@@ -25,6 +25,17 @@
     font-family: 'Cormorant Garamond', Georgia, serif;
     font-weight: 600;
   }
+
+  /* Evita zoom automático do iOS em inputs (font < 16px causa zoom) */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  @media (min-width: 768px) {
+    input, select, textarea {
+      font-size: inherit !important;
+    }
+  }
 }
 
 @layer components {
@@ -133,6 +144,35 @@
   /* Linha decorativa */
   .divider-pink {
     @apply border-t border-bibelo-pink/20;
+  }
+
+  /* Páginas legais/institucionais */
+  .legal-content h2 {
+    @apply text-xl font-bold text-bibelo-dark mt-8 mb-3;
+  }
+  .legal-content h3 {
+    @apply text-lg font-semibold text-bibelo-dark mt-6 mb-2;
+  }
+  .legal-content p {
+    @apply text-gray-600 leading-relaxed;
+  }
+  .legal-content ul, .legal-content ol {
+    @apply pl-5 space-y-1;
+  }
+  .legal-content ul {
+    @apply list-disc;
+  }
+  .legal-content ol {
+    @apply list-decimal;
+  }
+  .legal-content li {
+    @apply text-gray-600;
+  }
+  .legal-content a {
+    @apply text-bibelo-pink hover:underline;
+  }
+  .legal-content strong {
+    @apply text-bibelo-dark font-semibold;
   }
 
   /* Safe area para iPhones com notch/barra inferior */
