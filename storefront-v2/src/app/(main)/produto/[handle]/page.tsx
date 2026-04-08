@@ -8,11 +8,12 @@ import { formatPrice, formatInstallments, getDiscountPercent } from "@/lib/utils
 import type { Metadata } from "next"
 
 interface Props {
-  params: { handle: string }
+  params: Promise<{ handle: string }>
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const product = await getProductByHandle(params.handle)
+  const { handle } = await params
+  const product = await getProductByHandle(handle)
   if (!product) return { title: "Produto não encontrado" }
   return {
     title: product.title,
@@ -26,7 +27,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export const revalidate = 300
 
 export default async function ProductPage({ params }: Props) {
-  const product = await getProductByHandle(params.handle)
+  const { handle } = await params
+  const product = await getProductByHandle(handle)
   if (!product) notFound()
 
   const { products: related } = await listProducts({ limit: 5 })
@@ -139,7 +141,7 @@ export default async function ProductPage({ params }: Props) {
                 Produto Esgotado
               </button>
               <a
-                href={`https://wa.me/5547933862514?text=Olá! Tenho interesse no produto: ${product.title}. Quando estará disponível?`}
+                href={`https://wa.me/5547933862514?text=${encodeURIComponent(`Olá! Tenho interesse no produto: ${product.title}. Quando estará disponível?`)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-2 flex items-center justify-center gap-2 w-full py-3 rounded-full border-2 border-green-500 text-green-600 font-semibold hover:bg-green-50 transition-colors text-sm"
@@ -178,7 +180,7 @@ export default async function ProductPage({ params }: Props) {
 
           {/* WhatsApp */}
           <a
-            href={`https://wa.me/5547933862514?text=Olá! Tenho dúvidas sobre: ${product.title}`}
+            href={`https://wa.me/5547933862514?text=${encodeURIComponent(`Olá! Tenho dúvidas sobre: ${product.title}`)}`}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-2 text-sm text-green-600 hover:text-green-700 transition-colors"

@@ -19,6 +19,27 @@ export default defineConfig({
   },
   modules: [
     {
+      resolve: "@medusajs/medusa/auth",
+      options: {
+        providers: [
+          {
+            resolve: "@medusajs/auth-emailpass",
+            id: "emailpass",
+            options: {},
+          },
+          {
+            resolve: "@medusajs/auth-google",
+            id: "google",
+            options: {
+              clientId: process.env.GOOGLE_STORE_CLIENT_ID!,
+              clientSecret: process.env.GOOGLE_STORE_CLIENT_SECRET!,
+              callbackUrl: process.env.GOOGLE_STORE_CALLBACK_URL!,
+            },
+          },
+        ],
+      },
+    },
+    {
       resolve: "@medusajs/medusa/payment",
       options: {
         providers: [

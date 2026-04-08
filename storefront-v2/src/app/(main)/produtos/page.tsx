@@ -27,18 +27,19 @@ const SORT_OPTIONS = [
 export default async function ProdutosPage({
   searchParams,
 }: {
-  searchParams: SearchParams
+  searchParams: Promise<SearchParams>
 }) {
-  const page = parseInt(searchParams.page || "1")
+  const sp = await searchParams
+  const page = Math.max(1, Math.min(parseInt(sp.page || "1") || 1, 500))
   const limit = 20
   const offset = (page - 1) * limit
 
   const { products, count } = await listProducts({
     limit,
     offset,
-    q: searchParams.q,
-    order: searchParams.sort,
-    categoryId: searchParams.categoria,
+    q: sp.q,
+    order: sp.sort,
+    categoryId: sp.categoria,
   })
 
   const totalPages = Math.ceil(count / limit)
@@ -49,7 +50,7 @@ export default async function ProdutosPage({
       <div className="mb-6">
         <p className="text-bibelo-pink text-xs font-semibold uppercase tracking-widest mb-1">Catálogo</p>
         <h1 className="text-2xl md:text-3xl font-bold text-bibelo-dark">
-          {searchParams.q ? `Resultados para "${searchParams.q}"` : "Todos os Produtos"}
+          {sp.q ? `Resultados para "${sp.q}"` : "Todos os Produtos"}
         </h1>
         <p className="text-gray-500 text-sm mt-1">{count} produto{count !== 1 ? "s" : ""} encontrado{count !== 1 ? "s" : ""}</p>
       </div>
@@ -61,9 +62,9 @@ export default async function ProdutosPage({
           {SORT_OPTIONS.map((opt) => (
             <a
               key={opt.value}
-              href={`/produtos?sort=${opt.value}${searchParams.q ? `&q=${searchParams.q}` : ""}`}
+              href={`/produtos?sort=${opt.value}${sp.q ? `&q=${encodeURIComponent(sp.q)}` : ""}`}
               className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                searchParams.sort === opt.value
+                sp.sort === opt.value
                   ? "bg-bibelo-pink text-white border-bibelo-pink"
                   : "border-gray-200 text-gray-600 hover:border-bibelo-pink hover:text-bibelo-pink"
               }`}
@@ -91,7 +92,7 @@ export default async function ProdutosPage({
             <div className="flex items-center justify-center gap-2 mt-10">
               {page > 1 && (
                 <a
-                  href={`/produtos?page=${page - 1}${searchParams.sort ? `&sort=${searchParams.sort}` : ""}`}
+                  href={`/produtos?page=${page - 1}${sp.sort ? `&sort=${encodeURIComponent(sp.sort)}` : ""}`}
                   className="px-4 py-2 rounded-full border border-gray-200 text-sm hover:border-bibelo-pink hover:text-bibelo-pink transition-colors"
                 >
                   ← Anterior
@@ -102,7 +103,7 @@ export default async function ProdutosPage({
               </span>
               {page < totalPages && (
                 <a
-                  href={`/produtos?page=${page + 1}${searchParams.sort ? `&sort=${searchParams.sort}` : ""}`}
+                  href={`/produtos?page=${page + 1}${sp.sort ? `&sort=${encodeURIComponent(sp.sort)}` : ""}`}
                   className="px-4 py-2 rounded-full border border-gray-200 text-sm hover:border-bibelo-pink hover:text-bibelo-pink transition-colors"
                 >
                   Próxima →

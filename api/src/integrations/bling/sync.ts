@@ -294,7 +294,17 @@ async function fetchCategoryMap(token: string): Promise<Map<number, string>> {
     }
     page++;
   }
-  logger.info("Bling categorias carregadas", { total: map.size });
+  // Persiste categorias na staging table (para Medusa sync ler sem chamar Bling)
+  for (const [catId, catDesc] of map) {
+    await query(
+      `INSERT INTO sync.bling_categories (bling_id, descricao, sincronizado_em)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (bling_id) DO UPDATE SET descricao = $2, sincronizado_em = NOW()`,
+      [String(catId), catDesc]
+    );
+  }
+
+  logger.info("Bling categorias carregadas e persistidas", { total: map.size });
   return map;
 }
 

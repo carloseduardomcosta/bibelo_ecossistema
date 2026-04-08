@@ -134,37 +134,27 @@ const CATEGORIAS_IGNORAR = new Set([
 ])
 
 async function fetchBlingCategories(): Promise<BlingCategory[]> {
-  const token = await getMedusaToken() // reutiliza token (precisa do Bling token separado)
-  // Buscar do Bling API diretamente via rate-limited GET
-  // Como este módulo não tem acesso ao rate limiter do Bling, buscamos do banco
-  // As categorias já foram mapeadas pelo sync Bling → fetchCategoryMap()
-  // Alternativa: buscar direto da API Bling
-  const BLING_API = "https://api.bling.com.br/Api/v3"
-  const blingTokenRow = await queryOne<{ ultimo_id: string }>(
-    "SELECT ultimo_id FROM sync.sync_state WHERE fonte = 'bling'"
+  // SEGURO: Lê da staging table local (populada pelo sync Bling)
+  // ZERO chamadas à API Bling — evita rate limit e conflitos
+  const rows = await query<{ bling_id: string; descricao: string; id_pai: string | null }>(
+    "SELECT bling_id, descricao, id_pai FROM sync.bling_categories ORDER BY descricao"
   )
-  if (!blingTokenRow) throw new Error("Token Bling não encontrado em sync_state")
 
-  const { access_token } = JSON.parse(blingTokenRow.ultimo_id)
-  const categories: BlingCategory[] = []
-  let page = 1
-
-  while (true) {
-    const res = await fetch(
-      `${BLING_API}/categorias/produtos?pagina=${page}&limite=100`,
-      { headers: { Authorization: `Bearer ${access_token}` } }
-    )
-    if (!res.ok) {
-      if (res.status === 401) throw new Error("Token Bling expirado — executar sync Bling primeiro")
-      throw new Error(`Bling categorias ${res.status}: ${await res.text()}`)
-    }
-    const data = (await res.json()) as { data: BlingCategory[] }
-    if (!data.data || data.data.length === 0) break
-    categories.push(...data.data)
-    page++
+  if (rows.length === 0) {
+    logger.warn("Medusa category sync: nenhuma categoria na staging table. Execute sync Bling primeiro.")
+    return []
   }
 
-  return categories.filter((c) => !CATEGORIAS_IGNORAR.has(c.descricao.toUpperCase()))
+  const categories: BlingCategory[] = rows
+    .map((r) => ({
+      id: parseInt(r.bling_id, 10),
+      descricao: r.descricao,
+      categoriaPai: { id: r.id_pai ? parseInt(r.id_pai, 10) : 0 },
+    }))
+    .filter((c) => !CATEGORIAS_IGNORAR.has(c.descricao.toUpperCase()))
+
+  logger.info(`Medusa category sync: ${categories.length} categorias lidas da staging table (zero chamadas Bling)`)
+  return categories
 }
 
 /** Busca mapeamento existente bling_category_id → medusa_category_id */
@@ -392,6 +382,7 @@ async function createMedusaProduct(
 
   if (images.length > 0) {
     body.images = images
+    body.thumbnail = images[0].url // primeira imagem como thumbnail
   }
 
   // Atribuir categoria do Bling → Medusa
@@ -436,6 +427,7 @@ async function updateMedusaProduct(
     .map((img) => ({ url: String(img.url) }))
   if (images.length > 0) {
     updateBody.images = images
+    updateBody.thumbnail = images[0].url
   }
 
   // Atribuir categoria do Bling → Medusa
@@ -469,6 +461,59 @@ async function updateMedusaProduct(
 
 // ── Sync principal ────────────────────────────────────────────
 
+// ── Kill switch + configuração ───────────────────────────────
+
+interface SyncConfig {
+  enabled: boolean
+  mode: "dry-run" | "live"
+  max_products: number
+}
+
+async function getSyncConfig(): Promise<SyncConfig> {
+  const row = await queryOne<{ ultimo_id: string }>(
+    "SELECT ultimo_id FROM sync.sync_state WHERE fonte = 'medusa-sync'"
+  )
+  if (!row) return { enabled: false, mode: "dry-run", max_products: 100 }
+  try {
+    return JSON.parse(row.ultimo_id)
+  } catch {
+    return { enabled: false, mode: "dry-run", max_products: 100 }
+  }
+}
+
+export async function setSyncConfig(config: Partial<SyncConfig>): Promise<void> {
+  const current = await getSyncConfig()
+  const merged = { ...current, ...config }
+  await query(
+    `UPDATE sync.sync_state SET ultimo_id = $1, ultima_sync = NOW() WHERE fonte = 'medusa-sync'`,
+    [JSON.stringify(merged)]
+  )
+  logger.info("Medusa sync config atualizada", merged)
+}
+
+// ── Monitoramento detalhado ──────────────────────────────────
+
+async function logMedusaSync(
+  tipo: string,
+  status: string,
+  stats: { total?: number; criados?: number; atualizados?: number; estoque?: number; erros?: number; duracao?: number },
+  detalhes?: Record<string, unknown>
+): Promise<void> {
+  await query(
+    `INSERT INTO sync.medusa_sync_log
+     (tipo, status, produtos_total, produtos_criados, produtos_atualizados, estoque_atualizado, erros, duracao_ms, detalhes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      tipo, status,
+      stats.total || 0, stats.criados || 0, stats.atualizados || 0,
+      stats.estoque || 0, stats.erros || 0, stats.duracao || 0,
+      detalhes ? JSON.stringify(detalhes) : null,
+    ]
+  )
+}
+
+// ── Sync principal (com safeguards) ──────────────────────────
+
 export async function syncBlingToMedusa(): Promise<{
   created: number
   updated: number
@@ -476,16 +521,42 @@ export async function syncBlingToMedusa(): Promise<{
   total: number
 }> {
   const startTime = Date.now()
-  logger.info("Medusa sync: iniciando...")
 
-  // 1. Sync categorias primeiro (Bling → Medusa)
-  try {
-    await syncCategoriesToMedusa()
-  } catch (err: any) {
-    logger.error(`Medusa category sync falhou (continuando sem categorias): ${err.message}`)
+  // 0. Verificar kill switch
+  const config = await getSyncConfig()
+  if (!config.enabled) {
+    logger.info("Medusa sync: DESABILITADO (kill switch). Use setSyncConfig({ enabled: true }) para ativar.")
+    return { created: 0, updated: 0, errors: 0, total: 0 }
   }
 
-  // 2. Buscar dados em paralelo
+  const isDryRun = config.mode === "dry-run"
+  logger.info(`Medusa sync: iniciando em modo ${config.mode}, max_products=${config.max_products}`)
+
+  // 1. Verificar saúde do Medusa antes de começar
+  try {
+    const health = await fetch(`${MEDUSA_URL}/health`, { timeout: 5000 } as RequestInit)
+    if (!health.ok) throw new Error(`Medusa health ${health.status}`)
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Medusa inacessível"
+    logger.error(`Medusa sync abortado: ${msg}`)
+    await logMedusaSync("products", "erro", { duracao: Date.now() - startTime }, { erro: msg })
+    return { created: 0, updated: 0, errors: 1, total: 0 }
+  }
+
+  // 2. Sync categorias (lê da staging table, zero chamadas Bling)
+  try {
+    if (!isDryRun) {
+      await syncCategoriesToMedusa()
+    } else {
+      const cats = await fetchBlingCategories()
+      logger.info(`[DRY-RUN] Categorias: ${cats.length} seriam sincronizadas`)
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Erro categorias"
+    logger.error(`Medusa category sync falhou (continuando sem categorias): ${msg}`)
+  }
+
+  // 3. Buscar dados em paralelo (tudo do banco local, zero chamadas Bling)
   const [blingProducts, stockMap, medusaProducts, salesChannelId, categoryMapping] =
     await Promise.all([
       getBlingProducts(),
@@ -495,17 +566,29 @@ export async function syncBlingToMedusa(): Promise<{
       getCategoryMapping(),
     ])
 
+  // Limitar quantidade de produtos (safeguard)
+  const productsToSync = blingProducts.slice(0, config.max_products)
+
   logger.info(
-    `Medusa sync: ${blingProducts.length} produtos Bling, ${medusaProducts.size} no Medusa, ${categoryMapping.size} categorias mapeadas`
+    `Medusa sync: ${productsToSync.length}/${blingProducts.length} produtos (limit ${config.max_products}), ${medusaProducts.size} no Medusa, ${categoryMapping.size} categorias`
   )
 
   let created = 0
   let updated = 0
   let errors = 0
+  let consecutiveErrors = 0
+  const MAX_CONSECUTIVE_ERRORS = 5 // circuit breaker
 
-  for (const product of blingProducts) {
+  for (const product of productsToSync) {
     const stock = stockMap[product.bling_id] || 0
     const existing = medusaProducts.get(product.sku)
+
+    if (isDryRun) {
+      const action = existing ? "UPDATE" : "CREATE"
+      logger.info(`[DRY-RUN] ${action} SKU=${product.sku} nome="${product.nome}" estoque=${stock}`)
+      if (existing) updated++; else created++
+      continue
+    }
 
     try {
       if (existing) {
@@ -518,41 +601,52 @@ export async function syncBlingToMedusa(): Promise<{
         await createMedusaProduct(product, stock, salesChannelId, categoryMapping)
         created++
       }
-    } catch (err: any) {
-      logger.error(
-        `Medusa sync erro SKU=${product.sku}: ${err.message}`
-      )
+      consecutiveErrors = 0 // reset
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido"
+      logger.error(`Medusa sync erro SKU=${product.sku}: ${msg}`)
       errors++
+      consecutiveErrors++
+
+      // Circuit breaker: para se muitos erros seguidos
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        logger.error(`CIRCUIT BREAKER: ${consecutiveErrors} erros consecutivos — parando sync`)
+        await logMedusaSync("products", "circuit-breaker", {
+          total: productsToSync.length, criados: created, atualizados: updated, erros: errors,
+          duracao: Date.now() - startTime,
+        }, { ultimo_erro: msg, sku: product.sku })
+        break
+      }
     }
   }
 
   const duration = Date.now() - startTime
+
+  const logStatus = isDryRun ? "dry-run" : errors > 0 ? "parcial" : "ok"
   logger.info(
-    `Medusa sync concluído: ${created} criados, ${updated} atualizados, ${errors} erros (${duration}ms)`
+    `Medusa sync ${logStatus}: ${created} criados, ${updated} atualizados, ${errors} erros (${duration}ms)`
   )
 
-  // Registrar no sync_logs
-  await query(
-    `INSERT INTO sync.sync_logs (fonte, tipo, status, registros, erro)
-     VALUES ('medusa', 'products', $1, $2, $3)`,
-    [
-      errors > 0 ? "parcial" : "ok",
-      created + updated,
-      errors > 0
-        ? `${errors} erros, ${created} criados, ${updated} atualizados (${duration}ms)`
-        : `${created} criados, ${updated} atualizados (${duration}ms)`,
-    ]
-  )
+  await logMedusaSync("products", logStatus, {
+    total: productsToSync.length, criados: created, atualizados: updated, erros: errors, duracao: duration,
+  })
 
-  // 4. Sync estoque (inventory levels) após produtos
-  try {
-    const invResult = await syncInventoryToMedusa(stockMap)
-    logger.info(`Medusa inventory sync: ${invResult.updated} atualizados, ${invResult.created} criados`)
-  } catch (err: any) {
-    logger.error(`Medusa inventory sync falhou: ${err.message}`)
+  // Sync estoque (só no modo live)
+  if (!isDryRun) {
+    try {
+      const invResult = await syncInventoryToMedusa(stockMap)
+      logger.info(`Medusa inventory sync: ${invResult.updated} atualizados, ${invResult.created} criados`)
+      await logMedusaSync("inventory", "ok", {
+        estoque: invResult.created + invResult.updated, duracao: Date.now() - startTime,
+      })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro inventory"
+      logger.error(`Medusa inventory sync falhou: ${msg}`)
+      await logMedusaSync("inventory", "erro", { duracao: Date.now() - startTime }, { erro: msg })
+    }
   }
 
-  return { created, updated, errors, total: blingProducts.length }
+  return { created, updated, errors, total: productsToSync.length }
 }
 
 // ── Sync Inventory (Estoque) ─────────────────────────────────

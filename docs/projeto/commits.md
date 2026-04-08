@@ -664,3 +664,11 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Vitrine: 6 produtos da última NF com validação NuvemShop (imagem + link + preço)
   - 6 LPs criadas: novidades, canetas, marca-texto, agendas, presentes, dia-das-mães
   - Nginx: location /lp/ no webhook subdomain
+
+- **4323991** — fix: storefront-v2 — menu rosa + benefits em carrossel suave
+  - TopBar: bg-bibelo-rosa (era cinza)
+  - Nav bar: fundo rosa claro com bordas pink
+
+- **03d2770** — fix: carrossel de benefícios com CSS animation
+  - CSS @keyframes translateX(-50%) — loop infinito suave 20s
+  - Pausa no hover/touch, funciona em qualquer tela

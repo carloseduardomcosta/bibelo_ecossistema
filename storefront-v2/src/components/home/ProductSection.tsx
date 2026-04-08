@@ -32,10 +32,10 @@ export default function ProductSection({
   if (!products || products.length === 0) return null
 
   return (
-    <section className="py-10">
+    <section className="py-8 md:py-10">
       <div className="content-container">
         {/* Header da seção */}
-        <div className="flex items-end justify-between mb-6">
+        <div className="flex items-end justify-between mb-4 md:mb-6">
           <div>
             {eyebrow && (
               <p className="text-bibelo-pink text-xs font-semibold uppercase tracking-widest mb-1">{eyebrow}</p>
@@ -54,9 +54,22 @@ export default function ProductSection({
             </Link>
           )}
         </div>
+      </div>
 
-        {/* Grid de produtos */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+      {/* Mobile: scroll horizontal */}
+      <div className="md:hidden overflow-x-auto scrollbar-hide pl-4 pr-2">
+        <div className="flex gap-3" style={{ width: "max-content" }}>
+          {products.map((product) => (
+            <div key={product.id} className="w-[160px] shrink-0">
+              <ProductCard product={product} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Desktop: grid normal */}
+      <div className="hidden md:block content-container">
+        <div className="grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {products.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}

@@ -3,7 +3,7 @@ import { query, queryOne } from "../../db";
 import { logger } from "../../utils/logger";
 
 export const BLING_API = "https://api.bling.com.br/Api/v3";
-const BLING_AUTH = "https://bling.com.br/Api/v3/oauth";
+const BLING_AUTH = "https://api.bling.com.br/Api/v3/oauth";
 
 interface BlingTokens {
   access_token: string;

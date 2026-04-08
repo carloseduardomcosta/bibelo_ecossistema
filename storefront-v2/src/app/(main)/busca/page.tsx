@@ -6,14 +6,15 @@ interface SearchParams {
   q?: string
 }
 
-export async function generateMetadata({ searchParams }: { searchParams: SearchParams }): Promise<Metadata> {
+export async function generateMetadata({ searchParams }: { searchParams: Promise<SearchParams> }): Promise<Metadata> {
+  const sp = await searchParams
   return {
-    title: searchParams.q ? `Busca: ${searchParams.q}` : "Busca",
+    title: sp.q ? `Busca: ${sp.q}` : "Busca",
   }
 }
 
-export default async function BuscaPage({ searchParams }: { searchParams: SearchParams }) {
-  const query = searchParams.q || ""
+export default async function BuscaPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { q: query = "" } = await searchParams
 
   const { products, count } = query
     ? await listProducts({ q: query, limit: 20 })

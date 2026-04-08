@@ -33,9 +33,9 @@ export default function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {/* Sobre */}
           <div className="col-span-2 md:col-span-1">
-            <h4 className="text-white font-semibold mb-4 text-sm uppercase tracking-wider">Papelaria Bibelô</h4>
+            <h4 className="text-white font-semibold mb-4 text-sm uppercase tracking-wider">Sobre nós</h4>
             <p className="text-gray-400 text-sm leading-relaxed mb-4">
-              Papelaria artesanal com curadoria especial. Produtos únicos para quem ama escrever, organizar e criar.
+              A Papelaria Bibelô é uma papelaria premium especializada em produtos selecionados com curadoria, qualidade superior e design minimalista. Trabalhamos para entregar uma experiência única, com itens de papelaria fina, escritório e organização que unem estética, funcionalidade e bom gosto. Nosso compromisso é oferecer produtos que transformam a rotina em algo mais leve, elegante e inspirador. Aqui, cada detalhe importa — do atendimento à escolha de cada peça. Seja bem-vindo à sua papelaria premium de confiança.
             </p>
             <div className="flex gap-3">
               <a href="https://instagram.com/papelariabibelo" target="_blank" rel="noreferrer"

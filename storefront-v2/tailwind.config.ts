@@ -9,20 +9,22 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Paleta oficial Bibelô extraída do PROD
+        // Paleta oficial Bibelô — idêntica ao storefront v1
         bibelo: {
-          pink:    "#ff65c3",   // Pink principal — botões, badges, destaques
-          "pink-dark": "#ff4cb9", // Pink escuro — hero, hover
-          yellow:  "#FFF176",   // Amarelo — fundo banners, hero
-          "yellow-dark": "#FFE000", // Amarelo escuro — hover
-          dark:    "#1a1a2e",   // Texto escuro
-          gray:    "#e5e5e5",   // Topbar, bordas
-          "gray-light": "#f8f8f8", // Fundo seções alternadas
+          pink:        "#fe68c4",   // Pink principal — botões, badges, destaques
+          "pink-dark": "#e050a8",   // Pink escuro — hover
+          rosa:        "#ffe5ec",   // Rosa claro — fundos suaves
+          amarelo:     "#fff7c1",   // Amarelo — fundo banners, hero
+          yellow:      "#fff7c1",   // Alias para amarelo
+          "yellow-dark": "#fff0a0", // Amarelo escuro — hover
+          dark:        "#2d2d2d",   // Texto escuro
+          gray:        "#e5e7eb",   // Topbar, bordas
+          "gray-light": "#f9fafb",  // Fundo seções alternadas
         },
       },
       fontFamily: {
-        sans: ["Kanit", "Arial", "sans-serif"],
-        heading: ["Kanit", "Arial", "sans-serif"],
+        sans: ['"Jost"', "-apple-system", "BlinkMacSystemFont", "sans-serif"],
+        heading: ['"Cormorant Garamond"', "Georgia", "serif"],
       },
       screens: {
         xs: "480px",

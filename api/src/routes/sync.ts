@@ -189,6 +189,7 @@ syncRouter.post("/nuvemshop", authMiddleware, async (_req: Request, res: Respons
 // MEDUSA
 // ══════════════════════════════════════════════════════════════
 
+// Sync manual Medusa (respeita kill switch + config)
 syncRouter.post("/medusa", authMiddleware, async (_req: Request, res: Response) => {
   const { syncBlingToMedusa } = await import("../integrations/medusa/sync");
   logger.info("Sync Medusa manual iniciado");
@@ -201,6 +202,44 @@ syncRouter.post("/medusa", authMiddleware, async (_req: Request, res: Response) 
     const message = err instanceof Error ? err.message : "Erro na sincronização";
     logger.error("Sync Medusa manual falhou", { error: message });
   }
+});
+
+// Kill switch + configuração do sync Medusa
+syncRouter.get("/medusa/config", authMiddleware, async (_req: Request, res: Response) => {
+  const row = await queryOne<{ ultimo_id: string }>(
+    "SELECT ultimo_id FROM sync.sync_state WHERE fonte = 'medusa-sync'"
+  );
+  const config = row ? JSON.parse(row.ultimo_id) : { enabled: false, mode: "dry-run", max_products: 100 };
+  res.json({ config });
+});
+
+syncRouter.post("/medusa/config", authMiddleware, async (req: Request, res: Response) => {
+  const { setSyncConfig } = await import("../integrations/medusa/sync");
+  const { enabled, mode, max_products } = req.body;
+  await setSyncConfig({
+    ...(enabled !== undefined ? { enabled } : {}),
+    ...(mode ? { mode } : {}),
+    ...(max_products ? { max_products } : {}),
+  });
+  res.json({ message: "Config atualizada", config: req.body });
+});
+
+// Kill switch rápido: parar sync
+syncRouter.post("/medusa/stop", authMiddleware, async (_req: Request, res: Response) => {
+  const { setSyncConfig } = await import("../integrations/medusa/sync");
+  await setSyncConfig({ enabled: false });
+  logger.warn("MEDUSA SYNC: PARADO via kill switch");
+  res.json({ message: "Sync Medusa PARADO" });
+});
+
+// Logs do sync Medusa (monitoramento)
+syncRouter.get("/medusa/logs", authMiddleware, async (req: Request, res: Response) => {
+  const limit = parseInt(req.query.limit as string) || 20;
+  const rows = await query(
+    "SELECT * FROM sync.medusa_sync_log ORDER BY criado_em DESC LIMIT $1",
+    [limit]
+  );
+  res.json({ logs: rows });
 });
 
 // ══════════════════════════════════════════════════════════════

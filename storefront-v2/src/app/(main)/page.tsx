@@ -1,10 +1,9 @@
-import { Suspense } from "react"
 import HeroCarousel from "@/components/home/HeroCarousel"
 import BenefitsStrip from "@/components/home/BenefitsStrip"
 import ProductSection from "@/components/home/ProductSection"
-import { listProducts, listCollections } from "@/lib/medusa/products"
+import CategoriesSection from "@/components/home/CategoriesSection"
+import { listProducts } from "@/lib/medusa/products"
 
-// Revalidar a cada 5 minutos
 export const revalidate = 300
 
 async function getFeaturedProducts() {
@@ -13,8 +12,7 @@ async function getFeaturedProducts() {
 }
 
 async function getPromoProducts() {
-  const { products } = await listProducts({ limit: 8, order: "-created_at" })
-  // Filtrar apenas produtos com desconto
+  const { products } = await listProducts({ limit: 10, order: "created_at" })
   return products.filter((p) => {
     const variant = p.variants?.[0]
     const price = variant?.calculated_price as { calculated_amount?: number; original_amount?: number } | undefined
@@ -23,31 +21,24 @@ async function getPromoProducts() {
   })
 }
 
-async function getNewProducts() {
-  const { products } = await listProducts({ limit: 8, order: "-created_at" })
-  return products
-}
-
 export default async function HomePage() {
-  const [featuredProducts, promoProducts, newProducts] = await Promise.allSettled([
+  const [featuredProducts, promoProducts] = await Promise.allSettled([
     getFeaturedProducts(),
     getPromoProducts(),
-    getNewProducts(),
   ])
 
   const featured = featuredProducts.status === "fulfilled" ? featuredProducts.value : []
   const promos = promoProducts.status === "fulfilled" ? promoProducts.value : []
-  const news = newProducts.status === "fulfilled" ? newProducts.value : []
 
   return (
     <>
-      {/* Hero carrossel */}
+      {/* 1. Carrossel hero */}
       <HeroCarousel />
 
-      {/* Strip de benefícios */}
+      {/* 2. Ticker informativo */}
       <BenefitsStrip />
 
-      {/* Seção Destaques */}
+      {/* 3. Destaques */}
       <ProductSection
         eyebrow="Curadoria especial"
         title="Destaques"
@@ -55,30 +46,23 @@ export default async function HomePage() {
         viewAllHref="/produtos"
       />
 
-      {/* Seção Promoções */}
-      {promos.length > 0 && (
-        <div className="bg-bibelo-gray-light py-2">
-          <ProductSection
-            eyebrow="Aproveite!"
-            title="Promoções"
-            products={promos as Parameters<typeof ProductSection>[0]["products"]}
-            viewAllHref="/produtos?sort=price_asc"
-          />
-        </div>
-      )}
+      {/* 4. Categorias */}
+      <div className="bg-bibelo-gray-light py-2">
+        <CategoriesSection />
+      </div>
 
-      {/* Seção Lançamentos */}
-      {news.length > 0 && (
+      {/* 5. Ofertas */}
+      {promos.length > 0 && (
         <ProductSection
-          eyebrow="Acabou de chegar"
-          title="Lançamentos"
-          products={news as Parameters<typeof ProductSection>[0]["products"]}
-          viewAllHref="/produtos?sort=created_at"
+          eyebrow="Aproveite!"
+          title="Ofertas"
+          products={promos as Parameters<typeof ProductSection>[0]["products"]}
+          viewAllHref="/produtos?sort=price_asc"
         />
       )}
 
-      {/* Banner cupom */}
-      <div className="bg-bibelo-yellow py-10">
+      {/* Banner cupom antes do footer */}
+      <div className="bg-bibelo-amarelo py-8 md:py-10">
         <div className="content-container text-center">
           <p className="text-sm font-semibold text-gray-600 uppercase tracking-widest mb-2">Primeira compra</p>
           <h2 className="text-3xl md:text-4xl font-black text-bibelo-pink mb-3">7% OFF</h2>

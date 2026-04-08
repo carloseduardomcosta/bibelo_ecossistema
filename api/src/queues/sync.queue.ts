@@ -200,10 +200,12 @@ export async function registerScheduledJobs(): Promise<void> {
     repeat: { pattern: "0 2 * * *" },
   });
 
-  // Medusa sync DESABILITADO — homologação parada, bombardeava Bling com GETs
-  // await syncQueue.add("medusa-sync-products", {}, {
-  //   repeat: { pattern: "5,35 * * * *" },
-  // });
+  // Medusa sync — REATIVADO com safeguards (kill switch, circuit breaker, dry-run)
+  // Roda 5min após o Bling sync (que roda em */30), garantindo dados frescos
+  // Controlado via kill switch: POST /api/sync/medusa/config { enabled: true/false, mode: "dry-run"|"live" }
+  await syncQueue.add("medusa-sync-products", {}, {
+    repeat: { pattern: "5,35 * * * *" },
+  });
 
   // Google Reviews refresh: diário às 6h
   await syncQueue.add("google-reviews-refresh", {}, {
