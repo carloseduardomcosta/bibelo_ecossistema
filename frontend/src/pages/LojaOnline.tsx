@@ -27,7 +27,7 @@ interface Setting {
   categoria: string
   chave: string
   valor: string
-  tipo: 'text' | 'number' | 'boolean' | 'json'
+  tipo: 'text' | 'number' | 'boolean' | 'json' | 'currency'
   label: string
   descricao: string
   ordem: number
@@ -49,9 +49,6 @@ const TABS: TabConfig[] = [
   { key: 'marketing', label: 'Marketing', icon: Megaphone, descricao: 'Configure popup, cupons e banners da loja' },
   { key: 'geral', label: 'Geral', icon: Settings, descricao: 'Dados da loja, contato e redes sociais' },
 ]
-
-// Chaves cujo valor representa centavos
-const CHAVES_CENTAVOS = new Set(['frete_gratis_valor', 'cartao_parcela_min'])
 
 export default function LojaOnline() {
   const { success: showSuccess, error: showError } = useToast()
@@ -174,17 +171,14 @@ export default function LojaOnline() {
 
   function renderField(s: Setting) {
     const val = currentValue(s)
-    const isCentavos = s.tipo === 'number' && CHAVES_CENTAVOS.has(s.chave)
-    const descricao = isCentavos
-      ? (s.descricao ? `${s.descricao} (em centavos)` : '(em centavos)')
-      : s.descricao
+    const inputClass = "w-full px-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text focus:outline-none focus:ring-2 focus:ring-bibelo-primary/40 focus:border-bibelo-primary transition-colors"
 
     return (
       <div key={settingsKey(s)} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4">
         <div className="flex-1 min-w-0">
           <label className="text-sm font-medium text-bibelo-text">{s.label}</label>
-          {descricao && (
-            <p className="text-xs text-bibelo-muted mt-0.5">{descricao}</p>
+          {s.descricao && (
+            <p className="text-xs text-bibelo-muted mt-0.5">{s.descricao}</p>
           )}
         </div>
 
@@ -199,12 +193,24 @@ export default function LojaOnline() {
                 {val === 'true' ? 'Ativado' : 'Desativado'}
               </span>
             </div>
+          ) : s.tipo === 'currency' ? (
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-bibelo-muted font-medium">R$</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={val}
+                onChange={(e) => handleChange(s, e.target.value)}
+                className={`${inputClass} pl-10`}
+              />
+            </div>
           ) : s.tipo === 'number' ? (
             <input
               type="number"
               value={val}
               onChange={(e) => handleChange(s, e.target.value)}
-              className="w-full px-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text focus:outline-none focus:ring-2 focus:ring-bibelo-primary/40 focus:border-bibelo-primary transition-colors"
+              className={inputClass}
             />
           ) : s.tipo === 'json' ? (
             <input
@@ -212,14 +218,14 @@ export default function LojaOnline() {
               value={val}
               onChange={(e) => handleChange(s, e.target.value)}
               placeholder="JSON..."
-              className="w-full px-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text font-mono focus:outline-none focus:ring-2 focus:ring-bibelo-primary/40 focus:border-bibelo-primary transition-colors"
+              className={`${inputClass} font-mono`}
             />
           ) : (
             <input
               type="text"
               value={val}
               onChange={(e) => handleChange(s, e.target.value)}
-              className="w-full px-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text focus:outline-none focus:ring-2 focus:ring-bibelo-primary/40 focus:border-bibelo-primary transition-colors"
+              className={inputClass}
             />
           )}
         </div>
