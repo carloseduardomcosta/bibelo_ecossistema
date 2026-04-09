@@ -414,7 +414,18 @@ export async function syncProducts(since?: string): Promise<{ total: number; cha
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
            ON CONFLICT (bling_id) DO UPDATE SET
              nome = $2, sku = $3, preco_custo = $4, preco_venda = $5, categoria = $6,
-             bling_category_id = $7, imagens = $8, ativo = $9, tipo = $10, unidade = $11,
+             bling_category_id = $7,
+             -- Preserva imagens full-size: só sobrescreve se as novas forem de alta qualidade
+             -- (sem '/t/' no path) ou se ainda não há imagens salvas.
+             -- Evita que o sync por listing degrade imagens HD com miniaturas.
+             imagens = CASE
+               WHEN $8::jsonb = '[]'::jsonb THEN sync.bling_products.imagens
+               WHEN $8::text LIKE '%/t/%' AND sync.bling_products.imagens != '[]'::jsonb
+                    AND sync.bling_products.imagens::text NOT LIKE '%/t/%'
+                 THEN sync.bling_products.imagens
+               ELSE $8
+             END,
+             ativo = $9, tipo = $10, unidade = $11,
              peso_bruto = $12, gtin = $13, dados_raw = $14, sincronizado_em = NOW()`,
           [
             blingId,
@@ -1271,6 +1282,93 @@ export async function syncNfEntrada(): Promise<number> {
     const message = err instanceof Error ? err.message : "Erro";
     await logSync("bling", "nf_entrada", "erro", total, message);
     logger.error("Bling syncNfEntrada falhou", { error: message });
+    throw err;
+  }
+}
+
+// ── Sync Imagens HD dos Produtos ───────────────────────────────
+// O sync por listing só traz imagemURL (miniatura, path /t/).
+// Este endpoint busca o detalhe de cada produto para pegar as imagens
+// completas via midia.imagens.internas[].link (sem /t/).
+// Deve ser chamado após o sync completo ou sob demanda via POST /api/sync/bling/imagens.
+
+export async function syncProductImages(blingIds?: string[]): Promise<{ total: number; atualizados: number }> {
+  const token = await getValidToken();
+  let total = 0;
+  let atualizados = 0;
+
+  try {
+    // Se blingIds fornecido, só processa esses. Caso contrário, produtos com miniatura ou sem imagem.
+    let products: Array<{ bling_id: string }>;
+    if (blingIds && blingIds.length > 0) {
+      const placeholders = blingIds.map((_, i) => `$${i + 1}`).join(", ");
+      products = await query<{ bling_id: string }>(
+        `SELECT bling_id FROM sync.bling_products WHERE bling_id IN (${placeholders})`,
+        blingIds
+      );
+    } else {
+      // Prioriza: (1) sem imagens, (2) com miniaturas (/t/ na URL)
+      products = await query<{ bling_id: string }>(
+        `SELECT bling_id FROM sync.bling_products
+         WHERE ativo = true
+           AND (imagens = '[]'::jsonb OR imagens::text LIKE '%/t/%')
+         ORDER BY sincronizado_em DESC
+         LIMIT 300`
+      );
+    }
+
+    logger.info(`syncProductImages: processando ${products.length} produto(s)`);
+
+    for (const prod of products) {
+      total++;
+      try {
+        const detail = await rateLimitedGet<{ data: Record<string, unknown> }>(
+          `${BLING_API}/produtos/${prod.bling_id}`,
+          token
+        );
+
+        const data = detail.data;
+        if (!data) continue;
+
+        const midia = data.midia as Record<string, unknown> | undefined;
+        const imagensInternas = (midia?.imagens as Record<string, unknown>)?.internas as Array<Record<string, unknown>> | undefined;
+        const imagensExternas = (midia?.imagens as Record<string, unknown>)?.externas as Array<Record<string, unknown>> | undefined;
+
+        const imagens = [
+          ...(imagensInternas || []).map((img, i) => ({
+            url: (img.link || img.linkMiniatura || "") as string,
+            ordem: i,
+          })),
+          ...(imagensExternas || []).map((img, i) => ({
+            url: (img.link || "") as string,
+            ordem: 100 + i,
+          })),
+        ].filter((img) => img.url && img.url.startsWith("http"));
+
+        if (imagens.length === 0) continue;
+
+        // Só atualiza se tiver pelo menos uma imagem HD (sem /t/)
+        const temHD = imagens.some((img) => !img.url.includes("/t/"));
+        if (!temHD) continue;
+
+        await query(
+          "UPDATE sync.bling_products SET imagens = $1, sincronizado_em = NOW() WHERE bling_id = $2",
+          [JSON.stringify(imagens), prod.bling_id]
+        );
+        atualizados++;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Erro";
+        logger.warn(`syncProductImages: erro no produto ${prod.bling_id}`, { error: msg });
+      }
+    }
+
+    await logSync("bling", "product_images", "ok", atualizados);
+    logger.info("syncProductImages concluído", { total, atualizados });
+    return { total, atualizados };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido";
+    await logSync("bling", "product_images", "erro", atualizados, message);
+    logger.error("syncProductImages falhou", { error: message });
     throw err;
   }
 }

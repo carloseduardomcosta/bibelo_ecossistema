@@ -376,6 +376,47 @@ Usar **BenefitsStrip** (ticker corrido, sem formato de card) — nunca os dois j
 
 ---
 
+## Storefront v2 — Página /novidades
+
+Arquivo: `storefront-v2/src/app/(main)/novidades/page.tsx`
+
+Página dedicada que exibe todos os produtos da NF mais recente (até 50), com grid responsivo.
+Chama `getNovidadesBling(50)` — mesma fonte que a `NovidadesSection` da homepage.
+O link "Ver todas" da `NovidadesSection` aponta para `/novidades`.
+
+---
+
+## Imagens de produtos Bling — qualidade HD
+
+### Problema
+O sync por listing (`GET /produtos`) retorna `imagemURL` = miniatura (path com `/t/`).
+Exemplo: `orgbling.s3.amazonaws.com/HASH/t/arquivo.jpg` → baixa resolução.
+Imagens HD só estão disponíveis via `GET /produtos/{id}` (detalhe) → `midia.imagens.internas[].link`.
+
+### Solução implementada (09/04/2026)
+
+**`api/src/integrations/bling/sync.ts`** — dois mecanismos:
+
+1. **UPSERT protegido**: o sync por listing não sobrescreve imagens HD com miniaturas.
+   - Se a imagem nova tem `/t/` no path E já existe imagem HD no banco → mantém a HD.
+   - Garante que um sync incremental não degrade fotos já atualizadas.
+
+2. **`syncProductImages(blingIds?)`** — função exportada que:
+   - Busca produtos com imagem miniatura ou sem imagem (até 300)
+   - Faz `GET /produtos/{id}` para cada (respeitando rate limit 3 req/s)
+   - Salva `midia.imagens.internas[].link` (URL sem `/t/`) no banco
+   - Rodou na implantação: 193 de 300 produtos atualizados
+
+**Rota:** `POST /api/sync/bling/imagens` (autenticada) — dispara `syncProductImages` em background.
+Body opcional: `{ blingIds: ["123", "456"] }` para atualizar produtos específicos.
+
+### Quando re-executar
+- Ao cadastrar novos produtos no Bling com fotos
+- Após troca de fotos de produtos existentes
+- O sync incremental NÃO atualiza fotos HD automaticamente (só o listing atualiza imagens, com proteção)
+
+---
+
 ## Comandos do dia a dia
 ```bash
 docker compose ps                    # status containers
@@ -563,7 +604,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 9 de Abril de 2026 — cleanup storefront v1, variantes Bling→Medusa (145 produtos, 104 variantes), checkout multi-pagamento, painel Loja Online, categorias, WhatsApp, 615 testes*
+*Última atualização: 9 de Abril de 2026 — imagens HD Bling (syncProductImages, UPSERT protegido), página /novidades, NF entrada via API Bling, seção Novidades storefront*
 
 ---
 

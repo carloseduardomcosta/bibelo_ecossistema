@@ -1,16 +1,21 @@
-import Link from "next/link"
 import Image from "next/image"
+import Link from "next/link"
+import { getNovidadesBling } from "@/lib/api/novidades"
+import type { Metadata } from "next"
 import type { NovidadeProduct } from "@/lib/api/novidades"
 
+export const metadata: Metadata = {
+  title: "Novidades",
+  description: "Os lançamentos mais recentes da Papelaria Bibelô — produtos fresquinhos, acabaram de chegar!",
+}
+
+export const dynamic = "force-dynamic"
+
 function formatPrice(value: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(value)
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
 }
 
 function NovidadeCard({ product }: { product: NovidadeProduct }) {
-  // Link seguro: busca pelo nome no catálogo
   const searchHref = `/produtos?q=${encodeURIComponent(product.nome)}`
 
   return (
@@ -19,14 +24,13 @@ function NovidadeCard({ product }: { product: NovidadeProduct }) {
       className="group flex flex-col bg-white rounded-2xl overflow-hidden border border-gray-100
                  hover:border-bibelo-pink/30 hover:shadow-lg transition-all duration-300"
     >
-      {/* Imagem */}
       <div className="relative aspect-square bg-gray-50 overflow-hidden">
         <Image
           src={product.imagem_url}
           alt={product.nome}
           fill
           className="object-cover group-hover:scale-105 transition-transform duration-500"
-          sizes="(max-width: 768px) 160px, (max-width: 1024px) 200px, 220px"
+          sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 220px"
           quality={85}
           unoptimized
         />
@@ -42,7 +46,6 @@ function NovidadeCard({ product }: { product: NovidadeProduct }) {
         )}
       </div>
 
-      {/* Info */}
       <div className="p-3 flex flex-col gap-1 flex-1">
         {product.categoria && (
           <p className="text-[10px] text-bibelo-pink font-semibold uppercase tracking-wider truncate">
@@ -61,55 +64,33 @@ function NovidadeCard({ product }: { product: NovidadeProduct }) {
   )
 }
 
-interface NovidadesSectionProps {
-  products: NovidadeProduct[]
-  nfNumero?: string | null
-}
-
-export default function NovidadesSection({ products, nfNumero }: NovidadesSectionProps) {
-  if (!products || products.length === 0) return null
+export default async function NovidadesPage() {
+  const { novidades } = await getNovidadesBling(50)
 
   return (
-    <section className="pt-2 pb-8 md:py-10">
-      <div className="content-container">
-        <div className="flex items-end justify-between mb-4 md:mb-6">
-          <div>
-            <p className="text-bibelo-pink text-xs font-semibold uppercase tracking-widest mb-1">
-              Chegou agora ✨
-            </p>
-            <h2 className="section-title mb-0 text-left">Novidades</h2>
-          </div>
-          <Link
-            href="/novidades"
-            className="text-sm text-bibelo-pink font-semibold hover:underline flex items-center gap-1 shrink-0"
-          >
-            Ver todas
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-            </svg>
-          </Link>
-        </div>
+    <div className="content-container py-8">
+      <div className="mb-6">
+        <p className="text-bibelo-pink text-xs font-semibold uppercase tracking-widest mb-1">Chegou agora ✨</p>
+        <h1 className="text-2xl md:text-3xl font-bold text-bibelo-dark">Novidades</h1>
+        <p className="text-gray-500 text-sm mt-1">
+          {novidades.length > 0
+            ? `${novidades.length} produto${novidades.length !== 1 ? "s" : ""} da última entrega`
+            : "Novidades a caminho. Fique de olho!"}
+        </p>
       </div>
 
-      {/* Mobile: scroll horizontal */}
-      <div className="md:hidden overflow-x-auto scrollbar-hide pl-4 pr-2">
-        <div className="flex gap-3" style={{ width: "max-content" }}>
-          {products.map((product) => (
-            <div key={product.bling_id} className="w-[160px] shrink-0">
-              <NovidadeCard product={product} />
-            </div>
-          ))}
+      {novidades.length === 0 ? (
+        <div className="py-24 text-center">
+          <p className="text-4xl mb-4">✨</p>
+          <p className="text-gray-500 text-sm">Em breve novos produtos. Fique de olho!</p>
         </div>
-      </div>
-
-      {/* Desktop: grid */}
-      <div className="hidden md:block content-container">
-        <div className="grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {products.map((product) => (
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {novidades.map((product) => (
             <NovidadeCard key={product.bling_id} product={product} />
           ))}
         </div>
-      </div>
-    </section>
+      )}
+    </div>
   )
 }

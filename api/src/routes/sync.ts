@@ -4,7 +4,7 @@ import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { getAuthUrl, exchangeCode } from "../integrations/bling/auth";
-import { syncCustomers, syncOrders, syncProducts, syncStock, syncNfEntrada, syncContasPagar, incrementalSync, syncProductCategories, fetchCategoryMap } from "../integrations/bling/sync";
+import { syncCustomers, syncOrders, syncProducts, syncStock, syncNfEntrada, syncContasPagar, incrementalSync, syncProductCategories, fetchCategoryMap, syncProductImages } from "../integrations/bling/sync";
 import { getNuvemShopAuthUrl, exchangeNuvemShopCode, getNuvemShopToken } from "../integrations/nuvemshop/auth";
 import { syncNuvemShop, registerNsWebhooks } from "../integrations/nuvemshop/sync";
 import { sendOrderConfirmationEmail, sendPaymentApprovedEmail, sendShippingEmail } from "../services/storefront-email.service";
@@ -148,6 +148,24 @@ syncRouter.post("/bling/categorias", authMiddleware, async (req: Request, res: R
     logger.info("Sync categorias→produtos finalizado", { updated, categorias: categoryMap.size });
   } catch (err: any) {
     logger.error("Sync categorias→produtos falhou", { error: err.message });
+  }
+});
+
+// ── POST /api/sync/bling/imagens — busca imagens HD via detalhe do produto ──
+// O sync por listing só salva miniaturas (/t/). Este endpoint faz GET /produtos/{id}
+// para cada produto sem imagem HD e atualiza com a URL completa (link do S3 sem /t/).
+// Passa blingIds[] no body para processar apenas produtos específicos (opcional).
+
+syncRouter.post("/bling/imagens", authMiddleware, async (req: Request, res: Response) => {
+  const { blingIds } = req.body as { blingIds?: string[] }
+  logger.info("Sync imagens HD iniciado", { user: (req as any).user?.email, blingIds: blingIds?.length ?? "todos" });
+  res.json({ message: "Sync imagens HD iniciado em background. Acompanhe pelos logs." });
+
+  try {
+    const result = await syncProductImages(blingIds)
+    logger.info("Sync imagens HD finalizado", result)
+  } catch (err: any) {
+    logger.error("Sync imagens HD falhou", { error: err.message })
   }
 });
 
