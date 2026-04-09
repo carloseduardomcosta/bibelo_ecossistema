@@ -4,6 +4,7 @@ import CartDrawer from "@/components/cart/CartDrawer"
 import CartInitializer from "@/components/cart/CartInitializer"
 import MobileNav from "@/components/layout/MobileNav"
 import DiscountPopup from "@/components/home/DiscountPopup"
+import WhatsAppFloat from "@/components/layout/WhatsAppFloat"
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -15,6 +16,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <CartDrawer />
       <MobileNav />
       <DiscountPopup />
+      <WhatsAppFloat />
     </>
   )
 }
