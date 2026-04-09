@@ -417,6 +417,69 @@ Body opcional: `{ blingIds: ["123", "456"] }` para atualizar produtos específic
 
 ---
 
+## Fluxo completo: Produto no Bling → Seção Novidades
+
+### Como funciona a seção Novidades
+A seção Novidades **NÃO** mostra qualquer produto do Bling. Ela mostra os produtos da **NF de entrada mais recente** que tenham pelo menos 1 produto válido.
+
+Critérios de validação (todos obrigatórios):
+- Produto ativo no Bling
+- Tem foto com URL válida
+- Tem preço de venda > 0
+- Tem descrição não vazia
+- Tem estoque físico > 0
+
+### Duas tabelas envolvidas
+1. `sync.bling_products` — catálogo completo de produtos do Bling (photos, prices, etc.)
+2. `financeiro.notas_entrada_itens` — itens de cada NF de entrada
+
+A query JOIN entre as duas define o que aparece.
+
+### Fluxo para um produto aparecer em Novidades
+
+**Passo 1: Produto no catálogo do Bling**
+- Carlos cadastra produto no Bling com foto, descrição, preço e estoque
+- Bling dispara webhook `product.created` / `product.updated` → `POST /api/webhooks/bling`
+- O webhook faz `GET /produtos/{id}` (detalhe completo com `midia.imagens.internas[].link`)
+- **Salva imagens HD no banco imediatamente** — sem delay, sem miniatura
+- Tempo: segundos após salvar no Bling
+
+**Passo 2: NF de entrada no sistema**
+- Fornecedor emite NF de entrada → Bling recebe a NF
+- Carlos sincroniza as NFs via CRM → `POST /api/financeiro/nf-entrada/sync/bling`
+- O sistema percorre `/nfe?tipo=0` do Bling, importa NFs novas com seus itens
+- Match entre `codigo` do item NF e `sku` do produto (4 critérios — veja código)
+- **Sem isso o produto não aparece em Novidades**, mesmo que esteja completo no catálogo
+- Tempo: manual (Carlos aciona quando necessário)
+
+**Passo 3: Cache da API**
+- Endpoint `/api/public/novidades` tem `Cache-Control: max-age=300` (5 min)
+- Storefront usa `force-dynamic` (SSR fresh) mas respeita cache do browser/CDN
+- Tempo: até 5 minutos após a NF ser sincronizada
+
+### Cenários práticos
+
+| Situação | Resultado |
+|----------|-----------|
+| Produto criado no Bling + tem NF + foto adicionada | Foto aparece em segundos (webhook) |
+| Produto criado no Bling + tem NF + sem foto | Não aparece em Novidades (sem foto) |
+| Produto criado no Bling + SEM NF no sistema | Não aparece em Novidades |
+| Nova NF chegou + Carlos sincronizou via CRM | Aparece em até 5 min no site |
+| Nova NF chegou + Carlos NÃO sincronizou | Não aparece (sincronização é manual) |
+
+### Resumo para Carlos
+- **Subiu produto com foto, descrição, preço e estoque no Bling?** → entra no catálogo em segundos (webhook).
+- **Aparece em Novidades?** → só depois de uma NF de entrada ser sincronizada via `POST /api/financeiro/nf-entrada/sync/bling`.
+- **A NF já estava no sistema e você adicionou foto?** → aparece em até 5 min automaticamente (webhook + cache).
+
+### Arquivos-chave
+- `api/src/integrations/bling/webhook.ts` → `processProduct()` — webhook com imagem HD
+- `api/src/routes/public-novidades.ts` → query JOIN bling_products + notas_entrada_itens
+- `api/src/routes/nf-entrada.ts` → `POST /sync/bling` — sincroniza NFs de entrada do Bling
+- `api/src/integrations/bling/sync.ts` → `syncProductImages()` — catch-up de imagens HD
+
+---
+
 ## Comandos do dia a dia
 ```bash
 docker compose ps                    # status containers
