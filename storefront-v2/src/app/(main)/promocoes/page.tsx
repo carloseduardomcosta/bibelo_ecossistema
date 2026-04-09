@@ -2,6 +2,8 @@ import { listProducts } from "@/lib/medusa/products"
 import ProductCard from "@/components/product/ProductCard"
 import type { Metadata } from "next"
 
+type ProductCardInput = Parameters<typeof ProductCard>[0]["product"]
+
 export const metadata: Metadata = {
   title: "Promoções",
   description: "Produtos em promoção na Papelaria Bibelô — aproveite os descontos especiais.",
@@ -40,7 +42,7 @@ export default async function PromocoesPage() {
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {promos.map((product) => (
-            <ProductCard key={product.id} product={product} />
+            <ProductCard key={product.id} product={product as ProductCardInput} />
           ))}
         </div>
       )}
