@@ -25,12 +25,11 @@ coverage/
 # Medusa
 .medusa/
 
-# Storefront (Next.js)
-storefront/.next/
-storefront/.yarn/
-storefront/node_modules/
+# Storefront v2 (Next.js)
+storefront-v2/.next/
+storefront-v2/node_modules/
+storefront-v2/.pnpm-store/
 
 # Package locks (subprojetos)
 medusa/package-lock.json
-storefront/yarn.lock
 .secrets/

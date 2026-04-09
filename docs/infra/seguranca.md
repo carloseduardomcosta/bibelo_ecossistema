@@ -206,7 +206,6 @@ Subnet: 172.21.0.0/16
 | bibelo_api | 4000 | 127.0.0.1:4000 |
 | bibelo_frontend | 3000 | 127.0.0.1:3000 |
 | bibelo_medusa | 9000 | 127.0.0.1:9000 |
-| bibelo_storefront | 8000 | 127.0.0.1:8000 |
 | bibelo_storefront_v2 | 8001 | 127.0.0.1:8001 |
 | bibelo_uptime | 3001 | 127.0.0.1:3001 |
 | bibelo_postgres | 5432 | nenhum |
@@ -223,7 +222,6 @@ Subnet: 172.21.0.0/16
 | api | 1024M | 0.8 |
 | frontend | 256M | 0.3 |
 | medusa | 1536M | 0.8 |
-| storefront | 512M | 0.5 |
 | storefront-v2 | 512M | 0.5 |
 | uptime | 256M | 0.2 |
 

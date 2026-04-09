@@ -72,11 +72,6 @@ export async function cacheAllProductImages(
   const token = await getValidToken()
 
   for (const product of products) {
-    if (!product.imagens?.length || !product.imagens[0]?.url) {
-      skipped++
-      continue
-    }
-
     const filename = `${product.bling_id}.jpg`
     const filepath = path.join(UPLOAD_DIR, filename)
     const publicUrl = `${PUBLIC_BASE}/${filename}`
@@ -91,7 +86,9 @@ export async function cacheAllProductImages(
       }
     }
 
-    // Buscar URL HD via detalhe do produto
+    const hasListingImage = product.imagens?.length && product.imagens[0]?.url
+
+    // Buscar URL HD via detalhe do produto (funciona mesmo sem imagem no listing)
     const hdUrl = await getHdImageUrl(product.bling_id, token)
     if (hdUrl) {
       const ok = await downloadImage(hdUrl, filepath)
@@ -101,9 +98,9 @@ export async function cacheAllProductImages(
       } else {
         failed++
       }
-    } else {
+    } else if (hasListingImage) {
       // Fallback: usar miniatura do listing
-      const miniUrl = product.imagens[0].url
+      const miniUrl = product.imagens![0].url
       const ok = await downloadImage(miniUrl, filepath)
       if (ok) {
         map.set(product.bling_id, publicUrl)
@@ -111,6 +108,8 @@ export async function cacheAllProductImages(
       } else {
         failed++
       }
+    } else {
+      skipped++
     }
 
     if ((downloaded + failed) % 50 === 0 && (downloaded + failed) > 0) {

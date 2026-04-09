@@ -3,6 +3,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { getProductByHandle, listProducts } from "@/lib/medusa/products"
 import AddToCartButton from "@/components/product/AddToCartButton"
+import VariantSelector from "@/components/product/VariantSelector"
 import ProductCard from "@/components/product/ProductCard"
 import { formatPrice, formatInstallments, getDiscountPercent } from "@/lib/utils"
 import type { Metadata } from "next"
@@ -34,6 +35,8 @@ export default async function ProductPage({ params }: Props) {
   const { products: related } = await listProducts({ limit: 5 })
   const relatedFiltered = related.filter((p) => p.id !== product.id).slice(0, 4)
 
+  const hasVariants = (product.variants?.length || 0) > 1
+
   const variant = product.variants?.[0]
   const price = variant?.calculated_price as { calculated_amount?: number; original_amount?: number } | undefined
   const calculatedAmount = price?.calculated_amount || 0
@@ -49,20 +52,20 @@ export default async function ProductPage({ params }: Props) {
     (product.thumbnail ? [{ url: product.thumbnail }] : [])
 
   return (
-    <div className="content-container py-8">
+    <div className="content-container py-8 lg:py-12">
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-xs text-gray-500 mb-6">
+      <nav className="flex items-center gap-2 text-xs text-gray-500 mb-6 lg:mb-8">
         <Link href="/" className="hover:text-bibelo-pink transition-colors">Início</Link>
-        <span>/</span>
+        <span className="text-gray-300">/</span>
         <Link href="/produtos" className="hover:text-bibelo-pink transition-colors">Produtos</Link>
-        <span>/</span>
+        <span className="text-gray-300">/</span>
         <span className="text-gray-700 font-medium line-clamp-1">{product.title}</span>
       </nav>
 
       {/* Layout principal */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 xl:gap-20">
         {/* Galeria de imagens */}
-        <div className="space-y-3">
+        <div className="space-y-3 lg:sticky lg:top-28 lg:self-start">
           <div className="relative aspect-square bg-gray-50 rounded-2xl overflow-hidden border border-gray-100">
             {images[0] ? (
               <Image
@@ -74,10 +77,13 @@ export default async function ProductPage({ params }: Props) {
                 priority
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <svg className="w-20 h-20 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z" />
-                </svg>
+              <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-bibelo-rosa/50 to-bibelo-amarelo/30">
+                <div className="w-20 h-20 rounded-full bg-white/60 flex items-center justify-center mb-3">
+                  <svg className="w-10 h-10 text-bibelo-pink/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                  </svg>
+                </div>
+                <span className="text-sm text-gray-400 font-medium">Foto em breve</span>
               </div>
             )}
             {/* Badges */}
@@ -91,8 +97,8 @@ export default async function ProductPage({ params }: Props) {
           {images.length > 1 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-hide">
               {images.map((img, idx) => (
-                <div key={idx} className="w-16 h-16 shrink-0 bg-gray-50 rounded-lg overflow-hidden border border-gray-100 cursor-pointer hover:border-bibelo-pink transition-colors">
-                  <Image src={img.url} alt={`${product.title} ${idx + 1}`} width={64} height={64} className="w-full h-full object-cover" />
+                <div key={idx} className="w-16 h-16 lg:w-20 lg:h-20 shrink-0 bg-gray-50 rounded-lg overflow-hidden border border-gray-100 cursor-pointer hover:border-bibelo-pink transition-colors">
+                  <Image src={img.url} alt={`${product.title} ${idx + 1}`} width={80} height={80} className="w-full h-full object-cover" />
                 </div>
               ))}
             </div>
@@ -100,14 +106,14 @@ export default async function ProductPage({ params }: Props) {
         </div>
 
         {/* Informações do produto */}
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-5 lg:gap-6">
           <div>
             {(product.collection as { title?: string } | null)?.title && (
               <p className="text-bibelo-pink text-xs font-semibold uppercase tracking-widest mb-1">
                 {(product.collection as { title: string }).title}
               </p>
             )}
-            <h1 className="text-2xl md:text-3xl font-bold text-bibelo-dark leading-tight">{product.title}</h1>
+            <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-bibelo-dark leading-tight">{product.title}</h1>
           </div>
 
           {/* Preço */}
@@ -132,8 +138,10 @@ export default async function ProductPage({ params }: Props) {
             <p className="text-gray-500">Entre em contato para consultar o preço</p>
           )}
 
-          {/* Botão de compra */}
-          {!isOutOfStock && variant ? (
+          {/* Seletor de variações */}
+          {hasVariants ? (
+            <VariantSelector product={product as unknown as Record<string, unknown>} />
+          ) : !isOutOfStock && variant ? (
             <AddToCartButton variantId={variant.id} />
           ) : (
             <div>
