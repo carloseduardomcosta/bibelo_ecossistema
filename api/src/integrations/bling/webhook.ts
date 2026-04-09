@@ -294,11 +294,15 @@ blingWebhookRouter.post("/", blingWebhookAuth, async (req: Request, res: Respons
   const evento = (body.evento || body.event || "") as string;
   const resourceId = String(body.data?.id || body.data?.pedido?.id || body.data?.contato?.id || body.data?.estoque?.produto?.id || "unknown");
 
-  // Idempotency: ignora eventos duplicados nos últimos 60s
-  const eventKey = `${evento}:${resourceId}`;
+  // Idempotency: usa eventId do Bling quando disponível (único por evento genuíno).
+  // Fallback para evento:resourceId só se não houver eventId.
+  // Isso garante que uploads múltiplos de fotos (cada um com eventId diferente)
+  // sejam todos processados — sem bloquear updates legítimos em sequência rápida.
+  const blingEventId = (body.eventId || body.event_id || "") as string;
+  const eventKey = blingEventId || `${evento}:${resourceId}`;
   const lastSeen = recentBlingEvents.get(eventKey);
   if (lastSeen && Date.now() - lastSeen < 60000) {
-    logger.info("Bling webhook duplicado ignorado", { evento, resourceId });
+    logger.info("Bling webhook duplicado ignorado", { evento, resourceId, eventKey });
     res.json({ ok: true, duplicado: true });
     return;
   }

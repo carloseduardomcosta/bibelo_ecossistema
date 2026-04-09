@@ -8,7 +8,8 @@ import { XMLParser } from "fast-xml-parser";
 import { query, queryOne, db } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
-import { getValidToken, BLING_API } from "../integrations/bling/auth";
+import { getValidToken, BLING_API } from "../integrations/bling/auth"
+import { syncProductImages } from "../integrations/bling/sync";
 
 export const nfEntradaRouter = Router();
 nfEntradaRouter.use(authMiddleware);
@@ -479,6 +480,63 @@ nfEntradaRouter.delete("/:id", async (req: Request, res: Response) => {
 
   res.json({ message: "NF cancelada" });
 });
+
+// ══════════════════════════════════════════════════════════════
+// POST /nf-entrada/:id/sync-imagens
+//
+// Busca imagens HD (GET /produtos/{id}) para todos os produtos
+// vinculados a uma NF de entrada específica.
+//
+// Fluxo de uso: sincronizou NF → subiu fotos no Bling →
+// chama este endpoint → todas as fotos aparecem em HD na Novidades.
+//
+// Retorna imediatamente. Progresso nos logs da API.
+// ══════════════════════════════════════════════════════════════
+
+nfEntradaRouter.post("/:id/sync-imagens", authMiddleware, async (req: Request, res: Response) => {
+  const nota = await queryOne<{ id: string; numero: string }>(
+    "SELECT id, numero FROM financeiro.notas_entrada WHERE id = $1",
+    [req.params.id]
+  )
+  if (!nota) { res.status(404).json({ error: "NF não encontrada" }); return; }
+
+  // Busca todos os bling_ids dos produtos vinculados a esta NF
+  const produtos = await query<{ bling_id: string }>(
+    `SELECT DISTINCT bp.bling_id
+     FROM financeiro.notas_entrada_itens nei
+     JOIN sync.bling_products bp ON (
+       TRIM(bp.sku) = TRIM(nei.codigo_produto)
+       OR bp.gtin = nei.codigo_produto
+       OR (nei.gtin IS NOT NULL AND bp.gtin = nei.gtin)
+       OR REPLACE(TRIM(bp.sku), ' - ', ' ') = REPLACE(TRIM(nei.codigo_produto), ' - ', ' ')
+     )
+     WHERE nei.nota_id = $1`,
+    [nota.id]
+  )
+
+  if (produtos.length === 0) {
+    res.json({ message: "Nenhum produto vinculado encontrado nesta NF.", total: 0, atualizados: 0 })
+    return
+  }
+
+  const blingIds = produtos.map(p => p.bling_id)
+  logger.info(`[nf-sync-imagens] NF #${nota.numero}: buscando HD para ${blingIds.length} produto(s)`, { blingIds })
+
+  res.json({
+    message: `Sync de imagens HD iniciado para ${blingIds.length} produto(s) da NF #${nota.numero}. Acompanhe pelos logs.`,
+    total: blingIds.length,
+  })
+
+  // Roda em background — não bloqueia resposta HTTP
+  setImmediate(async () => {
+    try {
+      const result = await syncProductImages(blingIds)
+      logger.info(`[nf-sync-imagens] NF #${nota.numero} concluído`, result)
+    } catch (err: any) {
+      logger.error(`[nf-sync-imagens] NF #${nota.numero} falhou`, { error: err.message })
+    }
+  })
+})
 
 // ══════════════════════════════════════════════════════════════
 // GET /nf-entrada/resumo — KPIs

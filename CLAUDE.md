@@ -489,8 +489,16 @@ CREATE INDEX IF NOT EXISTS idx_nf_itens_gtin ON financeiro.notas_entrada_itens (
 ```
 O endpoint `POST /sync/bling` também propaga o GTIN para `sync.bling_products` quando SKU bate e o produto não tinha GTIN cadastrado.
 
+### Fluxo recomendado para lançamento de NF com muitas fotos (ex: 20 produtos × 10 fotos)
+1. Sobe as fotos no Bling produto a produto
+2. Sincroniza a NF via CRM → `POST /nf-entrada/sync/bling`
+3. Chama `POST /nf-entrada/:id/sync-imagens` → busca HD para todos os produtos da NF de uma vez
+4. Em ~30s todos os produtos têm imagens HD e aparecem em Novidades
+
+Obs: o webhook `product.updated` usa `eventId` do Bling como chave de idempotência — cada upload de foto tem seu próprio `eventId`, então múltiplos uploads rápidos são todos processados individualmente em tempo real.
+
 ### Arquivos-chave
-- `api/src/integrations/bling/webhook.ts` → `processProduct()` — webhook com imagem HD
+- `api/src/integrations/bling/webhook.ts` → `processProduct()` — webhook com imagem HD, idempotência por `eventId`
 - `api/src/routes/public-novidades.ts` → query JOIN bling_products + notas_entrada_itens
 - `api/src/routes/nf-entrada.ts` → `POST /sync/bling` — sincroniza NFs de entrada do Bling
 - `api/src/integrations/bling/sync.ts` → `syncProductImages()` — catch-up de imagens HD

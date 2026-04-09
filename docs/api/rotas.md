@@ -94,7 +94,8 @@ Referência completa de todos os endpoints.
 
 ### NF de Entrada
 - `POST /api/financeiro/nf-entrada` — upload XML NF-e (multipart/form-data), parse automático
-- `POST /api/financeiro/nf-entrada/sync/bling` — importa NFs de entrada diretamente da API do Bling (`GET /nfe?tipo=0`). Body: `{ dataInicial?: "YYYY-MM-DD", dataFinal?: "YYYY-MM-DD" }` (padrão: últimos 90 dias). Deduplicação por `chave_acesso`. Salva NF + itens com `codigo` e `gtin`. Propaga GTIN para `sync.bling_products` quando SKU bater. Retorna `{ total, importadas, ignoradas, erros, detalhes[] }`.
+- `POST /api/financeiro/nf-entrada/sync/bling` — importa NFs de entrada diretamente da API do Bling
+- `POST /api/financeiro/nf-entrada/:id/sync-imagens` — busca imagens HD para todos os produtos da NF. Resolve o fluxo "20 produtos × 10 fotos": após subir fotos no Bling, chama este endpoint → todos os produtos da NF recebem imagens HD em background. Retorna `{ total, message }`. (`GET /nfe?tipo=0`). Body: `{ dataInicial?: "YYYY-MM-DD", dataFinal?: "YYYY-MM-DD" }` (padrão: últimos 90 dias). Deduplicação por `chave_acesso`. Salva NF + itens com `codigo` e `gtin`. Propaga GTIN para `sync.bling_products` quando SKU bater. Retorna `{ total, importadas, ignoradas, erros, detalhes[] }`.
 - `GET  /api/financeiro/nf-entrada` — lista paginada (filtros: status, search, mes)
 - `GET  /api/financeiro/nf-entrada/:id` — detalhe com itens
 - `POST /api/financeiro/nf-entrada/:id/contabilizar` — gera lançamento no financeiro
