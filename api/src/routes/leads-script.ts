@@ -215,7 +215,7 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
           (temTelefone ? '<div style="position:relative;margin-bottom:14px;"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;opacity:0.5;">\\uD83D\\uDCF1</span><input type="tel" name="telefone" placeholder="WhatsApp (opcional)" style="' + inputStyle + '" onfocus="this.style.borderColor=\\'#fe68c4\\';this.style.boxShadow=\\'0 0 0 3px rgba(254,104,196,0.1)\\'" onblur="this.style.borderColor=\\'#ffe5ec\\';this.style.boxShadow=\\'none\\'" /></div>' : '') +
           // Botao principal
           '<button type="submit" id="bibelo-popup-btn" style="width:100%;padding:16px;background:linear-gradient(135deg,#fe68c4,#e91e63);color:#fff;border:none;border-radius:14px;font-size:17px;font-weight:700;cursor:pointer;font-family:Jost,Arial,sans-serif;box-shadow:0 6px 25px rgba(254,104,196,0.4);transition:transform 0.2s,box-shadow 0.2s;letter-spacing:0.3px;" onmouseover="this.style.transform=\\'translateY(-2px)\\';this.style.boxShadow=\\'0 10px 35px rgba(254,104,196,0.5)\\'" onmouseout="this.style.transform=\\'none\\';this.style.boxShadow=\\'0 6px 25px rgba(254,104,196,0.4)\\'">' +
-            'Quero meu desconto \\uD83C\\uDF89' +
+            'Entrar para o Clube \\uD83C\\uDF80' +
           '</button>' +
         '</form>' +
         // Beneficios rapidos

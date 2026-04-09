@@ -124,10 +124,10 @@ export default function DiscountPopup() {
           </div>
 
           <h2 className="font-heading text-2xl font-bold text-bibelo-dark leading-tight mb-1.5">
-            Oferta exclusiva pra você!
+            Faça parte do Clube Bibelô!
           </h2>
           <p className="text-gray-500 text-sm leading-relaxed max-w-[340px] mx-auto">
-            10% de desconto na 1ª compra — só pra quem cadastra aqui!
+            10% OFF na 1ª compra · frete grátis · mimo surpresa · novidades em primeira mão
           </p>
         </div>
 
@@ -168,7 +168,7 @@ export default function DiscountPopup() {
                 disabled={sending}
                 className="w-full py-4 bg-gradient-to-r from-bibelo-pink to-pink-500 text-white rounded-xl text-base font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-60"
               >
-                {sending ? "Enviando..." : "Quero meu desconto 🎉"}
+                {sending ? "Enviando..." : "Entrar para o Clube 🎀"}
               </button>
 
               <div className="flex justify-center gap-3 pt-2 text-[11px] text-gray-400">
