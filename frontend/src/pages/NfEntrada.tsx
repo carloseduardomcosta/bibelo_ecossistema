@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   FileText, ChevronLeft, ChevronRight, Search,
   CheckCircle2, Clock, XCircle, X, Eye, BookCheck, Trash2,
-  Package, RefreshCw,
+  Package, RefreshCw, ImageIcon,
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
@@ -112,6 +112,7 @@ export default function NfEntrada() {
 
   // Ações
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [syncingImagens, setSyncingImagens] = useState(false);
 
   const fetchResumo = useCallback(async () => {
     try {
@@ -161,6 +162,16 @@ export default function NfEntrada() {
       showSuccess('NF contabilizada no financeiro');
     } catch { showError('Erro ao contabilizar'); }
     finally { setActionLoading(null); }
+  };
+
+  // Buscar fotos HD dos produtos da NF
+  const handleSyncImagens = async (id: string, numero: string) => {
+    setSyncingImagens(true);
+    try {
+      const { data } = await api.post(`/financeiro/nf-entrada/${id}/sync-imagens`);
+      showSuccess(`Buscando fotos HD para ${data.total} produto(s) da NF ${numero}. Pronto em ~30s.`);
+    } catch { showError('Erro ao iniciar sync de imagens'); }
+    finally { setSyncingImagens(false); }
   };
 
   // Cancelar
@@ -458,23 +469,36 @@ export default function NfEntrada() {
             </div>
 
             {/* Ações */}
-            {detalhe.status === 'pendente' && (
-              <div className="p-5 border-t border-bibelo-border flex gap-3">
+            {detalhe.status !== 'cancelada' && (
+              <div className="p-5 border-t border-bibelo-border flex flex-col gap-2">
+                {detalhe.status === 'pendente' && (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => handleContabilizar(detalhe.id)}
+                      disabled={actionLoading === detalhe.id}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-400/10 text-emerald-400 border border-emerald-400/20 rounded-lg text-sm font-medium hover:bg-emerald-400/20 transition-colors disabled:opacity-50"
+                    >
+                      <BookCheck size={16} />
+                      {actionLoading === detalhe.id ? 'Contabilizando...' : 'Contabilizar no Financeiro'}
+                    </button>
+                    <button
+                      onClick={() => handleCancelar(detalhe.id)}
+                      disabled={actionLoading === detalhe.id}
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 text-red-400 border border-red-400/20 rounded-lg text-sm hover:bg-red-400/10 transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 size={16} />
+                      Cancelar
+                    </button>
+                  </div>
+                )}
                 <button
-                  onClick={() => handleContabilizar(detalhe.id)}
-                  disabled={actionLoading === detalhe.id}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-400/10 text-emerald-400 border border-emerald-400/20 rounded-lg text-sm font-medium hover:bg-emerald-400/20 transition-colors disabled:opacity-50"
+                  onClick={() => handleSyncImagens(detalhe.id, detalhe.numero)}
+                  disabled={syncingImagens}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-bibelo-primary/10 text-bibelo-primary border border-bibelo-primary/20 rounded-lg text-sm font-medium hover:bg-bibelo-primary/20 transition-colors disabled:opacity-50"
+                  title="Busca imagens em alta resolução no Bling para todos os produtos desta NF"
                 >
-                  <BookCheck size={16} />
-                  {actionLoading === detalhe.id ? 'Contabilizando...' : 'Contabilizar no Financeiro'}
-                </button>
-                <button
-                  onClick={() => handleCancelar(detalhe.id)}
-                  disabled={actionLoading === detalhe.id}
-                  className="flex items-center justify-center gap-2 px-4 py-2.5 text-red-400 border border-red-400/20 rounded-lg text-sm hover:bg-red-400/10 transition-colors disabled:opacity-50"
-                >
-                  <Trash2 size={16} />
-                  Cancelar
+                  <ImageIcon size={16} />
+                  {syncingImagens ? 'Iniciando...' : 'Buscar Fotos HD dos Produtos'}
                 </button>
               </div>
             )}
