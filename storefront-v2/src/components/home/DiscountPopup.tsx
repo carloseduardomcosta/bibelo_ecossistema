@@ -35,12 +35,21 @@ export default function DiscountPopup() {
   const [message, setMessage] = useState("")
 
   useEffect(() => {
-    // Não mostra se já é lead ou já viu popup
-    if (getCookie(LEAD_COOKIE) || tryGet(LEAD_COOKIE)) return
-    if (getCookie(POPUP_COOKIE) || tryGet(POPUP_COOKIE)) return
+    // Abertura manual via BenefitsStrip (ignora cookie — usuário clicou intencionalmente)
+    const handleManualOpen = () => setShow(true)
+    window.addEventListener("bibelo:open-popup", handleManualOpen)
 
-    const timer = setTimeout(() => setShow(true), DELAY_SECONDS * 1000)
-    return () => clearTimeout(timer)
+    // Abertura automática após delay — só se ainda não viu
+    let timer: ReturnType<typeof setTimeout>
+    if (!getCookie(LEAD_COOKIE) && !tryGet(LEAD_COOKIE) &&
+        !getCookie(POPUP_COOKIE) && !tryGet(POPUP_COOKIE)) {
+      timer = setTimeout(() => setShow(true), DELAY_SECONDS * 1000)
+    }
+
+    return () => {
+      window.removeEventListener("bibelo:open-popup", handleManualOpen)
+      clearTimeout(timer)
+    }
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {

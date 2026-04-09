@@ -21,8 +21,9 @@ const BENEFITS = [
     icon: "M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L9.568 3z M6 6h.008v.008H6V6z",
     title: "Promoção de 1ª compra",
     subtitle: "CUPOM clicando AQUI",
-    href: "/?cupom=1",
+    href: null,
     sparkle: false,
+    openPopup: true,
   },
   {
     // WhatsApp chat bubble (Heroicons outline)
@@ -34,7 +35,16 @@ const BENEFITS = [
   },
 ]
 
-function BenefitCard({ benefit }: { benefit: typeof BENEFITS[number] }) {
+type Benefit = {
+  icon: string
+  title: string
+  subtitle: string
+  href: string | null
+  sparkle: boolean
+  openPopup?: boolean
+}
+
+function BenefitCard({ benefit }: { benefit: Benefit }) {
   const iconEl = benefit.sparkle ? (
     <div className="relative w-10 h-10 shrink-0">
       {/* Círculo verde WhatsApp com pulse */}
@@ -85,6 +95,18 @@ function BenefitCard({ benefit }: { benefit: typeof BENEFITS[number] }) {
     </div>
   )
 
+  if (benefit.openPopup) {
+    return (
+      <button
+        type="button"
+        className="shrink-0 hover:bg-bibelo-rosa/50 transition-colors rounded-lg cursor-pointer"
+        onClick={() => window.dispatchEvent(new CustomEvent("bibelo:open-popup"))}
+      >
+        {content}
+      </button>
+    )
+  }
+
   if (benefit.href) {
     const isExternal = benefit.href.startsWith("http")
     return isExternal ? (
@@ -105,7 +127,7 @@ export default function BenefitsStrip() {
   return (
     <div className="bg-bibelo-rosa/40 border-b border-bibelo-pink/10 overflow-hidden">
       <div className="benefits-track flex w-max hover:[animation-play-state:paused]">
-        {[...BENEFITS, ...BENEFITS].map((b, i) => (
+        {([...BENEFITS, ...BENEFITS] as Benefit[]).map((b, i) => (
           <BenefitCard key={i} benefit={b} />
         ))}
       </div>
