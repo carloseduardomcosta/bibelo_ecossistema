@@ -39,6 +39,7 @@ import {
   Radar,
   Globe,
   Layers,
+  Store,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -91,6 +92,12 @@ const navGroups: NavGroup[] = [
       { to: '/nf-entrada', label: 'NF Entrada', icon: FileText },
       { to: '/contas-pagar', label: 'Contas a Pagar', icon: Banknote },
       { to: '/relatorios', label: 'Relatórios', icon: BarChart3 },
+    ],
+  },
+  {
+    label: 'Loja Online',
+    items: [
+      { to: '/loja-online', label: 'Configurações', icon: Store },
     ],
   },
   {
