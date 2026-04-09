@@ -3,7 +3,6 @@ import BenefitsStrip from "@/components/home/BenefitsStrip"
 import NovidadesSection from "@/components/home/NovidadesSection"
 import CategoriesSection from "@/components/home/CategoriesSection"
 import ProductSection from "@/components/home/ProductSection"
-import LeadCapture from "@/components/home/LeadCapture"
 import { listProducts } from "@/lib/medusa/products"
 import { getNovidadesBling } from "@/lib/api/novidades"
 
@@ -55,8 +54,6 @@ export default async function HomePage() {
         />
       )}
 
-      {/* 7. Captura de Lead — Clube Bibelô */}
-      <LeadCapture />
     </>
   )
 }
