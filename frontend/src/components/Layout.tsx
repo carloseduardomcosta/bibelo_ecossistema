@@ -40,6 +40,7 @@ import {
   Globe,
   Layers,
   Store,
+  Server,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -114,6 +115,7 @@ const navGroups: NavGroup[] = [
   {
     label: 'Sistema',
     items: [
+      { to: '/sistema', label: 'Sistema', icon: Server },
       { to: '/sync', label: 'Sync', icon: RefreshCw },
       { to: '/filas', label: 'Filas', icon: Clock },
     ],

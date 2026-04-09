@@ -1,6 +1,6 @@
 # BibelôCRM — Infraestrutura & Segurança
 
-> Última atualização: 31/03/2026
+> Última atualização: 09/04/2026
 
 ---
 
@@ -32,6 +32,38 @@ Portas bloqueadas explicitamente:
 ```
 
 **Resumo:** Somente SSH e tráfego web chegam ao servidor. Banco, cache e aplicações ficam isolados atrás do Nginx.
+
+---
+
+## SSH Hardening (09/04/2026)
+
+```ini
+# /etc/ssh/sshd_config.d/10-hardening.conf
+X11Forwarding no
+MaxAuthTries 3
+LoginGraceTime 30
+
+# /etc/ssh/sshd_config.d/50-cloud-init.conf
+PasswordAuthentication no
+
+# /etc/ssh/sshd_config.d/60-cloudimg-settings.conf
+PasswordAuthentication no
+```
+
+**Resumo:** Autenticação só por chave SSH. X11 desabilitado. 3 tentativas máximas. Janela de login 30s.
+
+### Swap (09/04/2026)
+
+```
+/swapfile  2 GB  swappiness=10
+```
+
+Persistente via `/etc/fstab`. Swappiness baixo = só usa swap em emergência (OOM).
+
+### MOTD Banner
+
+Banner ASCII "BIBELÔ" exibido em todo login SSH.
+Arquivo: `/etc/update-motd.d/01-bibelo`
 
 ---
 
@@ -82,8 +114,12 @@ maxretry = 10
 
 | Zona | Rate | Burst | Uso |
 |------|------|-------|-----|
-| api | 30 req/min por IP | 20 | Todas as rotas /api/* |
-| login | 5 req/min por IP | 10 | /api/auth/login |
+| api | 30 req/min por IP | 20 | Todas as rotas /api/* (CRM) |
+| login | 5 req/min por IP | 10 | /api/auth/login (CRM) |
+| tracking | 20 req/min por IP | 10 | /api/tracking/* (webhook) |
+| leads | 10 req/min por IP | 5 | /api/leads/* (webhook) |
+| landing | 30 req/min por IP | 15 | /lp/* (webhook) |
+| homolog_auth | 5 req/min por IP | 3 | /api/auth/* (homolog) |
 
 ### Rotas do Proxy
 
@@ -109,12 +145,29 @@ Subnet: 172.21.0.0/16
 |-----------|---------------|-----------------|
 | bibelo_api | 4000 | 127.0.0.1:4000 |
 | bibelo_frontend | 3000 | 127.0.0.1:3000 |
+| bibelo_medusa | 9000 | 127.0.0.1:9000 |
+| bibelo_storefront | 8000 | 127.0.0.1:8000 |
+| bibelo_storefront_v2 | 8001 | 127.0.0.1:8001 |
 | bibelo_uptime | 3001 | 127.0.0.1:3001 |
 | bibelo_postgres | 5432 | nenhum |
 | bibelo_redis | 6379 | nenhum |
-| bibelo_whatsapp | 8080 | nenhum |
 
 **Nenhum container expõe porta diretamente para a internet.** Tudo passa pelo Nginx.
+
+### Limites de recursos (09/04/2026)
+
+| Container | RAM máx | CPU máx |
+|-----------|---------|---------|
+| postgres | 1536M | 0.8 |
+| redis | 300M | 0.3 |
+| api | 1024M | 0.8 |
+| frontend | 256M | 0.3 |
+| medusa | 1536M | 0.8 |
+| storefront | 512M | 0.5 |
+| storefront-v2 | 512M | 0.5 |
+| uptime | 256M | 0.2 |
+
+**Total alocado:** ~5.9 GB / 8 GB — reserva de ~2 GB para o SO.
 
 ---
 
@@ -122,7 +175,7 @@ Subnet: 172.21.0.0/16
 
 O rate limiting está em 3 camadas:
 
-1. **Nginx** — 30 req/min geral, 5 req/min login
+1. **Nginx** — 30 req/min geral, 5 req/min login, 20 req/min tracking, 10 req/min leads, 30 req/min landing pages
 2. **Express** — 120 req/min global, 10 req/15min no /api/auth/login
 3. **Bling API** — 60 req/min (controlado no código de sync)
 
@@ -149,7 +202,7 @@ Domínio: `papelariabibelo.com.br`
 | TXT | resend._domainkey | (chave DKIM Resend) | DKIM para Resend |
 | TXT | scph0226._domainkey | (chave DKIM Hostinger) | DKIM para Hostinger |
 
-> Registros antigos da Edrone (edrone._domainkey, edrone-mail, click, sms) podem ser removidos.
+> Registros da Edrone removidos em 09/04/2026: edrone._domainkey, edrone-mail, click, sms, sparkpost.edrone-click.
 
 ### SPF
 
@@ -164,10 +217,10 @@ v=spf1 include:_spf.mail.hostinger.com include:send.resend.com -all
 ### DMARC
 
 ```
-v=DMARC1; p=quarantine; rua=mailto:contato@papelariabibelo.com.br
+v=DMARC1; p=reject; rua=mailto:contato@papelariabibelo.com.br
 ```
 
-- `p=quarantine` — emails que falham SPF/DKIM vão para spam
+- `p=reject` — emails que falham SPF/DKIM são **rejeitados** (atualizado 09/04/2026, antes era quarantine)
 - Relatórios de abuso enviados para `contato@papelariabibelo.com.br`
 
 ---

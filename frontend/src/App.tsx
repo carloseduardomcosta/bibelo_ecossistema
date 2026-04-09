@@ -32,6 +32,7 @@ import ConsumoEmail from './pages/ConsumoEmail';
 import Inteligencia from './pages/Inteligencia';
 import MetaAds from './pages/MetaAds';
 import Filas from './pages/Filas';
+import Sistema from './pages/Sistema';
 import SEO from './pages/SEO';
 import LandingPages from './pages/LandingPages';
 import LojaOnline from './pages/LojaOnline';
@@ -103,6 +104,7 @@ export default function App() {
               <Route path="/meta-ads" element={<MetaAds />} />
               <Route path="/sync" element={<Sync />} />
               <Route path="/filas" element={<Filas />} />
+              <Route path="/sistema" element={<Sistema />} />
               <Route path="/seo" element={<SEO />} />
               <Route path="/landing-pages" element={<LandingPages />} />
               <Route path="/loja-online" element={<LojaOnline />} />

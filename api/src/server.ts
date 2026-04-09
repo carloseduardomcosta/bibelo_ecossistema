@@ -41,6 +41,7 @@ import { metaAdsRouter } from "./routes/meta-ads";
 import { seoRouter } from "./routes/seo";
 import { landingPagesRouter } from "./routes/landing-pages";
 import { storeSettingsRouter } from "./routes/store-settings";
+import { systemRouter } from "./routes/system";
 import { registerScheduledJobs, closeSyncQueue } from "./queues/sync.queue";
 import { registerFlowJobs, closeFlowQueue }      from "./queues/flow.queue";
 
@@ -118,6 +119,7 @@ app.use("/lp", landingPagesRouter);             // público: /lp/dia-das-maes
 app.use("/api/landing-pages", landingPagesRouter); // admin: CRUD
 app.use("/api/seo", seoRouter);
 app.use("/api", storeSettingsRouter);              // GET público + PUT autenticado
+app.use("/api/system", systemRouter);              // status VPS + code stats
 
 // ── 404
 app.use((_req, res) => {

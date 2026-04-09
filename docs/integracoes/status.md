@@ -1,6 +1,6 @@
 # Status das Integrações — BibelôCRM
 
-Última atualização: 3 de Abril de 2026
+Última atualização: 9 de Abril de 2026
 
 | Integração | Status | Observações |
 |-----------|--------|-------------|
@@ -32,7 +32,7 @@
 | Score de Leads | ✅ produção | engajamento (popup +15, views +3, cart +10, emails +3) |
 | UTM Tracking | ✅ produção | captura utm_source/medium/campaign, persiste cookie 30d |
 | Página de Links | ✅ produção | boasvindas.papelariabibelo.com.br — substitui Linktree |
-| Segurança (Pentest) | ✅ produção | 15 fixes: SQL injection, CSRF, XSS, HMAC, CSP/HSTS |
+| Segurança (Pentest) | ✅ produção | 15 fixes: SQL injection, CSRF, XSS, HMAC, CSP/HSTS + hardening VPS/Nginx 09/04 |
 | Testes Automatizados | ✅ produção | Vitest + Supertest, 30 testes integração |
 | Google Reviews | ✅ produção | Places API (New), cache DB 6h, widget JS NuvemShop via GTM |
 | Inteligência de Fluxos | ✅ produção | pula step cupom se lead já comprou, reativação só com pedido |
@@ -43,4 +43,5 @@
 | Melhor Envio | ✅ produção | OAuth2 conectado, fulfillment provider Medusa v2, PAC+SEDEX calculados via API, token via CRM |
 | Medusa → Bling pedidos | ✅ produção | Subscriber order.placed → CRM → Bling API (busca/cria contato + cria pedido), webhook bidirecional confirmado |
 | Melhor Envio etiquetas | ✅ produção | Geração automática via CRM para pedidos Medusa (cart→checkout→generate→print), NuvemShop mantém fluxo Bling |
-| Uptime Kuma | ⏳ pendente | container não subiu ainda |
+| Uptime Kuma | ✅ produção | status.papelariabibelo.com.br — 11 monitores, 2 canais alerta |
+| Edrone | ❌ removido | DNS Cloudflare limpo em 09/04/2026 — 5 registros removidos (DKIM, mail, click, sms, sparkpost) |

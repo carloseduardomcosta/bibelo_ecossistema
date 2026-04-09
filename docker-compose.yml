@@ -79,6 +79,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
+      - ./data/system-stats.json:/app/data/system-stats.json:ro
     mem_limit: 1024m
     cpus: 0.8
     healthcheck:

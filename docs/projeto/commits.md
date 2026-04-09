@@ -699,3 +699,60 @@ Para histórico completo e atualizado, usar `git log --oneline`.
 - fix: bloqueia pinch-to-zoom mobile — `touch-action: manipulation` no html
   - iOS ignora meta viewport user-scalable=no desde iOS 10
   - Next.js 15 viewport export (não mais meta tag manual)
+
+- sec: hardening VPS/Nginx — auditoria completa e correções
+  - H2: SSH PasswordAuthentication forçado para no (cloud-init sobrescrevia)
+  - H3/H4/H5: headers de segurança (HSTS, X-Frame, CSP, Permissions-Policy) em api, status, webhook, boasvindas
+  - H6: limites de recursos Docker (mem_limit + cpus) em todos os 8 containers
+  - M1/M2/M3: SSH hardening — X11Forwarding no, MaxAuthTries 3, LoginGraceTime 30s
+  - M4: rate limit Nginx em endpoints públicos (tracking 20r/m, leads 10r/m, landing 30r/m)
+  - M7: apt upgrade — systemd, docker-ce, fwupd atualizados
+  - DNS: removidos 5 registros Edrone do Cloudflare (DKIM, mail, click, sms, sparkpost)
+
+- infra: banner MOTD "BIBELÔ" no login SSH
+  - /etc/update-motd.d/01-bibelo — ASCII art + subhead "Ecossistema Papelaria Bibelo - Macedo 2026"
+
+- infra: melhorias VPS — disco, swap, DMARC, Docker limits ativos
+  - Limpeza Docker build cache: 77% → 29% disco (50 GB liberados)
+  - Swap 2 GB persistente (fstab), swappiness=10 (só emergência)
+  - DMARC atualizado de p=quarantine para p=reject no Cloudflare
+  - Docker limits (mem_limit + cpus) aplicados — todos 8 containers com teto ativo
+  - storefront_v2 restaurado para healthy após recreate
+
+- docs: atualiza roadmap completo — Fases 1+2 concluidas, Fase 3 em andamento, Fase 4 SCM planejada
+  - Fase 4 SCM: schema supply, curva ABC, ponto de pedido, historico preco, pedido de compra, score fornecedor
+  - Roadmap reflete estado real do projeto em 09/04/2026
+
+- 9459ebb feat: storefront-v2 — checkout multi-pagamento, emails transacionais, retirada na loja, 131 testes
+  - Checkout: Pix (5% OFF), cartão de crédito (MP.js tokenização, até 12x), boleto bancário
+  - Página de confirmação com QR Code Pix, link boleto, status cartão
+  - Emails transacionais CRM (SES/Resend): confirmação pedido, pagamento aprovado, envio com rastreio
+  - Medusa: subscriber payment-approved → notifica CRM → email + admin
+  - Módulo retirada na loja (fulfillment provider, frete grátis, endereço Timbó/SC)
+  - Healthcheck storefront-v2 corrigido (node HTTP em vez de wget spider)
+  - Medusa: MP provider atualizado para suportar credit_card + boleto + pix
+  - 131 testes Vitest storefront: utils, stores (cart/auth), cart API, checkout, páginas, emails
+  - Endpoints: /api/internal/medusa-payment, /api/internal/medusa-shipping
+
+- 5cf95ce feat: painel Loja Online no CRM — configurações centralizadas
+  - Nova seção "Loja Online" no sidebar do CRM
+  - 5 abas: Pagamento, Frete, Checkout, Marketing, Geral (31 configurações)
+  - Banco: tabela public.store_settings (chave/valor com categoria e tipo)
+  - API: GET /api/store-settings (público, cache 5min) + PUT autenticado
+  - Frontend: toggles, inputs numéricos, campos R$ (currency), save por aba
+  - Storefront lê configs dinamicamente sem rebuild
+
+- 7e72853 feat: botão WhatsApp no produto (com link) + botão flutuante global
+  - Botão verde destaque "Preciso de ajuda com este produto" com nome + URL
+  - Botão flutuante (bolinha verde) em todas as páginas com pulse, tooltip, posição mobile
+
+- f680b1f fix: store-settings — logs de auditoria, centavos→reais no CRM, 16 testes
+  - Logs: GET com ip/cache/elapsed, PUT com user/antes→depois de cada campo
+  - UX: campos monetários exibem R$ (tipo currency), API converte reais↔centavos
+  - 16 testes: categorias, campos, auth, ranges, JSON, booleans, segurança
+
+- fe32e97 test: E2E fluxo completo de compra — 20 testes ponta-a-ponta
+  - Simula ciclo real: catálogo → carrinho → endereço → frete → pedido → email → Bling
+  - Usa Medusa API real (produtos, preços, carrinho, shipping options)
+  - Gera relatório com dados reais (produto, preço, cart ID, status de cada step)
+  - Valida rejeição de payloads inválidos nos endpoints internos

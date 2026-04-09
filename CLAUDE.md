@@ -200,7 +200,9 @@ bash scripts/test.sh                          # todos
 bash scripts/test.sh src/routes/leads.test.ts  # específico
 ```
 
-306+ testes: 18 suites cobrindo health, email, leads, orders, images, auth, customers, campaigns, analytics, sync, products, search, tracking, webhooks, email-events, links, security, flows (incluindo 11 testes condicionais de branching).
+462 testes CRM (26 suites): health, email, leads, orders, images, auth, customers, campaigns, analytics, sync, products, search, tracking, webhooks, email-events, links, security, flows, store-settings, E2E purchase flow.
+131 testes storefront (7 suites): utils, stores (cart/auth), cart API, checkout, páginas, emails.
+Total: 593 testes automatizados.
 
 Regras: endpoint público → testes de input, token, XSS. Protegido → 401 + resposta válida. Limpar dados no `afterAll`. Sem mocks de DB.
 
@@ -299,6 +301,33 @@ Ferramenta integrada para converter e enviar imagens de produtos para múltiplas
 ### Segurança da rota pública `/api/images/serve/:id`
 - Rate limit 60 req/min, regex whitelist, path traversal bloqueado
 - IDs aleatórios (crypto.randomBytes), auto-cleanup 1h, X-Content-Type-Options: nosniff
+
+---
+
+## Loja Online — Configurações centralizadas (CRM)
+
+Painel no CRM (sidebar > Loja Online > Configurações) gerencia regras de negócio que o storefront consome via API.
+
+### Tabela `public.store_settings` — 31 configs em 5 categorias:
+- **pagamento**: pix_ativo, pix_desconto, cartao_ativo, cartao_parcelas_max, cartao_parcela_min, cartao_juros, boleto_ativo, boleto_prazo_dias
+- **frete**: frete_gratis_ativo, frete_gratis_valor, frete_gratis_regioes, retirada_ativo, retirada_endereco, retirada_horario
+- **checkout**: checkout_mensagem, checkout_whatsapp, checkout_cupom, checkout_conta_obrig
+- **marketing**: popup_ativo, popup_desconto, popup_cupom, banner_frete_gratis, selo_seguranca
+- **geral**: loja_nome, loja_telefone, loja_email, loja_horario, loja_endereco, loja_cnpj, loja_instagram, loja_facebook
+
+### Endpoints:
+- `GET /api/store-settings` — **público** (storefront consome, cache 5min)
+- `GET /api/store-settings/all` — autenticado (CRM, com metadados/tipo/label)
+- `PUT /api/store-settings` — autenticado (body: `{ settings: [{ categoria, chave, valor }] }`)
+
+### Divisão Medusa vs CRM:
+- **Medusa Admin**: regiões, moedas, providers pagamento/frete (config rara, técnica)
+- **CRM Loja Online**: regras de negócio que mudam frequentemente (desconto, parcelas, frete grátis, popup)
+
+### Campos monetários:
+- Banco armazena em **centavos** (ex: 7900)
+- CRM exibe em **reais** (R$ 79,00) com tipo `currency`
+- API converte automaticamente reais↔centavos no load/save
 
 ---
 
@@ -488,7 +517,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 9 de Abril de 2026 — hardening VPS/Nginx (SSH, headers, Docker limits, rate limit, DNS Edrone removido)*
+*Última atualização: 9 de Abril de 2026 — storefront checkout multi-pagamento (Pix/Cartão/Boleto), emails transacionais, painel Loja Online no CRM, WhatsApp flutuante, 593 testes*
 
 ---
 
