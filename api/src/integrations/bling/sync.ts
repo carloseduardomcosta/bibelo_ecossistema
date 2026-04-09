@@ -753,6 +753,20 @@ export async function incrementalSync(): Promise<{ customers: number; orders: nu
     logger.error("Bling incrementalSync produtos falhou", { error: message });
   }
 
+  // Busca imagens HD para produtos alterados neste ciclo.
+  // O listing só retorna imagemURL (thumbnail /t/). Para garantir qualidade HD,
+  // fazemos GET /produtos/{id} nos produtos que mudaram — custo: ~350ms por produto,
+  // típico 0-5 por ciclo = impacto desprezível no rate limit (3 req/s).
+  if (changedProductIds.length > 0) {
+    try {
+      const imgResult = await syncProductImages(changedProductIds);
+      logger.info("Bling incrementalSync imagens HD", imgResult);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro";
+      logger.warn("Bling incrementalSync imagens HD falhou (não crítico)", { error: message });
+    }
+  }
+
   // Sync estoque incremental (só produtos que mudaram)
   try {
     stock = await syncStock(changedProductIds.length > 0 ? changedProductIds : undefined);
