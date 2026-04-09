@@ -284,7 +284,7 @@ export async function syncOrders(): Promise<number> {
 let categoryCache: { map: Map<number, string>; fetchedAt: number } | null = null;
 const CATEGORY_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 horas
 
-async function fetchCategoryMap(token: string, forceRefresh = false): Promise<Map<number, string>> {
+export async function fetchCategoryMap(token: string, forceRefresh = false): Promise<Map<number, string>> {
   // Retorna cache se válido
   if (!forceRefresh && categoryCache && (Date.now() - categoryCache.fetchedAt) < CATEGORY_CACHE_TTL) {
     logger.info("Bling categorias: usando cache em memória", { total: categoryCache.map.size });

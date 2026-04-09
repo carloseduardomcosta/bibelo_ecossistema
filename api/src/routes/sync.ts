@@ -4,7 +4,7 @@ import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { getAuthUrl, exchangeCode } from "../integrations/bling/auth";
-import { syncCustomers, syncOrders, syncProducts, syncStock, syncNfEntrada, syncContasPagar, incrementalSync } from "../integrations/bling/sync";
+import { syncCustomers, syncOrders, syncProducts, syncStock, syncNfEntrada, syncContasPagar, incrementalSync, syncProductCategories, fetchCategoryMap } from "../integrations/bling/sync";
 import { getNuvemShopAuthUrl, exchangeNuvemShopCode, getNuvemShopToken } from "../integrations/nuvemshop/auth";
 import { syncNuvemShop, registerNsWebhooks } from "../integrations/nuvemshop/sync";
 import { sendOrderConfirmationEmail, sendPaymentApprovedEmail, sendShippingEmail } from "../services/storefront-email.service";
@@ -111,6 +111,18 @@ syncRouter.post("/bling", authMiddleware, async (req: Request, res: Response) =>
       const stock = await syncStock();
       const nfEntrada = await syncNfEntrada();
       const contasPagar = await syncContasPagar();
+
+      // Sync categorias→produtos (mapeia qual produto pertence a qual categoria)
+      try {
+        const { getValidToken } = await import("../integrations/bling/auth");
+        const token = await getValidToken();
+        const categoryMap = await fetchCategoryMap(token, true);
+        const catUpdated = await syncProductCategories(token, categoryMap);
+        logger.info("Sync categorias→produtos finalizado", { catUpdated });
+      } catch (catErr: any) {
+        logger.warn("Sync categorias→produtos falhou", { error: catErr.message });
+      }
+
       logger.info("Sync completo finalizado", { customers, orders, products, stock, nfEntrada, contasPagar });
     } else {
       const result = await incrementalSync();
@@ -119,6 +131,23 @@ syncRouter.post("/bling", authMiddleware, async (req: Request, res: Response) =>
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro na sincronização";
     logger.error("Sync Bling manual falhou", { error: message });
+  }
+});
+
+// ── POST /api/sync/bling/categorias — sync categorias→produtos ──
+
+syncRouter.post("/bling/categorias", authMiddleware, async (req: Request, res: Response) => {
+  logger.info("Sync categorias→produtos iniciado", { user: (req as any).user?.email });
+  res.json({ message: "Sync categorias→produtos iniciado em background." });
+
+  try {
+    const { getValidToken } = await import("../integrations/bling/auth");
+    const token = await getValidToken();
+    const categoryMap = await fetchCategoryMap(token, true);
+    const updated = await syncProductCategories(token, categoryMap);
+    logger.info("Sync categorias→produtos finalizado", { updated, categorias: categoryMap.size });
+  } catch (err: any) {
+    logger.error("Sync categorias→produtos falhou", { error: err.message });
   }
 });
 
