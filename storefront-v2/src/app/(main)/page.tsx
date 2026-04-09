@@ -1,8 +1,9 @@
 import HeroCarousel from "@/components/home/HeroCarousel"
 import BenefitsStrip from "@/components/home/BenefitsStrip"
 import NovidadesSection from "@/components/home/NovidadesSection"
-import CategoriesSection from "@/components/home/CategoriesSection"
 import ProductSection from "@/components/home/ProductSection"
+import CategoriesSection from "@/components/home/CategoriesSection"
+import InstagramPlaceholder from "@/components/home/InstagramPlaceholder"
 import { listProducts } from "@/lib/medusa/products"
 import { getNovidadesBling } from "@/lib/api/novidades"
 
@@ -36,24 +37,26 @@ export default async function HomePage() {
       {/* Espaçamento entre benefícios e seções de conteúdo */}
       <div className="h-8" />
 
-      {/* 4. Novidades — produtos das últimas NFs do Bling com foto + preço + descrição + estoque */}
+      {/* 3. Novidades — produtos das últimas NFs do Bling */}
       {novidadesBling.length > 0 && (
         <NovidadesSection products={novidadesBling} />
+      )}
+
+      {/* 4. Promoções — produtos Medusa com preço promocional ativo (só aparece se houver) */}
+      {promos.length > 0 && (
+        <ProductSection
+          eyebrow="Aproveite!"
+          title="Promoções"
+          products={promos as Parameters<typeof ProductSection>[0]["products"]}
+          viewAllHref="/promocoes"
+        />
       )}
 
       {/* 5. Categorias */}
       <CategoriesSection />
 
-      {/* 6. Ofertas */}
-      {promos.length > 0 && (
-        <ProductSection
-          eyebrow="Aproveite!"
-          title="Ofertas"
-          products={promos as Parameters<typeof ProductSection>[0]["products"]}
-          viewAllHref="/produtos?sort=price_asc"
-        />
-      )}
-
+      {/* 6. Instagram — placeholder */}
+      <InstagramPlaceholder />
     </>
   )
 }
