@@ -369,6 +369,229 @@ async function getSalesChannelId(): Promise<string> {
   return data.sales_channels[0]?.id || ""
 }
 
+// ── Variações: agrupar pai + filhos ──────────────────────────
+
+interface ProductGroup {
+  parent: BlingProduct
+  children: BlingProduct[]
+  isVariant: boolean // true se tem filhos (variantes)
+}
+
+/**
+ * Agrupa produtos Bling em pai+filhos.
+ * Filho: dados_raw.idProdutoPai != null/0
+ * Pai: tem filhos apontando pra ele, OU não tem parent (simples)
+ */
+function groupProductsByParent(products: BlingProduct[]): ProductGroup[] {
+  const childrenByParent = new Map<string, BlingProduct[]>()
+  const productById = new Map<string, BlingProduct>()
+  const childBlingIds = new Set<string>()
+
+  // Indexar todos os produtos por bling_id
+  for (const p of products) {
+    productById.set(p.bling_id, p)
+  }
+
+  // Identificar filhos e agrupá-los pelo pai
+  for (const p of products) {
+    const parentId = p.dados_raw?.idProdutoPai
+    if (parentId && parentId !== 0 && parentId !== "0" && parentId !== null) {
+      const parentBlingId = String(parentId)
+      if (!childrenByParent.has(parentBlingId)) {
+        childrenByParent.set(parentBlingId, [])
+      }
+      childrenByParent.get(parentBlingId)!.push(p)
+      childBlingIds.add(p.bling_id)
+    }
+  }
+
+  const groups: ProductGroup[] = []
+
+  for (const p of products) {
+    // Pular filhos — serão processados como variantes do pai
+    if (childBlingIds.has(p.bling_id)) continue
+
+    const children = childrenByParent.get(p.bling_id) || []
+    groups.push({
+      parent: p,
+      children,
+      isVariant: children.length > 0,
+    })
+  }
+
+  return groups
+}
+
+/**
+ * Parseia "NomePai OpcaoNome:OpcaoValor" do nome do filho.
+ * Ex: "CANETA BAZZE GEL GLITTER Tinta:Azul" → { option: "Tinta", value: "Azul" }
+ */
+function parseVariation(childName: string, parentName: string): { option: string; value: string } {
+  // Tentar encontrar "Opção:Valor" no final do nome
+  const match = childName.match(/\s+([^:\s]+(?:\/[^:\s]+)?):(.+)$/)
+  if (match) {
+    return { option: match[1].trim(), value: match[2].trim() }
+  }
+
+  // Fallback: diferença entre nome do filho e pai
+  const diff = childName.replace(parentName, "").trim()
+  if (diff) {
+    return { option: "Variação", value: diff }
+  }
+
+  return { option: "Variação", value: childName }
+}
+
+// ── Criar produto COM variantes no Medusa ───────────────────
+
+async function createMedusaProductWithVariants(
+  group: ProductGroup,
+  stockMap: Record<string, number>,
+  salesChannelId: string,
+  categoryMapping: Map<string, string>,
+  imageMap: Map<string, string>
+): Promise<string> {
+  const parent = group.parent
+  const handle = toHandle(parent.nome, parent.sku)
+  const description = extractDescription(parent)
+
+  // Determinar nome da opção a partir dos filhos
+  const variations = group.children.map((child) => ({
+    child,
+    ...parseVariation(child.nome, parent.nome),
+  }))
+
+  const optionTitle = variations[0]?.option || "Variação"
+  const optionValues = variations.map((v) => v.value)
+
+  // Imagens: usar do pai, com fallback para filhos
+  const parentImageUrl = imageMap.get(parent.bling_id)
+  const parentImages = parentImageUrl
+    ? [{ url: parentImageUrl }]
+    : (parent.imagens || []).filter((img) => img.url).map((img) => ({ url: String(img.url) }))
+
+  // Estoque total (pai + filhos)
+  const totalStock = (stockMap[parent.bling_id] || 0)
+    + group.children.reduce((sum, c) => sum + (stockMap[c.bling_id] || 0), 0)
+
+  // Construir variantes
+  const variants = group.children.map((child) => {
+    const variation = variations.find((v) => v.child.bling_id === child.bling_id)!
+    const childStock = stockMap[child.bling_id] || 0
+    const childImageUrl = imageMap.get(child.bling_id)
+
+    return {
+      title: variation.value,
+      sku: child.sku,
+      barcode: child.gtin || undefined,
+      manage_inventory: false,
+      prices: [
+        {
+          amount: Math.round(child.preco_venda * 100),
+          currency_code: "brl",
+        },
+      ],
+      options: { [optionTitle]: variation.value },
+      weight: child.peso_bruto ? child.peso_bruto * 1000 : undefined,
+      metadata: {
+        bling_id: child.bling_id,
+        bling_parent_id: parent.bling_id,
+      },
+    }
+  })
+
+  const body: Record<string, unknown> = {
+    title: parent.nome,
+    handle,
+    description: description || undefined,
+    status: totalStock > 0 ? "published" : "draft",
+    options: [{ title: optionTitle, values: optionValues }],
+    variants,
+    sales_channels: [{ id: salesChannelId }],
+    metadata: {
+      bling_id: parent.bling_id,
+      preco_custo: parent.preco_custo,
+      categoria_bling: parent.categoria,
+      has_variants: true,
+      variant_count: group.children.length,
+    },
+  }
+
+  if (parentImages.length > 0) {
+    body.images = parentImages
+    body.thumbnail = parentImages[0].url
+  }
+
+  // Atribuir categoria
+  if (parent.bling_category_id) {
+    const medusaCatId = categoryMapping.get(parent.bling_category_id)
+    if (medusaCatId) {
+      body.categories = [{ id: medusaCatId }]
+    }
+  }
+
+  const data = await medusaRequest<{ product: { id: string } }>(
+    "POST",
+    "/admin/products",
+    body
+  )
+
+  return data.product.id
+}
+
+// ── Atualizar produto COM variantes no Medusa ───────────────
+
+async function updateMedusaProductWithVariants(
+  medusaId: string,
+  group: ProductGroup,
+  stockMap: Record<string, number>,
+  categoryMapping: Map<string, string>,
+  existingVariants: Array<{ id: string; sku: string }>
+): Promise<void> {
+  const parent = group.parent
+  const description = extractDescription(parent)
+  const totalStock = (stockMap[parent.bling_id] || 0)
+    + group.children.reduce((sum, c) => sum + (stockMap[c.bling_id] || 0), 0)
+
+  const updateBody: Record<string, unknown> = {
+    title: parent.nome,
+    description: description || undefined,
+    status: totalStock > 0 ? "published" : "draft",
+    metadata: {
+      bling_id: parent.bling_id,
+      preco_custo: parent.preco_custo,
+      categoria_bling: parent.categoria,
+      has_variants: true,
+      variant_count: group.children.length,
+    },
+  }
+
+  if (parent.bling_category_id) {
+    const medusaCatId = categoryMapping.get(parent.bling_category_id)
+    if (medusaCatId) {
+      updateBody.categories = [{ id: medusaCatId }]
+    }
+  }
+
+  await medusaRequest("POST", `/admin/products/${medusaId}`, updateBody)
+
+  // Atualizar preço de cada variante existente
+  for (const child of group.children) {
+    const existingVar = existingVariants.find((v) => v.sku === child.sku)
+    if (existingVar) {
+      await medusaRequest(
+        "POST",
+        `/admin/products/${medusaId}/variants/${existingVar.id}`,
+        {
+          sku: child.sku,
+          prices: [{ amount: Math.round(child.preco_venda * 100), currency_code: "brl" }],
+          weight: child.peso_bruto ? child.peso_bruto * 1000 : undefined,
+        }
+      )
+    }
+  }
+}
+
 // ── Extrair descrição do produto Bling ────────────────────────
 
 function extractDescription(product: BlingProduct): string {
@@ -629,8 +852,14 @@ export async function syncBlingToMedusa(): Promise<{
     }
   }
 
+  // 4. Agrupar produtos por pai/filhos (variações)
+  const productGroups = groupProductsByParent(productsToSync)
+  const simpleCount = productGroups.filter((g) => !g.isVariant).length
+  const variantCount = productGroups.filter((g) => g.isVariant).length
+  const childrenCount = productGroups.reduce((sum, g) => sum + g.children.length, 0)
+
   logger.info(
-    `Medusa sync: ${productsToSync.length}/${blingProducts.length} produtos (limit ${config.max_products}), ${medusaProducts.size} no Medusa, ${categoryMapping.size} categorias, ${imageMap.size} imagens`
+    `Medusa sync: ${productsToSync.length} produtos → ${productGroups.length} grupos (${simpleCount} simples + ${variantCount} com variantes, ${childrenCount} filhos), ${medusaProducts.size} no Medusa, ${categoryMapping.size} categorias, ${imageMap.size} imagens`
   )
 
   let created = 0
@@ -639,7 +868,8 @@ export async function syncBlingToMedusa(): Promise<{
   let consecutiveErrors = 0
   const MAX_CONSECUTIVE_ERRORS = 5 // circuit breaker
 
-  for (const product of productsToSync) {
+  for (const group of productGroups) {
+    const product = group.parent
     const stock = stockMap[product.bling_id] || 0
     const existing = medusaProducts.get(product.sku)
 
@@ -651,21 +881,38 @@ export async function syncBlingToMedusa(): Promise<{
 
     if (isDryRun) {
       const action = existing ? "UPDATE" : "CREATE"
-      logger.info(`[DRY-RUN] ${action} SKU=${product.sku} nome="${product.nome}" estoque=${stock} img=${cachedImageUrl ? "local" : "bling"}`)
+      const varInfo = group.isVariant ? ` (${group.children.length} variantes)` : ""
+      logger.info(`[DRY-RUN] ${action} SKU=${product.sku} nome="${product.nome}" estoque=${stock}${varInfo}`)
       if (existing) updated++; else created++
       continue
     }
 
     try {
-      if (existing) {
-        const variantId = existing.variants.find((v) => v.sku === product.sku)?.id
-        if (variantId) {
-          await updateMedusaProduct(existing.id, variantId, product, stock, categoryMapping)
+      if (group.isVariant) {
+        // ── Produto com variantes ──
+        if (existing) {
+          await updateMedusaProductWithVariants(
+            existing.id, group, stockMap, categoryMapping, existing.variants
+          )
           updated++
+        } else {
+          await createMedusaProductWithVariants(
+            group, stockMap, salesChannelId, categoryMapping, imageMap
+          )
+          created++
         }
       } else {
-        await createMedusaProduct(product, stock, salesChannelId, categoryMapping)
-        created++
+        // ── Produto simples (sem variantes) ──
+        if (existing) {
+          const variantId = existing.variants.find((v) => v.sku === product.sku)?.id
+          if (variantId) {
+            await updateMedusaProduct(existing.id, variantId, product, stock, categoryMapping)
+            updated++
+          }
+        } else {
+          await createMedusaProduct(product, stock, salesChannelId, categoryMapping)
+          created++
+        }
       }
       consecutiveErrors = 0 // reset
     } catch (err: unknown) {
@@ -678,7 +925,7 @@ export async function syncBlingToMedusa(): Promise<{
       if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
         logger.error(`CIRCUIT BREAKER: ${consecutiveErrors} erros consecutivos — parando sync`)
         await logMedusaSync("products", "circuit-breaker", {
-          total: productsToSync.length, criados: created, atualizados: updated, erros: errors,
+          total: productGroups.length, criados: created, atualizados: updated, erros: errors,
           duracao: Date.now() - startTime,
         }, { ultimo_erro: msg, sku: product.sku })
         break

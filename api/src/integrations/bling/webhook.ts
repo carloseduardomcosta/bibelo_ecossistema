@@ -269,17 +269,19 @@ async function processProduct(data: Record<string, unknown>, evento: string): Pr
       ]
     );
 
-    // Medusa sync DESABILITADO — homologação parada, bombardeava Bling com GETs
-    // setImmediate(async () => {
-    //   try {
-    //     const { syncBlingToMedusa } = await import("../medusa/sync");
-    //     await syncBlingToMedusa();
-    //   } catch (err: any) {
-    //     logger.error(`Bling webhook: falha ao sincronizar Medusa: ${err.message}`);
-    //   }
-    // });
-
     logger.info(`Bling webhook: produto ${evento}`, { blingProductId, nome: prod.nome });
+
+    // Propagar para o Medusa em background (não bloqueia resposta do webhook)
+    // O sync lê do banco local (zero chamadas extras ao Bling)
+    setImmediate(async () => {
+      try {
+        const { syncBlingToMedusa } = await import("../medusa/sync");
+        await syncBlingToMedusa();
+        logger.info(`Bling webhook → Medusa sync concluído para ${prod.nome}`);
+      } catch (err: any) {
+        logger.warn(`Bling webhook → Medusa sync falhou: ${err.message}`);
+      }
+    });
   } catch (err: any) {
     logger.error(`Bling webhook: erro ao processar produto ${blingProductId}: ${err.message}`);
   }
