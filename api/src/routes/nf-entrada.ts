@@ -3,10 +3,12 @@ import { z } from "zod";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import axios from "axios";
 import { XMLParser } from "fast-xml-parser";
 import { query, queryOne, db } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
+import { getValidToken, BLING_API } from "../integrations/bling/auth";
 
 export const nfEntradaRouter = Router();
 nfEntradaRouter.use(authMiddleware);
@@ -499,3 +501,164 @@ nfEntradaRouter.get("/resumo/geral", async (_req: Request, res: Response) => {
 
   res.json(resumo);
 });
+
+// ══════════════════════════════════════════════════════════════
+// POST /nf-entrada/sync/bling — Importa NFs de entrada do Bling API
+//
+// Busca em /nfe?tipo=0 todas as NFs de entrada do Bling a partir
+// de dataInicial (padrão: 90 dias atrás) e importa as que ainda
+// não estão no banco (dedup por chave_acesso).
+//
+// Cada item armazena o campo `codigo` do Bling (SKU do catálogo)
+// como codigo_produto — assim o JOIN com bling_products.sku funciona.
+// ══════════════════════════════════════════════════════════════
+
+nfEntradaRouter.post("/sync/bling", async (req: Request, res: Response) => {
+  const dataInicial = String(req.body?.dataInicial || "")
+    || new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString().slice(0, 10)
+  const dataFinal = String(req.body?.dataFinal || new Date().toISOString().slice(0, 10))
+
+  logger.info(`[nf-sync] Iniciando sync NFs Bling: ${dataInicial} → ${dataFinal}`)
+
+  const token = await getValidToken()
+
+  // 1. Busca lista de NFs de entrada no período
+  const listUrl = `${BLING_API}/nfe?tipo=0&dataEmissaoInicial=${dataInicial}T00:00:00-03:00&dataEmissaoFinal=${dataFinal}T23:59:59-03:00&pagina=1&limite=100`
+  const listResp = await axios.get(listUrl, {
+    headers: { Authorization: `Bearer ${token}` },
+    timeout: 15000,
+  })
+  const nfsFromBling: Array<{ id: number; numero: string; situacao: number; dataEmissao: string }> =
+    listResp.data?.data ?? []
+
+  logger.info(`[nf-sync] Bling retornou ${nfsFromBling.length} NF(s) de entrada`)
+
+  const resultado = {
+    total: nfsFromBling.length,
+    importadas: 0,
+    ignoradas: 0,
+    erros: 0,
+    detalhes: [] as Array<{ numero: string; status: string; mensagem?: string }>,
+  }
+
+  for (const nfBase of nfsFromBling) {
+    await new Promise((r) => setTimeout(r, 350)) // rate limit 3 req/s
+
+    try {
+      // 2. Busca detalhe da NF
+      const detResp = await axios.get(`${BLING_API}/nfe/${nfBase.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000,
+      })
+      const nf = detResp.data?.data
+      if (!nf) { resultado.erros++; continue }
+
+      const chaveAcesso: string = (nf.chaveAcesso || "").replace(/\D/g, "").slice(0, 44)
+      const numero: string = nf.numero || ""
+
+      // Situação 2 = cancelada no Bling (não importar)
+      if (nf.situacao === 2) {
+        resultado.ignoradas++
+        resultado.detalhes.push({ numero, status: "ignorada", mensagem: "cancelada no Bling" })
+        continue
+      }
+
+      // 3. Dedup por chave_acesso
+      if (chaveAcesso) {
+        const existe = await queryOne<{ id: string }>(
+          `SELECT id FROM financeiro.notas_entrada WHERE chave_acesso = $1`,
+          [chaveAcesso]
+        )
+        if (existe) {
+          resultado.ignoradas++
+          resultado.detalhes.push({ numero, status: "ignorada", mensagem: "já existe" })
+          continue
+        }
+      }
+
+      // Dedup por numero (fallback sem chave)
+      const existePorNumero = await queryOne<{ id: string }>(
+        `SELECT id FROM financeiro.notas_entrada WHERE numero = $1`,
+        [numero]
+      )
+      if (existePorNumero) {
+        resultado.ignoradas++
+        resultado.detalhes.push({ numero, status: "ignorada", mensagem: "número já existe" })
+        continue
+      }
+
+      // 4. Insere NF (transação)
+      const client = await db.connect()
+      try {
+        await client.query("BEGIN")
+
+        const dataEmissao = (nf.dataEmissao || "").slice(0, 10) || null
+        const dataOperacao = (nf.dataOperacao || "").slice(0, 10) || null
+        const contato = nf.contato || {}
+        const cnpj = (contato.numeroDocumento || "").replace(/\D/g, "")
+        const valorNota = parseFloat(nf.valorNota || "0") || 0
+        const valorFrete = parseFloat(nf.valorFrete || "0") || 0
+        const serie = String(nf.serie || "")
+
+        const nfRow = await client.query<{ id: string }>(
+          `INSERT INTO financeiro.notas_entrada (
+            numero, serie, chave_acesso, fornecedor_cnpj, fornecedor_nome, fornecedor_uf,
+            valor_total, valor_frete, data_emissao, data_entrada, status, observacoes
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pendente','Importado via API Bling')
+          RETURNING id`,
+          [
+            numero, serie, chaveAcesso || null,
+            cnpj || null, contato.nome || null,
+            contato.endereco?.uf || null,
+            valorNota, valorFrete,
+            dataEmissao, dataOperacao || dataEmissao,
+          ]
+        )
+        const notaId = nfRow.rows[0].id
+
+        // 5. Insere itens — usa item.codigo (SKU catálogo Bling) como codigo_produto
+        const itens: Array<Record<string, unknown>> = nf.itens ?? []
+        for (let idx = 0; idx < itens.length; idx++) {
+          const item = itens[idx]
+          const codigoProduto = String(item.codigo || "").trim() || null
+          await client.query(
+            `INSERT INTO financeiro.notas_entrada_itens (
+              nota_id, numero_item, codigo_produto, descricao, ncm, cfop, unidade,
+              quantidade, valor_unitario, valor_total
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            [
+              notaId,
+              idx + 1,
+              codigoProduto,
+              String(item.descricao || "").slice(0, 500),
+              String(item.classificacaoFiscal || "").replace(/\D/g, "").slice(0, 10) || null,
+              String(item.cfop || "").slice(0, 5) || null,
+              String(item.unidade || "").slice(0, 10) || null,
+              parseFloat(String(item.quantidade || "0")) || 0,
+              parseFloat(String(item.valor || "0")) || 0,
+              parseFloat(String(item.valorTotal || "0")) || 0,
+            ]
+          )
+        }
+
+        await client.query("COMMIT")
+        resultado.importadas++
+        resultado.detalhes.push({ numero, status: "importada", mensagem: `${itens.length} item(ns)` })
+        logger.info(`[nf-sync] NF #${numero} importada (${itens.length} itens)`)
+      } catch (err) {
+        await client.query("ROLLBACK")
+        throw err
+      } finally {
+        client.release()
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "erro desconhecido"
+      logger.error(`[nf-sync] Erro na NF #${nfBase.numero}: ${msg}`)
+      resultado.erros++
+      resultado.detalhes.push({ numero: nfBase.numero, status: "erro", mensagem: msg })
+    }
+  }
+
+  logger.info(`[nf-sync] Concluído: ${resultado.importadas} importadas, ${resultado.ignoradas} ignoradas, ${resultado.erros} erros`)
+  res.json(resultado)
+})
