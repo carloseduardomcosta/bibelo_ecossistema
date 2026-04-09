@@ -24,7 +24,7 @@ export default async function HomePage() {
   ])
 
   const promos = promoProducts.status === "fulfilled" ? promoProducts.value : []
-  const novidadesBling = novidadesResult.status === "fulfilled" ? novidadesResult.value : []
+  const novidadesData = novidadesResult.status === "fulfilled" ? novidadesResult.value : { novidades: [], nf_numero: null }
 
   return (
     <>
@@ -37,9 +37,12 @@ export default async function HomePage() {
       {/* Espaçamento entre benefícios e seções de conteúdo */}
       <div className="h-8" />
 
-      {/* 3. Novidades — produtos das últimas NFs do Bling */}
-      {novidadesBling.length > 0 && (
-        <NovidadesSection products={novidadesBling} />
+      {/* 3. Novidades — produtos da NF mais recente com produtos válidos */}
+      {novidadesData.novidades.length > 0 && (
+        <NovidadesSection
+          products={novidadesData.novidades}
+          nfNumero={novidadesData.nf_numero}
+        />
       )}
 
       {/* 4. Promoções — produtos Medusa com preço promocional ativo (só aparece se houver) */}

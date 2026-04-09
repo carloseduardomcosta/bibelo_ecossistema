@@ -31,28 +31,27 @@ export interface NovidadeProduct {
 export interface NovidadesResponse {
   novidades: NovidadeProduct[]
   total: number
+  nf_numero: string | null
   atualizado_em: string
 }
 
-export async function getNovidadesBling(limit = 8): Promise<NovidadeProduct[]> {
+export async function getNovidadesBling(limit = 20): Promise<NovidadesResponse> {
+  const empty: NovidadesResponse = { novidades: [], total: 0, nf_numero: null, atualizado_em: new Date().toISOString() }
   try {
     const url = `${API_URL}/api/public/novidades?limit=${limit}`
     const res = await fetch(url, {
-      next: { revalidate: 300 }, // ISR: revalida a cada 5 minutos
-      headers: {
-        Accept: "application/json",
-      },
+      cache: "no-store", // SSR dinâmico — sempre atualizado
+      headers: { Accept: "application/json" },
     })
 
     if (!res.ok) {
       console.error(`[novidades] Endpoint retornou ${res.status}`)
-      return []
+      return empty
     }
 
-    const data: NovidadesResponse = await res.json()
-    return data.novidades || []
+    return await res.json() as NovidadesResponse
   } catch (err) {
     console.error("[novidades] Erro ao buscar novidades:", err)
-    return []
+    return empty
   }
 }

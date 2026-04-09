@@ -1,23 +1,24 @@
 /**
  * GET /api/public/novidades
  *
- * Retorna os produtos mais recentes vindos das últimas NFs de entrada do Bling.
+ * Retorna os produtos da NF de entrada mais recente que tenha
+ * pelo menos 1 produto válido.
+ *
  * Critérios de validação (todos obrigatórios):
  *   ✅ Produto ativo no Bling
- *   ✅ Tem pelo menos 1 foto com URL válida
+ *   ✅ Tem pelo menos 1 foto com URL válida (http/https)
  *   ✅ Tem preço de venda > 0
- *   ✅ Tem descrição não vazia (dados_raw.descricao)
- *   ✅ Tem estoque físico > 0 (bling_stock.saldo_fisico)
+ *   ✅ Tem descrição não vazia (após strip de HTML)
+ *   ✅ Tem estoque físico > 0
  *
  * Lógica de busca:
- *   - Percorre NFs de entrada em ordem decrescente de data
- *   - Para cada NF, percorre os itens (produtos) em ordem de número
- *   - Cruza com sync.bling_products via SKU ou GTIN
- *   - Pula produtos que não passam na validação
- *   - Para quando atingir o limite solicitado (padrão: 8)
+ *   1. Olha as últimas 10 NFs de entrada
+ *   2. Para cada NF (mais recente primeiro), pega os produtos válidos
+ *   3. Retorna todos os produtos válidos da NF mais recente que tiver algum
+ *   4. Nunca mistura produtos de NFs diferentes
  *
- * Cache: sem auth, sem escrita — rota 100% segura (somente leitura).
- * O Next.js faz ISR com revalidate de 5 minutos no storefront.
+ * Assim: quando chegar uma nova NF, a seção Novidades atualiza
+ * automaticamente para mostrar os produtos daquela entrega.
  */
 
 import { Router, Request, Response } from "express"
@@ -40,22 +41,31 @@ interface NovidadeProduct {
   nf_data: string
 }
 
+/** Remove tags HTML e entidades básicas, retorna texto limpo */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
 // ── GET /api/public/novidades ─────────────────────────────────
 publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
-  const limit = Math.min(parseInt(String(req.query.limit || "8"), 10), 20)
+  const limit = Math.min(parseInt(String(req.query.limit || "20"), 10), 50)
 
   try {
     /**
-     * Query:
-     * 1. Busca itens das NFs de entrada ordenadas por data DESC
-     * 2. Cruza com bling_products via SKU ou GTIN (codigo_produto)
-     * 3. Cruza com bling_stock para verificar estoque
-     * 4. Filtra: ativo + tem imagem + preco_venda > 0 + tem descrição + estoque > 0
-     * 5. Deduplica por bling_id (mesmo produto pode aparecer em várias NFs)
-     * 6. Limita ao número solicitado
-     *
-     * Percorre NFs das mais recentes para as mais antigas automaticamente
-     * via ORDER BY ne.data_emissao DESC, ne.criado_em DESC, nei.numero_item ASC
+     * CTE em 3 passos:
+     * 1. nf_candidates   — últimas 10 NFs não canceladas
+     * 2. valid_products  — produtos válidos nessas NFs
+     * 3. latest_nf       — a NF mais recente que tem >= 1 produto válido
+     * Retorno: todos os produtos válidos dessa NF, ordenados por item
      */
     const rows = await query<{
       id: string
@@ -71,75 +81,97 @@ publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
       nf_data: string
     }>(
       `
-      SELECT DISTINCT ON (bp.bling_id)
-        bp.id,
-        bp.bling_id,
-        bp.nome,
-        bp.sku,
-        bp.preco_venda::text,
-        bp.imagens::text,
-        bp.dados_raw::text,
-        bp.categoria,
-        COALESCE(MAX(bs.saldo_fisico), 0)::text AS saldo_fisico,
-        ne.numero                               AS nf_numero,
-        ne.data_emissao::text                   AS nf_data
-      FROM financeiro.notas_entrada_itens nei
-      JOIN financeiro.notas_entrada ne
-        ON ne.id = nei.nota_id
-       AND ne.status != 'cancelada'
-      JOIN sync.bling_products bp
-        ON (bp.sku = nei.codigo_produto OR bp.gtin = nei.codigo_produto)
-       AND bp.ativo = true
-       AND bp.preco_venda > 0
-       AND jsonb_array_length(bp.imagens) > 0
-      LEFT JOIN sync.bling_stock bs
-        ON bs.bling_product_id = bp.bling_id
-      GROUP BY
-        bp.id, bp.bling_id, bp.nome, bp.sku, bp.preco_venda,
-        bp.imagens, bp.dados_raw, bp.categoria,
-        ne.numero, ne.data_emissao, ne.criado_em
-      HAVING COALESCE(MAX(bs.saldo_fisico), 0) > 0
-      ORDER BY
-        bp.bling_id,
-        ne.data_emissao DESC,
-        ne.criado_em DESC
+      WITH nf_candidates AS (
+        SELECT id, numero, data_emissao, criado_em
+        FROM financeiro.notas_entrada
+        WHERE status != 'cancelada'
+        ORDER BY data_emissao DESC, criado_em DESC
+        LIMIT 10
+      ),
+      valid_products AS (
+        SELECT
+          bp.id,
+          bp.bling_id,
+          bp.nome,
+          bp.sku,
+          bp.preco_venda::text                AS preco_venda,
+          bp.imagens::text                    AS imagens,
+          bp.dados_raw::text                  AS dados_raw,
+          bp.categoria,
+          nf.id                               AS nf_id,
+          nf.numero                           AS nf_numero,
+          nf.data_emissao::text               AS nf_data,
+          nf.data_emissao                     AS nf_sort,
+          nf.criado_em                        AS nf_criado_em,
+          nei.numero_item,
+          COALESCE(MAX(bs.saldo_fisico), 0)   AS saldo_fisico
+        FROM nf_candidates nf
+        JOIN financeiro.notas_entrada_itens nei
+          ON nei.nota_id = nf.id
+        JOIN sync.bling_products bp
+          ON (bp.sku = nei.codigo_produto OR bp.gtin = nei.codigo_produto)
+          AND bp.ativo = true
+          AND bp.preco_venda > 0
+          AND jsonb_array_length(bp.imagens) > 0
+        LEFT JOIN sync.bling_stock bs
+          ON bs.bling_product_id = bp.bling_id
+        GROUP BY
+          bp.id, bp.bling_id, bp.nome, bp.sku, bp.preco_venda,
+          bp.imagens, bp.dados_raw, bp.categoria,
+          nf.id, nf.numero, nf.data_emissao, nf.criado_em, nei.numero_item
+        HAVING COALESCE(MAX(bs.saldo_fisico), 0) > 0
+      ),
+      latest_nf AS (
+        SELECT nf_id
+        FROM valid_products
+        ORDER BY nf_sort DESC, nf_criado_em DESC
+        LIMIT 1
+      )
+      SELECT vp.*
+      FROM valid_products vp
+      JOIN latest_nf ln ON ln.nf_id = vp.nf_id
+      ORDER BY vp.numero_item ASC
       LIMIT $1
       `,
-      [limit * 3] // busca extra para compensar deduplicação
+      [limit]
     )
 
-    // Monta resposta com validação extra no JS (segurança adicional)
+    // Validação extra no JS + strip HTML
     const novidades: NovidadeProduct[] = []
     const seen = new Set<string>()
 
     for (const row of rows) {
       if (seen.has(row.bling_id)) continue
-      if (novidades.length >= limit) break
 
-      // Parse imagens
+      // Parse imagens — pega primeira URL válida
       let imagens: Array<{ url?: string; link?: string }> = []
       try {
         imagens = JSON.parse(row.imagens || "[]")
       } catch {
-        logger.warn(`[novidades] Falha ao parsear imagens do produto ${row.bling_id}`)
+        logger.warn(`[novidades] Falha ao parsear imagens: ${row.bling_id}`)
         continue
       }
 
-      // Pega primeira imagem com URL válida
       const imagemUrl = imagens
         .map((img) => img.url || img.link || "")
-        .find((url) => url && url.startsWith("http"))
+        .find((url) => url.startsWith("http"))
 
-      if (!imagemUrl) continue
+      if (!imagemUrl) {
+        logger.info(`[novidades] Pulado (sem imagem): ${row.nome}`)
+        continue
+      }
 
-      // Parse dados_raw para descrição (fallback: nome do produto)
+      // Parse descrição + strip HTML
       let descricao = ""
       try {
         const raw = JSON.parse(row.dados_raw || "{}")
-        descricao = (raw.descricao || raw.descricaoCurta || "").trim()
+        const htmlDesc = (raw.descricao || raw.descricaoCurta || "").trim()
+        descricao = stripHtml(htmlDesc)
       } catch {
         // ignora erro de parse
       }
+
+      // Fallback para nome se descrição vazia após strip
       if (!descricao || descricao.length < 4) {
         descricao = row.nome
       }
@@ -147,7 +179,10 @@ publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
       const precoVenda = parseFloat(row.preco_venda)
       const estoque = parseFloat(row.saldo_fisico)
 
-      if (precoVenda <= 0 || estoque <= 0) continue
+      if (precoVenda <= 0 || estoque <= 0) {
+        logger.info(`[novidades] Pulado (preço/estoque): ${row.nome}`)
+        continue
+      }
 
       seen.add(row.bling_id)
       novidades.push({
@@ -165,13 +200,14 @@ publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
       })
     }
 
-    logger.info(`[novidades] Retornando ${novidades.length} produtos válidos de ${rows.length} candidatos`)
+    const nfNumero = novidades[0]?.nf_numero ?? null
+    logger.info(`[novidades] NF #${nfNumero} → ${novidades.length} produto(s) válido(s) de ${rows.length} candidato(s)`)
 
-    // Cache headers: 5 minutos no CDN/proxy, 10 minutos stale-while-revalidate
     res.set("Cache-Control", "public, max-age=300, stale-while-revalidate=600")
     res.json({
       novidades,
       total: novidades.length,
+      nf_numero: nfNumero,
       atualizado_em: new Date().toISOString(),
     })
   } catch (err) {
