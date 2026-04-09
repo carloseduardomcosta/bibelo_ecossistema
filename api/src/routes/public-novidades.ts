@@ -65,8 +65,10 @@ function stripHtml(html: string): string {
   const pass1 = onePass(html)
   // Segunda passagem para limpar HTML que estava entity-encoded no primeiro nível
   const pass2 = onePass(pass1)
+  // Remove tags incompletas (sem '>') que sobram por truncamento no banco
+  const clean = pass2.replace(/<[^>]*$/, "").replace(/\s+/g, " ").trim()
   // Se ainda tiver HTML depois de 2 passagens, retorna vazio (fallback para nome)
-  return /<[a-z][\s\S]*?>/i.test(pass2) ? "" : pass2
+  return /<[a-z]/i.test(clean) ? "" : clean
 }
 
 // ── GET /api/public/novidades ─────────────────────────────────
