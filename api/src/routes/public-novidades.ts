@@ -41,16 +41,20 @@ interface NovidadeProduct {
   nf_data: string
 }
 
-/** Remove tags HTML e entidades básicas, retorna texto limpo */
+/** Remove tags HTML e entidades básicas, retorna texto limpo.
+ *  Usa regex que respeita aspas dentro de atributos (ex: class="[.a>b]")
+ *  para não parar no > dentro de valores de atributo.
+ */
 function stripHtml(html: string): string {
   return html
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    .replace(/<("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^'">])*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&[a-z]+;/gi, " ")
     .replace(/\s+/g, " ")
     .trim()
 }
