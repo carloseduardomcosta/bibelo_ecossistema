@@ -488,7 +488,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 8 de Abril de 2026 — otimização sync Bling (incremental real: ~110→~15 req/ciclo), fix duplicate key contatos, cache categorias 6h*
+*Última atualização: 9 de Abril de 2026 — storefront-v2: carrinho funcional (dual URL Medusa), categorias dinâmicas, carrossel viewport-fit, anti-pinch, benefits com links prod, remove 7% OFF*
 
 ---
 

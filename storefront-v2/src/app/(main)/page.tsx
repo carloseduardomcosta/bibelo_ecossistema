@@ -61,17 +61,6 @@ export default async function HomePage() {
         />
       )}
 
-      {/* Banner cupom antes do footer */}
-      <div className="bg-bibelo-amarelo py-8 md:py-10">
-        <div className="content-container text-center">
-          <p className="text-sm font-semibold text-gray-600 uppercase tracking-widest mb-2">Primeira compra</p>
-          <h2 className="text-3xl md:text-4xl font-black text-bibelo-pink mb-3">7% OFF</h2>
-          <p className="text-gray-700 mb-4">Use o cupom <strong className="text-bibelo-pink">BIBELO7</strong> e ganhe desconto na sua primeira compra</p>
-          <a href="/produtos" className="btn-primary inline-block">
-            Aproveitar agora
-          </a>
-        </div>
-      </div>
     </>
   )
 }

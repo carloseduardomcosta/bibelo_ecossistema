@@ -86,8 +86,8 @@ export default function HeroCarousel() {
               {...(s.external ? { target: "_blank", rel: "noreferrer" } : {})}
               className="block w-full"
             >
-              {/* Desktop — aspect 16:6 (mais baixo) */}
-              <div className="hidden md:block relative w-full" style={{ aspectRatio: "16/6" }}>
+              {/* Desktop — preenche viewport (header ~10rem + benefits ~3rem) */}
+              <div className="hidden md:block relative w-full h-[calc(100svh-13rem)]">
                 <Image
                   src={s.pc}
                   alt={s.alt}
@@ -98,10 +98,9 @@ export default function HeroCarousel() {
                 />
               </div>
 
-              {/* Mobile — aspect 5:4 (equilibrio entre imagem e cards abaixo) */}
+              {/* Mobile — preenche viewport (header ~8rem + benefits ~3rem) */}
               <div
-                className="block md:hidden relative w-full"
-                style={{ aspectRatio: "5/4" }}
+                className="block md:hidden relative w-full h-[calc(100svh-11rem)]"
               >
                 <Image
                   src={s.mobile}

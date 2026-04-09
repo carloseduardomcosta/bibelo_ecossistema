@@ -119,18 +119,16 @@ export default function Header() {
               {/* Carrinho */}
               <button
                 onClick={openCart}
-                className="relative flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg text-gray-600 hover:text-bibelo-pink hover:bg-bibelo-pink/10 transition-colors"
+                className="relative flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg text-bibelo-pink hover:bg-bibelo-pink/10 transition-colors"
                 aria-label={`Meu carrinho — ${itemCount} ${itemCount === 1 ? "item" : "itens"}`}
               >
                 <div className="relative">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
                   </svg>
-                  {itemCount > 0 && (
-                    <span className="absolute -top-2 -right-2 bg-bibelo-pink text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center leading-none">
-                      {itemCount > 9 ? "9+" : itemCount}
-                    </span>
-                  )}
+                  <span className={`absolute -top-2 -right-2.5 text-white text-[10px] font-bold w-[18px] h-[18px] rounded-full flex items-center justify-center leading-none ${itemCount > 0 ? "bg-bibelo-pink" : "bg-bibelo-pink/50"}`}>
+                    {itemCount > 9 ? "9+" : itemCount}
+                  </span>
                 </div>
                 <span className="text-[10px] font-medium leading-none">Meu carrinho</span>
               </button>
@@ -162,17 +160,15 @@ export default function Header() {
             </div>
             <button
               onClick={openCart}
-              className="md:hidden relative p-2 text-gray-600 hover:text-bibelo-pink transition-colors"
+              className="md:hidden relative p-2 text-bibelo-pink hover:text-bibelo-pink-dark transition-colors"
               aria-label={`Carrinho — ${itemCount} ${itemCount === 1 ? "item" : "itens"}`}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
               </svg>
-              {itemCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 bg-bibelo-pink text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center leading-none">
-                  {itemCount > 9 ? "9+" : itemCount}
-                </span>
-              )}
+              <span className={`absolute top-0.5 right-0 text-white text-[9px] font-bold w-[18px] h-[18px] rounded-full flex items-center justify-center leading-none ${itemCount > 0 ? "bg-bibelo-pink" : "bg-bibelo-pink/50"}`}>
+                {itemCount > 9 ? "9+" : itemCount}
+              </span>
             </button>
           </div>
         </div>

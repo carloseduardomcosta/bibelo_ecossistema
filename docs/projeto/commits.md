@@ -672,3 +672,30 @@ Para histórico completo e atualizado, usar `git log --oneline`.
 - **03d2770** — fix: carrossel de benefícios com CSS animation
   - CSS @keyframes translateX(-50%) — loop infinito suave 20s
   - Pausa no hover/touch, funciona em qualquer tela
+
+### Sessão 09/04/2026 — storefront-v2: carrinho, categorias, UX mobile
+
+- fix: carrinho funcional — dual URL Medusa (Docker interno server-side + URL pública client-side)
+  - client.ts detecta `typeof window` para escolher URL
+  - docker-compose: NEXT_PUBLIC_MEDUSA_PUBLIC_URL para browser
+  - CORS já configurado no Medusa para homolog.papelariabibelo.com.br
+
+- feat: categorias dinâmicas buscadas da API Medusa (era hardcoded 12, agora 45+ reais)
+  - Ordenação inteligente: prioritárias primeiro, depois alfabético
+  - Emoji map por handle para visual consistente
+
+- fix: carrossel viewport-fit — `calc(100svh - Xrem)` substitui aspect-ratio fixo
+  - Header + carrossel + benefits cabem em 1 tela sem scroll
+
+- fix: ícone carrinho maior (w-6), rosa fixo, badge "0" sempre visível
+
+- fix: remove card "7% OFF" dos benefits (popup ativo é 10% OFF)
+  - Remove banner cupom BIBELO7 da home page
+
+- feat: links dos benefits apontam para URLs de produção
+  - Frete Grátis → politica-de-frete (prod)
+  - Clube VIP → boasvindas/api/links/grupo-vip
+
+- fix: bloqueia pinch-to-zoom mobile — `touch-action: manipulation` no html
+  - iOS ignora meta viewport user-scalable=no desde iOS 10
+  - Next.js 15 viewport export (não mais meta tag manual)
