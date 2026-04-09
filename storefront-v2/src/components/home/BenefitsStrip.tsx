@@ -6,19 +6,25 @@ const BENEFITS = [
   {
     icon: "M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12",
     title: "Frete Grátis",
-    subtitle: "Confira nossa política",
-    href: "https://www.papelariabibelo.com.br/politica-de-frete/",
+    subtitle: "Leia a Política de Frete AQUI",
+    href: "/politica-de-frete",
   },
   {
     icon: "M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z",
-    title: "Pagamento Facilitado",
-    subtitle: "Pix, cartão 12x, boleto",
+    title: "Pagamento facilitado",
+    subtitle: "Vários meios de pagamento",
     href: null,
   },
   {
+    icon: "M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L9.568 3z M6 6h.008v.008H6V6z",
+    title: "Promoção de 1ª compra",
+    subtitle: "CUPOM clicando AQUI",
+    href: "/?cupom=1",
+  },
+  {
     icon: "M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.562.562 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z",
-    title: "Clube VIP",
-    subtitle: "Ofertas pelo WhatsApp",
+    title: "Clube VIP no WhatsApp",
+    subtitle: "Entre para o Clube Bibelô",
     href: "https://boasvindas.papelariabibelo.com.br/api/links/grupo-vip",
   },
 ]
