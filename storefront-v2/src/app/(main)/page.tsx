@@ -2,6 +2,7 @@ import HeroCarousel from "@/components/home/HeroCarousel"
 import BenefitsStrip from "@/components/home/BenefitsStrip"
 import ProductSection from "@/components/home/ProductSection"
 import CategoriesSection from "@/components/home/CategoriesSection"
+import MobileProductScroller from "@/components/home/MobileProductScroller"
 import { listProducts } from "@/lib/medusa/products"
 
 export const revalidate = 300
@@ -30,15 +31,26 @@ export default async function HomePage() {
   const featured = featuredProducts.status === "fulfilled" ? featuredProducts.value : []
   const promos = promoProducts.status === "fulfilled" ? promoProducts.value : []
 
+  // Produtos para o scroller mobile: prioriza promos, complementa com destaques
+  const scrollerProducts = [
+    ...promos.slice(0, 4),
+    ...featured.filter((p) => !promos.find((pr) => pr.id === p.id)),
+  ].slice(0, 8)
+
   return (
     <>
-      {/* 1. Carrossel hero */}
+      {/* 1. Carrossel hero — altura compacta no mobile para caber os cards na primeira tela */}
       <HeroCarousel />
 
-      {/* 2. Ticker informativo */}
+      {/* 2. Cards deslizantes — APENAS mobile, visível na primeira tela sem scroll */}
+      <MobileProductScroller
+        products={scrollerProducts as Parameters<typeof MobileProductScroller>[0]["products"]}
+      />
+
+      {/* 3. Ticker de benefícios */}
       <BenefitsStrip />
 
-      {/* 3. Destaques */}
+      {/* 4. Destaques — grid completo (desktop e mobile) */}
       <ProductSection
         eyebrow="Curadoria especial"
         title="Destaques"
@@ -46,12 +58,12 @@ export default async function HomePage() {
         viewAllHref="/produtos"
       />
 
-      {/* 4. Categorias */}
+      {/* 5. Categorias */}
       <div className="bg-bibelo-gray-light py-2">
         <CategoriesSection />
       </div>
 
-      {/* 5. Ofertas */}
+      {/* 6. Ofertas */}
       {promos.length > 0 && (
         <ProductSection
           eyebrow="Aproveite!"
@@ -60,7 +72,6 @@ export default async function HomePage() {
           viewAllHref="/produtos?sort=price_asc"
         />
       )}
-
     </>
   )
 }
