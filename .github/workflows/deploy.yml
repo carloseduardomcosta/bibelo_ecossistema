@@ -47,7 +47,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -p 60222 -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Envia código (rsync)
         run: |
@@ -58,12 +58,12 @@ jobs:
             --exclude='data/' \
             --exclude='backups/' \
             --exclude='logs/' \
-            -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
+            -e "ssh -p 60222 -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
             ./ root@${{ secrets.VPS_HOST }}:${{ env.APP_DIR }}/
 
       - name: Roda testes na VPS
         run: |
-          ssh -i ~/.ssh/id_ed25519 root@${{ secrets.VPS_HOST }} << 'ENDSSH'
+          ssh -p 60222 -i ~/.ssh/id_ed25519 root@${{ secrets.VPS_HOST }} << 'ENDSSH'
             set -e
             cd /opt/bibelocrm
             echo "📦 Instalando dependências de teste..."
@@ -75,7 +75,7 @@ jobs:
 
       - name: Deploy zero-downtime
         run: |
-          ssh -i ~/.ssh/id_ed25519 root@${{ secrets.VPS_HOST }} << 'ENDSSH'
+          ssh -p 60222 -i ~/.ssh/id_ed25519 root@${{ secrets.VPS_HOST }} << 'ENDSSH'
             set -e
             cd $APP_DIR
             docker compose pull --quiet
