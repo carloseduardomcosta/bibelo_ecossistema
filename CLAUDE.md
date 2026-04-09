@@ -472,6 +472,23 @@ A query JOIN entre as duas define o que aparece.
 - **Aparece em Novidades?** → só depois de uma NF de entrada ser sincronizada via `POST /api/financeiro/nf-entrada/sync/bling`.
 - **A NF já estava no sistema e você adicionou foto?** → aparece em até 5 min automaticamente (webhook + cache).
 
+### Match produto NF × catálogo (4 critérios, em ordem)
+O JOIN entre `notas_entrada_itens.codigo_produto` e `sync.bling_products.sku` usa 4 critérios OR:
+1. SKU exato: `TRIM(bp.sku) = TRIM(nei.codigo_produto)`
+2. GTIN como código: `bp.gtin = nei.codigo_produto` (XMLs antigos usavam GTIN no campo código)
+3. GTIN direto: `nei.gtin IS NOT NULL AND bp.gtin = nei.gtin`
+4. Separador normalizado: `REPLACE(TRIM(bp.sku), ' - ', ' ') = REPLACE(TRIM(nei.codigo_produto), ' - ', ' ')` — para variantes com espaçamento diferente (ex: `"PORTA CANETAS YINS AZUL"` casa com SKU `"PORTA CANETAS YINS - AZUL"`)
+
+**Regra variações**: produtos pai+filho no Bling não usam GTIN — só SKU com sufixo (`CADERNETA_BRW - AZUL`). O critério 3 (GTIN direto) não os afeta.
+
+### Coluna `gtin` em `notas_entrada_itens`
+Adicionada via `ALTER TABLE` (09/04/2026 — sem migration file, feito live):
+```sql
+ALTER TABLE financeiro.notas_entrada_itens ADD COLUMN IF NOT EXISTS gtin character varying(14);
+CREATE INDEX IF NOT EXISTS idx_nf_itens_gtin ON financeiro.notas_entrada_itens (gtin) WHERE gtin IS NOT NULL;
+```
+O endpoint `POST /sync/bling` também propaga o GTIN para `sync.bling_products` quando SKU bate e o produto não tinha GTIN cadastrado.
+
 ### Arquivos-chave
 - `api/src/integrations/bling/webhook.ts` → `processProduct()` — webhook com imagem HD
 - `api/src/routes/public-novidades.ts` → query JOIN bling_products + notas_entrada_itens

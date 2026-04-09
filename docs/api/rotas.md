@@ -8,6 +8,7 @@ Referência completa de todos os endpoints.
 - `GET  /health` — status da API e banco
 - `POST /api/auth/google` — recebe credential Google, retorna accessToken + refreshToken
 - `GET  /api/images/serve/:id` — serve imagem temporária convertida (público, sem auth — usado pelo Bling para puxar imagens)
+- `GET  /api/public/novidades?limit=20` — produtos da NF de entrada mais recente com foto + preço + descrição + estoque válidos. `limit` máx 50. Retorna `{ novidades[], total, nf_numero, atualizado_em }`. Cache 5 min.
 
 ## Protegidas (Bearer JWT obrigatório)
 
@@ -51,6 +52,8 @@ Referência completa de todos os endpoints.
 ### Sync / OAuth
 - `GET  /api/sync/status` — status integrações + logs recentes
 - `POST /api/sync/bling` — sync manual (?tipo=full|incremental)
+- `POST /api/sync/bling/categorias` — remapeia todas as categorias Bling → produtos (full refresh do campo `categoria`)
+- `POST /api/sync/bling/imagens` — busca imagens HD (`midia.imagens.internas[].link`) para produtos com miniatura ou sem foto. Body opcional: `{ blingIds: ["123","456"] }`. Roda em background, responde imediatamente. Re-executar após cadastrar/trocar fotos no Bling quando o webhook não disparar.
 - `GET  /api/auth/bling` — retorna URL de autorização OAuth Bling
 - `GET  /api/auth/bling/callback` — callback OAuth, salva tokens, redireciona frontend
 - `GET  /api/auth/nuvemshop` — retorna URL de autorização OAuth NuvemShop
@@ -91,6 +94,7 @@ Referência completa de todos os endpoints.
 
 ### NF de Entrada
 - `POST /api/financeiro/nf-entrada` — upload XML NF-e (multipart/form-data), parse automático
+- `POST /api/financeiro/nf-entrada/sync/bling` — importa NFs de entrada diretamente da API do Bling (`GET /nfe?tipo=0`). Body: `{ dataInicial?: "YYYY-MM-DD", dataFinal?: "YYYY-MM-DD" }` (padrão: últimos 90 dias). Deduplicação por `chave_acesso`. Salva NF + itens com `codigo` e `gtin`. Propaga GTIN para `sync.bling_products` quando SKU bater. Retorna `{ total, importadas, ignoradas, erros, detalhes[] }`.
 - `GET  /api/financeiro/nf-entrada` — lista paginada (filtros: status, search, mes)
 - `GET  /api/financeiro/nf-entrada/:id` — detalhe com itens
 - `POST /api/financeiro/nf-entrada/:id/contabilizar` — gera lançamento no financeiro
@@ -193,7 +197,7 @@ Referência completa de todos os endpoints.
 
 ### Webhooks (validação HMAC)
 - `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop + dispara fluxos automáticos
-- `POST /api/webhooks/bling` — recebe eventos do Bling (contatos, pedidos, estoque)
+- `POST /api/webhooks/bling` — recebe eventos do Bling: `contato.*` (upsert customer), `order.*` (salva pedido, busca detalhe para itens), `stock.*` (atualiza saldo), `product.*` (busca `GET /produtos/{id}` para imagens HD + propaga para Medusa)
 
 ---
 
