@@ -106,7 +106,7 @@ syncRouter.post("/bling", authMiddleware, async (req: Request, res: Response) =>
     if (tipo === "full") {
       const customers = await syncCustomers();
       const orders = await syncOrders();
-      const products = await syncProducts();
+      const { total: products } = await syncProducts();
       const stock = await syncStock();
       const nfEntrada = await syncNfEntrada();
       const contasPagar = await syncContasPagar();

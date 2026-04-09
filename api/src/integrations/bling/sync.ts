@@ -278,9 +278,19 @@ export async function syncOrders(): Promise<number> {
   }
 }
 
-// ── Fetch category map from Bling ──────────────────────────────
+// ── Fetch category map from Bling (com cache em memória) ──────
+// Categorias raramente mudam — cache por 6h evita ~57 chamadas/ciclo
 
-async function fetchCategoryMap(token: string): Promise<Map<number, string>> {
+let categoryCache: { map: Map<number, string>; fetchedAt: number } | null = null;
+const CATEGORY_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 horas
+
+async function fetchCategoryMap(token: string, forceRefresh = false): Promise<Map<number, string>> {
+  // Retorna cache se válido
+  if (!forceRefresh && categoryCache && (Date.now() - categoryCache.fetchedAt) < CATEGORY_CACHE_TTL) {
+    logger.info("Bling categorias: usando cache em memória", { total: categoryCache.map.size });
+    return categoryCache.map;
+  }
+
   const map = new Map<number, string>();
   const parentMap = new Map<number, number>(); // id → id_pai
   let page = 1;
@@ -308,6 +318,9 @@ async function fetchCategoryMap(token: string): Promise<Map<number, string>> {
       [String(catId), catDesc, parentId ? String(parentId) : null]
     );
   }
+
+  // Atualiza cache
+  categoryCache = { map, fetchedAt: Date.now() };
 
   logger.info("Bling categorias carregadas e persistidas (com hierarquia)", {
     total: map.size,
@@ -348,19 +361,24 @@ export async function syncProductCategories(token: string, categoryMap: Map<numb
 }
 
 // ── Sync Products ───────────────────────────────────────────────
+// since: quando informado, busca apenas produtos alterados após a data (incremental)
+// Retorna { total, changedBlingIds } — changedBlingIds usado para sync de estoque incremental
 
-export async function syncProducts(): Promise<number> {
+export async function syncProducts(since?: string): Promise<{ total: number; changedBlingIds: string[] }> {
   const token = await getValidToken();
   let page = 1;
   let total = 0;
+  const changedBlingIds: string[] = [];
 
   try {
-    // Carrega mapa de categorias primeiro
+    // Carrega mapa de categorias (com cache — evita ~57 chamadas quando não expirou)
     const categoryMap = await fetchCategoryMap(token);
+
+    const sinceParam = since ? `&dataAlteracaoInicial=${since}` : "";
 
     while (true) {
       const data = await rateLimitedGet<{ data: Array<Record<string, unknown>> }>(
-        `${BLING_API}/produtos?pagina=${page}&limite=100`,
+        `${BLING_API}/produtos?pagina=${page}&limite=100${sinceParam}`,
         token
       );
 
@@ -387,6 +405,8 @@ export async function syncProducts(): Promise<number> {
         }
 
         const blingCategoryId = categoriaObj?.id && categoriaObj.id > 0 ? String(categoriaObj.id) : null;
+        const blingId = String(prod.id);
+        changedBlingIds.push(blingId);
 
         await query(
           `INSERT INTO sync.bling_products
@@ -397,7 +417,7 @@ export async function syncProducts(): Promise<number> {
              bling_category_id = $7, imagens = $8, ativo = $9, tipo = $10, unidade = $11,
              peso_bruto = $12, gtin = $13, dados_raw = $14, sincronizado_em = NOW()`,
           [
-            String(prod.id),
+            blingId,
             prod.nome || "Sem nome",
             prod.codigo || null,
             prod.precoCusto || 0,
@@ -420,12 +440,14 @@ export async function syncProducts(): Promise<number> {
       page++;
     }
 
-    // Atualiza categorias via filtro idCategoria
-    await syncProductCategories(token, categoryMap);
+    // syncProductCategories só roda no full sync (sem since) — no incremental a listagem já traz categoria.id
+    if (!since) {
+      await syncProductCategories(token, categoryMap);
+    }
 
     await logSync("bling", "products", "ok", total);
-    logger.info("Bling syncProducts concluído", { total });
-    return total;
+    logger.info("Bling syncProducts concluído", { total, incremental: !!since });
+    return { total, changedBlingIds };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro desconhecido";
     await logSync("bling", "products", "erro", total, message);
@@ -436,16 +458,28 @@ export async function syncProducts(): Promise<number> {
 
 // ── Sync Stock ──────────────────────────────────────────────────
 // Bling /estoques/saldos requer idsProdutos[] — enviamos em lotes de 50
+// changedBlingIds: quando informado, só busca estoque dos produtos alterados (incremental)
 
-export async function syncStock(): Promise<number> {
+export async function syncStock(changedBlingIds?: string[]): Promise<number> {
   const token = await getValidToken();
   let total = 0;
 
   try {
-    // Busca todos os bling_ids dos produtos
-    const allProducts = await query<{ id: string; bling_id: string }>(
-      "SELECT id, bling_id FROM sync.bling_products WHERE ativo = true"
-    );
+    let allProducts: Array<{ id: string; bling_id: string }>;
+
+    if (changedBlingIds && changedBlingIds.length > 0) {
+      // Incremental: só busca estoque dos produtos que mudaram
+      const placeholders = changedBlingIds.map((_, i) => `$${i + 1}`).join(", ");
+      allProducts = await query<{ id: string; bling_id: string }>(
+        `SELECT id, bling_id FROM sync.bling_products WHERE bling_id IN (${placeholders}) AND ativo = true`,
+        changedBlingIds
+      );
+    } else {
+      // Full sync: todos os produtos ativos
+      allProducts = await query<{ id: string; bling_id: string }>(
+        "SELECT id, bling_id FROM sync.bling_products WHERE ativo = true"
+      );
+    }
 
     if (allProducts.length === 0) return 0;
 
@@ -552,63 +586,68 @@ export async function incrementalSync(): Promise<{ customers: number; orders: nu
 
       for (const contato of data.data) {
         const blingId = String(contato.id);
-        let email = ((contato.email as string) || "").trim();
-        let telefone = ((contato.celular as string) || (contato.fone as string) || "").trim();
-        let cpf = ((contato.cpf_cnpj as string) || "").trim();
-        let cidade: string | undefined;
-        let estado: string | undefined;
-        let cep: string | undefined;
-        let dataNasc: string | undefined;
-        let dadosRaw = contato;
+        try {
+          let email = ((contato.email as string) || "").trim();
+          let telefone = ((contato.celular as string) || (contato.fone as string) || "").trim();
+          let cpf = ((contato.cpf_cnpj as string) || "").trim();
+          let cidade: string | undefined;
+          let estado: string | undefined;
+          let cep: string | undefined;
+          let dataNasc: string | undefined;
+          let dadosRaw = contato;
 
-        // Se a lista não trouxe email, busca detalhe individual (tem email, endereço, etc.)
-        if (!email) {
-          try {
-            const detail = await rateLimitedGet<{ data: Record<string, unknown> }>(
-              `${BLING_API}/contatos/${blingId}`,
-              token
-            );
-            const d = detail.data;
-            if (d) {
-              email = ((d.email as string) || (d.emailNotaFiscal as string) || "").trim();
-              telefone = telefone || ((d.celular as string) || (d.telefone as string) || "").trim();
-              cpf = cpf || ((d.numeroDocumento as string) || "").trim();
-              const endGeral = (d.endereco as Record<string, Record<string, string>> | undefined)?.geral;
-              cidade = endGeral?.municipio;
-              estado = endGeral?.uf;
-              cep = endGeral?.cep;
-              const dn = (d.dadosAdicionais as Record<string, string> | undefined)?.dataNascimento;
-              dataNasc = dn && dn !== "0000-00-00" ? dn : undefined;
-              dadosRaw = d;
+          // Se a lista não trouxe email, busca detalhe individual (tem email, endereço, etc.)
+          if (!email) {
+            try {
+              const detail = await rateLimitedGet<{ data: Record<string, unknown> }>(
+                `${BLING_API}/contatos/${blingId}`,
+                token
+              );
+              const d = detail.data;
+              if (d) {
+                email = ((d.email as string) || (d.emailNotaFiscal as string) || "").trim();
+                telefone = telefone || ((d.celular as string) || (d.telefone as string) || "").trim();
+                cpf = cpf || ((d.numeroDocumento as string) || "").trim();
+                const endGeral = (d.endereco as Record<string, Record<string, string>> | undefined)?.geral;
+                cidade = endGeral?.municipio;
+                estado = endGeral?.uf;
+                cep = endGeral?.cep;
+                const dn = (d.dadosAdicionais as Record<string, string> | undefined)?.dataNascimento;
+                dataNasc = dn && dn !== "0000-00-00" ? dn : undefined;
+                dadosRaw = d;
+              }
+            } catch (detailErr: unknown) {
+              // Se falhar o detalhe, segue com dados da lista
+              const msg = detailErr instanceof Error ? detailErr.message : "Erro";
+              logger.warn("Bling incrementalSync: erro ao buscar detalhe do contato", { blingId, error: msg });
             }
-          } catch (detailErr: unknown) {
-            // Se falhar o detalhe, segue com dados da lista
-            const msg = detailErr instanceof Error ? detailErr.message : "Erro";
-            logger.warn("Bling incrementalSync: erro ao buscar detalhe do contato", { blingId, error: msg });
           }
+
+          const customer = await upsertCustomer({
+            nome: contato.nome as string,
+            email: email || undefined,
+            telefone: telefone || undefined,
+            cpf: cpf || undefined,
+            canal_origem: "bling",
+            bling_id: blingId,
+            cidade,
+            estado,
+            cep,
+            data_nasc: dataNasc,
+          });
+
+          await query(
+            `INSERT INTO sync.bling_customers (bling_id, customer_id, dados_raw, ultima_sync)
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT (bling_id) DO UPDATE SET customer_id = $2, dados_raw = $3, ultima_sync = NOW()`,
+            [blingId, customer.id, JSON.stringify(dadosRaw)]
+          );
+
+          customers++;
+        } catch (contatoErr: unknown) {
+          const msg = contatoErr instanceof Error ? contatoErr.message : "Erro";
+          logger.warn("Bling incrementalSync: erro ao processar contato", { blingId, error: msg });
         }
-
-        const customer = await upsertCustomer({
-          nome: contato.nome as string,
-          email: email || undefined,
-          telefone: telefone || undefined,
-          cpf: cpf || undefined,
-          canal_origem: "bling",
-          bling_id: blingId,
-          cidade,
-          estado,
-          cep,
-          data_nasc: dataNasc,
-        });
-
-        await query(
-          `INSERT INTO sync.bling_customers (bling_id, customer_id, dados_raw, ultima_sync)
-           VALUES ($1, $2, $3, NOW())
-           ON CONFLICT (bling_id) DO UPDATE SET customer_id = $2, dados_raw = $3, ultima_sync = NOW()`,
-          [blingId, customer.id, JSON.stringify(dadosRaw)]
-        );
-
-        customers++;
       }
       page++;
     }
@@ -689,28 +728,32 @@ export async function incrementalSync(): Promise<{ customers: number; orders: nu
     logger.error("Bling incrementalSync pedidos falhou", { error: message });
   }
 
-  // Sync produtos e estoque
+  // Sync produtos incremental (só alterados desde última sync)
   let products = 0;
   let stock = 0;
+  let changedProductIds: string[] = [];
 
   try {
-    products = await syncProducts();
+    const result = await syncProducts(since);
+    products = result.total;
+    changedProductIds = result.changedBlingIds;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro";
     logger.error("Bling incrementalSync produtos falhou", { error: message });
   }
 
+  // Sync estoque incremental (só produtos que mudaram)
   try {
-    stock = await syncStock();
+    stock = await syncStock(changedProductIds.length > 0 ? changedProductIds : undefined);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro";
     logger.error("Bling incrementalSync estoque falhou", { error: message });
   }
 
-  // Sync contas a pagar
+  // Sync contas a pagar incremental
   let contasPagar = 0;
   try {
-    contasPagar = await syncContasPagar();
+    contasPagar = await syncContasPagar(since);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro";
     logger.error("Bling incrementalSync contas a pagar falhou", { error: message });
@@ -924,8 +967,9 @@ export async function syncNFe(): Promise<number> {
 }
 
 // ── Sync Contas a Pagar ─────────────────────────────────────────
+// since: quando informado, busca apenas contas alteradas após a data (incremental)
 
-export async function syncContasPagar(): Promise<number> {
+export async function syncContasPagar(since?: string): Promise<number> {
   const token = await getValidToken();
   let page = 1;
   let total = 0;
@@ -933,10 +977,12 @@ export async function syncContasPagar(): Promise<number> {
   try {
     // Cache de contatos para evitar requests repetidos
     const contatoCache = new Map<string, { nome: string; doc: string }>();
+    // Incremental: só contas em aberto (pagas não mudam). Full: todas
+    const sinceParam = since ? `&situacao=1` : "";
 
     while (true) {
       const data = await rateLimitedGet<{ data: Array<Record<string, unknown>> }>(
-        `${BLING_API}/contas/pagar?pagina=${page}&limite=100`,
+        `${BLING_API}/contas/pagar?pagina=${page}&limite=100${sinceParam}`,
         token
       );
       if (!data.data || data.data.length === 0) break;
@@ -944,6 +990,18 @@ export async function syncContasPagar(): Promise<number> {
       for (const conta of data.data) {
         const contatoId = (conta.contato as { id?: number })?.id;
         const formaPagId = (conta.formaPagamento as { id?: number })?.id;
+
+        // No incremental, pula detalhe de contas que já temos no DB com mesmo valor
+        if (since) {
+          const existing = await queryOne<{ valor: number; situacao: number }>(
+            "SELECT valor::numeric, situacao FROM sync.bling_contas_pagar WHERE bling_id = $1",
+            [String(conta.id)]
+          );
+          if (existing && existing.situacao === (conta.situacao as number) && existing.valor === (conta.valor as number)) {
+            total++;
+            continue; // Sem mudança, pula detalhe (economiza 1-3 API calls por conta)
+          }
+        }
 
         // Busca detalhe para pegar numero_documento e historico
         let detalhe: Record<string, unknown> = {};

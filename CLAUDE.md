@@ -330,6 +330,13 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 - **Rate limit: 3 req/s** — delay 350ms, retry em 429
 - Lista de produtos NÃO traz categoria. Lista de pedidos NÃO traz itens. Estoques EXIGE `idsProdutos[]` (lotes de 50).
 - Webhook HMAC: `X-Bling-Signature-256: sha256=<hash>` com client_secret
+- **Otimização sync incremental (08/04/2026)**: ~110 req/ciclo → ~30 req/ciclo
+  - Produtos: `dataAlteracaoInicial` passado (Bling ignora na prática — endpoint retorna tudo)
+  - Estoque: recebe lista de changedBlingIds do sync de produtos (prepara para quando Bling respeitar filtro)
+  - Contas a pagar: incremental filtra `situacao=1` (em aberto) + pula detalhe de contas sem mudança
+  - Categorias: cache em memória por 6h (`categoryCache`) — evita buscar API e rodar syncProductCategories
+  - syncProductCategories: só roda no full sync (`/api/sync?tipo=full`), eliminado do incremental (**-57 chamadas/ciclo**)
+  - Contatos: try/catch individual — 1 contato com erro não para os demais
 
 ### NuvemShop
 - OAuth2: token nunca expira — app_id `26424`, store `7290881`
@@ -481,7 +488,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 8 de Abril de 2026 — landing pages para ads (6 LPs com vitrine dinâmica NF), backup Google Drive + DR semanal, CI/CD com testes, 426 testes green*
+*Última atualização: 8 de Abril de 2026 — otimização sync Bling (incremental real: ~110→~15 req/ciclo), fix duplicate key contatos, cache categorias 6h*
 
 ---
 
