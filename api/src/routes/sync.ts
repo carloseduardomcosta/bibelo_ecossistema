@@ -324,6 +324,7 @@ syncRouter.post("/internal/melhorenvio-token", async (req: Request, res: Respons
 });
 
 // GET token (chamado pelo Medusa fulfillment provider — rede Docker interna)
+// Auto-refresh: se faltam menos de 5 dias para expirar, renova automaticamente
 syncRouter.get("/internal/melhorenvio-token", async (_req: Request, res: Response) => {
   try {
     const row = await queryOne<{ ultimo_id: string }>(
@@ -335,7 +336,50 @@ syncRouter.get("/internal/melhorenvio-token", async (_req: Request, res: Respons
       return;
     }
 
-    const tokenData = JSON.parse(row.ultimo_id);
+    let tokenData = JSON.parse(row.ultimo_id);
+
+    // Auto-refresh: se expira em menos de 5 dias, renovar
+    const expiresAt = tokenData.expires_at ? new Date(tokenData.expires_at).getTime() : 0;
+    const fiveDaysMs = 5 * 24 * 60 * 60 * 1000;
+
+    if (expiresAt > 0 && expiresAt - Date.now() < fiveDaysMs && tokenData.refresh_token) {
+      logger.info("Melhor Envio: token expira em breve, renovando automaticamente");
+      try {
+        const axios = (await import("axios")).default;
+        const refreshRes = await axios.post(
+          "https://melhorenvio.com.br/oauth/token",
+          {
+            grant_type: "refresh_token",
+            client_id: process.env.ME_CLIENT_ID,
+            client_secret: process.env.ME_CLIENT_SECRET,
+            refresh_token: tokenData.refresh_token,
+          },
+          { headers: { "Accept": "application/json" }, timeout: 15000 }
+        );
+
+        const newToken = refreshRes.data;
+        const newData = {
+          access_token: newToken.access_token,
+          refresh_token: newToken.refresh_token,
+          expires_in: newToken.expires_in,
+          expires_at: new Date(Date.now() + newToken.expires_in * 1000).toISOString(),
+          connected_at: tokenData.connected_at,
+          refreshed_at: new Date().toISOString(),
+        };
+
+        await query(
+          "UPDATE sync.sync_state SET ultimo_id = $1 WHERE fonte = 'melhorenvio'",
+          [JSON.stringify(newData)]
+        );
+
+        tokenData = newData;
+        logger.info(`Melhor Envio: token renovado, expira em ${newData.expires_at}`);
+      } catch (refreshErr: any) {
+        logger.error(`Melhor Envio: falha no refresh do token: ${refreshErr.message}`);
+        // Retorna o token atual mesmo se o refresh falhou
+      }
+    }
+
     res.json({ access_token: tokenData.access_token });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro ao buscar token";
