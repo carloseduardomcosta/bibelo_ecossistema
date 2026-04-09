@@ -185,6 +185,7 @@ services:
       NEXT_PUBLIC_MEDUSA_PUBLIC_URL:       https://homolog.papelariabibelo.com.br/api
       NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY: ${STOREFRONT_PUBLISHABLE_KEY}
       NEXT_PUBLIC_MP_PUBLIC_KEY:           ${MP_PUBLIC_KEY:-}
+      API_URL:                             http://api:4000
     ports:
       - "127.0.0.1:8001:8001"
     depends_on:
