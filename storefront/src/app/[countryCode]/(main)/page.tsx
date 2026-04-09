@@ -6,6 +6,7 @@ import CategoryGrid from "@modules/home/components/category-grid"
 import VipBanner from "@modules/home/components/vip-banner"
 import NewsletterSection from "@modules/home/components/newsletter-section"
 import PromoBanner from "@modules/home/components/promo-banner"
+import MobileProductScroller from "@modules/home/components/mobile-product-scroller"
 import { listCollections } from "@lib/data/collections"
 import { listCategories } from "@lib/data/categories"
 import { getRegion } from "@lib/data/regions"
@@ -36,7 +37,10 @@ export default async function Home(props: {
       {/* 1. Hero editorial com imagem real */}
       <Hero />
 
-      {/* 2. Barra de benefícios */}
+      {/* 2. Carrossel de produtos — apenas mobile, logo após o hero */}
+      <MobileProductScroller region={region} />
+
+      {/* 3. Barra de benefícios */}
       <BenefitsStrip />
 
       {/* 3. Banner de promoção / cupom primeira compra */}
