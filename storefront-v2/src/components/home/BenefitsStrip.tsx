@@ -125,11 +125,25 @@ function BenefitCard({ benefit }: { benefit: Benefit }) {
 
 export default function BenefitsStrip() {
   return (
-    <div className="bg-bibelo-rosa/40 border-b border-bibelo-pink/10 overflow-hidden">
-      <div className="benefits-track flex w-max hover:[animation-play-state:paused]">
-        {([...BENEFITS, ...BENEFITS] as Benefit[]).map((b, i) => (
-          <BenefitCard key={i} benefit={b} />
-        ))}
+    <>
+      {/* Mobile: ticker scrollando */}
+      <div className="md:hidden bg-bibelo-rosa/40 border-b border-bibelo-pink/10 overflow-hidden">
+        <div className="benefits-track flex w-max hover:[animation-play-state:paused]">
+          {([...BENEFITS, ...BENEFITS] as Benefit[]).map((b, i) => (
+            <BenefitCard key={i} benefit={b} />
+          ))}
+        </div>
+      </div>
+
+      {/* Desktop: 4 cards fixos lado a lado */}
+      <div className="hidden md:block bg-bibelo-rosa/40 border-b border-bibelo-pink/10">
+        <div className="max-w-[1400px] mx-auto px-8 grid grid-cols-4 divide-x divide-bibelo-pink/15">
+          {(BENEFITS as Benefit[]).map((b, i) => (
+            <div key={i} className="flex items-center justify-center py-1">
+              <BenefitCard benefit={b} />
+            </div>
+          ))}
+        </div>
       </div>
 
       <style dangerouslySetInnerHTML={{ __html: `
@@ -142,6 +156,6 @@ export default function BenefitsStrip() {
           50%       { opacity: 1; transform: scale(1) rotate(20deg); }
         }
       ` }} />
-    </div>
+    </>
   )
 }

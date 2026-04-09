@@ -356,14 +356,14 @@ Arquivo: `storefront-v2/src/app/(main)/page.tsx`
 ### Ordem das seções (decisão de 09/04/2026)
 
 1. **HeroCarousel** — carrossel hero. Mobile: `h-[48dvh]` (~405px num iPhone 14), libera espaço para o ticker abaixo
-2. **BenefitsStrip** — ticker horizontal corrido (sem cards). 4 itens:
+2. **BenefitsStrip** — responsivo: mobile = ticker horizontal scrollando; desktop = 4 cards fixos em linha com divisórias. 4 itens:
    - Frete Grátis → `/politica-de-frete`
    - Pagamento facilitado → sem link
-   - Promoção de 1ª compra (CUPOM) → `/?cupom=1`
+   - Promoção de 1ª compra (CUPOM) → abre popup
    - Clube VIP no WhatsApp → link grupo VIP
 3. **`<div className="h-8" />`** — espaçador intencional antes das seções de conteúdo
 4. **NovidadesSection** — produtos das últimas NFs do Bling (só renderiza se `novidadesBling.length > 0`)
-5. **CategoriesSection** — categorias
+5. **CategoriesSection** — mobile: scroll horizontal (todas as categorias). Desktop: top 8 prioritárias em grid 4×2 + link "Ver todas as categorias →"
 6. **ProductSection "Ofertas"** — só renderiza se houver promos com desconto
 7. **LeadCapture** — captura Clube Bibelô
 
@@ -372,7 +372,11 @@ Arquivo: `storefront-v2/src/app/(main)/page.tsx`
 - `MobileProductScroller.tsx` — mini-cards de produtos animados (mobile). Ficou para trás.
 
 ### Regra
-Usar **BenefitsStrip** (ticker corrido, sem formato de card) — nunca os dois juntos. Carlos confirmou em 09/04/2026.
+Usar **BenefitsStrip** (responsivo: ticker no mobile, 4 cards fixos no desktop). Nunca usar `BenefitCards.tsx` junto com o BenefitsStrip.
+
+### Desktop — comportamento esperado (09/04/2026)
+- BenefitsStrip: 4 cards em linha fixa, centralizados, com divisórias
+- CategoriesSection: grid 4×2 com as 8 primeiras categorias prioritárias (PRIORITY_HANDLES) + "Ver todas as categorias →"
 
 ---
 
