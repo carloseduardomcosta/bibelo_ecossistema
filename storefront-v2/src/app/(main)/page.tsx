@@ -1,6 +1,5 @@
 import HeroCarousel from "@/components/home/HeroCarousel"
 import BenefitCards from "@/components/home/BenefitCards"
-import BenefitsStrip from "@/components/home/BenefitsStrip"
 import NovidadesSection from "@/components/home/NovidadesSection"
 import CategoriesSection from "@/components/home/CategoriesSection"
 import ProductSection from "@/components/home/ProductSection"
@@ -35,9 +34,6 @@ export default async function HomePage() {
       {/* 2. Quadradinhos informativos com ícones — APENAS mobile, visível na primeira tela sem scroll */}
       {/* Idêntico ao site PROD: Frete Grátis | Pagamento facilitado | Promoção 1ª compra | Clube VIP */}
       <BenefitCards />
-
-      {/* 3. Ticker de benefícios — desktop e mobile */}
-      <BenefitsStrip />
 
       {/* Espaçamento entre benefícios e seções de conteúdo */}
       <div className="h-8" />
