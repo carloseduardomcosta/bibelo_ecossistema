@@ -591,6 +591,7 @@ nfEntradaRouter.post("/sync/bling", async (req: Request, res: Response) => {
 
   logger.info(`[nf-sync] Bling retornou ${nfsFromBling.length} NF(s) de entrada`)
 
+  const notaIdsImportadas: string[] = []
   const resultado = {
     total: nfsFromBling.length,
     importadas: 0,
@@ -711,6 +712,7 @@ nfEntradaRouter.post("/sync/bling", async (req: Request, res: Response) => {
         }
 
         await client.query("COMMIT")
+        notaIdsImportadas.push(notaId)
         resultado.importadas++
         resultado.detalhes.push({ numero, status: "importada", mensagem: `${itens.length} item(ns)` })
         logger.info(`[nf-sync] NF #${numero} importada (${itens.length} itens)`)
@@ -730,4 +732,36 @@ nfEntradaRouter.post("/sync/bling", async (req: Request, res: Response) => {
 
   logger.info(`[nf-sync] Concluído: ${resultado.importadas} importadas, ${resultado.ignoradas} ignoradas, ${resultado.erros} erros`)
   res.json(resultado)
+
+  // Dispara sync de imagens HD em background para os produtos das NFs importadas.
+  // Não bloqueia a resposta. Roda após res.json() via setImmediate.
+  // Se os produtos já tiverem fotos no Bling, chegam em HD imediatamente.
+  // Se as fotos ainda não foram subidas, o webhook product.updated cuidará delas.
+  if (notaIdsImportadas.length > 0) {
+    setImmediate(async () => {
+      try {
+        const placeholders = notaIdsImportadas.map((_, i) => `$${i + 1}`).join(", ")
+        const produtos = await query<{ bling_id: string }>(
+          `SELECT DISTINCT bp.bling_id
+           FROM financeiro.notas_entrada_itens nei
+           JOIN sync.bling_products bp ON (
+             TRIM(bp.sku) = TRIM(nei.codigo_produto)
+             OR bp.gtin = nei.codigo_produto
+             OR (nei.gtin IS NOT NULL AND bp.gtin = nei.gtin)
+             OR REPLACE(TRIM(bp.sku), ' - ', ' ') = REPLACE(TRIM(nei.codigo_produto), ' - ', ' ')
+           )
+           WHERE nei.nota_id IN (${placeholders})`,
+          notaIdsImportadas
+        )
+        if (produtos.length > 0) {
+          const blingIds = produtos.map(p => p.bling_id)
+          logger.info(`[nf-sync] Auto sync imagens HD para ${blingIds.length} produto(s)`)
+          const imgResult = await syncProductImages(blingIds)
+          logger.info(`[nf-sync] Auto sync imagens HD concluído`, imgResult)
+        }
+      } catch (err: any) {
+        logger.warn(`[nf-sync] Auto sync imagens HD falhou (não crítico)`, { error: err.message })
+      }
+    })
+  }
 })
