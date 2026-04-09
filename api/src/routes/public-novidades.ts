@@ -125,7 +125,11 @@ publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
         JOIN financeiro.notas_entrada_itens nei
           ON nei.nota_id = nf.id
         JOIN sync.bling_products bp
-          ON (bp.sku = nei.codigo_produto OR bp.gtin = nei.codigo_produto)
+          ON (
+            TRIM(bp.sku)  = TRIM(nei.codigo_produto)
+            OR bp.gtin    = nei.codigo_produto
+            OR (nei.gtin IS NOT NULL AND bp.gtin = nei.gtin)
+          )
           AND bp.ativo = true
           AND bp.preco_venda > 0
           AND jsonb_array_length(bp.imagens) > 0

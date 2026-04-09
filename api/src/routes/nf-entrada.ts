@@ -621,15 +621,17 @@ nfEntradaRouter.post("/sync/bling", async (req: Request, res: Response) => {
         for (let idx = 0; idx < itens.length; idx++) {
           const item = itens[idx]
           const codigoProduto = String(item.codigo || "").trim() || null
+          const gtin = String(item.gtin || "").replace(/\D/g, "").slice(0, 14) || null
           await client.query(
             `INSERT INTO financeiro.notas_entrada_itens (
-              nota_id, numero_item, codigo_produto, descricao, ncm, cfop, unidade,
+              nota_id, numero_item, codigo_produto, gtin, descricao, ncm, cfop, unidade,
               quantidade, valor_unitario, valor_total
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
             [
               notaId,
               idx + 1,
               codigoProduto,
+              gtin,
               String(item.descricao || "").slice(0, 500),
               String(item.classificacaoFiscal || "").replace(/\D/g, "").slice(0, 10) || null,
               String(item.cfop || "").slice(0, 5) || null,
@@ -639,6 +641,15 @@ nfEntradaRouter.post("/sync/bling", async (req: Request, res: Response) => {
               parseFloat(String(item.valorTotal || "0")) || 0,
             ]
           )
+          // Se o produto existe no catálogo mas sem GTIN, preenche com o da NF
+          if (gtin && codigoProduto) {
+            await client.query(
+              `UPDATE sync.bling_products
+               SET gtin = $1
+               WHERE TRIM(sku) = TRIM($2) AND (gtin IS NULL OR gtin = '')`,
+              [gtin, codigoProduto]
+            )
+          }
         }
 
         await client.query("COMMIT")
