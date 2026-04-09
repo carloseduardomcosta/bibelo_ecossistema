@@ -3,8 +3,11 @@ import BenefitsStrip from "@/components/home/BenefitsStrip"
 import ProductSection from "@/components/home/ProductSection"
 import CategoriesSection from "@/components/home/CategoriesSection"
 import MobileProductScroller from "@/components/home/MobileProductScroller"
+import NovidadesSection from "@/components/home/NovidadesSection"
 import { listProducts } from "@/lib/medusa/products"
+import { getNovidadesBling } from "@/lib/api/novidades"
 
+// ISR: revalida a cada 5 minutos — novidades aparecem em até 5 min após sync do Bling
 export const revalidate = 300
 
 async function getFeaturedProducts() {
@@ -23,13 +26,16 @@ async function getPromoProducts() {
 }
 
 export default async function HomePage() {
-  const [featuredProducts, promoProducts] = await Promise.allSettled([
+  // Busca em paralelo: Medusa + novidades do Bling via NF
+  const [featuredProducts, promoProducts, novidadesResult] = await Promise.allSettled([
     getFeaturedProducts(),
     getPromoProducts(),
+    getNovidadesBling(8),
   ])
 
   const featured = featuredProducts.status === "fulfilled" ? featuredProducts.value : []
   const promos = promoProducts.status === "fulfilled" ? promoProducts.value : []
+  const novidadesBling = novidadesResult.status === "fulfilled" ? novidadesResult.value : []
 
   // Produtos para o scroller mobile: prioriza promos, complementa com destaques
   const scrollerProducts = [
@@ -50,7 +56,12 @@ export default async function HomePage() {
       {/* 3. Ticker de benefícios */}
       <BenefitsStrip />
 
-      {/* 4. Destaques — grid completo (desktop e mobile) */}
+      {/* 4. Novidades — produtos das últimas NFs do Bling com foto + preço + descrição + estoque */}
+      {novidadesBling.length > 0 && (
+        <NovidadesSection products={novidadesBling} />
+      )}
+
+      {/* 5. Destaques — grid completo (desktop e mobile) */}
       <ProductSection
         eyebrow="Curadoria especial"
         title="Destaques"
@@ -58,12 +69,12 @@ export default async function HomePage() {
         viewAllHref="/produtos"
       />
 
-      {/* 5. Categorias */}
+      {/* 6. Categorias */}
       <div className="bg-bibelo-gray-light py-2">
         <CategoriesSection />
       </div>
 
-      {/* 6. Ofertas */}
+      {/* 7. Ofertas */}
       {promos.length > 0 && (
         <ProductSection
           eyebrow="Aproveite!"
