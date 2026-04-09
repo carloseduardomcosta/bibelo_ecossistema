@@ -349,6 +349,33 @@ Painel no CRM (sidebar > Loja Online > Configurações) gerencia regras de negó
 
 ---
 
+## Storefront v2 — Homepage (página principal)
+
+Arquivo: `storefront-v2/src/app/(main)/page.tsx`
+
+### Ordem das seções (decisão de 09/04/2026)
+
+1. **HeroCarousel** — carrossel hero. Mobile: `h-[48dvh]` (~405px num iPhone 14), libera espaço para o ticker abaixo
+2. **BenefitsStrip** — ticker horizontal corrido (sem cards). 4 itens:
+   - Frete Grátis → `/politica-de-frete`
+   - Pagamento facilitado → sem link
+   - Promoção de 1ª compra (CUPOM) → `/?cupom=1`
+   - Clube VIP no WhatsApp → link grupo VIP
+3. **`<div className="h-8" />`** — espaçador intencional antes das seções de conteúdo
+4. **NovidadesSection** — produtos das últimas NFs do Bling (só renderiza se `novidadesBling.length > 0`)
+5. **CategoriesSection** — categorias
+6. **ProductSection "Ofertas"** — só renderiza se houver promos com desconto
+7. **LeadCapture** — captura Clube Bibelô
+
+### Componentes existentes mas NÃO usados na homepage
+- `BenefitCards.tsx` — cards com ícones (auto-scroll mobile). Ficou para trás em favor do BenefitsStrip.
+- `MobileProductScroller.tsx` — mini-cards de produtos animados (mobile). Ficou para trás.
+
+### Regra
+Usar **BenefitsStrip** (ticker corrido, sem formato de card) — nunca os dois juntos. Carlos confirmou em 09/04/2026.
+
+---
+
 ## Comandos do dia a dia
 ```bash
 docker compose ps                    # status containers
