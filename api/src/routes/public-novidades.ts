@@ -129,6 +129,8 @@ publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
             TRIM(bp.sku)  = TRIM(nei.codigo_produto)
             OR bp.gtin    = nei.codigo_produto
             OR (nei.gtin IS NOT NULL AND bp.gtin = nei.gtin)
+            -- variações: normaliza separador " - " → " " (ex: "YINS - AZUL" = "YINS AZUL")
+            OR REPLACE(TRIM(bp.sku), ' - ', ' ') = REPLACE(TRIM(nei.codigo_produto), ' - ', ' ')
           )
           AND bp.ativo = true
           AND bp.preco_venda > 0
