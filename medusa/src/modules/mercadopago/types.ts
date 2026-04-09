@@ -1,6 +1,7 @@
 /**
  * Tipos para o módulo Mercado Pago — Papelaria Bibelô
  * API Orders (Checkout Transparente 2025)
+ * Suporte: Pix, Cartão de Crédito, Boleto
  */
 
 export interface MercadoPagoOptions {
@@ -31,8 +32,10 @@ export interface MPOrderRequest {
 export interface MPPaymentTransaction {
   amount: string
   payment_method: {
-    id: "pix"
-    type: "bank_transfer"
+    id: string
+    type: "bank_transfer" | "credit_card" | "debit_card" | "ticket"
+    token?: string
+    installments?: number
   }
 }
 
@@ -62,6 +65,9 @@ export interface MPPaymentDetail {
       qr_code_base64?: string
       ticket_url?: string
     }
+  }
+  barcode?: {
+    content?: string
   }
 }
 

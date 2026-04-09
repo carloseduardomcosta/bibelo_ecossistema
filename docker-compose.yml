@@ -17,6 +17,8 @@ services:
       - ./db/migrations:/docker-entrypoint-initdb.d:ro
     networks:
       - bibelo_internal
+    mem_limit: 1536m
+    cpus: 0.8
     healthcheck:
       test:     ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
@@ -43,6 +45,8 @@ services:
       - ./data/redis:/data
     networks:
       - bibelo_internal
+    mem_limit: 300m
+    cpus: 0.3
     healthcheck:
       test:     ["CMD", "redis-cli", "-a", "${REDIS_PASS}", "ping"]
       interval: 10s
@@ -75,6 +79,8 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
+    mem_limit: 1024m
+    cpus: 0.8
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:4000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
@@ -97,6 +103,8 @@ services:
       NODE_ENV:      production
       VITE_API_URL:  /api
       VITE_APP_NAME: BibelôCRM
+    mem_limit: 256m
+    cpus: 0.3
     ports:
       - "127.0.0.1:3000:3000"
     networks:
@@ -141,6 +149,8 @@ services:
       redis:    { condition: service_healthy }
     networks:
       - bibelo_internal
+    mem_limit: 1536m
+    cpus: 0.8
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:9000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
@@ -176,6 +186,8 @@ services:
       medusa: { condition: service_healthy }
     networks:
       - bibelo_internal
+    mem_limit: 512m
+    cpus: 0.5
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/"]
       interval: 30s
@@ -197,6 +209,7 @@ services:
         NEXT_PUBLIC_DEFAULT_REGION:         br
         NEXT_PUBLIC_STORE_NAME:             "Papelaria Bibelô"
         NEXT_PUBLIC_WHATSAPP:               "5547933862514"
+        NEXT_PUBLIC_MP_PUBLIC_KEY:          ${MP_PUBLIC_KEY:-}
     container_name: bibelo_storefront_v2
     restart: unless-stopped
     environment:
@@ -205,18 +218,21 @@ services:
       MEDUSA_BACKEND_URL:                  http://bibelo_medusa:9000
       NEXT_PUBLIC_MEDUSA_PUBLIC_URL:       https://homolog.papelariabibelo.com.br/api
       NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY: ${STOREFRONT_PUBLISHABLE_KEY}
+      NEXT_PUBLIC_MP_PUBLIC_KEY:           ${MP_PUBLIC_KEY:-}
     ports:
       - "127.0.0.1:8001:8001"
     depends_on:
       medusa: { condition: service_healthy }
     networks:
       - bibelo_internal
+    mem_limit: 512m
+    cpus: 0.5
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8001/"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8001/', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
-      timeout:  5s
+      timeout:  10s
       retries:  5
-      start_period: 30s
+      start_period: 45s
     logging:
       driver: "json-file"
       options: { max-size: "10m", max-file: "3" }
@@ -227,6 +243,8 @@ services:
     restart: unless-stopped
     environment:
       TZ: America/Sao_Paulo
+    mem_limit: 256m
+    cpus: 0.2
     ports:
       - "127.0.0.1:3001:3001"
     volumes:

@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import Image from "next/image"
+import Script from "next/script"
 import { useRouter } from "next/navigation"
 import { useCartStore } from "@/store/cart"
 import { useAuthStore } from "@/store/auth"
@@ -16,6 +17,7 @@ import {
 import { formatPrice } from "@/lib/utils"
 
 type Step = "endereco" | "entrega" | "pagamento"
+type PaymentMethod = "pix" | "credit_card" | "boleto"
 
 interface ShippingOption {
   id: string
@@ -26,10 +28,12 @@ interface ShippingOption {
   data?: Record<string, unknown>
 }
 
+const MP_PUBLIC_KEY = process.env.NEXT_PUBLIC_MP_PUBLIC_KEY || ""
+
 export default function CheckoutPage() {
   const router = useRouter()
   const { items, total, subtotal, discount_total, cartId, refreshCart } = useCartStore()
-  const { customer, token } = useAuthStore()
+  const { customer } = useAuthStore()
   const [step, setStep] = useState<Step>("endereco")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -40,7 +44,16 @@ export default function CheckoutPage() {
   const [shippingCost, setShippingCost] = useState(0)
 
   // Payment
-  const [selectedPayment, setSelectedPayment] = useState("mercadopago")
+  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>("pix")
+  const [mpReady, setMpReady] = useState(false)
+
+  // Card form
+  const [cardNumber, setCardNumber] = useState("")
+  const [cardHolder, setCardHolder] = useState("")
+  const [cardExpiry, setCardExpiry] = useState("")
+  const [cardCvv, setCardCvv] = useState("")
+  const [cardCpf, setCardCpf] = useState("")
+  const [installments, setInstallments] = useState(1)
 
   // Address form
   const [address, setAddress] = useState({
@@ -89,7 +102,6 @@ export default function CheckoutPage() {
     setError("")
 
     try {
-      // Atualizar endereço no cart
       const updatedCart = await updateCartAddress(cartId, {
         email: address.email,
         shipping_address: {
@@ -111,10 +123,8 @@ export default function CheckoutPage() {
         return
       }
 
-      // Buscar opções de frete
       const options = await getShippingOptions(cartId)
       setShippingOptions(options)
-
       setStep("entrega")
     } catch {
       setError("Erro ao processar. Tente novamente.")
@@ -150,6 +160,35 @@ export default function CheckoutPage() {
     }
   }
 
+  // ── Tokenizar cartão via MercadoPago.js ────────────────────
+  const tokenizeCard = async (): Promise<string | null> => {
+    if (typeof window === "undefined" || !(window as any).MercadoPago) {
+      setError("SDK do Mercado Pago não carregou. Recarregue a página.")
+      return null
+    }
+
+    try {
+      const mp = new (window as any).MercadoPago(MP_PUBLIC_KEY)
+      const [expMonth, expYear] = cardExpiry.split("/")
+
+      const tokenData = await mp.createCardToken({
+        cardNumber: cardNumber.replace(/\s/g, ""),
+        cardholderName: cardHolder,
+        cardExpirationMonth: expMonth?.trim(),
+        cardExpirationYear: expYear?.trim().length === 2 ? `20${expYear.trim()}` : expYear?.trim(),
+        securityCode: cardCvv,
+        identificationType: "CPF",
+        identificationNumber: cardCpf.replace(/\D/g, ""),
+      })
+
+      return tokenData.id
+    } catch (err) {
+      console.error("Erro ao tokenizar cartão:", err)
+      setError("Erro ao processar dados do cartão. Verifique os dados e tente novamente.")
+      return null
+    }
+  }
+
   // ── Step 3: Pagamento e finalização ────────────────────────
   const handlePaymentSubmit = async () => {
     if (!cartId) return
@@ -158,6 +197,31 @@ export default function CheckoutPage() {
     setError("")
 
     try {
+      // Para cartão de crédito, tokenizar antes
+      let paymentContext: Record<string, unknown> = {
+        payment_method_type: selectedPayment,
+      }
+
+      if (selectedPayment === "credit_card") {
+        if (!cardNumber || !cardHolder || !cardExpiry || !cardCvv || !cardCpf) {
+          setError("Preencha todos os dados do cartão")
+          setLoading(false)
+          return
+        }
+        const token = await tokenizeCard()
+        if (!token) {
+          setLoading(false)
+          return
+        }
+        paymentContext.card_token = token
+        paymentContext.installments = installments
+        paymentContext.payer_cpf = cardCpf.replace(/\D/g, "")
+      }
+
+      if (selectedPayment === "boleto") {
+        paymentContext.payer_cpf = cardCpf.replace(/\D/g, "")
+      }
+
       // Iniciar sessão de pagamento
       const session = await initiatePaymentSession(cartId, "pp_mercadopago_mercadopago")
       if (!session) {
@@ -171,17 +235,19 @@ export default function CheckoutPage() {
 
       if (result?.type === "order" || result?.order) {
         const order = result.order || result
-        // Limpar carrinho e redirecionar para confirmação
         localStorage.removeItem("bibelo-cart-v2")
-        router.push(`/checkout/confirmacao?order_id=${order.id}&display_id=${order.display_id || ""}`)
-      } else {
-        // Se retornar payment session com dados do Pix
+
+        // Para Pix, redirecionar para página de QR code se tiver dados
         const pixData = session?.data || result?.data
-        if (pixData?.qr_code || pixData?.point_of_interaction) {
-          router.push(`/checkout/pix?cart_id=${cartId}`)
+        if (selectedPayment === "pix" && (pixData?.qr_code || pixData?.qr_code_base64)) {
+          router.push(`/checkout/confirmacao?order_id=${order.id}&display_id=${order.display_id || ""}&payment=pix&qr_code=${encodeURIComponent(pixData.qr_code || "")}&qr_code_base64=${encodeURIComponent(pixData.qr_code_base64 || "")}`)
+        } else if (selectedPayment === "boleto" && pixData?.boleto_url) {
+          router.push(`/checkout/confirmacao?order_id=${order.id}&display_id=${order.display_id || ""}&payment=boleto&boleto_url=${encodeURIComponent(pixData.boleto_url || "")}`)
         } else {
-          setError("Pedido criado, mas pagamento pendente. Entre em contato pelo WhatsApp.")
+          router.push(`/checkout/confirmacao?order_id=${order.id}&display_id=${order.display_id || ""}&payment=${selectedPayment}`)
         }
+      } else {
+        setError("Pedido criado, mas pagamento pendente. Entre em contato pelo WhatsApp.")
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro ao finalizar pedido"
@@ -198,12 +264,40 @@ export default function CheckoutPage() {
     return digits
   }
 
+  const formatCardNumber = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 16)
+    return digits.replace(/(\d{4})(?=\d)/g, "$1 ")
+  }
+
+  const formatExpiry = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 4)
+    if (digits.length > 2) return `${digits.slice(0, 2)}/${digits.slice(2)}`
+    return digits
+  }
+
+  const formatCpf = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 11)
+    if (digits.length > 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`
+    if (digits.length > 6) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`
+    if (digits.length > 3) return `${digits.slice(0, 3)}.${digits.slice(3)}`
+    return digits
+  }
+
   const stepLabels = { endereco: "Endereço", entrega: "Entrega", pagamento: "Pagamento" }
   const stepsArr: Step[] = ["endereco", "entrega", "pagamento"]
   const currentIdx = stepsArr.indexOf(step)
 
   return (
     <div className="content-container py-8">
+      {/* Carregar MercadoPago.js SDK */}
+      {MP_PUBLIC_KEY && (
+        <Script
+          src="https://sdk.mercadopago.com/js/v2"
+          onLoad={() => setMpReady(true)}
+          strategy="lazyOnload"
+        />
+      )}
+
       <h1 className="text-2xl font-bold text-bibelo-dark mb-6">Finalizar Compra</h1>
 
       {/* Steps indicator */}
@@ -356,26 +450,127 @@ export default function CheckoutPage() {
           {step === "pagamento" && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
               <h2 className="font-semibold text-lg text-bibelo-dark">Forma de pagamento</h2>
+
+              {/* Seleção de método */}
               <div className="space-y-3">
+                {/* Pix */}
                 <label className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${
-                  selectedPayment === "mercadopago" ? "border-bibelo-pink bg-bibelo-pink/5" : "border-gray-200"
-                }`}>
-                  <input type="radio" name="payment" value="mercadopago"
-                    checked={selectedPayment === "mercadopago"} onChange={(e) => setSelectedPayment(e.target.value)} className="accent-bibelo-pink" />
+                  selectedPayment === "pix" ? "border-bibelo-pink bg-bibelo-pink/5" : "border-gray-200"
+                }`} onClick={() => setSelectedPayment("pix")}>
+                  <input type="radio" name="payment" value="pix"
+                    checked={selectedPayment === "pix"} onChange={() => setSelectedPayment("pix")} className="accent-bibelo-pink" />
                   <span className="text-xl">⚡</span>
-                  <div>
+                  <div className="flex-1">
                     <p className="font-medium text-gray-800">Pix</p>
-                    <p className="text-xs text-gray-500">Aprovação instantânea — 5% de desconto</p>
+                    <p className="text-xs text-gray-500">Aprovação instantânea</p>
+                  </div>
+                  <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">5% OFF</span>
+                </label>
+
+                {/* Cartão de Crédito */}
+                <label className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${
+                  selectedPayment === "credit_card" ? "border-bibelo-pink bg-bibelo-pink/5" : "border-gray-200"
+                }`} onClick={() => setSelectedPayment("credit_card")}>
+                  <input type="radio" name="payment" value="credit_card"
+                    checked={selectedPayment === "credit_card"} onChange={() => setSelectedPayment("credit_card")} className="accent-bibelo-pink" />
+                  <span className="text-xl">💳</span>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-800">Cartão de Crédito</p>
+                    <p className="text-xs text-gray-500">Visa, Mastercard, Elo, Amex, Hipercard</p>
+                  </div>
+                  <span className="text-xs text-gray-400">Até 12x</span>
+                </label>
+
+                {/* Boleto */}
+                <label className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${
+                  selectedPayment === "boleto" ? "border-bibelo-pink bg-bibelo-pink/5" : "border-gray-200"
+                }`} onClick={() => setSelectedPayment("boleto")}>
+                  <input type="radio" name="payment" value="boleto"
+                    checked={selectedPayment === "boleto"} onChange={() => setSelectedPayment("boleto")} className="accent-bibelo-pink" />
+                  <span className="text-xl">📄</span>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-800">Boleto Bancário</p>
+                    <p className="text-xs text-gray-500">Aprovação em até 3 dias úteis</p>
                   </div>
                 </label>
               </div>
 
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm">
-                <p className="font-semibold text-green-800">Desconto Pix: 5% OFF</p>
-                <p className="text-green-600 text-xs mt-1">
-                  O QR Code Pix será gerado após a confirmação. Pagamento aprovado em segundos.
-                </p>
-              </div>
+              {/* Info box por método */}
+              {selectedPayment === "pix" && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm">
+                  <p className="font-semibold text-green-800">Desconto Pix: 5% OFF</p>
+                  <p className="text-green-600 text-xs mt-1">
+                    O QR Code Pix será gerado após a confirmação. Pagamento aprovado em segundos.
+                  </p>
+                </div>
+              )}
+
+              {/* Formulário do cartão */}
+              {selectedPayment === "credit_card" && (
+                <div className="border border-gray-200 rounded-xl p-5 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Número do cartão *</label>
+                    <input type="text" className="input-base" placeholder="0000 0000 0000 0000" maxLength={19}
+                      value={cardNumber} onChange={(e) => setCardNumber(formatCardNumber(e.target.value))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nome no cartão *</label>
+                    <input type="text" className="input-base" placeholder="Como está no cartão"
+                      value={cardHolder} onChange={(e) => setCardHolder(e.target.value.toUpperCase())} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Validade *</label>
+                      <input type="text" className="input-base" placeholder="MM/AA" maxLength={5}
+                        value={cardExpiry} onChange={(e) => setCardExpiry(formatExpiry(e.target.value))} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">CVV *</label>
+                      <input type="text" className="input-base" placeholder="123" maxLength={4}
+                        value={cardCvv} onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">CPF do titular *</label>
+                    <input type="text" className="input-base" placeholder="000.000.000-00" maxLength={14}
+                      value={cardCpf} onChange={(e) => setCardCpf(formatCpf(e.target.value))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Parcelas</label>
+                    <select className="input-base" value={installments} onChange={(e) => setInstallments(Number(e.target.value))}>
+                      <option value={1}>1x de {formatPrice(total + shippingCost)} (sem juros)</option>
+                      {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
+                        <option key={n} value={n}>
+                          {n}x de {formatPrice(Math.ceil((total + shippingCost) / n))} (sem juros)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                    Pagamento seguro processado pelo Mercado Pago
+                  </div>
+                </div>
+              )}
+
+              {/* CPF para boleto */}
+              {selectedPayment === "boleto" && (
+                <div className="border border-gray-200 rounded-xl p-5 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">CPF do pagador *</label>
+                    <input type="text" className="input-base" placeholder="000.000.000-00" maxLength={14}
+                      value={cardCpf} onChange={(e) => setCardCpf(formatCpf(e.target.value))} />
+                  </div>
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm">
+                    <p className="text-amber-800 font-medium">O boleto será gerado após a confirmação</p>
+                    <p className="text-amber-600 text-xs mt-1">
+                      Prazo de pagamento: 3 dias úteis. Aprovação em até 3 dias úteis após pagamento.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-3">
                 <button onClick={() => setStep("entrega")} className="btn-secondary flex-1 py-3">
@@ -417,9 +612,18 @@ export default function CheckoutPage() {
                 <span>Desconto</span><span>-{formatPrice(discount_total)}</span>
               </div>
             )}
+            {selectedPayment === "pix" && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Desconto Pix (5%)</span><span>-{formatPrice(Math.round((total + shippingCost) * 0.05))}</span>
+              </div>
+            )}
             <div className="flex justify-between font-bold text-bibelo-dark pt-1 border-t border-gray-100">
               <span>Total</span>
-              <span>{formatPrice(total + shippingCost)}</span>
+              <span>{formatPrice(
+                selectedPayment === "pix"
+                  ? Math.round((total + shippingCost) * 0.95)
+                  : total + shippingCost
+              )}</span>
             </div>
           </div>
         </div>

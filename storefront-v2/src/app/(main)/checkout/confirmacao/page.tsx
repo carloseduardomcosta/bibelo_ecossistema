@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense } from "react"
+import { Suspense, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 
@@ -8,6 +8,19 @@ function ConfirmacaoContent() {
   const searchParams = useSearchParams()
   const orderId = searchParams.get("order_id")
   const displayId = searchParams.get("display_id")
+  const payment = searchParams.get("payment") || "pix"
+  const qrCode = searchParams.get("qr_code") || ""
+  const qrCodeBase64 = searchParams.get("qr_code_base64") || ""
+  const boletoUrl = searchParams.get("boleto_url") || ""
+  const [copied, setCopied] = useState(false)
+
+  const copyPixCode = () => {
+    if (qrCode) {
+      navigator.clipboard.writeText(qrCode)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 3000)
+    }
+  }
 
   return (
     <div className="content-container py-12 max-w-lg mx-auto text-center">
@@ -23,42 +36,120 @@ function ConfirmacaoContent() {
         <p className="text-lg text-bibelo-pink font-semibold mb-2">Pedido #{displayId}</p>
       )}
       <p className="text-gray-500 mb-8">
-        Recebemos seu pedido e ele está sendo processado. Você receberá atualizações por e-mail.
+        Recebemos seu pedido e ele está sendo processado.
       </p>
 
+      {/* QR Code Pix */}
+      {payment === "pix" && (qrCode || qrCodeBase64) && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-8">
+          <h2 className="font-semibold text-bibelo-dark mb-4">Pague com Pix</h2>
+
+          {qrCodeBase64 && (
+            <div className="bg-white p-4 rounded-xl inline-block mb-4">
+              <img
+                src={`data:image/png;base64,${qrCodeBase64}`}
+                alt="QR Code Pix"
+                className="w-48 h-48 mx-auto"
+              />
+            </div>
+          )}
+
+          {qrCode && (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-500">Ou copie o código Pix:</p>
+              <div className="bg-gray-50 rounded-xl p-3 break-all text-xs text-gray-600 font-mono max-h-20 overflow-y-auto">
+                {qrCode}
+              </div>
+              <button
+                onClick={copyPixCode}
+                className="btn-primary w-full py-3"
+              >
+                {copied ? "✓ Copiado!" : "Copiar código Pix"}
+              </button>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-400 mt-4">
+            O Pix expira em 30 minutos. Após o pagamento, a aprovação é instantânea.
+          </p>
+        </div>
+      )}
+
+      {/* Boleto */}
+      {payment === "boleto" && boletoUrl && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-8">
+          <h2 className="font-semibold text-bibelo-dark mb-4">Boleto Bancário</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Seu boleto foi gerado. Clique no botão abaixo para visualizar e pagar.
+          </p>
+          <a
+            href={boletoUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-primary w-full py-3 block text-center"
+          >
+            Ver boleto
+          </a>
+          <p className="text-xs text-gray-400 mt-4">
+            Prazo de pagamento: 3 dias úteis. A aprovação pode levar até 3 dias úteis após o pagamento.
+          </p>
+        </div>
+      )}
+
+      {/* Cartão de crédito */}
+      {payment === "credit_card" && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-8">
+          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <span className="text-2xl">💳</span>
+          </div>
+          <h2 className="font-semibold text-bibelo-dark mb-2">Pagamento em processamento</h2>
+          <p className="text-sm text-gray-500">
+            Seu pagamento está sendo processado. Você receberá um e-mail assim que for aprovado.
+          </p>
+        </div>
+      )}
+
       {/* Próximos passos */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-left space-y-4 mb-8">
-        <h2 className="font-semibold text-bibelo-dark">Próximos passos</h2>
-        <div className="space-y-3">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 bg-bibelo-pink/10 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-              <span className="text-sm font-bold text-bibelo-pink">1</span>
+      {payment !== "pix" || (!qrCode && !qrCodeBase64) ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-left space-y-4 mb-8">
+          <h2 className="font-semibold text-bibelo-dark">Próximos passos</h2>
+          <div className="space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 bg-bibelo-pink/10 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                <span className="text-sm font-bold text-bibelo-pink">1</span>
+              </div>
+              <div>
+                <p className="font-medium text-sm text-gray-800">Pagamento</p>
+                <p className="text-xs text-gray-500">
+                  {payment === "boleto"
+                    ? "Pague o boleto para confirmar o pedido"
+                    : payment === "credit_card"
+                    ? "Seu pagamento está sendo processado"
+                    : "Efetue o pagamento via Pix para confirmação imediata"}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="font-medium text-sm text-gray-800">Pagamento</p>
-              <p className="text-xs text-gray-500">Efetue o pagamento via Pix para confirmação imediata</p>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 bg-bibelo-pink/10 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                <span className="text-sm font-bold text-bibelo-pink">2</span>
+              </div>
+              <div>
+                <p className="font-medium text-sm text-gray-800">Preparação</p>
+                <p className="text-xs text-gray-500">Seu pedido será separado e embalado com carinho</p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 bg-bibelo-pink/10 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-              <span className="text-sm font-bold text-bibelo-pink">2</span>
-            </div>
-            <div>
-              <p className="font-medium text-sm text-gray-800">Preparação</p>
-              <p className="text-xs text-gray-500">Seu pedido será separado e embalado com carinho</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 bg-bibelo-pink/10 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-              <span className="text-sm font-bold text-bibelo-pink">3</span>
-            </div>
-            <div>
-              <p className="font-medium text-sm text-gray-800">Envio</p>
-              <p className="text-xs text-gray-500">Você receberá o código de rastreio por e-mail</p>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 bg-bibelo-pink/10 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                <span className="text-sm font-bold text-bibelo-pink">3</span>
+              </div>
+              <div>
+                <p className="font-medium text-sm text-gray-800">Envio</p>
+                <p className="text-xs text-gray-500">Você receberá o código de rastreio por e-mail</p>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       {/* Ações */}
       <div className="space-y-3">

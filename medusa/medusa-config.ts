@@ -66,6 +66,11 @@ export default defineConfig({
               storeOriginCep: process.env.STORE_CEP || "89093880",
             },
           },
+          {
+            resolve: "./src/modules/retirada",
+            id: "retirada",
+            options: {},
+          },
         ],
       },
     },

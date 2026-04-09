@@ -1,7 +1,7 @@
 /**
  * Mercado Pago Payment Provider — Papelaria Bibelô
  * Checkout Transparente via API Orders (2025)
- * Fase 1: apenas Pix
+ * Suporte: Pix, Cartão de Crédito, Boleto
  */
 
 import crypto from "crypto"
@@ -33,6 +33,7 @@ import type {
   MercadoPagoOptions,
   MPOrderRequest,
   MPOrderResponse,
+  MPPaymentTransaction,
 } from "./types"
 
 const MP_BASE_URL = "https://api.mercadopago.com"
@@ -109,6 +110,51 @@ class MercadoPagoProviderService extends AbstractPaymentProvider<MercadoPagoOpti
     return (Number(amount) / 100).toFixed(2)
   }
 
+  // --- Construir transação conforme método de pagamento ---
+
+  private buildPaymentTransaction(
+    amount: string,
+    data: Record<string, unknown>
+  ): MPPaymentTransaction {
+    const methodType = (data?.payment_method_type as string) || "pix"
+
+    if (methodType === "credit_card") {
+      const token = data?.card_token as string
+      const installments = Number(data?.installments) || 1
+      if (!token) {
+        throw new Error("MercadoPago: card_token obrigatório para cartão de crédito")
+      }
+      return {
+        amount,
+        payment_method: {
+          id: "master", // MP auto-detecta a bandeira pelo token
+          type: "credit_card",
+          token,
+          installments,
+        },
+      }
+    }
+
+    if (methodType === "boleto") {
+      return {
+        amount,
+        payment_method: {
+          id: "bolbradesco",
+          type: "ticket",
+        },
+      }
+    }
+
+    // Pix (default)
+    return {
+      amount,
+      payment_method: {
+        id: "pix",
+        type: "bank_transfer",
+      },
+    }
+  }
+
   // --- Payment Provider Methods ---
 
   async initiatePayment(
@@ -120,38 +166,40 @@ class MercadoPagoProviderService extends AbstractPaymentProvider<MercadoPagoOpti
     const sessionId = (context as any)?.session_id || `${Date.now()}`
     const externalRef = `BIBELO-${sessionId}`
 
-    // Email: context.customer (logged in) > data.payer_email (storefront) > fallback
     const payerEmail =
       (context as any)?.customer?.email ||
       (data as any)?.payer_email ||
       "comprador@testuser.com"
 
+    const methodType = (data as any)?.payment_method_type || "pix"
+    const amountStr = this.toMPAmount(numAmount)
+
     this.logger_.info(
-      `MercadoPago Pix: email=${payerEmail} ref=${externalRef} amount=${this.toMPAmount(numAmount)}`
+      `MercadoPago ${methodType}: email=${payerEmail} ref=${externalRef} amount=${amountStr}`
     )
+
+    const paymentTx = this.buildPaymentTransaction(amountStr, data as Record<string, unknown> || {})
 
     const orderBody: MPOrderRequest = {
       type: "online",
       processing_mode: "automatic",
-      total_amount: this.toMPAmount(numAmount),
+      total_amount: amountStr,
       external_reference: externalRef,
       payer: {
         email: payerEmail,
+        ...((data as any)?.payer_cpf ? {
+          identification: {
+            type: "CPF" as const,
+            number: (data as any).payer_cpf,
+          },
+        } : {}),
       },
       transactions: {
-        payments: [
-          {
-            amount: this.toMPAmount(numAmount),
-            payment_method: {
-              id: "pix",
-              type: "bank_transfer",
-            },
-          },
-        ],
+        payments: [paymentTx],
       },
     }
 
-    const idempotencyKey = `BIBELO-INIT-${externalRef}`
+    const idempotencyKey = `BIBELO-INIT-${externalRef}-${methodType}`
 
     const mpOrder = await this.mpRequest<MPOrderResponse>(
       "POST",
@@ -160,12 +208,11 @@ class MercadoPagoProviderService extends AbstractPaymentProvider<MercadoPagoOpti
       idempotencyKey
     )
 
-    const pixData =
-      mpOrder.transactions?.payments?.[0]?.point_of_interaction
-        ?.transaction_data
+    const paymentDetail = mpOrder.transactions?.payments?.[0]
+    const pixData = paymentDetail?.point_of_interaction?.transaction_data
 
     this.logger_.info(
-      `MercadoPago order criada: ${mpOrder.id} ref=${externalRef}`
+      `MercadoPago order criada: ${mpOrder.id} ref=${externalRef} method=${methodType}`
     )
 
     return {
@@ -173,9 +220,14 @@ class MercadoPagoProviderService extends AbstractPaymentProvider<MercadoPagoOpti
       data: {
         mp_order_id: mpOrder.id,
         external_reference: externalRef,
+        payment_method_type: methodType,
+        // Pix
         qr_code: pixData?.qr_code || null,
         qr_code_base64: pixData?.qr_code_base64 || null,
         ticket_url: pixData?.ticket_url || null,
+        // Boleto
+        boleto_url: paymentDetail?.point_of_interaction?.transaction_data?.ticket_url || null,
+        barcode: paymentDetail?.barcode?.content || null,
       },
     }
   }
@@ -214,7 +266,8 @@ class MercadoPagoProviderService extends AbstractPaymentProvider<MercadoPagoOpti
   async capturePayment(
     input: CapturePaymentInput
   ): Promise<CapturePaymentOutput> {
-    // Pix é captura automática — quando pago, já está capturado
+    // Pix e boleto são captura automática — quando pago, já está capturado
+    // Cartão de crédito também, com processing_mode: "automatic"
     const { data } = input
     return {
       data: {
@@ -415,7 +468,7 @@ class MercadoPagoProviderService extends AbstractPaymentProvider<MercadoPagoOpti
     }
   }
 
-  // --- HMAC Validation (conforme docs/Docs Integracoes bibelo.md) ---
+  // --- HMAC Validation ---
 
   private validateWebhookSignature(
     xSignature: string,

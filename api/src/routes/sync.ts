@@ -7,6 +7,7 @@ import { getAuthUrl, exchangeCode } from "../integrations/bling/auth";
 import { syncCustomers, syncOrders, syncProducts, syncStock, syncNfEntrada, syncContasPagar, incrementalSync } from "../integrations/bling/sync";
 import { getNuvemShopAuthUrl, exchangeNuvemShopCode, getNuvemShopToken } from "../integrations/nuvemshop/auth";
 import { syncNuvemShop, registerNsWebhooks } from "../integrations/nuvemshop/sync";
+import { sendOrderConfirmationEmail, sendPaymentApprovedEmail, sendShippingEmail } from "../services/storefront-email.service";
 
 export const syncRouter = Router();
 
@@ -464,7 +465,22 @@ syncRouter.post("/internal/medusa-order", async (req: Request, res: Response) =>
     // Gerar etiqueta Melhor Envio em background (não bloqueia response)
     res.json({ ok: true, bling_order_id: blingId, numero });
 
-    // Após responder, tentar gerar etiqueta
+    // Após responder, enviar email de confirmação
+    sendOrderConfirmationEmail({
+      email: order.email,
+      display_id: order.display_id || numero,
+      total: order.total || 0,
+      subtotal: order.subtotal,
+      shipping_total: order.shipping_total,
+      items: order.items,
+      shipping_address: order.shipping_address,
+      shipping_method: order.shipping_method,
+      payment_method: order.payment_method || "Pix",
+    }).catch((err: unknown) => {
+      logger.warn(`Email confirmação pedido ${numero} falhou: ${err instanceof Error ? err.message : "erro"}`);
+    });
+
+    // Tentar gerar etiqueta
     if (order.shipping_address?.postal_code) {
       try {
         const { createShippingLabel } = await import("../integrations/melhorenvio/shipping");
@@ -495,6 +511,66 @@ syncRouter.post("/internal/medusa-order", async (req: Request, res: Response) =>
     logger.error("Medusa → Bling: erro ao criar pedido", { error: message });
     res.status(502).json({ error: message });
   }
+});
+
+// ── POST /api/internal/medusa-payment — notificação de pagamento aprovado ──
+
+syncRouter.post("/internal/medusa-payment", async (req: Request, res: Response) => {
+  const { email, display_id, total, payment_method } = req.body;
+
+  if (!email || !display_id) {
+    res.status(400).json({ error: "email e display_id obrigatórios" });
+    return;
+  }
+
+  logger.info(`Medusa → payment approved: pedido #${display_id} email=${email}`);
+
+  sendPaymentApprovedEmail({
+    email,
+    display_id,
+    total: total || 0,
+    payment_method: payment_method || "Pix",
+  }).catch((err: unknown) => {
+    logger.warn(`Email pagamento pedido #${display_id} falhou: ${err instanceof Error ? err.message : "erro"}`);
+  });
+
+  // Notificar admin
+  const adminEmail = process.env.ADMIN_EMAIL || "contato@papelariabibelo.com.br";
+  if (adminEmail !== email) {
+    sendPaymentApprovedEmail({
+      email: adminEmail,
+      display_id,
+      total: total || 0,
+      payment_method: payment_method || "Pix",
+    }).catch(() => {});
+  }
+
+  res.json({ ok: true });
+});
+
+// ── POST /api/internal/medusa-shipping — notificação de envio com rastreio ──
+
+syncRouter.post("/internal/medusa-shipping", async (req: Request, res: Response) => {
+  const { email, display_id, tracking_code, carrier, tracking_url } = req.body;
+
+  if (!email || !display_id || !tracking_code) {
+    res.status(400).json({ error: "email, display_id e tracking_code obrigatórios" });
+    return;
+  }
+
+  logger.info(`Medusa → shipping: pedido #${display_id} rastreio=${tracking_code} email=${email}`);
+
+  sendShippingEmail({
+    email,
+    display_id,
+    tracking_code,
+    carrier: carrier || "Correios",
+    tracking_url,
+  }).catch((err: unknown) => {
+    logger.warn(`Email envio pedido #${display_id} falhou: ${err instanceof Error ? err.message : "erro"}`);
+  });
+
+  res.json({ ok: true });
 });
 
 // ══════════════════════════════════════════════════════════════

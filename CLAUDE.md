@@ -488,7 +488,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 9 de Abril de 2026 — storefront-v2: carrinho funcional (dual URL Medusa), categorias dinâmicas, carrossel viewport-fit, anti-pinch, benefits com links prod, remove 7% OFF*
+*Última atualização: 9 de Abril de 2026 — hardening VPS/Nginx (SSH, headers, Docker limits, rate limit, DNS Edrone removido)*
 
 ---
 
