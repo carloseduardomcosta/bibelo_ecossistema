@@ -52,7 +52,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 │   ├── hooks/                   ← useCustomers, useCampaigns etc
 │   └── lib/                     ← api.ts (Axios), auth.tsx, format.ts, export.ts
 ├── medusa/                      ← Medusa.js v2 (e-commerce, porta 9000)
-├── storefront/                  ← Next.js storefront (porta 8001)
+├── storefront-v2/               ← Next.js storefront (porta 8001)
 ├── db/migrations/               ← SQL em ordem numérica
 ├── scripts/                     ← setup.sh, backup.sh, test.sh
 ├── docs/
@@ -535,7 +535,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 9 de Abril de 2026 — variantes Bling→Medusa (145 produtos, 104 variantes), checkout multi-pagamento, painel Loja Online, categorias, WhatsApp, 615 testes*
+*Última atualização: 9 de Abril de 2026 — cleanup storefront v1, variantes Bling→Medusa (145 produtos, 104 variantes), checkout multi-pagamento, painel Loja Online, categorias, WhatsApp, 615 testes*
 
 ---
 

@@ -804,3 +804,10 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - UFW: regras 60222 para os 3 IPs autorizados (porta 22 pendente remoção após confirmação)
   - Fail2ban: jail sshd com port 60222, maxretry 1, bantime -1 (permanente)
   - Elimina 99% dos bots que varrem porta 22
+
+- cleanup: remove storefront v1 (porta 8000) — container órfão sem uso
+  - Serviço `storefront` removido do docker-compose.yml (porta 8000)
+  - Limpeza de `localhost:8000` do STORE_CORS e AUTH_CORS do Medusa
+  - Container parado e removido — liberou 512MB RAM + 0.5 CPU
+  - Storefront v2 (porta 8001) continua como único storefront ativo em homolog.papelariabibelo.com.br
+  - Motivo: nenhum Nginx apontava para porta 8000, healthcheck falhava (307 redirect), sem tráfego

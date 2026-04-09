@@ -130,9 +130,9 @@ services:
       REDIS_URL:     redis://:${REDIS_PASS}@redis:6379/2
       JWT_SECRET:    ${MEDUSA_JWT_SECRET}
       COOKIE_SECRET: ${MEDUSA_COOKIE_SECRET}
-      STORE_CORS:    ${MEDUSA_STORE_CORS:-http://localhost:8000,http://localhost:8001,https://papelariabibelo.com.br,https://homolog.papelariabibelo.com.br,https://loja.papelariabibelo.com.br}
+      STORE_CORS:    ${MEDUSA_STORE_CORS:-http://localhost:8001,https://papelariabibelo.com.br,https://homolog.papelariabibelo.com.br,https://loja.papelariabibelo.com.br}
       ADMIN_CORS:    ${MEDUSA_ADMIN_CORS:-http://localhost:9000,https://api.papelariabibelo.com.br}
-      AUTH_CORS:     ${MEDUSA_AUTH_CORS:-http://localhost:8000,http://localhost:8001,https://papelariabibelo.com.br,https://homolog.papelariabibelo.com.br,https://loja.papelariabibelo.com.br}
+      AUTH_CORS:     ${MEDUSA_AUTH_CORS:-http://localhost:8001,https://papelariabibelo.com.br,https://homolog.papelariabibelo.com.br,https://loja.papelariabibelo.com.br}
       PORT:          "9000"
       MP_ACCESS_TOKEN:    ${MP_ACCESS_TOKEN}
       MP_WEBHOOK_SECRET:  ${MP_WEBHOOK_SECRET}
@@ -163,43 +163,6 @@ services:
     logging:
       driver: "json-file"
       options: { max-size: "20m", max-file: "5" }
-
-  storefront:
-    build:
-      context:    ./storefront
-      dockerfile: Dockerfile
-      network:    host
-      args:
-        NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY: ${STOREFRONT_PUBLISHABLE_KEY}
-        NEXT_PUBLIC_MEDUSA_BACKEND_URL:     ${STOREFRONT_PUBLIC_BACKEND_URL:-https://homolog.papelariabibelo.com.br/api}
-        NEXT_PUBLIC_BASE_URL:               ${STOREFRONT_PUBLIC_BASE_URL:-https://homolog.papelariabibelo.com.br}
-        NEXT_PUBLIC_DEFAULT_REGION:         br
-        MEDUSA_BACKEND_URL:                 http://localhost:9000
-    container_name: bibelo_storefront
-    restart: unless-stopped
-    environment:
-      TZ:                 America/Sao_Paulo
-      NODE_ENV:           production
-      MEDUSA_BACKEND_URL: http://bibelo_medusa:9000
-      NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY: ${STOREFRONT_PUBLISHABLE_KEY}
-      REVALIDATE_SECRET:  ${REVALIDATE_SECRET:-bibelo-revalidate-homolog-2026}
-    ports:
-      - "127.0.0.1:8000:8000"
-    depends_on:
-      medusa: { condition: service_healthy }
-    networks:
-      - bibelo_internal
-    mem_limit: 512m
-    cpus: 0.5
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/"]
-      interval: 30s
-      timeout:  5s
-      retries:  5
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options: { max-size: "10m", max-file: "3" }
 
   storefront-v2:
     build:

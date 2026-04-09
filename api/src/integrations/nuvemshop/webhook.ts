@@ -124,6 +124,13 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
       [resourceId]
     );
   } else {
+    // Determinar status: fulfilled/delivered tem prioridade sobre payment_status
+    const shippingRaw = (order.shipping_status as string) || "";
+    const orderStatus =
+      event === "order/fulfilled" || shippingRaw === "delivered"
+        ? "fulfilled"
+        : (order.payment_status as string) || "pending";
+
     await query(
       `INSERT INTO sync.nuvemshop_orders (ns_id, customer_id, numero, valor, status, itens, cupom, processado)
        VALUES ($1, $2, $3, $4, $5, $6, $7, true)
@@ -134,7 +141,7 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
         customerId,
         String(order.number || ""),
         valor,
-        (order.payment_status as string) || "pending",
+        orderStatus,
         JSON.stringify(products),
         cupomUsado,
       ]

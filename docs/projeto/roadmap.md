@@ -73,6 +73,8 @@ Foco: loja propria (substituir NuvemShop), infraestrutura solida, monitoramento.
 - [x] Otimizacao sync Bling: ~110 → ~30 req/ciclo
 
 ### Pendente (Fase 3)
+- [ ] Storefront v2: cache de produtos (ISR/Redis) — pagina `/produtos` leva 8s com 50 users (teste 09/04)
+- [ ] Storefront v2: CDN Cloudflare para assets estaticos (CSS/JS/imagens no edge)
 - [ ] Storefront v2: checkout completo (endereco, frete, pagamento)
 - [ ] Storefront v2: conta do cliente (pedidos, enderecos, perfil)
 - [ ] Storefront v2: busca de produtos
