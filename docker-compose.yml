@@ -80,6 +80,8 @@ services:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
       - ./data/system-stats.json:/app/data/system-stats.json:ro
+      - ./data/firewall-stats.json:/app/data/firewall-stats.json:ro
+      - ./data/firewall-pending.json:/app/data/firewall-pending.json
     mem_limit: 1024m
     cpus: 0.8
     healthcheck:

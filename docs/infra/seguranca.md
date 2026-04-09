@@ -20,11 +20,12 @@ Política padrão:
   outgoing  → ALLOW
 
 Portas abertas:
-  22/tcp    SSH
+  60222/tcp SSH (porta alta — alterada de 22 em 09/04/2026)
   80/tcp    HTTP (redirect → 443)
   443/tcp   HTTPS
 
 Portas bloqueadas explicitamente:
+  22/tcp    SSH antigo (removido após migração para 60222)
   5432/tcp  PostgreSQL (acesso interno via Docker)
   6379/tcp  Redis (acesso interno via Docker)
   4000/tcp  API (acesso via Nginx reverse proxy)
@@ -52,6 +53,48 @@ PasswordAuthentication no
 
 **Resumo:** Autenticação só por chave SSH. X11 desabilitado. 3 tentativas máximas. Janela de login 30s.
 
+### SSH porta 60222 (09/04/2026)
+
+Porta SSH migrada de 22 para 60222 (porta alta) — elimina 99% dos bots que varrem porta padrão.
+
+```ini
+# /etc/ssh/sshd_config.d/05-port.conf
+Port 60222
+
+# /etc/systemd/system/ssh.socket.d/override.conf (Ubuntu 24.04 usa socket activation)
+[Socket]
+ListenStream=
+ListenStream=0.0.0.0:60222
+ListenStream=[::]:60222
+```
+
+**Acesso:** `ssh -p 60222 root@187.77.254.241`
+**Fallback:** Painel VNC da Hostinger (não depende de porta SSH)
+
+### Fail2ban SSH — Ban Permanente (09/04/2026)
+
+```ini
+[sshd]
+maxretry  = 1       # 1 tentativa = ban
+bantime   = -1      # permanente (nunca expira)
+findtime  = 60
+ignoreip  = 127.0.0.0/8 186.226.157.81 163.116.233.0/24 187.85.161.0/24
+```
+
+**Gestão via CRM:** página `/sistema` permite adicionar/remover IPs da whitelist e desbanir IPs bloqueados.
+Ações são escritas em `data/firewall-pending.json` e processadas pelo script `scripts/firewall-stats.sh` (cron 1 min).
+
+**Fail2ban jail.local:**
+```ini
+[sshd]
+enabled   = true
+port      = 60222
+maxretry  = 1
+findtime  = 60
+bantime   = -1
+ignoreip  = 127.0.0.0/8 186.226.157.81 163.116.233.0/24 187.85.161.0/24
+```
+
 ### Swap (09/04/2026)
 
 ```
@@ -64,6 +107,23 @@ Persistente via `/etc/fstab`. Swappiness baixo = só usa swap em emergência (OO
 
 Banner ASCII "BIBELÔ" exibido em todo login SSH.
 Arquivo: `/etc/update-motd.d/01-bibelo`
+
+### Monitoramento do Sistema (09/04/2026)
+
+Script `scripts/system-stats.sh` gera JSON com métricas da VPS a cada minuto via cron.
+Arquivo: `/opt/bibelocrm/data/system-stats.json` (montado read-only no container da API).
+
+**Métricas coletadas:** disco, RAM, swap, containers Docker (status + mem + cpu), certificados SSL (dias restantes), git (commits, último commit), linhas de código por camada.
+
+**Alertas automáticos na página /sistema do CRM:**
+- Disco >= 75% → warning, >= 90% → critical
+- RAM >= 75% → warning, >= 90% → critical
+- Swap >= 50% → warning
+- Container unhealthy → warning
+- SSL <= 30 dias → warning, <= 7 dias → critical
+
+**Cron:** `* * * * *` — `/bin/bash /opt/bibelocrm/scripts/system-stats.sh`
+**Frontend:** auto-refresh a cada 30 segundos
 
 ---
 

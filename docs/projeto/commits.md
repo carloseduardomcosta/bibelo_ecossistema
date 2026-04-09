@@ -756,3 +756,51 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Usa Medusa API real (produtos, preços, carrinho, shipping options)
   - Gera relatório com dados reais (produto, preço, cart ID, status de cada step)
   - Valida rejeição de payloads inválidos nos endpoints internos
+
+- feat: pagina Sistema no CRM — monitoramento VPS + stats do projeto
+  - Backend: api/src/routes/system.ts — 2 endpoints (/status, /code-stats)
+  - Frontend: frontend/src/pages/Sistema.tsx — dashboard com KPIs, gauges, containers, SSL, codigo, git, DB
+  - Script: scripts/system-stats.sh — gera JSON no host (cron 1min), montado read-only no container
+  - Alertas automaticos: disco, RAM, swap, containers, SSL
+
+- 9b0b8d1 fix: auto-refresh token Melhor Envio + validação ME/MP documentada
+  - Token ME: auto-refresh quando falta menos de 5 dias para expirar
+  - Validação ME: PAC R$23.72 (8d), SEDEX R$34.88 (4d) — Timbó→SP, saldo R$0
+  - Validação MP: token produção OK, sandbox Pix não gera QR (limitação conhecida)
+  - Endpoint dedicado: POST /api/sync/bling/categorias
+
+- f1d3b80 fix: sync categorias→produtos Bling + propagação ao Medusa
+  - syncProductCategories faz busca reversa por idCategoria (57 categorias)
+  - Resultado: 361/435 produtos categorizados (antes: 23/435)
+  - Caneta=52, Caderno=10, Lapiseira=9, Borracha=10 produtos cada
+  - Adicionado ao full sync + endpoint dedicado POST /api/sync/bling/categorias
+  - fetchCategoryMap exportado para uso externo
+
+- 17a2d78 feat: produtos com variações (Bling pai/filhos → Medusa variants)
+  - Sync agrupa por idProdutoPai: pai + filhos = 1 produto com N variantes
+  - Parser: "NomePai Opção:Valor" → options + variants no Medusa
+  - Antes: 435 produtos (127 filhos duplicados) → Depois: 145 produtos (32 com variantes)
+  - Exemplos: CIS Spiro (8 cores), Bazze Glitter (6 tintas), Rainbow (6 cores)
+  - Webhook Bling reativado: produto novo → sync Medusa em background
+
+- cd229e4 test: E2E Bling→Storefront — 22 testes ponta-a-ponta
+  - Valida: variantes com opções reais, SKUs únicos, preços, categorias
+  - Filtro por categoria, variante no carrinho, webhook Bling, pedido CRM→Bling
+  - Relatório: 145 produtos, 26 com variantes, 104 variantes, 50 categorias
+  - Auto-refresh 30s no frontend
+  - tsconfig.json: exclui .test.ts do build (fix erro pre-existente)
+
+- feat: dashboard Firewall/SSH na pagina Sistema
+  - Backend: api/src/routes/firewall.ts — 4 endpoints (status, whitelist add/remove, unban)
+  - Script: scripts/firewall-stats.sh — coleta conexoes SSH, regras UFW, Fail2ban, tentativas 24h
+  - Frontend: secao Firewall em Sistema.tsx — conexoes ativas, whitelist com CRUD, IPs banidos, timeline
+  - Fail2ban SSH: 1 tentativa = ban permanente (-1), ignoreip para IPs autorizados
+  - Gestao via CRM: adicionar/remover IP da whitelist, desbanir — processado pelo cron do host
+  - Cron: firewall-stats.sh roda a cada 1 minuto
+
+- sec: SSH migrado para porta 60222 (porta alta)
+  - /etc/ssh/sshd_config.d/05-port.conf — Port 60222
+  - /etc/systemd/system/ssh.socket.d/override.conf — socket activation na porta nova
+  - UFW: regras 60222 para os 3 IPs autorizados (porta 22 pendente remoção após confirmação)
+  - Fail2ban: jail sshd com port 60222, maxretry 1, bantime -1 (permanente)
+  - Elimina 99% dos bots que varrem porta 22

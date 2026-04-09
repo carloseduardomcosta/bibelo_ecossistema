@@ -42,6 +42,7 @@ import { seoRouter } from "./routes/seo";
 import { landingPagesRouter } from "./routes/landing-pages";
 import { storeSettingsRouter } from "./routes/store-settings";
 import { systemRouter } from "./routes/system";
+import { firewallRouter } from "./routes/firewall";
 import { registerScheduledJobs, closeSyncQueue } from "./queues/sync.queue";
 import { registerFlowJobs, closeFlowQueue }      from "./queues/flow.queue";
 
@@ -120,6 +121,7 @@ app.use("/api/landing-pages", landingPagesRouter); // admin: CRUD
 app.use("/api/seo", seoRouter);
 app.use("/api", storeSettingsRouter);              // GET público + PUT autenticado
 app.use("/api/system", systemRouter);              // status VPS + code stats
+app.use("/api/firewall", firewallRouter);          // firewall SSH + whitelist
 
 // ── 404
 app.use((_req, res) => {

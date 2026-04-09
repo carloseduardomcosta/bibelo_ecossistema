@@ -4,6 +4,7 @@ import {
   Server, HardDrive, Cpu, MemoryStick, Container,
   Shield, Code2, Database, GitCommit, RefreshCw,
   AlertTriangle, CheckCircle2, XCircle, Clock, Info,
+  ShieldAlert, Plus, Ban, Unlock, Wifi, WifiOff, Trash2,
 } from 'lucide-react';
 
 interface SystemData {
@@ -26,6 +27,20 @@ interface CodeStats {
   total_lines: number;
   total_files: number;
   by_layer: Record<string, number>;
+}
+
+interface FirewallData {
+  ssh_connections: Array<{ ip: string; port: number; user: string; pid: number }>;
+  ufw_rules: Array<{ num: number; ip: string; label: string }>;
+  fail2ban: {
+    currently_banned: number;
+    total_banned: number;
+    currently_failed: number;
+    banned_ips: string[];
+    config: { bantime: string; maxretry: string; ignoreip: string };
+  };
+  recent_attempts: Array<{ time: string; ip: string; type: string; user: string }>;
+  generated_at: string;
 }
 
 function formatUptime(seconds: number): string {
@@ -79,8 +94,12 @@ function LayerBar({ name, lines, max }: { name: string; lines: number; max: numb
 export default function Sistema() {
   const [data, setData] = useState<SystemData | null>(null);
   const [code, setCode] = useState<CodeStats | null>(null);
+  const [fw, setFw] = useState<FirewallData | null>(null);
   const [loading, setLoading] = useState(true);
   const [codeLoading, setCodeLoading] = useState(true);
+  const [newIp, setNewIp] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const [fwMsg, setFwMsg] = useState('');
 
   const fetchStatus = () => {
     setLoading(true);
@@ -98,10 +117,37 @@ export default function Sistema() {
       .finally(() => setCodeLoading(false));
   };
 
+  const fetchFirewall = () => {
+    api.get('/firewall/status')
+      .then(r => setFw(r.data))
+      .catch(() => {});
+  };
+
+  const addWhitelist = () => {
+    if (!newIp || !newLabel) return;
+    api.post('/firewall/whitelist', { ip: newIp, label: newLabel })
+      .then(r => { setFwMsg(r.data.message); setNewIp(''); setNewLabel(''); setTimeout(fetchFirewall, 65000); })
+      .catch(() => setFwMsg('Erro ao adicionar'));
+  };
+
+  const removeWhitelist = (ip: string) => {
+    if (!confirm(`Remover ${ip} da whitelist SSH?`)) return;
+    api.delete(`/firewall/whitelist/${ip.replace(/\//g, '_')}`)
+      .then(r => { setFwMsg(r.data.message); setTimeout(fetchFirewall, 65000); })
+      .catch(() => setFwMsg('Erro ao remover'));
+  };
+
+  const unbanIp = (ip: string) => {
+    api.post(`/firewall/unban/${ip}`)
+      .then(r => { setFwMsg(r.data.message); setTimeout(fetchFirewall, 65000); })
+      .catch(() => setFwMsg('Erro ao desbanir'));
+  };
+
   useEffect(() => {
     fetchStatus();
     fetchCode();
-    const interval = setInterval(fetchStatus, 30000);
+    fetchFirewall();
+    const interval = setInterval(() => { fetchStatus(); fetchFirewall(); }, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -236,6 +282,157 @@ export default function Sistema() {
           ))}
         </div>
       </div>
+
+      {/* Firewall / SSH */}
+      {fw && (
+        <>
+          {/* Conexões ativas + Fail2ban KPIs */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Wifi size={14} className="text-emerald-400" />
+                <span className="text-xs text-bibelo-muted">Conexoes SSH ativas</span>
+              </div>
+              <p className="text-2xl font-bold text-bibelo-text">{fw.ssh_connections.length}</p>
+            </div>
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Ban size={14} className="text-red-400" />
+                <span className="text-xs text-bibelo-muted">IPs banidos (permanente)</span>
+              </div>
+              <p className="text-2xl font-bold text-red-400">{fw.fail2ban.currently_banned}</p>
+              <p className="text-[10px] text-bibelo-muted">Total historico: {fw.fail2ban.total_banned}</p>
+            </div>
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <ShieldAlert size={14} className="text-amber-400" />
+                <span className="text-xs text-bibelo-muted">Fail2ban config</span>
+              </div>
+              <p className="text-xs text-bibelo-text">1 tentativa = ban permanente</p>
+              <p className="text-[10px] text-bibelo-muted mt-1">IPs autorizados: {fw.fail2ban.config.ignoreip || 'nenhum'}</p>
+            </div>
+          </div>
+
+          {/* Conexões SSH ativas */}
+          {fw.ssh_connections.length > 0 && (
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Wifi size={14} className="text-emerald-400" />
+                <h2 className="text-sm font-medium text-bibelo-muted">Conexoes SSH ativas agora</h2>
+              </div>
+              <div className="space-y-1">
+                {fw.ssh_connections.map((c, i) => (
+                  <div key={i} className="flex items-center justify-between py-1 border-b border-bibelo-border last:border-0">
+                    <span className="text-xs text-bibelo-text font-mono">{c.ip}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] text-bibelo-muted">user: {c.user}</span>
+                      <span className="text-[10px] text-bibelo-muted">porta: {c.port}</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Whitelist SSH (regras UFW) */}
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <Shield size={14} className="text-blue-400" />
+              <h2 className="text-sm font-medium text-bibelo-muted">Whitelist SSH (UFW)</h2>
+              <span className="text-[10px] text-bibelo-muted ml-auto">{fw.ufw_rules.length} regras</span>
+            </div>
+            <div className="space-y-1 mb-4">
+              {fw.ufw_rules.map(rule => (
+                <div key={rule.num} className="flex items-center justify-between py-1.5 border-b border-bibelo-border last:border-0">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={10} className="text-emerald-400" />
+                    <span className="text-xs text-bibelo-text font-mono">{rule.ip}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-bibelo-muted">{rule.label}</span>
+                    {rule.label.includes('via CRM') && (
+                      <button onClick={() => removeWhitelist(rule.ip)} className="text-red-400 hover:text-red-300 transition-colors" title="Remover">
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Adicionar IP */}
+            <div className="border-t border-bibelo-border pt-3">
+              <p className="text-[10px] text-bibelo-muted mb-2">Adicionar IP a whitelist (aplica em ~1 min)</p>
+              <div className="flex gap-2">
+                <input
+                  type="text" placeholder="192.168.1.1" value={newIp} onChange={e => setNewIp(e.target.value)}
+                  className="flex-1 px-2 py-1.5 text-xs bg-bibelo-bg border border-bibelo-border rounded-lg text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none focus:border-bibelo-primary"
+                />
+                <input
+                  type="text" placeholder="Descricao" value={newLabel} onChange={e => setNewLabel(e.target.value)}
+                  className="flex-1 px-2 py-1.5 text-xs bg-bibelo-bg border border-bibelo-border rounded-lg text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none focus:border-bibelo-primary"
+                />
+                <button onClick={addWhitelist} disabled={!newIp || !newLabel} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/30 transition-colors disabled:opacity-30">
+                  <Plus size={12} /> Adicionar
+                </button>
+              </div>
+              {fwMsg && <p className="text-[10px] text-amber-400 mt-2">{fwMsg}</p>}
+            </div>
+          </div>
+
+          {/* IPs banidos */}
+          {fw.fail2ban.banned_ips.length > 0 && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Ban size={14} className="text-red-400" />
+                <h2 className="text-sm font-medium text-red-300">IPs banidos permanentemente</h2>
+              </div>
+              <div className="space-y-1">
+                {fw.fail2ban.banned_ips.map(ip => (
+                  <div key={ip} className="flex items-center justify-between py-1 border-b border-red-500/20 last:border-0">
+                    <div className="flex items-center gap-2">
+                      <WifiOff size={10} className="text-red-400" />
+                      <span className="text-xs text-red-300 font-mono">{ip}</span>
+                    </div>
+                    <button onClick={() => unbanIp(ip)} className="flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 transition-colors">
+                      <Unlock size={10} /> Desbanir
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Timeline de tentativas SSH 24h */}
+          {fw.recent_attempts.length > 0 && (
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Clock size={14} className="text-bibelo-muted" />
+                <h2 className="text-sm font-medium text-bibelo-muted">Tentativas SSH (24h)</h2>
+                <span className="text-[10px] text-bibelo-muted ml-auto">{fw.recent_attempts.length} eventos</span>
+              </div>
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {fw.recent_attempts.map((a, i) => (
+                  <div key={i} className="flex items-center gap-2 py-1 border-b border-bibelo-border last:border-0">
+                    {a.type === 'Accepted' ? (
+                      <CheckCircle2 size={10} className="text-emerald-400 flex-shrink-0" />
+                    ) : a.type === 'Failed' || a.type === 'Invalid' ? (
+                      <XCircle size={10} className="text-red-400 flex-shrink-0" />
+                    ) : (
+                      <WifiOff size={10} className="text-bibelo-muted flex-shrink-0" />
+                    )}
+                    <span className="text-xs text-bibelo-text font-mono w-28 flex-shrink-0">{a.ip}</span>
+                    <span className={`text-[10px] flex-shrink-0 ${a.type === 'Accepted' ? 'text-emerald-400' : a.type === 'Failed' ? 'text-red-400' : 'text-bibelo-muted'}`}>{a.type}</span>
+                    <span className="text-[10px] text-bibelo-muted">{a.user}</span>
+                    <span className="text-[10px] text-bibelo-muted ml-auto">{a.time?.split('T')[1]?.split('-')[0]?.substring(0,5)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Código do projeto */}
       <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">

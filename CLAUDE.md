@@ -200,9 +200,9 @@ bash scripts/test.sh                          # todos
 bash scripts/test.sh src/routes/leads.test.ts  # específico
 ```
 
-462 testes CRM (26 suites): health, email, leads, orders, images, auth, customers, campaigns, analytics, sync, products, search, tracking, webhooks, email-events, links, security, flows, store-settings, E2E purchase flow.
+484 testes CRM (27 suites): health, email, leads, orders, images, auth, customers, campaigns, analytics, sync, products, search, tracking, webhooks, email-events, links, security, flows, store-settings, E2E purchase flow, E2E Bling→Storefront.
 131 testes storefront (7 suites): utils, stores (cart/auth), cart API, checkout, páginas, emails.
-Total: 593 testes automatizados.
+Total: 615 testes automatizados.
 
 Regras: endpoint público → testes de input, token, XSS. Protegido → 401 + resposta válida. Limpar dados no `afterAll`. Sem mocks de DB.
 
@@ -301,6 +301,24 @@ Ferramenta integrada para converter e enviar imagens de produtos para múltiplas
 ### Segurança da rota pública `/api/images/serve/:id`
 - Rate limit 60 req/min, regex whitelist, path traversal bloqueado
 - IDs aleatórios (crypto.randomBytes), auto-cleanup 1h, X-Content-Type-Options: nosniff
+
+---
+
+## Produtos com variações (Bling → Medusa)
+
+Sync agrupa produtos Bling por `idProdutoPai`:
+- **Produto simples** (sem filhos): 1 produto Medusa + 1 variante "Padrão"
+- **Produto pai** (com filhos): 1 produto Medusa + N variantes (uma por filho)
+- **Produto filho**: vira variante do pai (não cria produto separado)
+
+Parser de variação: nome do filho = "NomePai Opção:Valor"
+- `CANETA BAZZE GEL GLITTER Tinta:Azul` → opção "Tinta", valor "Azul"
+- Opções detectadas: Cor, Tinta, Estampa, Cor/Cheiro, Cor/Forma, etc.
+
+Números: 145 produtos no Medusa (32 com variantes, 104 variantes totais, 50 categorias).
+
+Webhook Bling `product.*` → salva em `sync.bling_products` → `syncBlingToMedusa()` em background.
+Endpoint dedicado: `POST /api/sync/bling/categorias` — mapeia categoria→produtos sem full sync.
 
 ---
 
@@ -517,7 +535,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 9 de Abril de 2026 — storefront checkout multi-pagamento (Pix/Cartão/Boleto), emails transacionais, painel Loja Online no CRM, WhatsApp flutuante, 593 testes*
+*Última atualização: 9 de Abril de 2026 — variantes Bling→Medusa (145 produtos, 104 variantes), checkout multi-pagamento, painel Loja Online, categorias, WhatsApp, 615 testes*
 
 ---
 

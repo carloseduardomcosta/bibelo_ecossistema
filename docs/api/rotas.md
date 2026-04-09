@@ -215,3 +215,26 @@ Admin dashboard desabilitado temporariamente. API REST e Store API disponíveis 
 - Webhook URL (MP): `https://api.papelariabibelo.com.br/webhooks/mercadopago`
 - Eventos: Pagamentos + Order
 - Idempotência: `X-Idempotency-Key` em todas as chamadas de criação
+
+---
+
+## Sistema (monitoramento VPS)
+
+- `GET /api/system/status` — status completo da VPS: disco, RAM, swap, containers, SSL, git, DB, alertas
+- `GET /api/system/code-stats` — linhas de código por camada do projeto
+
+> Dados lidos de `/app/data/system-stats.json` (gerado pelo host via cron a cada 1 minuto).
+> DB stats (clientes, leads, pedidos) consultados em tempo real via query.
+> Alertas automáticos: disco >=75%, RAM >=90%, swap >=50%, container unhealthy, SSL <=30 dias.
+
+---
+
+## Firewall / SSH (admin only)
+
+- `GET  /api/firewall/status` — conexões SSH ativas, regras UFW, IPs banidos, tentativas 24h
+- `POST /api/firewall/whitelist` — adicionar IP à whitelist SSH `{ ip, label }`
+- `DELETE /api/firewall/whitelist/:ip` — remover IP da whitelist SSH
+- `POST /api/firewall/unban/:ip` — desbanir IP do Fail2ban
+
+> Ações de whitelist/unban são processadas pelo host via cron (1 min).
+> Dados lidos de `/app/data/firewall-stats.json` (gerado por `scripts/firewall-stats.sh`).

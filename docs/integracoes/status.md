@@ -44,4 +44,5 @@
 | Medusa → Bling pedidos | ✅ produção | Subscriber order.placed → CRM → Bling API (busca/cria contato + cria pedido), webhook bidirecional confirmado |
 | Melhor Envio etiquetas | ✅ produção | Geração automática via CRM para pedidos Medusa (cart→checkout→generate→print), NuvemShop mantém fluxo Bling |
 | Uptime Kuma | ✅ produção | status.papelariabibelo.com.br — 11 monitores, 2 canais alerta |
+| Monitoramento VPS | ✅ produção | página /sistema no CRM: disco, RAM, containers, SSL, código, alertas (cron 1min + auto-refresh 30s) |
 | Edrone | ❌ removido | DNS Cloudflare limpo em 09/04/2026 — 5 registros removidos (DKIM, mail, click, sms, sparkpost) |
