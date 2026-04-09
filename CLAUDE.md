@@ -472,6 +472,7 @@ git push origin main → GitHub Actions → rsync VPS → docker compose up -d -
 |---------|----------|
 | `arquitetura.md` | Arquitetura e-commerce: Next.js + Medusa.js + Mercado Pago + Melhor Envio |
 | `padrao-imagens.md` | Padrão de imagens para produtos |
+| `descricoes-produtos.md` | Levantamento descrições Bling: 83 completas, 182 só curta, 8 só complementar, 12 vazias |
 
 ### `docs/infra/`
 | Arquivo | Conteúdo |

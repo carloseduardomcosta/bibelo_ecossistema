@@ -98,9 +98,9 @@ export default function HeroCarousel() {
                 />
               </div>
 
-              {/* Mobile — altura compacta para caber o carrossel de cards na primeira tela */}
+              {/* Mobile — cabe na 1ª tela: header(~120px) + cards(~80px) + peek(~45px) */}
               <div
-                className="block md:hidden relative w-full h-[52svh]"
+                className="block md:hidden relative w-full h-[calc(100dvh-245px)]"
               >
                 <Image
                   src={s.mobile}

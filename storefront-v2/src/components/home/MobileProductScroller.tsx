@@ -45,7 +45,6 @@ function MiniCard({ product }: { product: Product }) {
                  shadow-sm border border-pink-100 active:scale-95 transition-transform duration-150"
       style={{ WebkitTapHighlightColor: "transparent" }}
     >
-      {/* Imagem */}
       <div className="relative w-full aspect-square bg-gray-50">
         {product.thumbnail ? (
           <Image
@@ -63,14 +62,12 @@ function MiniCard({ product }: { product: Product }) {
           </div>
         )}
 
-        {/* Badge desconto */}
         {isOnSale && !isOutOfStock && (
           <div className="absolute top-1.5 left-1.5 bg-[#ff65c3] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none">
             -{discountPercent}%
           </div>
         )}
 
-        {/* Badge esgotado */}
         {isOutOfStock && (
           <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
             <span className="bg-white/90 text-gray-600 text-[9px] font-semibold px-2 py-0.5 rounded-full">
@@ -80,7 +77,6 @@ function MiniCard({ product }: { product: Product }) {
         )}
       </div>
 
-      {/* Info */}
       <div className="p-2">
         <p className="text-[11px] font-medium text-gray-800 leading-tight line-clamp-2 mb-1.5 min-h-[2.5em]">
           {product.title}

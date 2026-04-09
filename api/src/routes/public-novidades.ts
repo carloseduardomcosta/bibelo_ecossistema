@@ -92,16 +92,12 @@ publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
        AND bp.ativo = true
        AND bp.preco_venda > 0
        AND jsonb_array_length(bp.imagens) > 0
-       AND (
-         bp.dados_raw->>'descricao' IS NOT NULL
-         AND length(trim(bp.dados_raw->>'descricao')) > 3
-       )
       LEFT JOIN sync.bling_stock bs
         ON bs.bling_product_id = bp.bling_id
       GROUP BY
         bp.id, bp.bling_id, bp.nome, bp.sku, bp.preco_venda,
         bp.imagens, bp.dados_raw, bp.categoria,
-        ne.numero, ne.data_emissao
+        ne.numero, ne.data_emissao, ne.criado_em
       HAVING COALESCE(MAX(bs.saldo_fisico), 0) > 0
       ORDER BY
         bp.bling_id,
@@ -136,16 +132,17 @@ publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
 
       if (!imagemUrl) continue
 
-      // Parse dados_raw para descrição
+      // Parse dados_raw para descrição (fallback: nome do produto)
       let descricao = ""
       try {
         const raw = JSON.parse(row.dados_raw || "{}")
-        descricao = (raw.descricao || raw.descricaoCurta || raw.nome || "").trim()
+        descricao = (raw.descricao || raw.descricaoCurta || "").trim()
       } catch {
-        continue
+        // ignora erro de parse
       }
-
-      if (!descricao || descricao.length < 4) continue
+      if (!descricao || descricao.length < 4) {
+        descricao = row.nome
+      }
 
       const precoVenda = parseFloat(row.preco_venda)
       const estoque = parseFloat(row.saldo_fisico)

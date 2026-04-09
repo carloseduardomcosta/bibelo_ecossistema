@@ -1,35 +1,32 @@
 import HeroCarousel from "@/components/home/HeroCarousel"
 import BenefitsStrip from "@/components/home/BenefitsStrip"
-import ProductSection from "@/components/home/ProductSection"
-import CategoriesSection from "@/components/home/CategoriesSection"
 import MobileProductScroller from "@/components/home/MobileProductScroller"
 import NovidadesSection from "@/components/home/NovidadesSection"
+import CategoriesSection from "@/components/home/CategoriesSection"
+import ProductSection from "@/components/home/ProductSection"
+import LeadCapture from "@/components/home/LeadCapture"
 import { listProducts } from "@/lib/medusa/products"
 import { getNovidadesBling } from "@/lib/api/novidades"
 
-// ISR: revalida a cada 5 minutos — novidades aparecem em até 5 min após sync do Bling
-export const revalidate = 300
+// SSR dinâmico — produtos sempre atualizados a cada request
+export const dynamic = "force-dynamic"
 
 async function getFeaturedProducts() {
   const { products } = await listProducts({ limit: 10 })
   return products
 }
 
-async function getPromoProducts() {
-  const { products } = await listProducts({ limit: 10, order: "created_at" })
-  return products.filter((p) => {
-    const variant = p.variants?.[0]
-    const price = variant?.calculated_price as { calculated_amount?: number; original_amount?: number } | undefined
-    return price && price.original_amount && price.calculated_amount &&
-      price.original_amount > price.calculated_amount
-  })
-}
-
 export default async function HomePage() {
-  // Busca em paralelo: Medusa + novidades do Bling via NF
   const [featuredProducts, promoProducts, novidadesResult] = await Promise.allSettled([
     getFeaturedProducts(),
-    getPromoProducts(),
+    listProducts({ limit: 10, order: "created_at" }).then(({ products }) =>
+      products.filter((p) => {
+        const variant = p.variants?.[0]
+        const price = variant?.calculated_price as { calculated_amount?: number; original_amount?: number } | undefined
+        return price && price.original_amount && price.calculated_amount &&
+          price.original_amount > price.calculated_amount
+      })
+    ),
     getNovidadesBling(8),
   ])
 
@@ -45,7 +42,7 @@ export default async function HomePage() {
 
   return (
     <>
-      {/* 1. Carrossel hero — altura compacta no mobile para caber os cards na primeira tela */}
+      {/* 1. Carrossel hero */}
       <HeroCarousel />
 
       {/* 2. Cards deslizantes — APENAS mobile, visível na primeira tela sem scroll */}
@@ -56,25 +53,18 @@ export default async function HomePage() {
       {/* 3. Ticker de benefícios */}
       <BenefitsStrip />
 
+      {/* Espaçamento entre benefícios e seções de conteúdo */}
+      <div className="h-8" />
+
       {/* 4. Novidades — produtos das últimas NFs do Bling com foto + preço + descrição + estoque */}
       {novidadesBling.length > 0 && (
         <NovidadesSection products={novidadesBling} />
       )}
 
-      {/* 5. Destaques — grid completo (desktop e mobile) */}
-      <ProductSection
-        eyebrow="Curadoria especial"
-        title="Destaques"
-        products={featured as Parameters<typeof ProductSection>[0]["products"]}
-        viewAllHref="/produtos"
-      />
+      {/* 5. Categorias */}
+      <CategoriesSection />
 
-      {/* 6. Categorias */}
-      <div className="bg-bibelo-gray-light py-2">
-        <CategoriesSection />
-      </div>
-
-      {/* 7. Ofertas */}
+      {/* 6. Ofertas */}
       {promos.length > 0 && (
         <ProductSection
           eyebrow="Aproveite!"
@@ -83,6 +73,9 @@ export default async function HomePage() {
           viewAllHref="/produtos?sort=price_asc"
         />
       )}
+
+      {/* 7. Captura de Lead — Clube Bibelô */}
+      <LeadCapture />
     </>
   )
 }

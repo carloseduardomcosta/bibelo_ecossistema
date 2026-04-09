@@ -87,7 +87,7 @@ export default function NovidadesSection({ products }: NovidadesSectionProps) {
   if (!products || products.length === 0) return null
 
   return (
-    <section className="py-8 md:py-10">
+    <section className="pt-2 pb-8 md:py-10">
       <div className="content-container">
         {/* Header */}
         <div className="flex items-end justify-between mb-4 md:mb-6">
