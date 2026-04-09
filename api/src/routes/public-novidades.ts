@@ -41,22 +41,32 @@ interface NovidadeProduct {
   nf_data: string
 }
 
+const RE_TAG = /<("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^'">])*>/g
+
 /** Remove tags HTML e entidades básicas, retorna texto limpo.
- *  Usa regex que respeita aspas dentro de atributos (ex: class="[.a>b]")
- *  para não parar no > dentro de valores de atributo.
+ *  Faz 2 passagens: alguns textos têm HTML-encoded dentro de HTML
+ *  (ex: &lt;article&gt; dentro de <div>), então após decode pode
+ *  aparecer HTML novo que também precisa ser removido.
  */
 function stripHtml(html: string): string {
-  return html
-    .replace(/<("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^'">])*>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&[a-z]+;/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim()
+  function onePass(s: string): string {
+    return s
+      .replace(RE_TAG, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/&[a-z]+;/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+  const pass1 = onePass(html)
+  // Segunda passagem para limpar HTML que estava entity-encoded no primeiro nível
+  const pass2 = onePass(pass1)
+  // Se ainda tiver HTML depois de 2 passagens, retorna vazio (fallback para nome)
+  return /<[a-z][\s\S]*?>/i.test(pass2) ? "" : pass2
 }
 
 // ── GET /api/public/novidades ─────────────────────────────────
