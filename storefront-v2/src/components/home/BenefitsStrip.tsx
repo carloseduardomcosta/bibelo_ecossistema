@@ -8,35 +8,76 @@ const BENEFITS = [
     title: "Frete Grátis",
     subtitle: "Leia a Política de Frete AQUI",
     href: "/politica-de-frete",
+    sparkle: false,
   },
   {
     icon: "M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z",
     title: "Pagamento facilitado",
     subtitle: "Vários meios de pagamento",
     href: null,
+    sparkle: false,
   },
   {
     icon: "M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L9.568 3z M6 6h.008v.008H6V6z",
     title: "Promoção de 1ª compra",
     subtitle: "CUPOM clicando AQUI",
     href: "/?cupom=1",
+    sparkle: false,
   },
   {
-    icon: "M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.562.562 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z",
+    // WhatsApp chat bubble (Heroicons outline)
+    icon: "M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z",
     title: "Clube VIP no WhatsApp",
     subtitle: "Entre para o Clube Bibelô",
     href: "https://boasvindas.papelariabibelo.com.br/api/links/grupo-vip",
+    sparkle: true,
   },
 ]
 
 function BenefitCard({ benefit }: { benefit: typeof BENEFITS[number] }) {
-  const content = (
-    <div className="flex items-center gap-3 px-5 py-3">
-      <div className="w-10 h-10 rounded-full bg-bibelo-pink/10 flex items-center justify-center shrink-0">
-        <svg className="w-5 h-5 text-bibelo-pink" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+  const iconEl = benefit.sparkle ? (
+    <div className="relative w-10 h-10 shrink-0">
+      {/* Círculo verde WhatsApp com pulse */}
+      <div
+        className="w-10 h-10 rounded-full bg-[#25D366]/15 flex items-center justify-center"
+        style={{ animation: "vip-pulse 2.5s ease-in-out infinite" }}
+      >
+        <svg
+          className="w-5 h-5 text-[#25D366]"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={1.5}
+        >
           <path strokeLinecap="round" strokeLinejoin="round" d={benefit.icon} />
         </svg>
       </div>
+      {/* Sparkle superior direito */}
+      <span
+        className="absolute -top-1 -right-1 text-[9px] leading-none text-yellow-400"
+        style={{ animation: "sparkle-blink 2s ease-in-out infinite" }}
+      >
+        ✦
+      </span>
+      {/* Sparkle inferior esquerdo — desfasado */}
+      <span
+        className="absolute -bottom-1 -left-1 text-[7px] leading-none text-yellow-300"
+        style={{ animation: "sparkle-blink 2s ease-in-out infinite 0.8s" }}
+      >
+        ✦
+      </span>
+    </div>
+  ) : (
+    <div className="w-10 h-10 rounded-full bg-bibelo-pink/10 flex items-center justify-center shrink-0">
+      <svg className="w-5 h-5 text-bibelo-pink" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d={benefit.icon} />
+      </svg>
+    </div>
+  )
+
+  const content = (
+    <div className="flex items-center gap-3 px-5 py-3">
+      {iconEl}
       <div className="min-w-0">
         <p className="font-bold text-[13px] text-bibelo-dark leading-tight whitespace-nowrap">{benefit.title}</p>
         <p className="text-[11px] text-gray-500 leading-tight whitespace-nowrap">{benefit.subtitle}</p>
@@ -64,11 +105,21 @@ export default function BenefitsStrip() {
   return (
     <div className="bg-bibelo-rosa/40 border-b border-bibelo-pink/10 overflow-hidden">
       <div className="benefits-track flex w-max hover:[animation-play-state:paused]">
-        {/* Duas cópias do set completo para loop infinito */}
         {[...BENEFITS, ...BENEFITS].map((b, i) => (
           <BenefitCard key={i} benefit={b} />
         ))}
       </div>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes vip-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(37,211,102,0.35); }
+          50%       { box-shadow: 0 0 0 5px rgba(37,211,102,0); }
+        }
+        @keyframes sparkle-blink {
+          0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+          50%       { opacity: 1; transform: scale(1) rotate(20deg); }
+        }
+      ` }} />
     </div>
   )
 }
