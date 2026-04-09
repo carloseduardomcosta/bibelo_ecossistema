@@ -174,7 +174,10 @@ export default async function ProductPage({ params }: Props) {
           {product.description && (
             <div>
               <h2 className="font-semibold text-gray-800 mb-2">Descrição</h2>
-              <p className="text-sm text-gray-600 leading-relaxed">{product.description}</p>
+              <div
+                className="legal-content text-sm text-gray-600 leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: product.description }}
+              />
             </div>
           )}
 

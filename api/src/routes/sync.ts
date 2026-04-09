@@ -186,6 +186,46 @@ syncRouter.post("/nuvemshop", authMiddleware, async (_req: Request, res: Respons
 });
 
 // ══════════════════════════════════════════════════════════════
+// BLING LOJA (StoreFront)
+// ══════════════════════════════════════════════════════════════
+
+syncRouter.post("/bling-loja", authMiddleware, async (_req: Request, res: Response) => {
+  const { syncLojaCompleta } = await import("../integrations/bling/loja-sync");
+  logger.info("Bling Loja sync manual iniciado");
+  res.json({ message: "Sync loja iniciado em background. Acompanhe pelos logs." });
+
+  try {
+    const result = await syncLojaCompleta();
+    logger.info("Bling Loja sync concluído", result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    logger.error("Bling Loja sync falhou", { error: message });
+  }
+});
+
+syncRouter.post("/bling-loja/categorias", authMiddleware, async (_req: Request, res: Response) => {
+  const { syncCategoriasToLoja } = await import("../integrations/bling/loja-sync");
+  res.json({ message: "Sync categorias iniciado" });
+  try {
+    const result = await syncCategoriasToLoja();
+    logger.info("Bling Loja categorias sync", result);
+  } catch (err: unknown) {
+    logger.error("Bling Loja categorias falhou", { error: err instanceof Error ? err.message : "" });
+  }
+});
+
+syncRouter.post("/bling-loja/produtos", authMiddleware, async (_req: Request, res: Response) => {
+  const { syncProdutosToLoja } = await import("../integrations/bling/loja-sync");
+  res.json({ message: "Sync produtos iniciado" });
+  try {
+    const result = await syncProdutosToLoja();
+    logger.info("Bling Loja produtos sync", result);
+  } catch (err: unknown) {
+    logger.error("Bling Loja produtos falhou", { error: err instanceof Error ? err.message : "" });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 // MEDUSA
 // ══════════════════════════════════════════════════════════════
 

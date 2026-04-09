@@ -345,6 +345,37 @@ imagesPublicRouter.get("/serve/:id", serveRateLimit, (req: Request, res: Respons
   fs.createReadStream(filePath).pipe(res);
 });
 
+// ── GET /api/images/products/:id — serve imagem de produto (permanente) ──
+const PRODUCTS_DIR = path.join(process.cwd(), "uploads", "products");
+
+imagesPublicRouter.get("/products/:id", serveRateLimit, (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  if (!/^[0-9]+\.(jpg|jpeg|png|webp)$/.test(id)) {
+    res.status(400).json({ error: "ID inválido" });
+    return;
+  }
+
+  const filePath = path.resolve(PRODUCTS_DIR, id);
+  if (!filePath.startsWith(path.resolve(PRODUCTS_DIR))) {
+    res.status(400).json({ error: "Caminho inválido" });
+    return;
+  }
+
+  if (!fs.existsSync(filePath)) {
+    res.status(404).json({ error: "Imagem não encontrada" });
+    return;
+  }
+
+  const ext = path.extname(id).toLowerCase();
+  const mime: Record<string, string> = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp" };
+
+  res.setHeader("Content-Type", mime[ext] || "image/jpeg");
+  res.setHeader("Cache-Control", "public, max-age=86400"); // 24h cache
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  fs.createReadStream(filePath).pipe(res);
+});
+
 // ═══════════════════════════════════════════════════════════════
 // ENVIAR IMAGENS AO BLING
 // ═══════════════════════════════════════════════════════════════

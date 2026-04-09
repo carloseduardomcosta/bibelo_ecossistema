@@ -60,6 +60,16 @@ done
 echo -e "\n${CYAN}${BOLD}── Conta (subpáginas) ──${NC}"
 check_status "GET /conta/pedidos" "$BASE_URL/conta/pedidos"
 check_status "GET /conta/enderecos" "$BASE_URL/conta/enderecos"
+check_status "GET /checkout/confirmacao" "$BASE_URL/checkout/confirmacao"
+
+# ── Páginas legais ──
+echo -e "\n${CYAN}${BOLD}── Páginas legais ──${NC}"
+check_status "GET /sobre" "$BASE_URL/sobre"
+check_status "GET /politica-de-privacidade" "$BASE_URL/politica-de-privacidade"
+check_status "GET /termos-de-uso" "$BASE_URL/termos-de-uso"
+check_status "GET /politica-de-frete" "$BASE_URL/politica-de-frete"
+check_status "GET /trocas-e-devolucoes" "$BASE_URL/trocas-e-devolucoes"
+check_status "GET /faq" "$BASE_URL/faq"
 
 # ── Assets ──
 echo -e "\n${CYAN}${BOLD}── Assets estáticos ──${NC}"

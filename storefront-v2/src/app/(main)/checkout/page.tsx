@@ -1,16 +1,72 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import { useCartStore } from "@/store/cart"
+import { useAuthStore } from "@/store/auth"
+import {
+  updateCartAddress,
+  getShippingOptions,
+  addShippingMethod,
+  initiatePaymentSession,
+  completeCart,
+} from "@/lib/medusa/cart"
 import { formatPrice } from "@/lib/utils"
 
 type Step = "endereco" | "entrega" | "pagamento"
 
+interface ShippingOption {
+  id: string
+  name: string
+  amount: number
+  calculated_price?: { calculated_amount: number }
+  price_type?: string
+  data?: Record<string, unknown>
+}
+
 export default function CheckoutPage() {
-  const { items, total, subtotal, discount_total } = useCartStore()
+  const router = useRouter()
+  const { items, total, subtotal, discount_total, cartId, refreshCart } = useCartStore()
+  const { customer, token } = useAuthStore()
   const [step, setStep] = useState<Step>("endereco")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  // Shipping options
+  const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([])
+  const [selectedShipping, setSelectedShipping] = useState("")
+  const [shippingCost, setShippingCost] = useState(0)
+
+  // Payment
+  const [selectedPayment, setSelectedPayment] = useState("mercadopago")
+
+  // Address form
+  const [address, setAddress] = useState({
+    first_name: customer?.first_name || "",
+    last_name: customer?.last_name || "",
+    email: customer?.email || "",
+    phone: "",
+    address_1: "",
+    address_2: "",
+    city: "",
+    province: "",
+    postal_code: "",
+    neighborhood: "",
+  })
+
+  // Pre-fill from customer data
+  useEffect(() => {
+    if (customer) {
+      setAddress((prev) => ({
+        ...prev,
+        first_name: prev.first_name || customer.first_name || "",
+        last_name: prev.last_name || customer.last_name || "",
+        email: prev.email || customer.email || "",
+      }))
+    }
+  }, [customer])
 
   if (items.length === 0) {
     return (
@@ -21,19 +77,140 @@ export default function CheckoutPage() {
     )
   }
 
+  // ── Step 1: Salvar endereço e buscar frete ──────────────────
+  const handleAddressSubmit = async () => {
+    if (!cartId) return
+    if (!address.first_name || !address.email || !address.postal_code || !address.address_1 || !address.city || !address.province) {
+      setError("Preencha todos os campos obrigatórios")
+      return
+    }
+
+    setLoading(true)
+    setError("")
+
+    try {
+      // Atualizar endereço no cart
+      const updatedCart = await updateCartAddress(cartId, {
+        email: address.email,
+        shipping_address: {
+          first_name: address.first_name,
+          last_name: address.last_name,
+          address_1: address.address_1,
+          address_2: address.address_2 || undefined,
+          city: address.city,
+          province: address.province,
+          postal_code: address.postal_code.replace(/\D/g, ""),
+          country_code: "br",
+          phone: address.phone || undefined,
+        },
+      })
+
+      if (!updatedCart) {
+        setError("Erro ao salvar endereço. Tente novamente.")
+        setLoading(false)
+        return
+      }
+
+      // Buscar opções de frete
+      const options = await getShippingOptions(cartId)
+      setShippingOptions(options)
+
+      setStep("entrega")
+    } catch {
+      setError("Erro ao processar. Tente novamente.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── Step 2: Selecionar frete ───────────────────────────────
+  const handleShippingSubmit = async () => {
+    if (!cartId || !selectedShipping) {
+      setError("Selecione um método de entrega")
+      return
+    }
+
+    setLoading(true)
+    setError("")
+
+    try {
+      const cart = await addShippingMethod(cartId, selectedShipping)
+      if (!cart) {
+        setError("Erro ao definir frete. Tente novamente.")
+        setLoading(false)
+        return
+      }
+
+      await refreshCart()
+      setStep("pagamento")
+    } catch {
+      setError("Erro ao processar frete.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── Step 3: Pagamento e finalização ────────────────────────
+  const handlePaymentSubmit = async () => {
+    if (!cartId) return
+
+    setLoading(true)
+    setError("")
+
+    try {
+      // Iniciar sessão de pagamento
+      const session = await initiatePaymentSession(cartId, "pp_mercadopago_mercadopago")
+      if (!session) {
+        setError("Erro ao iniciar pagamento. Tente novamente.")
+        setLoading(false)
+        return
+      }
+
+      // Completar o carrinho (criar pedido)
+      const result = await completeCart(cartId)
+
+      if (result?.type === "order" || result?.order) {
+        const order = result.order || result
+        // Limpar carrinho e redirecionar para confirmação
+        localStorage.removeItem("bibelo-cart-v2")
+        router.push(`/checkout/confirmacao?order_id=${order.id}&display_id=${order.display_id || ""}`)
+      } else {
+        // Se retornar payment session com dados do Pix
+        const pixData = session?.data || result?.data
+        if (pixData?.qr_code || pixData?.point_of_interaction) {
+          router.push(`/checkout/pix?cart_id=${cartId}`)
+        } else {
+          setError("Pedido criado, mas pagamento pendente. Entre em contato pelo WhatsApp.")
+        }
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao finalizar pedido"
+      setError(msg)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── Helpers ────────────────────────────────────────────────
+  const formatCep = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 8)
+    if (digits.length > 5) return `${digits.slice(0, 5)}-${digits.slice(5)}`
+    return digits
+  }
+
+  const stepLabels = { endereco: "Endereço", entrega: "Entrega", pagamento: "Pagamento" }
+  const stepsArr: Step[] = ["endereco", "entrega", "pagamento"]
+  const currentIdx = stepsArr.indexOf(step)
+
   return (
     <div className="content-container py-8">
       <h1 className="text-2xl font-bold text-bibelo-dark mb-6">Finalizar Compra</h1>
 
-      {/* Steps */}
+      {/* Steps indicator */}
       <div className="flex items-center gap-2 mb-8 overflow-x-auto scrollbar-hide">
-        {(["endereco", "entrega", "pagamento"] as Step[]).map((s, idx) => {
-          const labels = { endereco: "Endereço", entrega: "Entrega", pagamento: "Pagamento" }
-          const steps = ["endereco", "entrega", "pagamento"]
-          const currentIdx = steps.indexOf(step)
+        {stepsArr.map((s, idx) => {
           const isActive = s === step
-          const isDone = steps.indexOf(s) < currentIdx
-
+          const isDone = idx < currentIdx
           return (
             <div key={s} className="flex items-center gap-2 shrink-0">
               <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
@@ -48,7 +225,7 @@ export default function CheckoutPage() {
                 }`}>
                   {isDone ? "✓" : idx + 1}
                 </span>
-                {labels[s]}
+                {stepLabels[s]}
               </div>
               {idx < 2 && <div className="w-6 h-px bg-gray-200" />}
             </div>
@@ -56,48 +233,61 @@ export default function CheckoutPage() {
         })}
       </div>
 
+      {error && (
+        <div className="bg-red-50 text-red-600 text-sm p-3 rounded-xl mb-4">{error}</div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Formulário */}
         <div className="lg:col-span-2">
+          {/* ── STEP 1: Endereço ── */}
           {step === "endereco" && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
               <h2 className="font-semibold text-lg text-bibelo-dark">Endereço de entrega</h2>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
-                  <input type="text" className="input-base" placeholder="Seu nome" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
+                  <input type="text" className="input-base" placeholder="Seu nome"
+                    value={address.first_name} onChange={(e) => setAddress({ ...address, first_name: e.target.value })} required />
                 </div>
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Sobrenome</label>
-                  <input type="text" className="input-base" placeholder="Seu sobrenome" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sobrenome *</label>
+                  <input type="text" className="input-base" placeholder="Seu sobrenome"
+                    value={address.last_name} onChange={(e) => setAddress({ ...address, last_name: e.target.value })} required />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
-                  <input type="email" className="input-base" placeholder="seu@email.com" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">E-mail *</label>
+                  <input type="email" className="input-base" placeholder="seu@email.com"
+                    value={address.email} onChange={(e) => setAddress({ ...address, email: e.target.value })} required />
                 </div>
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">CEP</label>
-                  <input type="text" className="input-base" placeholder="00000-000" maxLength={9} />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
+                  <input type="tel" className="input-base" placeholder="(47) 99999-9999"
+                    value={address.phone} onChange={(e) => setAddress({ ...address, phone: e.target.value })} />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">CEP *</label>
+                  <input type="text" className="input-base" placeholder="00000-000" maxLength={9}
+                    value={address.postal_code} onChange={(e) => setAddress({ ...address, postal_code: formatCep(e.target.value) })} required />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
-                  <input type="text" className="input-base" placeholder="Rua, número" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Endereço *</label>
+                  <input type="text" className="input-base" placeholder="Rua, número"
+                    value={address.address_1} onChange={(e) => setAddress({ ...address, address_1: e.target.value })} required />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Complemento</label>
-                  <input type="text" className="input-base" placeholder="Apto, bloco..." />
+                  <input type="text" className="input-base" placeholder="Apto, bloco..."
+                    value={address.address_2} onChange={(e) => setAddress({ ...address, address_2: e.target.value })} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Bairro</label>
-                  <input type="text" className="input-base" placeholder="Bairro" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cidade *</label>
+                  <input type="text" className="input-base" placeholder="Cidade"
+                    value={address.city} onChange={(e) => setAddress({ ...address, city: e.target.value })} required />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Cidade</label>
-                  <input type="text" className="input-base" placeholder="Cidade" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-                  <select className="input-base">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Estado *</label>
+                  <select className="input-base" value={address.province} onChange={(e) => setAddress({ ...address, province: e.target.value })} required>
                     <option value="">Selecione</option>
                     {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
                       <option key={uf} value={uf}>{uf}</option>
@@ -105,66 +295,94 @@ export default function CheckoutPage() {
                   </select>
                 </div>
               </div>
-              <button onClick={() => setStep("entrega")} className="btn-primary w-full py-3 mt-2">
-                Continuar para entrega →
+              <button onClick={handleAddressSubmit} disabled={loading} className="btn-primary w-full py-3 mt-2 disabled:opacity-50">
+                {loading ? "Calculando frete..." : "Continuar para entrega →"}
               </button>
             </div>
           )}
 
+          {/* ── STEP 2: Entrega ── */}
           {step === "entrega" && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
               <h2 className="font-semibold text-lg text-bibelo-dark">Método de entrega</h2>
-              <div className="space-y-3">
-                {[
-                  { id: "pac", label: "PAC — Correios", price: 1890, days: "5-8 dias úteis" },
-                  { id: "sedex", label: "SEDEX — Correios", price: 3290, days: "1-3 dias úteis" },
-                ].map((option) => (
-                  <label key={option.id} className="flex items-center gap-3 p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-bibelo-pink transition-colors">
-                    <input type="radio" name="shipping" value={option.id} className="accent-bibelo-pink" />
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-800">{option.label}</p>
-                      <p className="text-xs text-gray-500">{option.days}</p>
-                    </div>
-                    <p className="font-semibold text-bibelo-pink">{formatPrice(option.price)}</p>
-                  </label>
-                ))}
-              </div>
+              <p className="text-sm text-gray-500">
+                Entrega para {address.city}/{address.province} — CEP {address.postal_code}
+              </p>
+
+              {shippingOptions.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 mb-2">Nenhuma opção de frete disponível para este CEP</p>
+                  <button onClick={() => setStep("endereco")} className="text-bibelo-pink font-medium text-sm hover:underline">
+                    Alterar endereço
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {shippingOptions.map((option) => {
+                    const price = option.calculated_price?.calculated_amount || option.amount || 0
+                    return (
+                      <label key={option.id}
+                        className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${
+                          selectedShipping === option.id ? "border-bibelo-pink bg-bibelo-pink/5" : "border-gray-200 hover:border-bibelo-pink/50"
+                        }`}
+                        onClick={() => { setSelectedShipping(option.id); setShippingCost(price) }}
+                      >
+                        <input type="radio" name="shipping" value={option.id}
+                          checked={selectedShipping === option.id} onChange={() => {}} className="accent-bibelo-pink" />
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-800">{option.name}</p>
+                        </div>
+                        <p className="font-semibold text-bibelo-pink">
+                          {price > 0 ? formatPrice(price) : "Grátis"}
+                        </p>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+
               <div className="flex gap-3">
                 <button onClick={() => setStep("endereco")} className="btn-secondary flex-1 py-3">
                   ← Voltar
                 </button>
-                <button onClick={() => setStep("pagamento")} className="btn-primary flex-1 py-3">
-                  Continuar para pagamento →
+                <button onClick={handleShippingSubmit} disabled={loading || !selectedShipping} className="btn-primary flex-1 py-3 disabled:opacity-50">
+                  {loading ? "Processando..." : "Continuar para pagamento →"}
                 </button>
               </div>
             </div>
           )}
 
+          {/* ── STEP 3: Pagamento ── */}
           {step === "pagamento" && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
               <h2 className="font-semibold text-lg text-bibelo-dark">Forma de pagamento</h2>
               <div className="space-y-3">
-                {[
-                  { id: "pix", label: "Pix", desc: "5% de desconto à vista", icon: "⚡" },
-                  { id: "cartao", label: "Cartão de crédito", desc: "Até 12x sem juros", icon: "💳" },
-                  { id: "boleto", label: "Boleto bancário", desc: "Vencimento em 3 dias úteis", icon: "📄" },
-                ].map((option) => (
-                  <label key={option.id} className="flex items-center gap-3 p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-bibelo-pink transition-colors">
-                    <input type="radio" name="payment" value={option.id} className="accent-bibelo-pink" />
-                    <span className="text-xl">{option.icon}</span>
-                    <div>
-                      <p className="font-medium text-gray-800">{option.label}</p>
-                      <p className="text-xs text-gray-500">{option.desc}</p>
-                    </div>
-                  </label>
-                ))}
+                <label className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${
+                  selectedPayment === "mercadopago" ? "border-bibelo-pink bg-bibelo-pink/5" : "border-gray-200"
+                }`}>
+                  <input type="radio" name="payment" value="mercadopago"
+                    checked={selectedPayment === "mercadopago"} onChange={(e) => setSelectedPayment(e.target.value)} className="accent-bibelo-pink" />
+                  <span className="text-xl">⚡</span>
+                  <div>
+                    <p className="font-medium text-gray-800">Pix</p>
+                    <p className="text-xs text-gray-500">Aprovação instantânea — 5% de desconto</p>
+                  </div>
+                </label>
               </div>
+
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm">
+                <p className="font-semibold text-green-800">Desconto Pix: 5% OFF</p>
+                <p className="text-green-600 text-xs mt-1">
+                  O QR Code Pix será gerado após a confirmação. Pagamento aprovado em segundos.
+                </p>
+              </div>
+
               <div className="flex gap-3">
                 <button onClick={() => setStep("entrega")} className="btn-secondary flex-1 py-3">
                   ← Voltar
                 </button>
-                <button className="btn-primary flex-1 py-3">
-                  Confirmar pedido ✓
+                <button onClick={handlePaymentSubmit} disabled={loading} className="btn-primary flex-1 py-3 disabled:opacity-50">
+                  {loading ? "Finalizando..." : "Confirmar pedido ✓"}
                 </button>
               </div>
             </div>
@@ -189,13 +407,19 @@ export default function CheckoutPage() {
             <div className="flex justify-between text-sm text-gray-600">
               <span>Subtotal</span><span>{formatPrice(subtotal)}</span>
             </div>
-            {discount_total > 0 && (
-              <div className="flex justify-between text-sm text-green-600">
-                <span>Desconto</span><span>−{formatPrice(discount_total)}</span>
+            {shippingCost > 0 && (
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Frete</span><span>{formatPrice(shippingCost)}</span>
               </div>
             )}
-            <div className="flex justify-between font-bold text-bibelo-dark">
-              <span>Total</span><span>{formatPrice(total)}</span>
+            {discount_total > 0 && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Desconto</span><span>-{formatPrice(discount_total)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-bold text-bibelo-dark pt-1 border-t border-gray-100">
+              <span>Total</span>
+              <span>{formatPrice(total + shippingCost)}</span>
             </div>
           </div>
         </div>

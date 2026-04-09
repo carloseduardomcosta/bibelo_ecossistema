@@ -11,6 +11,7 @@
 
 import { query, queryOne } from "../../db"
 import { logger } from "../../utils/logger"
+import { cacheAllProductImages } from "./image-cache"
 
 const MEDUSA_URL = process.env.MEDUSA_BACKEND_URL || "http://localhost:9000"
 const MEDUSA_EMAIL = process.env.MEDUSA_ADMIN_EMAIL || "contato@papelariabibelo.com.br"
@@ -182,7 +183,7 @@ function formatCategoryName(name: string): string {
     .join(" ")
 }
 
-/** Sync categorias Bling → Medusa + tabela de mapeamento */
+/** Sync categorias Bling → Medusa com hierarquia (pai/filho) */
 export async function syncCategoriesToMedusa(): Promise<{
   created: number
   updated: number
@@ -205,11 +206,12 @@ export async function syncCategoriesToMedusa(): Promise<{
   let created = 0
   let updated = 0
 
-  // Primeiro pass: categorias raiz (categoriaPai.id === 0)
-  // Segundo pass: subcategorias (se houver hierarquia no futuro)
+  // Separar raízes e filhas
   const roots = blingCategories.filter((c) => !c.categoriaPai || c.categoriaPai.id === 0)
+  const children = blingCategories.filter((c) => c.categoriaPai && c.categoriaPai.id > 0)
 
-  for (const cat of roots) {
+  // Função para sincronizar uma categoria (reutilizada para roots e children)
+  async function syncCategory(cat: BlingCategory, parentMedusaId?: string) {
     const blingId = String(cat.id)
     const nome = formatCategoryName(cat.descricao)
     const handle = slugify(cat.descricao)
@@ -218,29 +220,39 @@ export async function syncCategoriesToMedusa(): Promise<{
       let medusaCategoryId = existingMapping.get(blingId)
 
       if (!medusaCategoryId) {
-        // Verificar se já existe no Medusa por handle
         const existingId = medusaByHandle.get(handle)
         if (existingId) {
           medusaCategoryId = existingId
+          // Atualizar parent se necessário
+          if (parentMedusaId) {
+            await medusaRequest("POST", `/admin/product-categories/${medusaCategoryId}`, {
+              name: nome,
+              parent_category_id: parentMedusaId,
+              metadata: { bling_category_id: blingId },
+            })
+          }
           updated++
         } else {
-          // Criar no Medusa
+          const body: Record<string, unknown> = {
+            name: nome,
+            handle,
+            is_active: true,
+            is_internal: false,
+            metadata: { bling_category_id: blingId },
+          }
+          if (parentMedusaId) {
+            body.parent_category_id = parentMedusaId
+          }
+
           const result = await medusaRequest<{ product_category: { id: string } }>(
             "POST",
             "/admin/product-categories",
-            {
-              name: nome,
-              handle,
-              is_active: true,
-              is_internal: false,
-              metadata: { bling_category_id: blingId },
-            }
+            body
           )
           medusaCategoryId = result.product_category.id
           created++
         }
 
-        // Salvar mapeamento
         await query(
           `INSERT INTO sync.bling_medusa_categories
            (bling_category_id, medusa_category_id, nome, handle, sincronizado_em)
@@ -250,28 +262,48 @@ export async function syncCategoriesToMedusa(): Promise<{
           [blingId, medusaCategoryId, nome, handle]
         )
       } else {
-        // Já mapeada — update nome se mudou
-        await medusaRequest(
-          "POST",
-          `/admin/product-categories/${medusaCategoryId}`,
-          { name: nome, metadata: { bling_category_id: blingId } }
-        )
+        const updateBody: Record<string, unknown> = {
+          name: nome,
+          metadata: { bling_category_id: blingId },
+        }
+        if (parentMedusaId) {
+          updateBody.parent_category_id = parentMedusaId
+        }
+        await medusaRequest("POST", `/admin/product-categories/${medusaCategoryId}`, updateBody)
         updated++
       }
-    } catch (err: any) {
-      logger.error(`Medusa category sync erro: ${cat.descricao}: ${err.message}`)
+
+      // Atualizar mapping local para uso imediato
+      existingMapping.set(blingId, medusaCategoryId!)
+      medusaByHandle.set(handle, medusaCategoryId!)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro"
+      logger.error(`Medusa category sync erro: ${cat.descricao}: ${msg}`)
     }
   }
 
-  logger.info(`Medusa category sync: ${created} criadas, ${updated} atualizadas, ${roots.length} total`)
+  // Pass 1: categorias raiz
+  for (const cat of roots) {
+    await syncCategory(cat)
+  }
+
+  // Pass 2: subcategorias (filhas)
+  for (const cat of children) {
+    const parentBlingId = String(cat.categoriaPai.id)
+    const parentMedusaId = existingMapping.get(parentBlingId)
+    await syncCategory(cat, parentMedusaId || undefined)
+  }
+
+  const total = roots.length + children.length
+  logger.info(`Medusa category sync: ${created} criadas, ${updated} atualizadas, ${total} total (${roots.length} raízes + ${children.length} sub)`)
 
   await query(
     `INSERT INTO sync.sync_logs (fonte, tipo, status, registros, erro)
      VALUES ('medusa', 'categories', 'ok', $1, $2)`,
-    [created + updated, `${created} criadas, ${updated} atualizadas`]
+    [created + updated, `${created} criadas, ${updated} atualizadas, ${roots.length} raízes, ${children.length} sub`]
   )
 
-  return { created, updated, total: roots.length }
+  return { created, updated, total }
 }
 
 // ── Buscar dados do banco ─────────────────────────────────────
@@ -337,6 +369,17 @@ async function getSalesChannelId(): Promise<string> {
   return data.sales_channels[0]?.id || ""
 }
 
+// ── Extrair descrição do produto Bling ────────────────────────
+
+function extractDescription(product: BlingProduct): string {
+  const raw = product.dados_raw
+  // descricaoCurta do Bling vem com HTML rico (h3, ul, li, p) — manter formatação
+  const desc = raw?.descricaoCurta || raw?.descricaoComplementar || ""
+  if (typeof desc !== "string" || !desc.trim()) return ""
+  // Limpar \r\n excessivos mas preservar HTML
+  return desc.replace(/\r\n/g, "\n").trim()
+}
+
 // ── Criar produto no Medusa ───────────────────────────────────
 
 async function createMedusaProduct(
@@ -351,9 +394,12 @@ async function createMedusaProduct(
     .filter((img) => img.url)
     .map((img) => ({ url: String(img.url) }))
 
+  const description = extractDescription(product)
+
   const body: Record<string, unknown> = {
     title: product.nome,
     handle,
+    description: description || undefined,
     status: stock > 0 ? "published" : "draft",
     options: [{ title: "Padrão", values: ["Único"] }],
     variants: [
@@ -411,8 +457,11 @@ async function updateMedusaProduct(
   stock: number,
   categoryMapping: Map<string, string>
 ): Promise<void> {
+  const description = extractDescription(product)
+
   const updateBody: Record<string, unknown> = {
     title: product.nome,
+    description: description || undefined,
     status: stock > 0 ? "published" : "draft",
     metadata: {
       bling_id: product.bling_id,
@@ -569,8 +618,19 @@ export async function syncBlingToMedusa(): Promise<{
   // Limitar quantidade de produtos (safeguard)
   const productsToSync = blingProducts.slice(0, config.max_products)
 
+  // 3.5 Cachear imagens localmente (baixa do Bling S3, salva em /uploads/products/)
+  let imageMap = new Map<string, string>()
+  if (!isDryRun) {
+    try {
+      imageMap = await cacheAllProductImages(productsToSync)
+      logger.info(`Image cache: ${imageMap.size}/${productsToSync.length} imagens cacheadas`)
+    } catch (err: unknown) {
+      logger.error(`Image cache falhou (continuando sem imagens locais): ${err instanceof Error ? err.message : ""}`)
+    }
+  }
+
   logger.info(
-    `Medusa sync: ${productsToSync.length}/${blingProducts.length} produtos (limit ${config.max_products}), ${medusaProducts.size} no Medusa, ${categoryMapping.size} categorias`
+    `Medusa sync: ${productsToSync.length}/${blingProducts.length} produtos (limit ${config.max_products}), ${medusaProducts.size} no Medusa, ${categoryMapping.size} categorias, ${imageMap.size} imagens`
   )
 
   let created = 0
@@ -583,9 +643,15 @@ export async function syncBlingToMedusa(): Promise<{
     const stock = stockMap[product.bling_id] || 0
     const existing = medusaProducts.get(product.sku)
 
+    // Substituir imagens do Bling S3 por URLs locais cacheadas
+    const cachedImageUrl = imageMap.get(product.bling_id)
+    if (cachedImageUrl) {
+      product.imagens = [{ url: cachedImageUrl, ordem: 0 }]
+    }
+
     if (isDryRun) {
       const action = existing ? "UPDATE" : "CREATE"
-      logger.info(`[DRY-RUN] ${action} SKU=${product.sku} nome="${product.nome}" estoque=${stock}`)
+      logger.info(`[DRY-RUN] ${action} SKU=${product.sku} nome="${product.nome}" estoque=${stock} img=${cachedImageUrl ? "local" : "bling"}`)
       if (existing) updated++; else created++
       continue
     }

@@ -282,29 +282,38 @@ export async function syncOrders(): Promise<number> {
 
 async function fetchCategoryMap(token: string): Promise<Map<number, string>> {
   const map = new Map<number, string>();
+  const parentMap = new Map<number, number>(); // id → id_pai
   let page = 1;
   while (true) {
-    const data = await rateLimitedGet<{ data: Array<{ id: number; descricao: string }> }>(
+    const data = await rateLimitedGet<{ data: Array<{ id: number; descricao: string; categoriaPai?: { id: number } }> }>(
       `${BLING_API}/categorias/produtos?pagina=${page}&limite=100`,
       token
     );
     if (!data.data || data.data.length === 0) break;
     for (const cat of data.data) {
       map.set(cat.id, cat.descricao);
+      if (cat.categoriaPai && cat.categoriaPai.id > 0) {
+        parentMap.set(cat.id, cat.categoriaPai.id);
+      }
     }
     page++;
   }
-  // Persiste categorias na staging table (para Medusa sync ler sem chamar Bling)
+  // Persiste categorias na staging table com hierarquia (para Medusa sync)
   for (const [catId, catDesc] of map) {
+    const parentId = parentMap.get(catId);
     await query(
-      `INSERT INTO sync.bling_categories (bling_id, descricao, sincronizado_em)
-       VALUES ($1, $2, NOW())
-       ON CONFLICT (bling_id) DO UPDATE SET descricao = $2, sincronizado_em = NOW()`,
-      [String(catId), catDesc]
+      `INSERT INTO sync.bling_categories (bling_id, descricao, id_pai, sincronizado_em)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (bling_id) DO UPDATE SET descricao = $2, id_pai = $3, sincronizado_em = NOW()`,
+      [String(catId), catDesc, parentId ? String(parentId) : null]
     );
   }
 
-  logger.info("Bling categorias carregadas e persistidas", { total: map.size });
+  logger.info("Bling categorias carregadas e persistidas (com hierarquia)", {
+    total: map.size,
+    com_pai: parentMap.size,
+    raiz: map.size - parentMap.size,
+  });
   return map;
 }
 

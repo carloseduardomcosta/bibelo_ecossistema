@@ -1,6 +1,7 @@
 import medusa from "./client"
 
-const DEFAULT_REGION = process.env.NEXT_PUBLIC_DEFAULT_REGION || "br"
+// ID real da região Brasil no Medusa (não é "br", é o UUID)
+const DEFAULT_REGION = process.env.NEXT_PUBLIC_DEFAULT_REGION_ID || "reg_01KN52HV0TQAY4ZC1PEYWAQSY2"
 
 // Buscar lista de produtos
 export async function listProducts({
@@ -26,7 +27,23 @@ export async function listProducts({
       fields: "*variants.calculated_price,+variants.inventory_quantity",
     }
 
-    if (categoryId) params.category_id = [categoryId]
+    if (categoryId) {
+      // Se é um handle (string sem "pcat_"), resolver para UUID via API
+      if (!categoryId.startsWith("pcat_")) {
+        try {
+          const catRes = await medusa.store.category.list({ handle: categoryId } as Parameters<typeof medusa.store.category.list>[0])
+          const cat = catRes.product_categories?.[0]
+          if (cat) {
+            params.category_id = [cat.id]
+          }
+        } catch {
+          // Se falhar, tenta usar como ID direto
+          params.category_id = [categoryId]
+        }
+      } else {
+        params.category_id = [categoryId]
+      }
+    }
     if (collectionId) params.collection_id = [collectionId]
     if (q) params.q = q
     if (order) params.order = order
