@@ -140,16 +140,18 @@ function MapeamentoRow({
               value={selectedMedusaId}
               onChange={(e) => setSelectedMedusaId(e.target.value)}
               disabled={saving}
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-bibelo-primary/30 focus:border-bibelo-primary appearance-none disabled:opacity-50"
+              className="w-full text-sm border border-pink-200 rounded-lg px-3 py-1.5 pr-8 bg-[#fff5f8] focus:outline-none focus:ring-2 focus:ring-bibelo-primary/30 focus:border-bibelo-primary appearance-none disabled:opacity-50"
             >
               <option value="">Selecionar categoria...</option>
               {medusaCategorias
-                .filter((c) => !c.parent_id) // raízes primeiro
+                .filter((c) => !c.parent_id)
+                .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
                 .map((cat) => (
                   <option key={cat.id} value={cat.id}>{cat.name}</option>
                 ))}
               {medusaCategorias
                 .filter((c) => c.parent_id)
+                .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
                 .map((cat) => {
                   const parent = medusaCategorias.find((p) => p.id === cat.parent_id);
                   return (
@@ -159,7 +161,7 @@ function MapeamentoRow({
                   );
                 })}
             </select>
-            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-bibelo-primary/60 pointer-events-none" />
           </div>
         )}
       </td>
