@@ -395,6 +395,36 @@ export async function executeStep(executionId: string): Promise<boolean> {
     }
   }
 
+  // Dedup: pula step se cliente já recebeu este template nas últimas 72h (fluxo ou campanha)
+  if (currentStep.tipo === "email" && currentStep.template) {
+    const recentSameTemplate = await queryOne<{ id: string }>(
+      `SELECT id FROM crm.interactions
+       WHERE customer_id = $1
+         AND tipo = 'email_enviado'
+         AND (
+           metadata->>'template' = $2
+           OR metadata->>'template_nome' = $2
+         )
+         AND criado_em > NOW() - INTERVAL '72 hours'
+       LIMIT 1`,
+      [execution.customer_id, currentStep.template]
+    );
+    if (recentSameTemplate) {
+      logger.info("Step de email ignorado: mesmo template enviado nas últimas 72h", {
+        executionId,
+        template: currentStep.template,
+        customerId: execution.customer_id,
+      });
+      await query(
+        `UPDATE marketing.flow_step_executions SET status = 'ignorado', resultado = $1::jsonb
+         WHERE execution_id = $2 AND step_index = $3`,
+        [JSON.stringify({ motivo: "template_recente", template: currentStep.template }), executionId, execution.step_atual]
+      );
+      await advanceFlow(executionId, execution, steps);
+      return true;
+    }
+  }
+
   // Marca step como executando
   await query(
     `UPDATE marketing.flow_step_executions SET status = 'executando', executado_em = NOW()
@@ -737,7 +767,7 @@ async function executeEmailStep(
   await query(
     `INSERT INTO crm.interactions (customer_id, tipo, canal, descricao, metadata)
      VALUES ($1, 'email_enviado', 'email', $2, $3)`,
-    [customer.id, `Email automático: ${step.template || "genérico"}`, JSON.stringify({ messageId: result.id, templateId: template.id, assunto: subject })]
+    [customer.id, `Email automático: ${step.template || "genérico"}`, JSON.stringify({ messageId: result.id, templateId: template.id, assunto: subject, template: step.template })]
   );
 
   return { sent: true, messageId: result.id, templateId: template.id, ...(isCupomDesconto && cupomFinal ? { cupomGerado: cupomFinal } : {}) };

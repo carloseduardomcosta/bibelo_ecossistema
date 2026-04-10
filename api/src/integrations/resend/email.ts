@@ -149,9 +149,9 @@ export async function sendCampaignEmails(campaignId: string): Promise<{ sent: nu
 
   // Busca template
   const template = await queryOne<{
-    assunto: string; html: string; texto: string;
+    nome: string; assunto: string; html: string; texto: string;
   }>(
-    "SELECT assunto, html, texto FROM marketing.templates WHERE id = $1 AND ativo = true",
+    "SELECT nome, assunto, html, texto FROM marketing.templates WHERE id = $1 AND ativo = true",
     [campaign.template_id]
   );
 
@@ -211,6 +211,17 @@ export async function sendCampaignEmails(campaignId: string): Promise<{ sent: nu
          SET status = 'enviado', message_id = $2, enviado_em = NOW()
          WHERE id = $1`,
         [send.id, result?.id || null]
+      );
+
+      // Registra interação para dedup de fluxos (evita reenvio do mesmo template)
+      await query(
+        `INSERT INTO crm.interactions (customer_id, tipo, canal, descricao, metadata)
+         VALUES ($1, 'email_enviado', 'email', $2, $3)`,
+        [
+          send.customer_id,
+          `Campanha: ${campaign.nome}`,
+          JSON.stringify({ campaignId: campaign.id, messageId: result?.id || null, template_nome: template.nome }),
+        ]
       );
 
       sent++;
