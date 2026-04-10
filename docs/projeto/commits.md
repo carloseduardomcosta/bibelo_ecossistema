@@ -963,3 +963,19 @@ sync.category_sync_log         (auditoria)
   - Dedup por `ns_url` elimina cards repetidos quando múltiplos itens da NF batem no mesmo produto
   - `escHtml()` local para sanitizar nomes no HTML dos cards
   - Layout simplificado: 1 produto = hero centralizado, 2+ = grade `<table width="560">`
+
+- **ac92811** — docs: documenta formulário B2B parcerias (boasvindas.papelariabibelo.com.br)
+  - Endpoints `GET/POST /api/links/parcerias` registrados em `docs/api/rotas.md`
+  - Fluxo completo: Zod, upsert customer (`parcerias_b2b`), interação CRM, deal pipeline, email admin
+  - Testado e validado em 10/04/2026
+
+- **b93560a** — feat(sininho): notificações de contatos do boasvindas (B2B, VIP, formulário)
+  - `GET /api/deals/boasvindas-recentes` — deals das últimas 72h com origens `parcerias_b2b`, `grupo_vip`, `formulario`
+  - Nova seção "Contatos Boasvindas" (violeta, ícone Handshake) no `NotificationBell` do CRM
+  - Badge animado no header do dropdown + botão "Ver pipeline" no rodapé
+  - Contador incluído no badge do sino (`urgentes`)
+
+- **f00fec4** — test(deals): 8 testes para `GET /api/deals/boasvindas-recentes`
+  - Cobre: auth 401, estrutura `{ deals: [] }`, inclui as 3 origens boasvindas, exclui outras origens, exclui deals >72h, campos obrigatórios no retorno
+  - Cleanup automático no `afterAll` — sem dados residuais no banco
+  - 25/25 testes passando no arquivo `deals.test.ts`

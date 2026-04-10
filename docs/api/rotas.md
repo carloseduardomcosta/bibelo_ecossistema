@@ -28,6 +28,16 @@ Referência completa de todos os endpoints.
 - `GET  /api/customers/:id/timeline` — histórico unificado (interações + pedidos + tracking)
 - `GET  /api/customers/:id/tracking` — histórico comportamental no site (eventos + stats)
 
+### Pipeline (Deals)
+- `GET  /api/deals` — lista com filtros (etapa, search)
+- `GET  /api/deals/kanban` — agrupa deals por etapa + KPIs (total, valor total, valor ponderado)
+- `GET  /api/deals/boasvindas-recentes` — deals criados via formulários do boasvindas nas últimas 72h (origens: `parcerias_b2b`, `grupo_vip`, `formulario`). Usado pelo sininho do CRM.
+- `GET  /api/deals/:id` — detalhe do deal
+- `POST /api/deals` — criar deal (customer_id*, titulo*, valor, etapa, origem, probabilidade, fechamento_previsto, notas)
+- `PUT  /api/deals/:id` — atualizar deal
+- `PATCH /api/deals/:id/etapa` — mover entre etapas (drag-and-drop do Kanban)
+- `DELETE /api/deals/:id` — remover deal
+
 ### Analytics
 - `GET  /api/analytics/overview` — KPIs gerais
 - `GET  /api/analytics/revenue` — receita por mês
