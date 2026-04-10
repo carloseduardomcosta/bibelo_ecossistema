@@ -33,7 +33,7 @@ URL: `webhook.papelariabibelo.com.br/api/email/img/{hash}.jpg`
 - Carrinho abandonado: 5%, 24h
 - Nutrição lead: 10%, 48h
 - Reativação: 10%, 7d
-- Popup Clube Bibelô: `CLUBEBIBELO` = 7% OFF na 1ª compra
+- Popup Clube Bibelô: `BIBELO10` = 10% OFF na 1ª compra (cupom estático NuvemShop, max_uses:5000)
 
 ## Frete grátis
 Configuração nativa NuvemShop (Sul/Sudeste, R$79+, opção mais barata) — não depende de cupom.

@@ -894,3 +894,14 @@ sync.category_sync_log         (auditoria)
     operacao | origem | usuario | detalhes | criado_em
     → operações: importar | mapear | ignorar | sincronizar
 ```
+
+---
+
+- fix: padroniza cupom de boas-vindas para BIBELO10 (10% OFF) em todos os canais
+  - Footer storefront: 7% OFF → 10% OFF
+  - Página política de frete: CLUBEBIBELO/7% → BIBELO10/10%
+  - flow.service.ts buildLeadCartEmail: fallback CLUBEBIBELO → BIBELO10, texto 7% → 10%
+  - flow.service.ts buildCouponReminderEmail: fallback CLUBEBIBELO → BIBELO10, texto 7% → 10%
+  - flow.service.ts buildLeadCouponEmail: fallback CLUBEBIBELO → BIBELO10
+  - flow.service.ts buildWelcomeStorefrontEmail: hardcode CLUBEBIBELO/7% → BIBELO10/10%
+  - docs/claude/email-fluxos.md: documentação atualizada

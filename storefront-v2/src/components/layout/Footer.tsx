@@ -11,7 +11,7 @@ export default function Footer() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div>
               <h3 className="text-white font-bold text-lg">Entre para o Clube Bibelô</h3>
-              <p className="text-white/80 text-sm">Cadastre seu e-mail e ganhe 7% OFF na primeira compra.</p>
+              <p className="text-white/80 text-sm">Cadastre seu e-mail e ganhe 10% OFF na primeira compra.</p>
             </div>
             <NewsletterForm />
           </div>

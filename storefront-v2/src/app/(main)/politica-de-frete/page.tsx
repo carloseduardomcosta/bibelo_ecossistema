@@ -47,7 +47,7 @@ export default function FretePage() {
       <h2>Clube Bibelô — Vantagens Exclusivas</h2>
       <ul>
         <li>Grupo VIP no WhatsApp com ofertas exclusivas</li>
-        <li>Cupom <strong>7% OFF</strong> na primeira compra com o código <strong>CLUBEBIBELO</strong></li>
+        <li>Cupom <strong>10% OFF</strong> na primeira compra com o código <strong>BIBELO10</strong></li>
         <li>Acesso antecipado a promoções</li>
         <li>Ofertas exclusivas para membros</li>
       </ul>

@@ -1261,7 +1261,7 @@ async function buildReactivationEmail(nome: string): Promise<string> {
 // ── Template: Lead Quente (add_to_cart sem compra) ────────────
 
 function buildLeadCartEmail(nome: string, metadata: Record<string, unknown>): string {
-  const cupom = (metadata.cupom as string) || "CLUBEBIBELO";
+  const cupom = (metadata.cupom as string) || "BIBELO10";
   const productName = (metadata.resource_nome as string) || "";
   const productImg = safeImageUrl(metadata.resource_imagem as string);
   const productUrl = cleanProductUrl(metadata.recovery_url as string);
@@ -1284,7 +1284,7 @@ function buildLeadCartEmail(nome: string, metadata: Record<string, unknown>): st
     <div style="background:#fff3e0;border:2px dashed #fe68c4;border-radius:10px;padding:18px;text-align:center;margin:20px 0;">
       <p style="font-size:14px;color:#888;margin:0 0 6px;">Use o cupom:</p>
       <p style="font-size:26px;font-weight:800;color:#fe68c4;margin:0;letter-spacing:2px;">${cupom}</p>
-      <p style="font-size:14px;color:#888;margin:6px 0 0;">7% de desconto na primeira compra!</p>
+      <p style="font-size:14px;color:#888;margin:6px 0 0;">10% de desconto na primeira compra!</p>
     </div>
     ${ctaButton("Aproveitar agora", productUrl)}
     <p style="font-size:13px;color:#999;text-align:center;">
@@ -1356,12 +1356,12 @@ async function buildPopularProductsEmail(nome: string): Promise<string> {
 // ── Template: Lembrete Cupom (drip dia 5) ─────────────────────
 
 function buildCouponReminderEmail(nome: string, metadata: Record<string, unknown>): string {
-  const cupom = (metadata.cupom as string) || "CLUBEBIBELO";
+  const cupom = (metadata.cupom as string) || "BIBELO10";
 
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! ⏰</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
-      Passando para lembrar: seu cupom de <strong>7% de desconto</strong>
+      Passando para lembrar: seu cupom de <strong>10% de desconto</strong>
       ainda está ativo, mas não vai durar para sempre!
     </p>
     <div style="background:linear-gradient(135deg,#fff3e0,#fce4ec);border-radius:12px;padding:24px;text-align:center;margin:20px 0;">
@@ -1459,7 +1459,7 @@ async function buildNewsEmail(nome: string): Promise<string> {
 // ── Template: Lead Cupom Exclusivo ────────────────────────────
 
 function buildLeadCouponEmail(nome: string, metadata: Record<string, unknown>): string {
-  const cupom = escHtml(String(metadata.cupom || "CLUBEBIBELO"));
+  const cupom = escHtml(String(metadata.cupom || "BIBELO10"));
 
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🎁</p>
@@ -1581,7 +1581,7 @@ function buildVipInviteEmail(nome: string, metadata: Record<string, unknown> = {
         <p style="font-size:36px;margin:0;">🎁💕</p>
         <p style="font-size:18px;color:#fe68c4;font-weight:700;margin:12px 0 6px;">Sua 1ª compra especial</p>
         <p style="font-size:14px;color:#555;margin:0;line-height:1.5;">
-          Use o cupom <strong style="color:#fe68c4;">CLUBEBIBELO</strong> e ganhe 7% OFF<br/>
+          Use o cupom <strong style="color:#fe68c4;">BIBELO10</strong> e ganhe 10% OFF<br/>
           Frete grátis Sul/Sudeste acima de R$ 79<br/>
           Mimo surpresa em todo pedido
         </p>
