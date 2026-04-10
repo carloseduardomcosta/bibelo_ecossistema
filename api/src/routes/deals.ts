@@ -41,6 +41,28 @@ dealsRouter.get("/", async (req: Request, res: Response) => {
   res.json({ data: rows });
 });
 
+// ── GET /api/deals/boasvindas-recentes — notificações do sininho ──
+// Retorna deals criados via formulários do boasvindas nas últimas 72h
+
+dealsRouter.get("/boasvindas-recentes", async (_req: Request, res: Response) => {
+  const rows = await query<{
+    id: string; titulo: string; etapa: string; origem: string;
+    notas: string; criado_em: string;
+    cliente_nome: string; cliente_email: string; cliente_telefone: string;
+  }>(`
+    SELECT d.id, d.titulo, d.etapa, d.origem, d.notas, d.criado_em,
+           c.nome AS cliente_nome, c.email AS cliente_email, c.telefone AS cliente_telefone
+    FROM crm.deals d
+    JOIN crm.customers c ON c.id = d.customer_id
+    WHERE d.origem IN ('parcerias_b2b', 'grupo_vip', 'formulario')
+      AND d.criado_em > NOW() - INTERVAL '72 hours'
+    ORDER BY d.criado_em DESC
+    LIMIT 20
+  `, []);
+
+  res.json({ deals: rows });
+});
+
 // ── GET /api/deals/kanban — agrupado por etapa ──────────────────
 
 dealsRouter.get("/kanban", async (_req: Request, res: Response) => {

@@ -42,6 +42,7 @@ import {
   Store,
   GitMerge,
   Server,
+  Handshake,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -241,6 +242,24 @@ interface VendaNotif {
   email: string | null;
 }
 
+interface BoasvindasDeal {
+  id: string;
+  titulo: string;
+  etapa: string;
+  origem: string;
+  notas: string;
+  criado_em: string;
+  cliente_nome: string;
+  cliente_email: string;
+  cliente_telefone: string | null;
+}
+
+const ORIGEM_LABELS: Record<string, string> = {
+  parcerias_b2b: 'Parceria B2B',
+  grupo_vip: 'Grupo VIP',
+  formulario: 'Formulário',
+};
+
 function NotificationBell() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -250,15 +269,17 @@ function NotificationBell() {
   const [emailResumo, setEmailResumo] = useState({ abertos: 0, clicados: 0, bounces: 0, spam: 0 });
   const [vendas, setVendas] = useState<VendaNotif[]>([]);
   const [resumo, setResumo] = useState({ atrasados: 0, vence_em_breve: 0, pagos: 0, pendentes: 0, total: 0 });
+  const [boasvindasDeals, setBoasvindasDeals] = useState<BoasvindasDeal[]>([]);
   const ref = useRef<HTMLDivElement>(null);
 
   const fetchAlertas = useCallback(async (signal?: AbortSignal) => {
     try {
-      const [finResp, leadsResp, emailResp, vendasResp] = await Promise.all([
+      const [finResp, leadsResp, emailResp, vendasResp, boasvindasResp] = await Promise.all([
         api.get('/financeiro/despesas-fixas/alertas', { signal }),
         api.get('/leads?limit=5', { signal }),
         api.get('/campaigns/email-events?hours=48', { signal }),
         api.get('/tracking/vendas-recentes?horas=48', { signal }),
+        api.get('/deals/boasvindas-recentes', { signal }),
       ]);
       setAlertas(finResp.data.data.filter((d: Notificacao) => d.alerta !== 'pago'));
       setResumo(finResp.data.resumo);
@@ -271,6 +292,7 @@ function NotificationBell() {
       setEmailEvents(emailResp.data.events || []);
       setEmailResumo(emailResp.data.resumo || { abertos: 0, clicados: 0, bounces: 0, spam: 0 });
       setVendas(vendasResp.data.vendas || []);
+      setBoasvindasDeals(boasvindasResp.data.deals || []);
     } catch (err) {
       if ((err as Error).name !== 'AbortError' && (err as Error).name !== 'CanceledError') {
         console.error('Erro ao buscar notificações:', err);
@@ -303,7 +325,7 @@ function NotificationBell() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const urgentes = vendas.length + resumo.atrasados + resumo.vence_em_breve + leads.length + emailEvents.length;
+  const urgentes = vendas.length + resumo.atrasados + resumo.vence_em_breve + leads.length + emailEvents.length + boasvindasDeals.length;
 
   return (
     <div ref={ref} className="relative">
@@ -347,6 +369,11 @@ function NotificationBell() {
               {emailEvents.length > 0 && (
                 <span className="text-[10px] px-2 py-0.5 bg-blue-400/10 text-blue-400 rounded-full font-medium">
                   {emailEvents.length} email{emailEvents.length > 1 ? 's' : ''}
+                </span>
+              )}
+              {boasvindasDeals.length > 0 && (
+                <span className="text-[10px] px-2 py-0.5 bg-violet-400/10 text-violet-400 rounded-full font-medium animate-pulse">
+                  {boasvindasDeals.length} contato{boasvindasDeals.length > 1 ? 's' : ''} boasvindas
                 </span>
               )}
             </div>
@@ -473,6 +500,36 @@ function NotificationBell() {
               </>
             )}
 
+            {/* ── Contatos Boasvindas (B2B, VIP, Formulário) ── */}
+            {boasvindasDeals.length > 0 && (
+              <>
+                <div className="px-4 py-2 bg-violet-400/5 border-b border-bibelo-border/50">
+                  <p className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">Contatos Boasvindas</p>
+                </div>
+                {boasvindasDeals.map((d) => (
+                  <button
+                    key={d.id}
+                    onClick={() => { setOpen(false); navigate('/pipeline'); }}
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bibelo-border/30 transition-colors text-left border-b border-bibelo-border/50"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-violet-400/20 flex items-center justify-center shrink-0">
+                      <Handshake size={14} className="text-violet-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-bibelo-text truncate">
+                        {d.cliente_nome || d.cliente_email.split('@')[0]}
+                      </p>
+                      <p className="text-xs text-bibelo-muted truncate">
+                        <span className="text-violet-400 font-medium">{ORIGEM_LABELS[d.origem] ?? d.origem}</span>
+                        {d.cliente_email && <span className="ml-1">· {d.cliente_email}</span>}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-violet-400 font-medium shrink-0">{timeAgo(d.criado_em)}</span>
+                  </button>
+                ))}
+              </>
+            )}
+
             {/* ── Alertas financeiros ── */}
             {alertas.length > 0 && (
               <>
@@ -508,7 +565,7 @@ function NotificationBell() {
               </>
             )}
 
-            {alertas.length === 0 && leads.length === 0 && emailEvents.length === 0 && vendas.length === 0 && (
+            {alertas.length === 0 && leads.length === 0 && emailEvents.length === 0 && vendas.length === 0 && boasvindasDeals.length === 0 && (
               <div className="px-4 py-8 text-center">
                 <CheckCircle2 size={24} className="mx-auto mb-2 text-emerald-400" />
                 <p className="text-sm text-bibelo-muted">Tudo em dia!</p>
@@ -540,6 +597,14 @@ function NotificationBell() {
                 className="flex-1 text-center text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
               >
                 Ver campanhas
+              </button>
+            )}
+            {boasvindasDeals.length > 0 && (
+              <button
+                onClick={() => { setOpen(false); navigate('/pipeline'); }}
+                className="flex-1 text-center text-xs text-violet-400 hover:text-violet-300 font-medium transition-colors"
+              >
+                Ver pipeline
               </button>
             )}
             <button
