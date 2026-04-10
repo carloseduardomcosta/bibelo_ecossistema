@@ -18,4 +18,6 @@ COPY server.js ./server.js
 RUN chown -R bibelo:bibelo /app
 USER bibelo
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=15s \
+  CMD node -e "require('http').get('http://localhost:3000/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"
 CMD ["node", "server.js"]
