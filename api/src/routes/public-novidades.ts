@@ -73,7 +73,8 @@ function stripHtml(html: string): string {
 
 // ── GET /api/public/novidades ─────────────────────────────────
 publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
-  const limit = Math.min(parseInt(String(req.query.limit || "20"), 10), 50)
+  const parsedLimit = parseInt(String(req.query.limit || "20"), 10)
+  const limit = Math.min(Math.max(1, isNaN(parsedLimit) ? 20 : parsedLimit), 50)
 
   try {
     /**

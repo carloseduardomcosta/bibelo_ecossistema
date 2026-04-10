@@ -250,6 +250,10 @@ campaignsRouter.get("/nfs", async (_req: Request, res: Response) => {
 
 campaignsRouter.get("/nfs/:id/produtos", async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    res.status(400).json({ error: "ID de NF inválido" });
+    return;
+  }
 
   try {
     const rows = await query<{
@@ -1332,7 +1336,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
     html,
     fonte: fonte ?? null,
     produtos: produtos.map((p) => ({
-      nome: limparNome(p.nome),
+      nome: p.nome, // nome completo com variante para o painel CRM; limparNome() só é usado no HTML do email
       preco: Number(p.preco),
       estoque: p.estoque,
       img: p.img,
