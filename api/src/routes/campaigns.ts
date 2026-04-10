@@ -196,7 +196,7 @@ campaignsRouter.get("/novidades-nf", async (_req: Request, res: Response) => {
         preco,
         estoque,
         img: imgUrl,
-        url: row.ns_url ?? "https://www.papelariabibelo.com.br/novidades/",
+        url: row.ns_url ?? "https://www.papelariabibelo.com.br/novidades/?sort_by=created-descending",
         categoria: row.categoria,
       });
     }
@@ -337,7 +337,7 @@ campaignsRouter.get("/nfs/:id/produtos", async (req: Request, res: Response) => 
         preco,
         estoque,
         img: imgUrl,
-        url: row.ns_url ?? "https://www.papelariabibelo.com.br/novidades/",
+        url: row.ns_url ?? "https://www.papelariabibelo.com.br/novidades/?sort_by=created-descending",
         categoria: row.categoria,
       });
     }
@@ -507,7 +507,7 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
     const estoqueBaixo = est !== null && est > 0 && est <= 3;
     const rawImgSrc = p.ns_imagem || (p.imagem_url && p.imagem_url.startsWith("http") ? p.imagem_url : null);
     const imgSrc = rawImgSrc ? proxyImageUrl(rawImgSrc) : null;
-    const link = p.ns_url || `${linkBase}/novidades/`;
+    const link = p.ns_url || `${linkBase}/novidades/?sort_by=created-descending`;
     const badge = estoqueBaixo
       ? `<p style="margin:0 0 6px;color:#ff4444;font-size:11px;font-weight:700;">Últimas ${est}!</p>`
       : `<p style="margin:0 0 6px;color:#fe68c4;font-size:11px;font-weight:700;">Novo ✨</p>`;
@@ -535,7 +535,7 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
     const nome = limparNome(p);
     const rawImgSrc = p.ns_imagem || (p.imagem_url && p.imagem_url.startsWith("http") ? p.imagem_url : null);
     const imgSrc = rawImgSrc ? proxyImageUrl(rawImgSrc) : null;
-    const link = p.ns_url || `${linkBase}/novidades/`;
+    const link = p.ns_url || `${linkBase}/novidades/?sort_by=created-descending`;
     produtosHtml = `
     <a href="${link}" style="display:block;text-decoration:none;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.07);border:1px solid #f5e8f0;margin:0 10px;">
       ${imgSrc ? `<img src="${imgSrc}" alt="${escHtml(nome)}" width="540" height="380" style="display:block;width:100%;height:380px;object-fit:cover;" />` : `<div style="height:280px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);text-align:center;font-size:56px;padding-top:100px;box-sizing:border-box;">🎀</div>`}
@@ -642,7 +642,7 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
 
     <!-- CTA principal -->
     <div style="padding:20px 25px 8px;text-align:center;">
-      <a href="${linkBase}/novidades/" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#ff8fd3);color:#fff;padding:16px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
+      <a href="${linkBase}/novidades/?sort_by=created-descending" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#ff8fd3);color:#fff;padding:16px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
         Ver Todas as Novidades
       </a>
     </div>
@@ -876,7 +876,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
         preco: row.preco_venda,
         estoque: parseFloat(row.saldo_fisico),
         img: imgUrl,
-        url: row.ns_url ?? "https://www.papelariabibelo.com.br/novidades/",
+        url: row.ns_url ?? "https://www.papelariabibelo.com.br/novidades/?sort_by=created-descending",
         categoria: row.categoria,
       });
     }
@@ -964,7 +964,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
         preco: row.preco_venda,
         estoque,
         img: imgUrl,
-        url: row.ns_url ?? "https://www.papelariabibelo.com.br/novidades/",
+        url: row.ns_url ?? "https://www.papelariabibelo.com.br/novidades/?sort_by=created-descending",
         categoria: row.categoria,
       });
     }
@@ -1157,7 +1157,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
       const preco = parseFloat(p.preco);
       const precoFmt = preco ? `R$ ${preco.toFixed(2).replace(".", ",")}` : "";
       const nome = limparNome(p.nome);
-      const link = p.url || `${linkBase}/novidades/`;
+      const link = p.url || `${linkBase}/novidades/?sort_by=created-descending`;
       const estoqueBaixo = p.estoque > 0 && p.estoque <= 3;
       const imgSrc = p.img ? proxyImageUrl(p.img) : null;
       const badge = estoqueBaixo
@@ -1184,7 +1184,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
       const nome = limparNome(p.nome);
       const preco = parseFloat(p.preco);
       const precoFmt = preco ? `R$ ${preco.toFixed(2).replace(".", ",")}` : "";
-      const link = p.url || `${linkBase}/novidades/`;
+      const link = p.url || `${linkBase}/novidades/?sort_by=created-descending`;
       const imgSrc = p.img ? proxyImageUrl(p.img) : null;
       produtosHtmlNov = `
       <a href="${link}" style="display:block;text-decoration:none;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.07);border:1px solid #f5e8f0;margin:0 10px;">
@@ -1256,7 +1256,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
       ${produtosHtmlNov}
     </div>
     <div style="padding:20px 25px 8px;text-align:center;">
-      <a href="${linkBase}/novidades/" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#ff8fd3);color:#fff;padding:16px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">Ver Todas as Novidades</a>
+      <a href="${linkBase}/novidades/?sort_by=created-descending" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#ff8fd3);color:#fff;padding:16px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">Ver Todas as Novidades</a>
     </div>
     <div style="padding:8px 25px 20px;text-align:center;"><p style="color:#999;font-size:12px;margin:0;">Estoque limitado — quando acaba, só na próxima remessa!</p></div>
     <div style="border-top:2px dashed #ffe5ec;margin:0 25px;"></div>
@@ -1333,7 +1333,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
     </div>
     <div style="padding:12px 10px 0;text-align:center;">${produtosHtml}</div>
     <div style="padding:20px 25px 8px;text-align:center;">
-      <a href="${linkBase}/novidades/" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#ff8fd3);color:#fff;padding:14px 36px;border-radius:30px;text-decoration:none;font-weight:700;font-size:15px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">Ver Mais Novidades</a>
+      <a href="${linkBase}/novidades/?sort_by=created-descending" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#ff8fd3);color:#fff;padding:14px 36px;border-radius:30px;text-decoration:none;font-weight:700;font-size:15px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">Ver Mais Novidades</a>
     </div>
     <div style="padding:8px 25px 20px;text-align:center;"><p style="color:#999;font-size:12px;margin:0;">Estoque limitado — quando acaba, só na próxima remessa!</p></div>
     <div style="border-top:2px dashed #ffe5ec;margin:0 25px;"></div>
@@ -1706,7 +1706,7 @@ campaignsRouter.get("/gerar-reengajamento", async (req: Request, res: Response) 
     </div>
 
     <div style="padding:20px 25px 8px;text-align:center;">
-      <a href="${linkBase}/novidades/" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#ff8fd3);color:#fff;padding:14px 36px;border-radius:30px;text-decoration:none;font-weight:700;font-size:15px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
+      <a href="${linkBase}/novidades/?sort_by=created-descending" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#ff8fd3);color:#fff;padding:14px 36px;border-radius:30px;text-decoration:none;font-weight:700;font-size:15px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
         Ver Mais Novidades
       </a>
     </div>
