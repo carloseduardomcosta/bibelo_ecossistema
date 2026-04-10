@@ -4,7 +4,7 @@ import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { getAuthUrl, exchangeCode } from "../integrations/bling/auth";
-import { syncCustomers, syncOrders, syncProducts, syncStock, syncNfEntrada, syncContasPagar, incrementalSync, syncProductCategories, fetchCategoryMap, syncProductImages } from "../integrations/bling/sync";
+import { syncCustomers, syncOrders, syncProducts, syncStock, syncNfEntrada, syncContasPagar, incrementalSync, syncProductCategories, fetchCategoryMap, syncProductImages, syncProductGtins } from "../integrations/bling/sync";
 import { getNuvemShopAuthUrl, exchangeNuvemShopCode, getNuvemShopToken } from "../integrations/nuvemshop/auth";
 import { syncNuvemShop, registerNsWebhooks } from "../integrations/nuvemshop/sync";
 import { sendOrderConfirmationEmail, sendPaymentApprovedEmail, sendShippingEmail } from "../services/storefront-email.service";
@@ -166,6 +166,25 @@ syncRouter.post("/bling/imagens", authMiddleware, async (req: Request, res: Resp
     logger.info("Sync imagens HD finalizado", result)
   } catch (err: any) {
     logger.error("Sync imagens HD falhou", { error: err.message })
+  }
+});
+
+// ── POST /api/sync/bling/gtins — backfill GTIN via detalhe do produto ──
+// O listing do Bling não retorna gtin (ProdutosDadosBaseDTO). Somente
+// GET /produtos/{id} retorna o gtin (ProdutosDados). Este endpoint faz
+// o backfill para todos os produtos com gtin IS NULL.
+// Passa blingIds[] no body para processar apenas produtos específicos.
+
+syncRouter.post("/bling/gtins", authMiddleware, async (req: Request, res: Response) => {
+  const { blingIds } = req.body as { blingIds?: string[] };
+  logger.info("Sync GTINs iniciado", { user: (req as any).user?.email, blingIds: blingIds?.length ?? "todos" });
+  res.json({ message: "Sync GTINs iniciado em background. Acompanhe pelos logs." });
+
+  try {
+    const result = await syncProductGtins(blingIds);
+    logger.info("Sync GTINs finalizado", result);
+  } catch (err: any) {
+    logger.error("Sync GTINs falhou", { error: err.message });
   }
 });
 

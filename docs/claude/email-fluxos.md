@@ -39,6 +39,20 @@ URL: `webhook.papelariabibelo.com.br/api/email/img/{hash}.jpg`
 Configuração nativa NuvemShop (Sul/Sudeste, R$79+, opção mais barata) — não depende de cupom.
 Banner presente em todos os emails de carrinho/produto.
 
+## Dedup de template — anti-duplicidade cross-canal
+
+Antes de executar qualquer step de email, o motor verifica se o cliente já recebeu o **mesmo template** nas últimas **72h**, tanto por fluxo quanto por campanha manual.
+
+**Como funciona:**
+- Consulta `crm.interactions` por `tipo = 'email_enviado'` + `metadata->>'template' = nome` OU `metadata->>'template_nome' = nome`
+- Emails de fluxo registram `metadata.template` (nome do step)
+- Campanhas regulares (`sendCampaignEmails`) registram `metadata.template_nome` (nome do template do banco)
+- Se encontrar → step marcado `ignorado` (motivo: `template_recente`), fluxo avança via `proximo` ou `+1`
+
+**Caso de uso:** Carlos dispara campanha "Novidades" manualmente → sistema não reenvio o step "Novidades da Semana" do fluxo de nutrição nos próximos 3 dias.
+
+**Arquivos:** `flow.service.ts` (verificação + fix do campo template no caminho DB), `email.ts` (registro `template_nome` nas campanhas regulares)
+
 ## Regras gerais
 - `triggerFlow` nunca re-executa (ignora se já existe execução dentro de 90 dias)
 - Reativação só para quem tem pelo menos 1 pedido
@@ -46,7 +60,7 @@ Banner presente em todos os emails de carrinho/produto.
 - **Novo template = registrar** em `buildFlowEmail()` e `getFlowSubject()` — sem registro cai no fallback genérico
 - Testes de email: SEMPRE em `carloseduardocostatj@gmail.com`
 - Captura de lead vincula visitor_id ao customer
-- Cada email de fluxo registra interação em `crm.interactions`
+- Cada email de fluxo registra interação em `crm.interactions` com `metadata.template` (nome do step)
 - Cupom só após verificação de email (HMAC link)
 - Opt-out LGPD respeitado em campanhas e fluxos
 - Descadastro notifica o admin por email

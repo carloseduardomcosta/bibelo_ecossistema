@@ -1387,6 +1387,74 @@ export async function syncProductImages(blingIds?: string[]): Promise<{ total: n
   }
 }
 
+// ── syncProductGtins — backfill GTIN via GET /produtos/{id} ───
+// O sync por listing (GET /produtos) retorna ProdutosDadosBaseDTO que
+// NÃO inclui o campo gtin. Somente GET /produtos/{id} (ProdutosDados)
+// retorna o gtin. Esta função faz o backfill para produtos com gtin NULL.
+
+export async function syncProductGtins(blingIds?: string[]): Promise<{ total: number; atualizados: number }> {
+  let total = 0;
+  let atualizados = 0;
+
+  try {
+    const token = await getValidToken();
+
+    let products: { bling_id: string }[];
+
+    if (blingIds && blingIds.length > 0) {
+      const placeholders = blingIds.map((_, i) => `$${i + 1}`).join(",");
+      products = await query<{ bling_id: string }>(
+        `SELECT bling_id FROM sync.bling_products WHERE bling_id IN (${placeholders})`,
+        blingIds
+      );
+    } else {
+      // Prioriza produtos sem GTIN e ativos
+      products = await query<{ bling_id: string }>(
+        `SELECT bling_id FROM sync.bling_products
+         WHERE ativo = true AND gtin IS NULL
+         ORDER BY sincronizado_em DESC
+         LIMIT 500`
+      );
+    }
+
+    logger.info(`syncProductGtins: processando ${products.length} produto(s)`);
+
+    for (const prod of products) {
+      total++;
+      try {
+        const detail = await rateLimitedGet<{ data: Record<string, unknown> }>(
+          `${BLING_API}/produtos/${prod.bling_id}`,
+          token
+        );
+
+        const data = detail.data;
+        if (!data) continue;
+
+        const gtin = (data.gtin as string | null | undefined) || null;
+        if (!gtin) continue;
+
+        await query(
+          "UPDATE sync.bling_products SET gtin = $1, sincronizado_em = NOW() WHERE bling_id = $2",
+          [gtin, prod.bling_id]
+        );
+        atualizados++;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Erro";
+        logger.warn(`syncProductGtins: erro no produto ${prod.bling_id}`, { error: msg });
+      }
+    }
+
+    await logSync("bling", "product_gtins", "ok", atualizados);
+    logger.info("syncProductGtins concluído", { total, atualizados });
+    return { total, atualizados };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido";
+    await logSync("bling", "product_gtins", "erro", atualizados, message);
+    logger.error("syncProductGtins falhou", { error: message });
+    throw err;
+  }
+}
+
 // ── Helper: log de sync ────────────────────────────────────────
 
 async function logSync(

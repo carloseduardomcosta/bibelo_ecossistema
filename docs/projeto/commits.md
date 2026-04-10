@@ -812,6 +812,31 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Storefront v2 (porta 8001) continua como único storefront ativo em homolog.papelariabibelo.com.br
   - Motivo: nenhum Nginx apontava para porta 8000, healthcheck falhava (307 redirect), sem tráfego
 
+### Sessão 10/04/2026 — Dedup de templates, healthcheck frontend, disco
+
+- **b37406e** — fix(novidades): estoque de variantes Bling (pai sempre zero, filhos têm saldo)
+  - `campaigns.ts` + `public-novidades.ts`: query soma `saldo_fisico` dos filhos via subquery
+  - `HAVING` ajustado para incluir produtos pai com filhos em estoque
+
+- **f5933bc + 7ae8236** — feat(campanhas): aba Novidades com seletor manual de NF
+  - Lista de NFs de entrada disponíveis para escolha manual na campanha
+  - Produtos da NF selecionada com filtro de estoque e cadastro no Bling
+
+- **2671d7a** — feat(flows): dedup de template — evita reenvio de email já enviado por campanha
+  - Motor de fluxo verifica antes de cada step de email se o cliente recebeu o mesmo template nas últimas 72h
+  - Cobre dois caminhos: fluxo → fluxo (`metadata.template`) e campanha → fluxo (`metadata.template_nome`)
+  - `email.ts`: `sendCampaignEmails` agora registra interação em `crm.interactions` com `template_nome`
+  - `flow.service.ts`: fix no caminho "template do banco" — registra campo `template` no metadata
+  - Step ignorado com motivo `template_recente`, fluxo avança normalmente via `proximo`/`+1`
+
+- **e90a7ac** — fix(frontend): adiciona HEALTHCHECK ao container
+  - Último container sem healthcheck — agora todos os 7 estão `(healthy)`
+  - Verifica `localhost:3000` a cada 30s, start-period 15s
+
+- **Infra: limpeza de disco**
+  - `docker builder prune -f`: 51.5 GB de build cache acumulado removidos
+  - Disco: 75% → 44% (liberou ~35 GB)
+
 ---
 
 ## Sessão 09–10/04/2026 — Painel Categorias Sync + Fix Bugs Medusa Sync
