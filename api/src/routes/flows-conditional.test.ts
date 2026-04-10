@@ -379,6 +379,17 @@ describe("Reativação — branching condicional", () => {
     const cid = await criarCliente(`${PREFIX}r1`, `${PREFIX}r1@test.com`);
     await triggerFlow("customer.inactive", cid);
     const execId = await getTestExecId(flowId, cid);
+    // Remove execuções de fluxos reais que foram co-disparados (evita interferência de dedup 72h)
+    await query(
+      `DELETE FROM marketing.flow_step_executions WHERE execution_id IN (
+         SELECT id FROM marketing.flow_executions WHERE customer_id = $1 AND flow_id != $2
+       )`,
+      [cid, flowId]
+    );
+    await query(
+      "DELETE FROM marketing.flow_executions WHERE customer_id = $1 AND flow_id != $2",
+      [cid, flowId]
+    );
 
     await avancarTempo(execId);
 
@@ -399,6 +410,16 @@ describe("Reativação — branching condicional", () => {
     const cid = await criarCliente(`${PREFIX}r2`, `${PREFIX}r2@test.com`);
     await triggerFlow("customer.inactive", cid);
     const execId = await getTestExecId(flowId, cid);
+    await query(
+      `DELETE FROM marketing.flow_step_executions WHERE execution_id IN (
+         SELECT id FROM marketing.flow_executions WHERE customer_id = $1 AND flow_id != $2
+       )`,
+      [cid, flowId]
+    );
+    await query(
+      "DELETE FROM marketing.flow_executions WHERE customer_id = $1 AND flow_id != $2",
+      [cid, flowId]
+    );
 
     await avancarTempo(execId);
 
