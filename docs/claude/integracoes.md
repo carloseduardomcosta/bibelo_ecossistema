@@ -47,6 +47,15 @@
 - Docs: `docs/integracoes/meta-ads.md`
 - Fases: 1) Dashboard ✅ | 2) Sync audiences CRM→Meta 🔜 | 3) Criação campanhas 📋
 
+## Instagram Business (orgânico) — planejado
+- **Docs:** `docs/integracoes/instagram.md`
+- **API:** Instagram Graph API (mesmo token Meta)
+- **KPIs:** seguidores, impressões, alcance, posts (likes/comments/saves/reach/engagement), stories, audiência demográfica
+- **Estratégia:** sync diário, janela 2 dias, UPSERT → histórico acumula indefinidamente no banco
+- **Tabelas planejadas:** `marketing.instagram_insights_daily`, `instagram_posts`, `instagram_audience`
+- **Status:** aguardando Carlos adicionar `instagram_basic` + `instagram_manage_insights` ao token Meta
+- Token atual já tem: `pages_show_list` ✅ `pages_read_engagement` ✅ `ads_read` ✅ `ads_management` ✅
+
 ## Chatwoot + Meta Cloud API (WhatsApp + Instagram) — planejado
 - Plano completo: `docs/integracoes/whatsapp-chatwoot.md`
 - Chatwoot self-hosted em chat.papelariabibelo.com.br
