@@ -202,3 +202,62 @@ export function logout() {
     window.location.href = "/"
   }
 }
+
+// ── Atualizar dados do cliente logado ────────────────────────
+export async function updateCustomer(token: string, data: {
+  first_name?: string
+  last_name?: string
+  phone?: string
+}) {
+  const res = await fetch(`${PUBLIC_MEDUSA_URL}/store/customers/me`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "x-publishable-api-key": PUBLISHABLE_KEY,
+    },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.message || "Erro ao atualizar perfil")
+  }
+  return res.json()
+}
+
+// ── Solicitar email de recuperação de senha ───────────────────
+export async function requestPasswordReset(email: string) {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://homolog.papelariabibelo.com.br"
+  const res = await fetch(`${PUBLIC_MEDUSA_URL}/auth/customer/emailpass/reset-password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-publishable-api-key": PUBLISHABLE_KEY,
+    },
+    body: JSON.stringify({ email, redirect_url: `${siteUrl}/conta/nova-senha` }),
+  })
+  // Medusa retorna 200 mesmo para emails inexistentes (segurança)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.message || "Erro ao solicitar recuperação")
+  }
+  return true
+}
+
+// ── Atualizar senha (token de reset ou sessão ativa) ──────────
+export async function updatePassword(token: string, password: string) {
+  const res = await fetch(`${PUBLIC_MEDUSA_URL}/auth/customer/emailpass/update`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "x-publishable-api-key": PUBLISHABLE_KEY,
+    },
+    body: JSON.stringify({ password }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.message || "Erro ao alterar senha")
+  }
+  return true
+}
