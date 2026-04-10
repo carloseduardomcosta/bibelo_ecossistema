@@ -84,6 +84,22 @@ export async function listCategories() {
   }
 }
 
+// Buscar produtos para /busca — limit 100, inclui categorias para facets
+export async function searchProducts(q: string) {
+  try {
+    const { products, count } = await medusa.store.product.list({
+      q,
+      limit: 100,
+      region_id: DEFAULT_REGION,
+      fields: "*variants.calculated_price,+variants.inventory_quantity,+categories",
+    } as Parameters<typeof medusa.store.product.list>[0])
+    return { products: products || [], count: count || 0 }
+  } catch (error) {
+    console.error("[Medusa] searchProducts error:", error)
+    return { products: [], count: 0 }
+  }
+}
+
 // Buscar coleções
 export async function listCollections() {
   try {
