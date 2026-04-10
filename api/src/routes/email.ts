@@ -186,6 +186,13 @@ const ALLOWED_IMG_DOMAINS = [
   "images.unsplash.com",
 ];
 
+// Detecta se um buffer é WEBP pelos magic bytes (RIFF....WEBP)
+function isWebpBuffer(buf: Buffer): boolean {
+  return buf.length >= 12
+    && buf.toString("ascii", 0, 4) === "RIFF"
+    && buf.toString("ascii", 8, 12) === "WEBP";
+}
+
 // GET /api/email/img/:hash — serve imagem cacheada
 emailRouter.get("/img/:hash", imgProxyLimiter, async (req: Request, res: Response) => {
   const { hash } = req.params;
@@ -202,6 +209,25 @@ emailRouter.get("/img/:hash", imgProxyLimiter, async (req: Request, res: Respons
 
   if (fs.existsSync(filePath)) {
     const ext = path.extname(hash).toLowerCase();
+    const buf = fs.readFileSync(filePath);
+
+    // Arquivos .jpg que na verdade são WEBP (Bling S3 não inclui extensão na URL):
+    // converte on-the-fly e substitui o cache para próximas requisições
+    if ((ext === ".jpg" || ext === ".jpeg") && isWebpBuffer(buf)) {
+      try {
+        const sharp = (await import("sharp")).default;
+        const converted = await sharp(buf).jpeg({ quality: 90 }).toBuffer();
+        fs.writeFileSync(filePath, converted); // atualiza cache
+        res.setHeader("Content-Type", "image/jpeg");
+        res.setHeader("Cache-Control", "public, max-age=2592000");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.end(converted);
+        return;
+      } catch (err) {
+        logger.error("Erro ao converter WEBP cacheado", { hash });
+      }
+    }
+
     const mimeMap: Record<string, string> = {
       ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
       ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif",
@@ -209,7 +235,7 @@ emailRouter.get("/img/:hash", imgProxyLimiter, async (req: Request, res: Respons
     res.setHeader("Content-Type", mimeMap[ext] || "image/jpeg");
     res.setHeader("Cache-Control", "public, max-age=2592000"); // 30 dias
     res.setHeader("X-Content-Type-Options", "nosniff");
-    fs.createReadStream(filePath).pipe(res);
+    res.end(buf);
     return;
   }
 
@@ -224,8 +250,15 @@ async function downloadAndCacheImage(externalUrl: string, filePath: string, orig
     timeout: 15000,
   });
   const buf = Buffer.from(resp.data);
+  const contentType = ((resp.headers["content-type"] as string) || "").toLowerCase();
 
-  if (originalExt === "webp") {
+  // Detecta WEBP pelo ext declarado, pelo Content-Type da resposta ou pelos magic bytes
+  // (Bling S3 serve WEBP sem extensão na URL — content-type e magic bytes são as fontes corretas)
+  const isWebp = originalExt === "webp"
+    || contentType.includes("webp")
+    || isWebpBuffer(buf);
+
+  if (isWebp) {
     const sharp = (await import("sharp")).default;
     const converted = await sharp(buf).jpeg({ quality: 90 }).toBuffer();
     fs.writeFileSync(filePath, converted);

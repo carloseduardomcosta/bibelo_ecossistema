@@ -162,10 +162,12 @@ campaignsRouter.get("/novidades-nf", async (_req: Request, res: Response) => {
       FROM valid_products vp
       JOIN latest_nf ln ON ln.nf_id = vp.nf_id
       LEFT JOIN LATERAL (
-        SELECT np2.dados_raw FROM sync.nuvemshop_products np2
-        WHERE np2.sku = vp.sku
-          OR LOWER(np2.nome) LIKE '%' || LOWER(SUBSTRING(vp.nome FROM 1 FOR 15)) || '%'
-        ORDER BY np2.estoque DESC NULLS LAST
+        SELECT np2.dados_raw,
+          CASE WHEN vp.sku IS NOT NULL AND LOWER(np2.sku) = LOWER(vp.sku) THEN 0 ELSE 1 END AS prio
+        FROM sync.nuvemshop_products np2
+        WHERE (vp.sku IS NOT NULL AND LOWER(np2.sku) = LOWER(vp.sku))
+          OR LOWER(np2.nome) LIKE LOWER(SUBSTRING(vp.nome FROM 1 FOR 40)) || '%'
+        ORDER BY prio ASC
         LIMIT 1
       ) np ON true
       ORDER BY vp.numero_item ASC
@@ -289,10 +291,12 @@ campaignsRouter.get("/nfs/:id/produtos", async (req: Request, res: Response) => 
       AND jsonb_array_length(bp.imagens) > 0
       LEFT JOIN sync.bling_stock bs ON bs.bling_product_id = bp.bling_id
       LEFT JOIN LATERAL (
-        SELECT np2.dados_raw FROM sync.nuvemshop_products np2
-        WHERE np2.sku = bp.sku
-          OR LOWER(np2.nome) LIKE '%' || LOWER(SUBSTRING(bp.nome FROM 1 FOR 15)) || '%'
-        ORDER BY np2.estoque DESC NULLS LAST
+        SELECT np2.dados_raw,
+          CASE WHEN bp.sku IS NOT NULL AND LOWER(np2.sku) = LOWER(bp.sku) THEN 0 ELSE 1 END AS prio
+        FROM sync.nuvemshop_products np2
+        WHERE (bp.sku IS NOT NULL AND LOWER(np2.sku) = LOWER(bp.sku))
+          OR LOWER(np2.nome) LIKE LOWER(SUBSTRING(bp.nome FROM 1 FOR 40)) || '%'
+        ORDER BY prio ASC
         LIMIT 1
       ) np ON true
       WHERE ne.id = $1 AND ne.status != 'cancelada'
@@ -393,8 +397,8 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
       LEFT JOIN LATERAL (
         SELECT p.preco_venda, p.categoria, p.dados_raw, p.bling_id, p.sku
         FROM sync.bling_products p
-        WHERE LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(i.descricao FROM 1 FOR 20)) || '%'
-          OR p.sku = i.codigo_produto
+        WHERE p.sku = i.codigo_produto
+          OR LOWER(p.nome) LIKE LOWER(SUBSTRING(i.descricao FROM 1 FOR 30)) || '%'
         ORDER BY CASE WHEN p.dados_raw->>'imagemURL' <> '' THEN 0 ELSE 1 END
         LIMIT 1
       ) bp ON true
@@ -402,7 +406,8 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
         SELECT np.imagens, np.dados_raw, np.estoque, np.nome
         FROM sync.nuvemshop_products np
         WHERE np.sku = bp.sku
-          OR LOWER(np.nome) LIKE '%' || LOWER(SUBSTRING(i.descricao FROM 1 FOR 15)) || '%'
+          OR LOWER(np.nome) LIKE LOWER(SUBSTRING(i.descricao FROM 1 FOR 40)) || '%'
+        ORDER BY CASE WHEN np.sku = bp.sku THEN 0 ELSE 1 END ASC
         LIMIT 1
       ) ns ON true
       WHERE
@@ -704,7 +709,7 @@ campaignsRouter.get("/categorias", async (_req: Request, res: Response) => {
       ROUND(AVG(np.preco)::numeric, 2)::text as preco_medio
     FROM sync.nuvemshop_products np
     LEFT JOIN sync.bling_products bp ON bp.sku = np.sku
-      OR LOWER(bp.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
+      OR LOWER(bp.nome) LIKE LOWER(SUBSTRING(np.nome FROM 1 FOR 40)) || '%'
     WHERE np.estoque > 0
     GROUP BY bp.categoria
     HAVING COUNT(*) >= 2
@@ -765,7 +770,7 @@ campaignsRouter.get("/produtos", async (req: Request, res: Response) => {
        FROM sync.nuvemshop_products np
        LEFT JOIN LATERAL (
          SELECT p.categoria FROM sync.bling_products p
-         WHERE p.sku = np.sku OR LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
+         WHERE p.sku = np.sku OR LOWER(p.nome) LIKE LOWER(SUBSTRING(np.nome FROM 1 FOR 40)) || '%'
          LIMIT 1
        ) bp ON true
        WHERE ${conditions.join(" AND ")}
@@ -846,10 +851,12 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
       FROM sync.bling_products bp
       LEFT JOIN sync.bling_stock bs ON bs.bling_product_id = bp.bling_id
       LEFT JOIN LATERAL (
-        SELECT np2.dados_raw FROM sync.nuvemshop_products np2
-        WHERE np2.sku = bp.sku
-          OR LOWER(np2.nome) LIKE '%' || LOWER(SUBSTRING(bp.nome FROM 1 FOR 15)) || '%'
-        ORDER BY np2.estoque DESC NULLS LAST
+        SELECT np2.dados_raw,
+          CASE WHEN LOWER(np2.sku) = LOWER(bp.sku) THEN 0 ELSE 1 END AS prio
+        FROM sync.nuvemshop_products np2
+        WHERE (bp.sku IS NOT NULL AND LOWER(np2.sku) = LOWER(bp.sku))
+          OR LOWER(np2.nome) LIKE LOWER(SUBSTRING(bp.nome FROM 1 FOR 40)) || '%'
+        ORDER BY prio ASC
         LIMIT 1
       ) np ON true
       WHERE bp.id IN (${idParams})
@@ -929,10 +936,12 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
       FROM valid_products vp
       JOIN latest_nf ln ON ln.nf_id = vp.nf_id
       LEFT JOIN LATERAL (
-        SELECT np2.dados_raw FROM sync.nuvemshop_products np2
-        WHERE np2.sku = vp.sku
-          OR LOWER(np2.nome) LIKE '%' || LOWER(SUBSTRING(vp.nome FROM 1 FOR 15)) || '%'
-        ORDER BY np2.estoque DESC NULLS LAST
+        SELECT np2.dados_raw,
+          CASE WHEN vp.sku IS NOT NULL AND LOWER(np2.sku) = LOWER(vp.sku) THEN 0 ELSE 1 END AS prio
+        FROM sync.nuvemshop_products np2
+        WHERE (vp.sku IS NOT NULL AND LOWER(np2.sku) = LOWER(vp.sku))
+          OR LOWER(np2.nome) LIKE LOWER(SUBSTRING(vp.nome FROM 1 FOR 40)) || '%'
+        ORDER BY prio ASC
         LIMIT 1
       ) np ON true
       ORDER BY vp.numero_item ASC
@@ -981,7 +990,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
        FROM sync.nuvemshop_products np
        LEFT JOIN LATERAL (
          SELECT p.categoria FROM sync.bling_products p
-         WHERE p.sku = np.sku OR LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
+         WHERE p.sku = np.sku OR LOWER(p.nome) LIKE LOWER(SUBSTRING(np.nome FROM 1 FOR 40)) || '%'
          LIMIT 1
        ) bp ON true
        WHERE np.id::text IN (${idParams}) AND np.estoque > 0`,
@@ -1012,7 +1021,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
          FROM sync.nuvemshop_products np
          LEFT JOIN LATERAL (
            SELECT p.categoria FROM sync.bling_products p
-           WHERE p.sku = np.sku OR LOWER(p.nome) LIKE '%' || LOWER(SUBSTRING(np.nome FROM 1 FOR 15)) || '%'
+           WHERE p.sku = np.sku OR LOWER(p.nome) LIKE LOWER(SUBSTRING(np.nome FROM 1 FOR 40)) || '%'
            LIMIT 1
          ) bp ON true
          WHERE np.estoque > 0
