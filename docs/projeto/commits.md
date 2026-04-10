@@ -1058,3 +1058,8 @@ sync.category_sync_log         (auditoria)
   - Filtro de segmento oculto automaticamente na view B2B (irrelevante)
   - Badge "B2B" azul na coluna segmento para clientes tipo b2b
   - `tipo` adicionado ao campo `Customer` interface e ao `useCallback` deps
+
+- **d22cec0** — fix(email): links de novidades sempre ordenados por mais recente
+  - 11 ocorrências de `/novidades/` em `campaigns.ts` atualizadas para `/novidades/?sort_by=created-descending`
+  - Afeta: botões CTA "Ver Todas as Novidades" e "Ver Mais Novidades", fallbacks de produto sem URL NuvemShop
+  - Cobre os 3 geradores: `gerar-novidades`, `gerar-personalizada`, `gerar-reengajamento`
