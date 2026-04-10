@@ -19,6 +19,7 @@ interface Customer {
   score?: number;
   segmento?: string;
   ltv?: number;
+  tipo?: string;
   criado_em: string;
 }
 
@@ -132,15 +133,16 @@ export default function Clientes() {
   const [cidade, setCidade] = useState('');
   const [cidades, setCidades] = useState<Array<{ cidade: string; total: string }>>([]);
   const [ordenar, setOrdenar] = useState<'recentes' | 'nome' | 'score_desc'>('recentes');
+  const [tipo, setTipo] = useState<'cliente' | 'b2b' | 'todos'>('cliente');
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
 
   const fetchClientes = useCallback(async (page: number) => {
     setLoading(true);
     try {
-      const params: Record<string, string | number> = { page, limit: 20, ordenar };
+      const params: Record<string, string | number> = { page, limit: 20, ordenar, tipo };
       if (search) params.search = search;
-      if (segmento) params.segmento = segmento;
+      if (segmento && tipo === 'cliente') params.segmento = segmento;
       if (canal) params.canal_origem = canal;
       if (contato) params.contato = contato;
       if (cidade) params.cidade = cidade;
@@ -152,7 +154,7 @@ export default function Clientes() {
     } finally {
       setLoading(false);
     }
-  }, [search, segmento, canal, contato, cidade, ordenar]);
+  }, [search, segmento, canal, contato, cidade, ordenar, tipo]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -194,9 +196,29 @@ export default function Clientes() {
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-2xl font-bold text-bibelo-text">Clientes</h1>
           <span className="text-[10px] px-2 py-0.5 bg-pink-400/10 text-pink-400 rounded-full font-bold">{pagination.total}</span>
+          {/* Toggle B2C / B2B */}
+          <div className="flex bg-bibelo-bg border border-bibelo-border rounded-lg p-0.5 gap-0.5">
+            {([
+              { value: 'cliente', label: 'B2C' },
+              { value: 'b2b',     label: 'B2B' },
+              { value: 'todos',   label: 'Todos' },
+            ] as const).map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => { setTipo(value); setSegmento(''); }}
+                className={`px-3 py-1 text-[11px] font-semibold rounded transition-colors ${
+                  tipo === value
+                    ? 'bg-bibelo-primary text-white'
+                    : 'text-bibelo-muted hover:text-bibelo-text'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -247,24 +269,26 @@ export default function Clientes() {
         </form>
 
         <div className="flex gap-2">
-          <div className="relative">
-            <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-bibelo-muted pointer-events-none" />
-            <select
-              value={segmento}
-              onChange={(e) => setSegmento(e.target.value)}
-              className="pl-9 pr-8 py-2 bg-bibelo-card border border-bibelo-border rounded-lg text-sm text-bibelo-text appearance-none cursor-pointer focus:outline-none focus:border-pink-400/50 transition-colors"
-            >
-              <option value="">Segmento</option>
-              <option value="lead_quente">Lead Quente</option>
-              <option value="lead">Lead</option>
-              <option value="vip">VIP</option>
-              <option value="alto_valor">Alto Valor</option>
-              <option value="recorrente">Recorrente</option>
-              <option value="novo">Novo</option>
-              <option value="ocasional">Ocasional</option>
-              <option value="inativo">Inativo</option>
-            </select>
-          </div>
+          {tipo === 'cliente' && (
+            <div className="relative">
+              <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-bibelo-muted pointer-events-none" />
+              <select
+                value={segmento}
+                onChange={(e) => setSegmento(e.target.value)}
+                className="pl-9 pr-8 py-2 bg-bibelo-card border border-bibelo-border rounded-lg text-sm text-bibelo-text appearance-none cursor-pointer focus:outline-none focus:border-pink-400/50 transition-colors"
+              >
+                <option value="">Segmento</option>
+                <option value="lead_quente">Lead Quente</option>
+                <option value="lead">Lead</option>
+                <option value="vip">VIP</option>
+                <option value="alto_valor">Alto Valor</option>
+                <option value="recorrente">Recorrente</option>
+                <option value="novo">Novo</option>
+                <option value="ocasional">Ocasional</option>
+                <option value="inativo">Inativo</option>
+              </select>
+            </div>
+          )}
 
           <div className="relative">
             <UserCheck size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-bibelo-muted pointer-events-none" />
@@ -447,7 +471,11 @@ export default function Clientes() {
                     <td className="px-4 py-3 text-xs text-bibelo-muted hidden lg:table-cell">
                       {c.cidade ? `${c.cidade}${c.estado ? `/${c.estado}` : ''}` : '--'}
                     </td>
-                    <td className="px-4 py-3">{segmentBadge(c.segmento)}</td>
+                    <td className="px-4 py-3">
+                      {c.tipo === 'b2b'
+                        ? <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/20 text-blue-400">B2B</span>
+                        : segmentBadge(c.segmento)}
+                    </td>
                     <td className="px-4 py-3 text-right">{scoreBar(c.score)}</td>
                   </tr>
                 ))
