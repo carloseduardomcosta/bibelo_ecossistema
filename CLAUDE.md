@@ -842,5 +842,9 @@ Causa: admin-bundler usa ADMIN_RELATIVE_OUTPUT_DIR = "./public/admin"
        (de @medusajs/medusa/dist/utils/admin-consts.js, NÃO do @medusajs/utils)
 Solução no Dockerfile stage production:
   COPY --from=builder --chown=medusa:medusa /app/.medusa/client ./public/admin
-Acesso: http://localhost:9000/app (via SSH tunnel)
+Acesso: https://api.papelariabibelo.com.br/app/ (restrito por IP no Nginx)
 Admin user: contato@papelariabibelo.com.br
+IPs autorizados (mesma whitelist SSH/UFW):
+  186.226.157.81      — casa
+  163.116.233.0/24   — bloco Netskope
+  187.85.161.0/24    — empresa bloco Netskope
