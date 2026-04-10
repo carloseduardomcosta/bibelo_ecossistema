@@ -186,6 +186,8 @@ Painel de mapeamento de categorias Bling → Medusa. Rota base: `/api/categorias
 - `GET  /api/links/formulario` — formulário de cadastro (nome, email, WhatsApp)
 - `POST /api/links/lead` — captura lead do formulário, cria customer + deal, notifica admin
 - `GET  /api/links/stats` — stats de cliques por link (últimos 30 dias)
+- `GET  /api/links/parcerias` — página HTML do formulário B2B (atacado, revenda, brindes corporativos, eventos)
+- `POST /api/links/parcerias` — processa solicitação B2B: valida com Zod, upsert customer (canal `parcerias_b2b`), registra interação `parceria_b2b` na timeline, cria deal em `prospeccao` (prob. 40%), notifica admin por email. Campos: nome*, email*, assunto* (atacado|revenda|corporativo|evento|outro), empresa, documento (CPF/CNPJ), telefone, mensagem. Clique registrado em `marketing.link_clicks` com slug `parcerias-submit`.
 
 ### Imagens (Editor de Imagens para Marketplaces)
 - `GET  /api/images/presets` — lista presets disponíveis (Shopee, NuvemShop, Loja Própria, Instagram, Custom)
