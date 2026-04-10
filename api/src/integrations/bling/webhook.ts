@@ -11,6 +11,36 @@ export const blingWebhookRouter = Router();
 // ── Idempotency cache (60s TTL) ─────────────────────────────
 const recentBlingEvents = new Map<string, number>();
 
+// ── Mutex do sync Medusa ──────────────────────────────────────
+// Evita N syncs paralelos quando múltiplos webhooks chegam em burst.
+// Padrão "run + pending": se um sync está rodando e novo evento chega,
+// marca pendente=true. Ao terminar, dispara mais 1 sync (e não mais).
+let medusaSyncRunning = false;
+let medusaSyncPending = false;
+
+async function runMedusaSync(origem: string): Promise<void> {
+  if (medusaSyncRunning) {
+    medusaSyncPending = true;
+    logger.info(`Bling webhook → Medusa sync já rodando, pendente marcado (origem: ${origem})`);
+    return;
+  }
+  medusaSyncRunning = true;
+  medusaSyncPending = false;
+  try {
+    const { syncBlingToMedusa } = await import("../medusa/sync");
+    await syncBlingToMedusa();
+    logger.info(`Bling webhook → Medusa sync concluído (origem: ${origem})`);
+  } catch (err: any) {
+    logger.warn(`Bling webhook → Medusa sync falhou: ${err.message}`);
+  } finally {
+    medusaSyncRunning = false;
+    if (medusaSyncPending) {
+      logger.info("Bling webhook → iniciando sync pendente acumulado");
+      setImmediate(() => runMedusaSync("pendente"));
+    }
+  }
+}
+
 // ── Validar HMAC do Bling ────────────────────────────────────
 // Header: X-Bling-Signature-256: sha256=<hash>
 // Hash = HMAC-SHA256(body, BLING_CLIENT_SECRET)
@@ -273,15 +303,8 @@ async function processProduct(data: Record<string, unknown>, evento: string): Pr
 
     // Propagar para o Medusa em background (não bloqueia resposta do webhook)
     // O sync lê do banco local (zero chamadas extras ao Bling)
-    setImmediate(async () => {
-      try {
-        const { syncBlingToMedusa } = await import("../medusa/sync");
-        await syncBlingToMedusa();
-        logger.info(`Bling webhook → Medusa sync concluído para ${prod.nome}`);
-      } catch (err: any) {
-        logger.warn(`Bling webhook → Medusa sync falhou: ${err.message}`);
-      }
-    });
+    // Mutex runMedusaSync garante no máximo 1 sync ativo + 1 pendente por vez
+    setImmediate(() => runMedusaSync(String(prod.nome || "produto")));
   } catch (err: any) {
     logger.error(`Bling webhook: erro ao processar produto ${blingProductId}: ${err.message}`);
   }

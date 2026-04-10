@@ -152,7 +152,7 @@ categoriaSyncRouter.post("/importar", authMiddleware, async (req: Request, res: 
 const updateSchema = z.object({
   status:             z.enum(["mapped", "pending", "ignored"]),
   medusa_category_id: z.string().nullable().optional(),
-  medusa_handle:      z.string().optional(),
+  medusa_handle:      z.string().nullable().optional(),
 });
 
 categoriaSyncRouter.put("/:blingId", authMiddleware, async (req: Request, res: Response) => {
