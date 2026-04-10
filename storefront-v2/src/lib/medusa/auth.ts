@@ -244,6 +244,20 @@ export async function requestPasswordReset(email: string) {
   return true
 }
 
+// ── Buscar pedido por ID ──────────────────────────────────────
+export async function getOrderById(token: string, id: string) {
+  const fields = "+shipping_address,+fulfillments,+shipping_methods"
+  const res = await fetch(`${PUBLIC_MEDUSA_URL}/store/orders/${id}?fields=${fields}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "x-publishable-api-key": PUBLISHABLE_KEY,
+    },
+  })
+  if (!res.ok) return null
+  const data = await res.json()
+  return data.order ?? null
+}
+
 // ── Atualizar senha (token de reset ou sessão ativa) ──────────
 export async function updatePassword(token: string, password: string) {
   const res = await fetch(`${PUBLIC_MEDUSA_URL}/auth/customer/emailpass/update`, {
