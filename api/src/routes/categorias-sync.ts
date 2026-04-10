@@ -18,6 +18,12 @@ import { getMedusaCategoriesFromMedusa, applyCategoryMappingToMedusa } from "../
 
 export const categoriaSyncRouter = Router();
 
+// Categorias internas do Bling que não devem aparecer na loja
+// (mesmo filtro que syncCategoriesToMedusa em medusa/sync.ts)
+const CATEGORIAS_IGNORAR = new Set([
+  "TESTE", "TODOS OS PRODUTOS", "KIT SUBLIMAÇÃO",
+]);
+
 // ── GET /api/categorias-sync ─────────────────────────────────
 // Retorna mapeamentos, stats e lista de categorias Medusa para o dropdown
 
@@ -112,13 +118,16 @@ categoriaSyncRouter.post("/importar", authMiddleware, async (req: Request, res: 
       [catIdStr]
     );
 
+    // Categorias internas do Bling: inserir como 'ignored' automaticamente
+    const statusInicial = CATEGORIAS_IGNORAR.has(catName.toUpperCase()) ? 'ignored' : 'pending';
+
     if (!existing) {
       await query(
         `INSERT INTO sync.bling_medusa_categories
            (bling_category_id, bling_category_name, medusa_category_id, nome,
             handle, bling_parent_id, status, origem, created_at, sincronizado_em)
-         VALUES ($1, $2, NULL, $2, NULL, $3, 'pending', 'manual', NOW(), NOW())`,
-        [catIdStr, catName, bc?.id_pai ?? null]
+         VALUES ($1, $2, NULL, $2, NULL, $3, $4, 'manual', NOW(), NOW())`,
+        [catIdStr, catName, bc?.id_pai ?? null, statusInicial]
       );
       novas++;
     } else {
