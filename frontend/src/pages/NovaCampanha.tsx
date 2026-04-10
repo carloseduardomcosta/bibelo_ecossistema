@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import {
   ChevronLeft, ChevronRight, Package, Users, Eye, Send, Check,
-  Sparkles, Mail, AlertTriangle, Search, X,
+  Sparkles, Mail, AlertTriangle, Search, X, Star,
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
@@ -34,7 +34,7 @@ interface Destinatario {
 type Publico = 'todos' | 'todos_com_email' | 'nunca_contatados' | 'manual';
 
 const STEPS = ['Selecionar', 'Produtos', 'Público', 'Preview', 'Enviar'];
-type SelecaoTab = 'categorias' | 'produtos';
+type SelecaoTab = 'categorias' | 'produtos' | 'novidades';
 
 export default function NovaCampanha() {
   const navigate = useNavigate();
@@ -49,6 +49,11 @@ export default function NovaCampanha() {
   const [catSelecionadas, setCatSelecionadas] = useState<string[]>([]);
   const [catSearch, setCatSearch] = useState('');
   const [maxPorCat, setMaxPorCat] = useState(2);
+
+  // Novidades (última NF)
+  const [novidadesNF, setNovidadesNF] = useState<Produto[]>([]);
+  const [carregandoNF, setCarregandoNF] = useState(false);
+  const [erroNF, setErroNF] = useState('');
 
   // Produtos individuais
   const [produtoBusca, setProdutoBusca] = useState('');
@@ -87,6 +92,18 @@ export default function NovaCampanha() {
     );
   };
 
+  // Carregar produtos da última NF ao selecionar aba Novidades
+  useEffect(() => {
+    if (selecaoTab !== 'novidades' || novidadesNF.length > 0) return;
+    setCarregandoNF(true);
+    setErroNF('');
+    api.get('/campaigns/novidades-nf')
+      .then((r) => setNovidadesNF(r.data))
+      .catch(() => setErroNF('Nenhum produto disponível na última NF. Verifique se a NF foi sincronizada.'))
+      .finally(() => setCarregandoNF(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selecaoTab]);
+
   // Buscar produtos individuais
   const buscarProdutos = async (search: string) => {
     if (search.length < 2) { setProdutosDisponiveis([]); return; }
@@ -116,8 +133,12 @@ export default function NovaCampanha() {
 
   // Gerar preview (step 0→1)
   const gerarPreview = async () => {
-    if (catSelecionadas.length === 0 && produtosSelecionados.length === 0) {
+    if (selecaoTab !== 'novidades' && catSelecionadas.length === 0 && produtosSelecionados.length === 0) {
       showError('Selecione pelo menos uma categoria ou um produto');
+      return;
+    }
+    if (selecaoTab === 'novidades' && novidadesNF.length === 0) {
+      showError('Nenhum produto disponível na última NF');
       return;
     }
     setLoading(true);
@@ -126,9 +147,10 @@ export default function NovaCampanha() {
         categorias: catSelecionadas,
         produto_ids: produtosSelecionados.map((p) => p.id).filter(Boolean),
         max_por_categoria: maxPorCat,
-        limite_produtos: limiteProdutos,
+        limite_produtos: selecaoTab === 'novidades' ? novidadesNF.length : limiteProdutos,
         publico,
         customer_ids: publico === 'manual' ? destSelecionados : undefined,
+        fonte: selecaoTab === 'novidades' ? 'novidades' : undefined,
       });
       setProdutos(data.produtos);
       setDestinatarios(data.destinatarios);
@@ -146,7 +168,9 @@ export default function NovaCampanha() {
   // Avançar step
   const avancar = async () => {
     if (step === 0) {
-      if (catSelecionadas.length === 0 && produtosSelecionados.length === 0) { showError('Selecione pelo menos uma categoria ou um produto'); return; }
+      if (selecaoTab !== 'novidades' && catSelecionadas.length === 0 && produtosSelecionados.length === 0) {
+        showError('Selecione pelo menos uma categoria ou um produto'); return;
+      }
       await gerarPreview();
       setStep(1);
     } else if (step === 1) {
@@ -160,9 +184,10 @@ export default function NovaCampanha() {
           categorias: catSelecionadas,
           produto_ids: produtosSelecionados.map((p) => p.id).filter(Boolean),
           max_por_categoria: maxPorCat,
-          limite_produtos: limiteProdutos,
+          limite_produtos: selecaoTab === 'novidades' ? novidadesNF.length : limiteProdutos,
           publico: 'manual',
           customer_ids: destSelecionados,
+          fonte: selecaoTab === 'novidades' ? 'novidades' : undefined,
         });
         setAssunto(data.assunto);
         setHtml(data.html);
@@ -200,8 +225,11 @@ export default function NovaCampanha() {
     setEnviando(true);
     try {
       const catLabel = catSelecionadas.slice(0, 3).join(', ');
+      const nomeBase = selecaoTab === 'novidades'
+        ? `Novidades — ${new Date().toLocaleDateString('pt-BR')}`
+        : `Novidades ${catLabel} — ${new Date().toLocaleDateString('pt-BR')}`;
       const { data } = await api.post('/campaigns/enviar-personalizada', {
-        nome_campanha: `Novidades ${catLabel} — ${new Date().toLocaleDateString('pt-BR')}`,
+        nome_campanha: nomeBase,
         assunto,
         html,
         customer_ids: destSelecionados,
@@ -280,6 +308,14 @@ export default function NovaCampanha() {
               }`}
             >
               <Sparkles size={14} /> Produto individual
+            </button>
+            <button
+              onClick={() => setSelecaoTab('novidades')}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                selecaoTab === 'novidades' ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text'
+              }`}
+            >
+              <Star size={14} /> Novidades
             </button>
           </div>
 
@@ -409,6 +445,69 @@ export default function NovaCampanha() {
             </div>
           )}
 
+          {/* Tab: Novidades (última NF) */}
+          {selecaoTab === 'novidades' && (
+            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-6">
+              <p className="text-xs text-bibelo-muted mb-4">
+                Produtos com foto HD e estoque confirmado — vinculados diretamente à página do produto na loja.
+              </p>
+
+              {carregandoNF && (
+                <div className="flex items-center justify-center py-10 text-bibelo-muted text-sm gap-2">
+                  <span className="animate-spin">⟳</span> Carregando produtos...
+                </div>
+              )}
+
+              {erroNF && !carregandoNF && (
+                <div className="flex items-center gap-2 text-amber-400 text-xs py-4">
+                  <AlertTriangle size={14} />
+                  {erroNF}
+                </div>
+              )}
+
+              {!carregandoNF && novidadesNF.length > 0 && (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-96 overflow-y-auto mb-4">
+                    {novidadesNF.map((p, i) => (
+                      <div key={i} className="bg-bibelo-bg border border-bibelo-border rounded-lg overflow-hidden">
+                        {p.img ? (
+                          <img src={p.img} alt={p.nome} className="w-full aspect-square object-cover" />
+                        ) : (
+                          <div className="w-full aspect-square bg-gradient-to-br from-pink-100 to-yellow-50 flex items-center justify-center text-2xl">🎀</div>
+                        )}
+                        <div className="p-2">
+                          <p className="text-[11px] font-medium text-bibelo-text line-clamp-2">{p.nome}</p>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-xs font-bold text-bibelo-text">{formatCurrency(p.preco)}</span>
+                            {p.estoque <= 3 && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-red-400/10 text-red-400 rounded-full">{p.estoque} un</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-bibelo-muted">Total no email:</label>
+                    <select
+                      value={limiteProdutos}
+                      onChange={(e) => setLimiteProdutos(Number(e.target.value))}
+                      className="bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-1.5 text-sm text-bibelo-text"
+                    >
+                      {[4, 6, 8, 10, 12].filter((n) => n <= novidadesNF.length).concat(
+                        novidadesNF.length <= 12 ? [novidadesNF.length] : []
+                      ).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b).map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                    <span className="text-xs text-bibelo-muted">de {novidadesNF.length} disponíveis</span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Seleção atual (resumo) */}
           {(catSelecionadas.length > 0 || produtosSelecionados.length > 0) && (
             <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-4">
@@ -493,8 +592,9 @@ export default function NovaCampanha() {
                         categorias: catSelecionadas,
                         produto_ids: produtosSelecionados.map((p) => p.id).filter(Boolean),
                         max_por_categoria: maxPorCat,
-                        limite_produtos: limiteProdutos,
+                        limite_produtos: selecaoTab === 'novidades' ? novidadesNF.length : limiteProdutos,
                         publico: opt.value,
+                        fonte: selecaoTab === 'novidades' ? 'novidades' : undefined,
                       });
                       setDestinatarios(data.destinatarios);
                       setDestSelecionados(data.destinatarios.map((d: Destinatario) => d.id));
@@ -679,7 +779,12 @@ export default function NovaCampanha() {
 
           <button
             onClick={avancar}
-            disabled={loading || (step === 0 && catSelecionadas.length === 0 && produtosSelecionados.length === 0) || (step === 2 && destSelecionados.length === 0)}
+            disabled={
+            loading ||
+            (step === 0 && selecaoTab !== 'novidades' && catSelecionadas.length === 0 && produtosSelecionados.length === 0) ||
+            (step === 0 && selecaoTab === 'novidades' && novidadesNF.length === 0) ||
+            (step === 2 && destSelecionados.length === 0)
+          }
             className="flex items-center gap-2 px-5 py-2.5 bg-bibelo-primary text-white rounded-lg text-sm font-medium hover:bg-bibelo-primary/90 transition-colors disabled:opacity-50"
           >
             {loading ? 'Carregando...' : step === 3 ? 'Ir para envio' : 'Continuar'}

@@ -90,6 +90,113 @@ campaignsRouter.get("/resend-status", async (_req: Request, res: Response) => {
   res.json(status);
 });
 
+// ── GET /api/campaigns/novidades-nf — produtos da última NF para o wizard ────────
+// Retorna os produtos da NF mais recente com imagens HD do Bling + URL da loja.
+// Sem qualquer dado de NF exposto — é controle interno.
+
+campaignsRouter.get("/novidades-nf", async (_req: Request, res: Response) => {
+  try {
+    const rows = await query<{
+      id: string; bling_id: string; nome: string; sku: string | null;
+      preco_venda: string; imagens: string; categoria: string | null;
+      saldo_fisico: string; ns_url: string | null;
+    }>(`
+      WITH nf_candidates AS (
+        SELECT id, data_emissao, criado_em
+        FROM financeiro.notas_entrada
+        WHERE status != 'cancelada'
+        ORDER BY data_emissao DESC, criado_em DESC
+        LIMIT 10
+      ),
+      valid_products AS (
+        SELECT
+          bp.id, bp.bling_id, bp.nome, bp.sku,
+          bp.preco_venda::text                AS preco_venda,
+          bp.imagens::text                    AS imagens,
+          bp.categoria,
+          nf.id                               AS nf_id,
+          nf.data_emissao                     AS nf_sort,
+          nf.criado_em                        AS nf_criado_em,
+          nei.numero_item,
+          COALESCE(MAX(bs.saldo_fisico), 0)   AS saldo_fisico
+        FROM nf_candidates nf
+        JOIN financeiro.notas_entrada_itens nei ON nei.nota_id = nf.id
+        JOIN sync.bling_products bp ON (
+          TRIM(bp.sku) = TRIM(nei.codigo_produto)
+          OR bp.gtin = nei.codigo_produto
+          OR (nei.gtin IS NOT NULL AND bp.gtin = nei.gtin)
+          OR REPLACE(TRIM(bp.sku), ' - ', ' ') = REPLACE(TRIM(nei.codigo_produto), ' - ', ' ')
+        )
+        AND bp.ativo = true
+        AND bp.preco_venda > 0
+        AND jsonb_array_length(bp.imagens) > 0
+        LEFT JOIN sync.bling_stock bs ON bs.bling_product_id = bp.bling_id
+        GROUP BY
+          bp.id, bp.bling_id, bp.nome, bp.sku, bp.preco_venda,
+          bp.imagens, bp.categoria, nf.id, nf.data_emissao, nf.criado_em, nei.numero_item
+        HAVING COALESCE(MAX(bs.saldo_fisico), 0) > 0
+      ),
+      latest_nf AS (
+        SELECT nf_id FROM valid_products
+        ORDER BY nf_sort DESC, nf_criado_em DESC LIMIT 1
+      )
+      SELECT
+        vp.id, vp.bling_id, vp.nome, vp.sku, vp.preco_venda,
+        vp.imagens, vp.categoria, vp.saldo_fisico,
+        np.dados_raw->>'canonical_url' AS ns_url
+      FROM valid_products vp
+      JOIN latest_nf ln ON ln.nf_id = vp.nf_id
+      LEFT JOIN LATERAL (
+        SELECT np2.dados_raw FROM sync.nuvemshop_products np2
+        WHERE np2.sku = vp.sku
+          OR LOWER(np2.nome) LIKE '%' || LOWER(SUBSTRING(vp.nome FROM 1 FOR 15)) || '%'
+        ORDER BY np2.estoque DESC NULLS LAST
+        LIMIT 1
+      ) np ON true
+      ORDER BY vp.numero_item ASC
+      LIMIT 12
+    `);
+
+    const produtos: Array<{
+      id: string; nome: string; preco: number; estoque: number;
+      img: string | null; url: string | null; categoria: string | null;
+    }> = [];
+    const seen = new Set<string>();
+
+    for (const row of rows) {
+      if (seen.has(row.bling_id)) continue;
+      let imagens: Array<{ url?: string; link?: string }> = [];
+      try { imagens = JSON.parse(row.imagens || "[]"); } catch { continue; }
+      const imgUrl = imagens.map((i) => i.url || i.link || "").find((u) => u.startsWith("http")) ?? null;
+      if (!imgUrl) continue;
+      const preco = parseFloat(row.preco_venda);
+      const estoque = parseFloat(row.saldo_fisico);
+      if (preco <= 0 || estoque <= 0) continue;
+      seen.add(row.bling_id);
+      produtos.push({
+        id: row.id,
+        nome: row.nome,
+        preco,
+        estoque,
+        img: imgUrl,
+        url: row.ns_url ?? "https://www.papelariabibelo.com.br/novidades/",
+        categoria: row.categoria,
+      });
+    }
+
+    if (produtos.length === 0) {
+      res.status(404).json({ error: "Nenhum produto disponível na última NF" });
+      return;
+    }
+
+    res.json(produtos);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Erro desconhecido";
+    logger.error("[campaigns/novidades-nf] Erro", { error: msg });
+    res.status(500).json({ error: "Erro ao buscar produtos da última NF" });
+  }
+});
+
 // ── GET /api/campaigns/gerar-novidades — template dinâmico com produtos novos ──
 // Inteligência: filtra esgotados, expande período se poucos, adapta layout ao volume
 
@@ -529,6 +636,7 @@ const gerarPersonalizadaSchema = z.object({
   publico: z.enum(["todos", "todos_com_email", "nunca_contatados", "segmento", "manual"]),
   segmento: z.string().optional(),
   customer_ids: z.array(z.string().uuid()).optional(),
+  fonte: z.enum(["novidades"]).optional(),
 });
 
 campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response) => {
@@ -538,21 +646,108 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
     return;
   }
 
-  const { categorias, produto_ids, max_por_categoria, limite_produtos, publico, segmento, customer_ids } = parse.data;
+  const { categorias, produto_ids, max_por_categoria, limite_produtos, publico, segmento, customer_ids, fonte } = parse.data;
 
-  if (categorias.length === 0 && produto_ids.length === 0) {
+  if (fonte !== "novidades" && categorias.length === 0 && produto_ids.length === 0) {
     res.status(400).json({ error: "Selecione pelo menos uma categoria ou um produto" });
     return;
   }
 
-  // 1. Busca produtos: individuais + por categoria (max N por categoria, mais recentes)
+  // 1. Busca produtos
   let produtos: Array<{
     nome: string; preco: string; estoque: number;
     img: string | null; url: string | null; categoria: string | null;
   }> = [];
 
+  // ── Branch Novidades: produtos da última NF com imagens HD ────────────────────
+  if (fonte === "novidades") {
+    const nfRows = await query<{
+      id: string; bling_id: string; nome: string; sku: string | null;
+      preco_venda: string; imagens: string; categoria: string | null;
+      saldo_fisico: string; ns_url: string | null;
+    }>(`
+      WITH nf_candidates AS (
+        SELECT id, data_emissao, criado_em
+        FROM financeiro.notas_entrada
+        WHERE status != 'cancelada'
+        ORDER BY data_emissao DESC, criado_em DESC
+        LIMIT 10
+      ),
+      valid_products AS (
+        SELECT
+          bp.id, bp.bling_id, bp.nome, bp.sku,
+          bp.preco_venda::text                AS preco_venda,
+          bp.imagens::text                    AS imagens,
+          bp.categoria,
+          nf.id AS nf_id, nf.data_emissao AS nf_sort, nf.criado_em AS nf_criado_em,
+          nei.numero_item,
+          COALESCE(MAX(bs.saldo_fisico), 0)   AS saldo_fisico
+        FROM nf_candidates nf
+        JOIN financeiro.notas_entrada_itens nei ON nei.nota_id = nf.id
+        JOIN sync.bling_products bp ON (
+          TRIM(bp.sku) = TRIM(nei.codigo_produto)
+          OR bp.gtin = nei.codigo_produto
+          OR (nei.gtin IS NOT NULL AND bp.gtin = nei.gtin)
+          OR REPLACE(TRIM(bp.sku), ' - ', ' ') = REPLACE(TRIM(nei.codigo_produto), ' - ', ' ')
+        )
+        AND bp.ativo = true AND bp.preco_venda > 0 AND jsonb_array_length(bp.imagens) > 0
+        LEFT JOIN sync.bling_stock bs ON bs.bling_product_id = bp.bling_id
+        GROUP BY
+          bp.id, bp.bling_id, bp.nome, bp.sku, bp.preco_venda,
+          bp.imagens, bp.categoria, nf.id, nf.data_emissao, nf.criado_em, nei.numero_item
+        HAVING COALESCE(MAX(bs.saldo_fisico), 0) > 0
+      ),
+      latest_nf AS (
+        SELECT nf_id FROM valid_products
+        ORDER BY nf_sort DESC, nf_criado_em DESC LIMIT 1
+      )
+      SELECT
+        vp.id, vp.bling_id, vp.nome, vp.sku, vp.preco_venda,
+        vp.imagens, vp.categoria, vp.saldo_fisico,
+        np.dados_raw->>'canonical_url' AS ns_url
+      FROM valid_products vp
+      JOIN latest_nf ln ON ln.nf_id = vp.nf_id
+      LEFT JOIN LATERAL (
+        SELECT np2.dados_raw FROM sync.nuvemshop_products np2
+        WHERE np2.sku = vp.sku
+          OR LOWER(np2.nome) LIKE '%' || LOWER(SUBSTRING(vp.nome FROM 1 FOR 15)) || '%'
+        ORDER BY np2.estoque DESC NULLS LAST
+        LIMIT 1
+      ) np ON true
+      ORDER BY vp.numero_item ASC
+      LIMIT $1
+    `, [limite_produtos]);
+
+    const seenNf = new Set<string>();
+    for (const row of nfRows) {
+      if (seenNf.has(row.bling_id)) continue;
+      let imagens: Array<{ url?: string; link?: string }> = [];
+      try { imagens = JSON.parse(row.imagens || "[]"); } catch { continue; }
+      const imgUrl = imagens.map((i) => i.url || i.link || "").find((u) => u.startsWith("http")) ?? null;
+      if (!imgUrl) continue;
+      const preco = parseFloat(row.preco_venda);
+      const estoque = parseFloat(row.saldo_fisico);
+      if (preco <= 0 || estoque <= 0) continue;
+      seenNf.add(row.bling_id);
+      produtos.push({
+        nome: row.nome,
+        preco: row.preco_venda,
+        estoque,
+        img: imgUrl,
+        url: row.ns_url ?? "https://www.papelariabibelo.com.br/novidades/",
+        categoria: row.categoria,
+      });
+    }
+
+    if (produtos.length === 0) {
+      res.status(404).json({ error: "Nenhum produto disponível na última NF" });
+      return;
+    }
+  }
+
+  // ── Branch padrão: produtos por categoria + individuais ──────────────────────
   // Produtos selecionados individualmente
-  if (produto_ids.length > 0) {
+  if (fonte !== "novidades" && produto_ids.length > 0) {
     const idParams = produto_ids.map((_, i) => `$${i + 1}`).join(", ");
     const manuais = await query<{
       nome: string; preco: string; estoque: number;
@@ -575,7 +770,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
   }
 
   // Produtos por categoria (max_por_categoria cada, mais recentes, dedup variante Cor:)
-  if (categorias.length > 0) {
+  if (fonte !== "novidades" && categorias.length > 0) {
     const catParams = categorias.map((_, i) => `$${i + 2}`).join(", ");
     const porCategoria = await query<{
       nome: string; preco: string; estoque: number;
@@ -617,12 +812,13 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
     }
   }
 
-  // Limita total
-  produtos = produtos.slice(0, limite_produtos);
-
-  if (produtos.length === 0) {
-    res.status(404).json({ error: "Nenhum produto em estoque nas categorias selecionadas" });
-    return;
+  // Limita total (novidades já vêm limitados pelo SQL)
+  if (fonte !== "novidades") {
+    produtos = produtos.slice(0, limite_produtos);
+    if (produtos.length === 0) {
+      res.status(404).json({ error: "Nenhum produto em estoque nas categorias selecionadas" });
+      return;
+    }
   }
 
   // 2. Busca destinatários
@@ -698,42 +894,178 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
   const whatsappMsg = encodeURIComponent("Oi! Vi as novidades no email e quero saber mais!");
   const whatsappBaseUrl = process.env.WEBHOOK_BASE_URL || "https://webhook.papelariabibelo.com.br";
   const whatsappUrl = `${whatsappBaseUrl}/api/email/wa?text=${whatsappMsg}`;
-  const catLabel = categorias.slice(0, 3).join(", ");
 
   function limparNome(n: string): string {
     return n.replace(/\s*-\s*(PREMIUM|PROMO)$/i, "").replace(/\s+Cor:.*$/i, "").trim();
   }
 
-  const produtosHtml = produtos.map((p) => {
-    const preco = parseFloat(p.preco);
-    const precoFmt = preco ? `R$ ${preco.toFixed(2).replace(".", ",")}` : "";
-    const nomeLimpo = limparNome(p.nome);
-    const link = p.url || linkBase;
-    const imgBlock = p.img
-      ? `<img src="${p.img}" alt="${nomeLimpo}" width="248" style="width:100%;height:auto;aspect-ratio:1;object-fit:cover;display:block;" />`
-      : `<div style="width:100%;aspect-ratio:1;background:linear-gradient(135deg,#ffe5ec,#fff7c1);display:flex;align-items:center;justify-content:center;font-size:36px;">🎀</div>`;
-    const badge = p.estoque <= 3
-      ? `<span style="position:absolute;top:6px;right:6px;background:#ff4444;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">Últimas ${p.estoque}!</span>`
-      : `<span style="position:absolute;top:6px;left:6px;background:#fe68c4;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">Novo</span>`;
+  let assunto: string;
+  let html: string;
 
-    return `
-    <div style="display:inline-block;vertical-align:top;width:50%;max-width:268px;padding:6px;box-sizing:border-box;">
-      <a href="${link}" style="text-decoration:none;display:block;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.06);border:1px solid #f5f0f2;">
-        <div style="position:relative;overflow:hidden;">${imgBlock}${badge}</div>
-        <div style="padding:10px 12px 12px;">
-          <p style="margin:0 0 6px;color:#333;font-weight:600;font-size:12px;line-height:1.3;min-height:32px;">${nomeLimpo}</p>
-          <div style="display:flex;align-items:center;justify-content:space-between;">
-            ${precoFmt ? `<span style="color:#222;font-weight:800;font-size:15px;">${precoFmt}</span>` : ""}
-            <span style="color:#fe68c4;font-size:11px;font-weight:700;">Ver →</span>
+  // ── Template Novidades: layout adaptativo (hero/medio/catalogo) + imagens HD ──
+  if (fonte === "novidades") {
+    const qtd = produtos.length;
+    const layout = qtd <= 2 ? "hero" : qtd <= 6 ? "medio" : "catalogo";
+
+    const produtosHtmlNov = produtos.map((p) => {
+      const preco = parseFloat(p.preco);
+      const precoFmt = preco ? `R$ ${preco.toFixed(2).replace(".", ",")}` : "";
+      const nome = limparNome(p.nome);
+      const link = p.url || `${linkBase}/novidades/`;
+      const estoqueBaixo = p.estoque > 0 && p.estoque <= 3;
+      // proxyImageUrl converte webp→jpg para compatibilidade com Outlook/Yahoo
+      const rawImg = p.img;
+      const imgSrc = rawImg ? proxyImageUrl(rawImg) : null;
+
+      if (layout === "catalogo") {
+        const imgBlock = imgSrc
+          ? `<img src="${imgSrc}" alt="${nome}" width="248" style="width:100%;height:auto;aspect-ratio:1;object-fit:cover;display:block;" />`
+          : `<div style="width:100%;aspect-ratio:1;background:linear-gradient(135deg,#ffe5ec,#fff7c1);display:flex;align-items:center;justify-content:center;font-size:36px;">🎀</div>`;
+        return `
+        <div style="display:inline-block;vertical-align:top;width:50%;max-width:268px;padding:6px;box-sizing:border-box;">
+          <a href="${link}" style="text-decoration:none;display:block;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.06);border:1px solid #f5f0f2;">
+            <div style="position:relative;overflow:hidden;">
+              ${imgBlock}
+              ${estoqueBaixo ? `<span style="position:absolute;top:6px;right:6px;background:#ff4444;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">Últimas ${p.estoque}!</span>` : ""}
+            </div>
+            <div style="padding:10px 12px 12px;">
+              ${p.categoria ? `<p style="margin:0 0 3px;color:#fe68c4;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">${p.categoria}</p>` : ""}
+              <p style="margin:0 0 6px;color:#333;font-weight:600;font-size:12px;line-height:1.3;min-height:32px;">${nome}</p>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                ${precoFmt ? `<span style="color:#222;font-weight:800;font-size:15px;">${precoFmt}</span>` : ""}
+                <span style="color:#fe68c4;font-size:11px;font-weight:700;">Ver →</span>
+              </div>
+            </div>
+          </a>
+        </div>`;
+      }
+
+      // hero / medio: imagem grande, botão "Quero este!"
+      const maxW = layout === "hero" ? "500" : "260";
+      const imgBlock = imgSrc
+        ? `<img src="${imgSrc}" alt="${nome}" width="${maxW}" style="width:100%;max-width:${maxW}px;height:auto;aspect-ratio:1;object-fit:cover;border-radius:12px 12px 0 0;display:block;margin:0 auto;" />`
+        : `<div style="width:100%;max-width:${maxW}px;height:200px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:12px 12px 0 0;display:flex;align-items:center;justify-content:center;font-size:48px;margin:0 auto;">🎀</div>`;
+      const badge = estoqueBaixo
+        ? `<span style="position:absolute;top:10px;left:10px;background:#ff4444;color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:10px;">Últimas ${p.estoque}!</span>`
+        : `<span style="position:absolute;top:10px;left:10px;background:#fe68c4;color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:10px;">Novo</span>`;
+      const fs = layout === "hero"
+        ? { nome: "18px", preco: "22px", btn: "15px" }
+        : { nome: "14px", preco: "18px", btn: "13px" };
+
+      return `
+      <!--[if mso]><td valign="top" width="${maxW}" style="width:${maxW}px;padding:8px;"><![endif]-->
+      <div style="display:inline-block;vertical-align:top;width:100%;max-width:${maxW}px;padding:8px;box-sizing:border-box;">
+        <a href="${link}" style="text-decoration:none;display:block;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06);border:1px solid #f5f0f2;">
+          <div style="position:relative;">${imgBlock}${badge}</div>
+          <div style="padding:16px 18px 18px;">
+            ${p.categoria ? `<p style="margin:0 0 4px;color:#fe68c4;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">${p.categoria}</p>` : ""}
+            <p style="margin:0 0 8px;color:#333;font-weight:700;font-size:${fs.nome};line-height:1.3;">${nome}</p>
+            ${precoFmt ? `<p style="margin:0 0 14px;color:#222;font-weight:800;font-size:${fs.preco};">${precoFmt}</p>` : ""}
+            <div style="background:#fe68c4;color:#fff;padding:11px 16px;border-radius:10px;text-align:center;font-weight:700;font-size:${fs.btn};">Quero este!</div>
           </div>
-        </div>
+        </a>
+      </div>
+      <!--[if mso]></td><![endif]-->`;
+    }).join("");
+
+    const saudacao = qtd === 1
+      ? `Tem uma novidade especial que acabou de chegar e é a sua cara:`
+      : qtd <= 3
+      ? `Acabaram de chegar <strong>${qtd} novidades</strong> na Bibelô e separamos pra você:`
+      : `Toda semana a Bibelô recebe produtos novos e separamos <strong>${qtd} destaques</strong> especialmente pra você. Olha só o que chegou:`;
+
+    const tituloHeader = qtd === 1 ? "Novidade Especial" : qtd <= 3 ? "Novidades Frescas" : "Novidades da Semana";
+    const preheader = qtd === 1
+      ? `${limparNome(produtos[0].nome)} acabou de chegar. Corre que tem poucas unidades!`
+      : `${qtd} produtos novos acabaram de chegar — estoque limitado!`;
+
+    const assuntosNov = qtd === 1
+      ? [`{{nome}}, chegou algo especial pra você!`, `Novidade fresquinha: ${limparNome(produtos[0].nome)}`, `Acabou de chegar na Bibelô e você precisa ver!`]
+      : qtd <= 3
+      ? [`${qtd} novidades acabaram de chegar!`, `{{nome}}, olha o que chegou na Bibelô!`]
+      : [`${qtd} novidades fresquinhas esperando por você!`, `{{nome}}, separamos ${qtd} lançamentos pra você!`];
+    assunto = assuntosNov[Math.floor(Math.random() * assuntosNov.length)];
+
+    html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>${tituloHeader} - Papelaria Bibelô</title>
+  <!--[if mso]><style>table,td{font-family:Arial,Helvetica,sans-serif!important;}</style><![endif]-->
+</head>
+<body style="margin:0;padding:0;background:#f5f0f2;font-family:'Segoe UI',Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;">
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${preheader}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:linear-gradient(135deg,#fe68c4,#ff8fd3);padding:30px 20px;text-align:center;">
+      <a href="${linkBase}" style="text-decoration:none;">
+        <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" width="70" height="70" style="width:70px;height:70px;border-radius:50%;border:3px solid #fff;" />
       </a>
-    </div>`;
-  }).join("");
+      <h1 style="color:#fff;margin:12px 0 0;font-size:24px;font-weight:700;">${tituloHeader}</h1>
+      <p style="color:rgba(255,255,255,0.9);margin:6px 0 0;font-size:14px;">${qtd === 1 ? "Produto especial acabou de chegar!" : "Produtos fresquinhos acabaram de chegar!"}</p>
+    </div>
+    <div style="padding:28px 25px 8px;">
+      <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 6px;">Oi, <strong>{{nome}}</strong>! 💕</p>
+      <p style="color:#555;font-size:15px;line-height:1.6;margin:0;">${saudacao}</p>
+    </div>
+    <div style="padding:12px ${layout === "hero" ? "20px" : "10px"} 0;text-align:center;font-size:0;">
+      <!--[if mso]><table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr><![endif]-->
+      ${produtosHtmlNov}
+      <!--[if mso]></tr></table><![endif]-->
+    </div>
+    <div style="padding:20px 25px 8px;text-align:center;">
+      <a href="${linkBase}/novidades/" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#ff8fd3);color:#fff;padding:16px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">Ver Todas as Novidades</a>
+    </div>
+    <div style="padding:8px 25px 20px;text-align:center;"><p style="color:#999;font-size:12px;margin:0;">Estoque limitado — quando acaba, só na próxima remessa!</p></div>
+    <div style="border-top:2px dashed #ffe5ec;margin:0 25px;"></div>
+    <div style="padding:22px 25px;text-align:center;background:#fafafa;">
+      <p style="color:#555;font-size:14px;margin:0 0 12px;line-height:1.5;">Ficou com dúvida sobre algum produto?<br>Fala com a gente!</p>
+      <a href="${whatsappUrl}" style="display:inline-block;background:#25D366;color:#fff;padding:12px 28px;border-radius:30px;text-decoration:none;font-weight:700;font-size:14px;">Chamar no WhatsApp</a>
+    </div>
+    <div style="background:#f9f9f9;padding:20px 25px;text-align:center;border-top:1px solid #eee;">
+      <p style="color:#999;font-size:12px;margin:0;">Papelaria Bibelô — Timbó/SC</p>
+      <p style="color:#bbb;font-size:11px;margin:5px 0 0;"><a href="${linkBase}" style="color:#fe68c4;text-decoration:none;">papelariabibelo.com.br</a></p>
+      <p style="color:#ccc;font-size:10px;margin:8px 0 0;"><a href="https://www.papelariabibelo.com.br/privacidade/" style="color:#ccc;text-decoration:none;">Política de Privacidade</a> · <a href="https://www.papelariabibelo.com.br/termos-de-uso/" style="color:#ccc;text-decoration:none;">Termos de Uso</a></p>
+      <p style="color:#ccc;font-size:10px;margin:6px 0 0;line-height:1.5;">Você recebeu este email porque é cliente da Papelaria Bibelô.<br><a href="{{unsub_link}}" style="color:#ccc;text-decoration:underline;">Não quero mais receber emails</a></p>
+    </div>
+  </div>
+</body></html>`;
 
-  const assunto = `{{nome}}, novidades em ${catLabel} na Bibelô! ✨`;
+  // ── Template padrão: categoria / produto individual ──────────────────────────
+  } else {
+    const catLabel = categorias.slice(0, 3).join(", ");
 
-  const html = `<!DOCTYPE html>
+    const produtosHtml = produtos.map((p) => {
+      const preco = parseFloat(p.preco);
+      const precoFmt = preco ? `R$ ${preco.toFixed(2).replace(".", ",")}` : "";
+      const nomeLimpo = limparNome(p.nome);
+      const link = p.url || linkBase;
+      const imgBlock = p.img
+        ? `<img src="${p.img}" alt="${nomeLimpo}" width="248" style="width:100%;height:auto;aspect-ratio:1;object-fit:cover;display:block;" />`
+        : `<div style="width:100%;aspect-ratio:1;background:linear-gradient(135deg,#ffe5ec,#fff7c1);display:flex;align-items:center;justify-content:center;font-size:36px;">🎀</div>`;
+      const badge = p.estoque <= 3
+        ? `<span style="position:absolute;top:6px;right:6px;background:#ff4444;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">Últimas ${p.estoque}!</span>`
+        : `<span style="position:absolute;top:6px;left:6px;background:#fe68c4;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">Novo</span>`;
+
+      return `
+      <div style="display:inline-block;vertical-align:top;width:50%;max-width:268px;padding:6px;box-sizing:border-box;">
+        <a href="${link}" style="text-decoration:none;display:block;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.06);border:1px solid #f5f0f2;">
+          <div style="position:relative;overflow:hidden;">${imgBlock}${badge}</div>
+          <div style="padding:10px 12px 12px;">
+            <p style="margin:0 0 6px;color:#333;font-weight:600;font-size:12px;line-height:1.3;min-height:32px;">${nomeLimpo}</p>
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              ${precoFmt ? `<span style="color:#222;font-weight:800;font-size:15px;">${precoFmt}</span>` : ""}
+              <span style="color:#fe68c4;font-size:11px;font-weight:700;">Ver →</span>
+            </div>
+          </div>
+        </a>
+      </div>`;
+    }).join("");
+
+    assunto = `{{nome}}, novidades em ${catLabel} na Bibelô! ✨`;
+
+    html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f5f0f2;font-family:'Segoe UI',Arial,Helvetica,sans-serif;">
   <div style="display:none;max-height:0;overflow:hidden;">${produtos.length} produtos selecionados pra você — estoque limitado!&nbsp;&zwnj;&nbsp;&zwnj;</div>
@@ -767,8 +1099,10 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
     </div>
   </div>
 </body></html>`;
+  }
 
   logger.info("Campanha personalizada gerada", {
+    fonte: fonte ?? "categorias",
     categorias,
     produtos: produtos.length,
     destinatarios: destinatarios.length,
@@ -779,6 +1113,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
   res.json({
     assunto,
     html,
+    fonte: fonte ?? null,
     produtos: produtos.map((p) => ({
       nome: limparNome(p.nome),
       preco: Number(p.preco),
