@@ -3,11 +3,7 @@ import { queryOne, query } from "../../db";
 import { logger } from "../../utils/logger";
 import { gerarLinkDescadastro } from "../../routes/email";
 import { sesSendEmail, isSesConfigured } from "../ses/client";
-
-// ── Sanitização HTML (anti-XSS em templates de email) ──────────
-function escHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-}
+import { escHtml } from "../../utils/sanitize";
 
 // ── Provider ativo (ses ou resend) ──────────────────────────────
 export function getEmailProvider(): "ses" | "resend" {

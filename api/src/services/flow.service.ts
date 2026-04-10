@@ -5,11 +5,7 @@ import { getNuvemShopToken, nsRequest } from "../integrations/nuvemshop/auth";
 import { gerarLinkDescadastro, proxyImageUrl, warmProxyImage } from "../routes/email";
 
 import crypto from "crypto";
-
-// ── Sanitização HTML (anti-XSS em templates de email) ──────────
-function escHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-}
+import { escHtml } from "../utils/sanitize";
 
 // ── Gerar cupom único por lead via NuvemShop API ────────────────
 

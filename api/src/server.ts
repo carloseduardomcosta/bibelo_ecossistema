@@ -49,6 +49,27 @@ import { firewallRouter } from "./routes/firewall";
 import { registerScheduledJobs, closeSyncQueue } from "./queues/sync.queue";
 import { registerFlowJobs, closeFlowQueue }      from "./queues/flow.queue";
 
+// ── Validação de variáveis de ambiente obrigatórias ──────────
+const REQUIRED_ENV = [
+  "DATABASE_URL",
+  "JWT_SECRET",
+  "BLING_CLIENT_ID",
+  "BLING_CLIENT_SECRET",
+  "NUVEMSHOP_APP_ID",
+  "NUVEMSHOP_CLIENT_SECRET",
+  "NUVEMSHOP_WEBHOOK_SECRET",
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+];
+
+function validateEnv(): void {
+  const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
+  if (missing.length > 0) {
+    logger.error(`Variáveis de ambiente obrigatórias ausentes: ${missing.join(", ")}`);
+    process.exit(1);
+  }
+}
+
 const app  = express();
 const PORT = Number(process.env.API_PORT) || 4000;
 
@@ -145,6 +166,7 @@ export { app };
 
 // ── Start (não executa durante testes)
 async function start(): Promise<void> {
+  validateEnv();
   await dbConnect();
   await registerScheduledJobs();
   await registerFlowJobs();

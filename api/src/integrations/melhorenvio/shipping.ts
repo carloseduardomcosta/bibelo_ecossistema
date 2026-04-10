@@ -71,6 +71,30 @@ async function getMeToken(): Promise<string> {
   return data.access_token
 }
 
+// ── Retry com backoff exponencial ────────────────────────────
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  baseDelayMs = 1000
+): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastError = err
+      if (attempt === maxRetries) break
+      const delay = baseDelayMs * 2 ** (attempt - 1) // 1s, 2s, 4s
+      logger.warn(`MelhorEnvio tentativa ${attempt}/${maxRetries} falhou — aguardando ${delay}ms`, {
+        error: err instanceof Error ? err.message : String(err),
+      })
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+  }
+  throw lastError
+}
+
 // ── API Helper ────────────────────────────────────────────────
 
 async function meRequest<T>(
@@ -91,7 +115,7 @@ async function meRequest<T>(
       "User-Agent": USER_AGENT,
     },
     data: body,
-    timeout: 30000,
+    timeout: 10000,
   })
 
   const elapsed = Date.now() - startTime
@@ -132,7 +156,7 @@ export async function createShippingLabel(
   )
 
   // 1. Adicionar ao carrinho do ME
-  const cartBody = {
+  const cartBody: Record<string, unknown> = {
     service: serviceId,
     agency: null,
     from: STORE_FROM,
@@ -171,11 +195,8 @@ export async function createShippingLabel(
     },
   }
 
-  const cartRes = await meRequest<any>(
-    "post",
-    "/me/cart",
-    token,
-    cartBody as any
+  const cartRes = await withRetry(() =>
+    meRequest<{ id?: string }>("post", "/me/cart", token, cartBody)
   )
 
   const meCartId = cartRes.id
@@ -186,34 +207,25 @@ export async function createShippingLabel(
   logger.info(`MelhorEnvio cart criado: ${meCartId}`)
 
   // 2. Checkout (comprar etiqueta — debita saldo ME)
-  const checkoutRes = await meRequest<any>(
-    "post",
-    "/me/cart/checkout",
-    token,
-    { orders: [meCartId] }
+  const checkoutRes = await withRetry(() =>
+    meRequest<unknown>("post", "/me/cart/checkout", token, { orders: [meCartId] })
   )
 
   logger.info(`MelhorEnvio checkout: ${JSON.stringify(checkoutRes).substring(0, 200)}`)
 
   // 3. Gerar etiqueta
-  const generateRes = await meRequest<any>(
-    "post",
-    "/me/shipment/generate",
-    token,
-    { orders: [meCartId] }
+  const generateRes = await withRetry(() =>
+    meRequest<unknown>("post", "/me/shipment/generate", token, { orders: [meCartId] })
   )
 
   logger.info(`MelhorEnvio generate: ${JSON.stringify(generateRes).substring(0, 200)}`)
 
   // 4. Imprimir (obter URL do PDF)
-  const printRes = await meRequest<any>(
-    "post",
-    "/me/shipment/print",
-    token,
-    { mode: "private", orders: [meCartId] }
+  const printRes = await withRetry(() =>
+    meRequest<{ url?: string }>("post", "/me/shipment/print", token, { mode: "private", orders: [meCartId] })
   )
 
-  const labelUrl = printRes?.url || null
+  const labelUrl = printRes?.url ?? undefined
   logger.info(`MelhorEnvio etiqueta pronta: ${order.numero} label=${labelUrl}`)
 
   // Salvar no banco

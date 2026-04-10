@@ -6,12 +6,9 @@
 import { sendEmail, isEmailConfigured } from "../integrations/resend/email";
 import { gerarLinkDescadastro } from "../routes/email";
 import { logger } from "../utils/logger";
+import { escHtml as esc } from "../utils/sanitize";
 
 // ── Helpers ──────────────────────────────────────────────────────
-
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-}
 
 function formatBRL(centavos: number): string {
   return `R$ ${(centavos / 100).toFixed(2).replace(".", ",")}`;

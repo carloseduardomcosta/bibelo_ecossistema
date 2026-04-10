@@ -4,6 +4,7 @@ import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../integrations/resend/email";
+import { escHtml as esc } from "../utils/sanitize";
 
 export const briefingRouter = Router();
 briefingRouter.use(authMiddleware);
@@ -418,10 +419,6 @@ function gerarDicas(d: {
 }
 
 // ── HTML do email do briefing ──────────────────────────────────
-
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
 function formatBRL(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });

@@ -10,11 +10,7 @@ import { getNuvemShopToken, nsRequest } from "../integrations/nuvemshop/auth";
 import { authMiddleware } from "../middleware/auth";
 
 import rateLimit from "express-rate-limit";
-
-// ── Sanitização HTML (anti-XSS) ─────────────────────────────
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
+import { escHtml as esc } from "../utils/sanitize";
 
 export const leadsRouter = Router();
 

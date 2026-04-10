@@ -5,14 +5,11 @@ import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import rateLimit from "express-rate-limit";
 import { getNfProducts } from "../services/flow.service";
+import { escHtml as esc } from "../utils/sanitize";
 
 export const landingPagesRouter = Router();
 
 const publicLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false });
-
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
 
 // ══════════════════════════════════════════════════════════════════
 // PÚBLICO — GET /lp/:slug — página da landing page

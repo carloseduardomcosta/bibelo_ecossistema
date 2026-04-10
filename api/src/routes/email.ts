@@ -6,11 +6,7 @@ import rateLimit from "express-rate-limit";
 import { query, queryOne } from "../db";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../integrations/resend/email";
-
-// ── Sanitização HTML (anti-XSS) ─────────────────────────────
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
+import { escHtml as esc } from "../utils/sanitize";
 
 const publicLimiter = rateLimit({
   windowMs: 60 * 1000,

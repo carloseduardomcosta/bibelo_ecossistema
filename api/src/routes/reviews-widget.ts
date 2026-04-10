@@ -1,10 +1,7 @@
 import { Router, Request, Response } from "express";
 import { getCachedReviews } from "../integrations/google/reviews";
 import rateLimit from "express-rate-limit";
-
-function escJs(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3c').replace(/>/g, '\\x3e').replace(/\n/g, '\\n');
-}
+import { escJs } from "../utils/sanitize";
 
 export const reviewsWidgetRouter = Router();
 
