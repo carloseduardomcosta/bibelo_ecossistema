@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation"
-import Image from "next/image"
 import Link from "next/link"
 import { getProductByHandle, listProducts } from "@/lib/medusa/products"
 import AddToCartButton from "@/components/product/AddToCartButton"
 import VariantSelector from "@/components/product/VariantSelector"
 import ProductCard from "@/components/product/ProductCard"
+import ImageGallery from "@/components/product/ImageGallery"
+import FreteCalculator from "@/components/product/FreteCalculator"
+import BuyNowButton from "@/components/product/BuyNowButton"
 import { formatPrice, formatInstallments, getDiscountPercent } from "@/lib/utils"
 import type { Metadata } from "next"
 
@@ -32,24 +34,36 @@ export default async function ProductPage({ params }: Props) {
   const product = await getProductByHandle(handle)
   if (!product) notFound()
 
-  const { products: related } = await listProducts({ limit: 5 })
+  // Categorias do produto para relacionados
+  const productCategories = (product.categories as Array<{ id: string }> | undefined) || []
+  const firstCategoryId   = productCategories[0]?.id
+
+  // Relacionados: mesma categoria se disponível, senão genérico
+  const { products: related } = await listProducts({
+    limit: 5,
+    ...(firstCategoryId ? { categoryId: firstCategoryId } : {}),
+  })
   const relatedFiltered = related.filter((p) => p.id !== product.id).slice(0, 4)
 
   const hasVariants = (product.variants?.length || 0) > 1
 
-  const variant = product.variants?.[0]
-  const price = variant?.calculated_price as { calculated_amount?: number; original_amount?: number } | undefined
-  const calculatedAmount = price?.calculated_amount || 0
-  const originalAmount = price?.original_amount || 0
-  const discountPercent = getDiscountPercent(originalAmount, calculatedAmount)
-  const isOnSale = discountPercent > 0
-  const isOutOfStock =
+  const variant           = product.variants?.[0]
+  const price             = variant?.calculated_price as { calculated_amount?: number; original_amount?: number } | undefined
+  const calculatedAmount  = price?.calculated_amount || 0
+  const originalAmount    = price?.original_amount || 0
+  const discountPercent   = getDiscountPercent(originalAmount, calculatedAmount)
+  const isOnSale          = discountPercent > 0
+  const isOutOfStock      =
     variant?.inventory_quantity !== null &&
     variant?.inventory_quantity !== undefined &&
     (variant.inventory_quantity as number) <= 0
 
   const images = (product.images as Array<{ url: string }> | undefined) ||
     (product.thumbnail ? [{ url: product.thumbnail }] : [])
+
+  const whatsappText = encodeURIComponent(
+    `Olá! Vi o produto *${product.title}* na loja e gostaria de tirar uma dúvida.\n\nhttps://homolog.papelariabibelo.com.br/produto/${handle}`
+  )
 
   return (
     <div className="content-container py-8 lg:py-12">
@@ -64,46 +78,14 @@ export default async function ProductPage({ params }: Props) {
 
       {/* Layout principal */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 xl:gap-20">
-        {/* Galeria de imagens */}
-        <div className="space-y-3 lg:sticky lg:top-28 lg:self-start">
-          <div className="relative aspect-square bg-gray-50 rounded-2xl overflow-hidden border border-gray-100">
-            {images[0] ? (
-              <Image
-                src={images[0].url}
-                alt={product.title || "Produto"}
-                fill
-                sizes="(max-width: 1024px) 100vw, 50vw"
-                className="object-contain p-4"
-                priority
-              />
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-bibelo-rosa/50 to-bibelo-amarelo/30">
-                <div className="w-20 h-20 rounded-full bg-white/60 flex items-center justify-center mb-3">
-                  <svg className="w-10 h-10 text-bibelo-pink/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
-                  </svg>
-                </div>
-                <span className="text-sm text-gray-400 font-medium">Foto em breve</span>
-              </div>
-            )}
-            {/* Badges */}
-            <div className="absolute top-3 left-3 flex flex-col gap-1.5">
-              {isOutOfStock && <span className="badge-sold-out">ESGOTADO</span>}
-              {isOnSale && !isOutOfStock && <span className="badge-off">{discountPercent}% OFF</span>}
-            </div>
-          </div>
-
-          {/* Miniaturas */}
-          {images.length > 1 && (
-            <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-              {images.map((img, idx) => (
-                <div key={idx} className="w-16 h-16 lg:w-20 lg:h-20 shrink-0 bg-gray-50 rounded-lg overflow-hidden border border-gray-100 cursor-pointer hover:border-bibelo-pink transition-colors">
-                  <Image src={img.url} alt={`${product.title} ${idx + 1}`} width={80} height={80} className="w-full h-full object-cover" />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Galeria com thumbnails clicáveis + zoom */}
+        <ImageGallery
+          images={images}
+          title={product.title || "Produto"}
+          isOutOfStock={isOutOfStock}
+          isOnSale={isOnSale}
+          discountPercent={discountPercent}
+        />
 
         {/* Informações do produto */}
         <div className="flex flex-col gap-5 lg:gap-6">
@@ -113,7 +95,19 @@ export default async function ProductPage({ params }: Props) {
                 {(product.collection as { title: string }).title}
               </p>
             )}
-            <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-bibelo-dark leading-tight">{product.title}</h1>
+            <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-bibelo-dark leading-tight">
+              {product.title}
+            </h1>
+
+            {/* Avaliações — placeholder visual */}
+            <div className="flex items-center gap-1.5 mt-2">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <svg key={i} className="w-4 h-4 text-bibelo-amarelo fill-bibelo-amarelo" viewBox="0 0 20 20">
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+              ))}
+              <span className="text-xs text-gray-400 ml-1">5.0 (avaliações em breve)</span>
+            </div>
           </div>
 
           {/* Preço */}
@@ -138,11 +132,14 @@ export default async function ProductPage({ params }: Props) {
             <p className="text-gray-500">Entre em contato para consultar o preço</p>
           )}
 
-          {/* Seletor de variações */}
+          {/* Seletor de variações + botões de ação */}
           {hasVariants ? (
             <VariantSelector product={product as unknown as Record<string, unknown>} />
           ) : !isOutOfStock && variant ? (
-            <AddToCartButton variantId={variant.id} />
+            <div className="flex flex-col gap-2">
+              <BuyNowButton variantId={variant.id} />
+              <AddToCartButton variantId={variant.id} />
+            </div>
           ) : (
             <div>
               <button disabled className="btn-primary w-full opacity-50 cursor-not-allowed py-4 text-base">
@@ -178,20 +175,17 @@ export default async function ProductPage({ params }: Props) {
             ))}
           </div>
 
-          {/* Descrição */}
+          {/* Calculadora de frete */}
+          <FreteCalculator />
+
+          {/* Descrição em accordion */}
           {product.description && (
-            <div>
-              <h2 className="font-semibold text-gray-800 mb-2">Descrição</h2>
-              <div
-                className="legal-content text-sm text-gray-600 leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: product.description }}
-              />
-            </div>
+            <DescriptionAccordion description={product.description} />
           )}
 
-          {/* Botão WhatsApp com link do produto */}
+          {/* Botão WhatsApp */}
           <a
-            href={`https://wa.me/5547933862514?text=${encodeURIComponent(`Olá! Vi o produto *${product.title}* na loja e gostaria de mais informações.\n\nhttps://homolog.papelariabibelo.com.br/produto/${handle}`)}`}
+            href={`https://wa.me/5547933862514?text=${whatsappText}`}
             target="_blank"
             rel="noreferrer"
             className="flex items-center justify-center gap-2.5 w-full py-3.5 rounded-full bg-green-500 text-white font-semibold hover:bg-green-600 active:bg-green-700 transition-colors text-sm shadow-md shadow-green-500/25"
@@ -199,7 +193,7 @@ export default async function ProductPage({ params }: Props) {
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
             </svg>
-            Preciso de ajuda com este produto
+            Tirar dúvidas
           </a>
         </div>
       </div>
@@ -219,5 +213,29 @@ export default async function ProductPage({ params }: Props) {
         </div>
       )}
     </div>
+  )
+}
+
+// Accordion de descrição — inline server component (sem estado do cliente)
+function DescriptionAccordion({ description }: { description: string }) {
+  return (
+    <details className="group border border-gray-100 rounded-xl overflow-hidden">
+      <summary className="flex items-center justify-between px-4 py-3 cursor-pointer select-none bg-gray-50/50 hover:bg-gray-50 transition-colors">
+        <span className="font-semibold text-gray-800 text-sm">Descrição do produto</span>
+        <svg
+          className="w-4 h-4 text-gray-400 transition-transform group-open:rotate-180"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </summary>
+      <div
+        className="px-4 py-3 legal-content text-sm text-gray-600 leading-relaxed border-t border-gray-100"
+        dangerouslySetInnerHTML={{ __html: description }}
+      />
+    </details>
   )
 }

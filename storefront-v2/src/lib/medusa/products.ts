@@ -62,7 +62,7 @@ export async function getProductByHandle(handle: string) {
     const { products } = await medusa.store.product.list({
       handle,
       region_id: DEFAULT_REGION,
-      fields: "*variants.calculated_price,+variants.inventory_quantity,+variants.options,+images,+options,+options.values",
+      fields: "*variants.calculated_price,+variants.inventory_quantity,+variants.options,+images,+options,+options.values,+categories",
     } as Parameters<typeof medusa.store.product.list>[0])
     return products[0] || null
   } catch (error) {
