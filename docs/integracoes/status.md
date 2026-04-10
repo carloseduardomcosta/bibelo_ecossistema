@@ -39,7 +39,7 @@
 | Medusa.js v2 | ✅ produção | porta 9000, Admin Dashboard ativo, 373 produtos sincronizados do Bling, Pix integrado |
 | Sync Bling → Medusa | ✅ produção | CRM como hub: sync.bling_products → Medusa Admin API, BullMQ 30min, dedup SKU+handle (fallback), estoque → published/draft. Fix 10/04: fallback handle p/ produtos sem SKU na variante |
 | Categorias Sync (painel) | ✅ produção | Painel CRM Loja Online → Categorias Sync. 4 rotas `/api/categorias-sync`. Fluxo automático: webhook product.* → syncCategoriesToMedusa() → cria+marca mapped. Manual: importar/mapear/sincronizar. 54 categorias mapeadas. |
-| Next.js Storefront | 🔧 em desenvolvimento | porta 8001, integrado com Medusa.js v2 |
+| Next.js Storefront | 🔧 em desenvolvimento | porta 8001, integrado com Medusa.js v2. Páginas concluídas: /produtos (filtros+paginação+badges), /produto/[handle] (galeria clicável, zoom, frete, comprar agora, accordion, relacionados por categoria) |
 | Mercado Pago Pix | ✅ produção | Payment provider Medusa v2 — API Orders (Checkout Transparente), webhook HMAC validado, Nginx+SSL em api.papelariabibelo.com.br |
 | Melhor Envio | ✅ produção | OAuth2 conectado, fulfillment provider Medusa v2, PAC+SEDEX calculados via API, token via CRM |
 | Medusa → Bling pedidos | ✅ produção | Subscriber order.placed → CRM → Bling API (busca/cria contato + cria pedido), webhook bidirecional confirmado |

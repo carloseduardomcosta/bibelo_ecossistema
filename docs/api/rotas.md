@@ -9,6 +9,7 @@ Referência completa de todos os endpoints.
 - `POST /api/auth/google` — recebe credential Google, retorna accessToken + refreshToken
 - `GET  /api/images/serve/:id` — serve imagem temporária convertida (público, sem auth — usado pelo Bling para puxar imagens)
 - `GET  /api/public/novidades?limit=20` — produtos da NF de entrada mais recente com foto + preço + descrição + estoque válidos. `limit` máx 50. Retorna `{ novidades[], total, nf_numero, atualizado_em }`. Cache 5 min.
+- `GET  /api/public/frete?cep=XXXXXXXX` — calcula frete PAC + SEDEX via Melhor Envio. CEP deve ter 8 dígitos. Retorna `{ cep, options: [{ id, name, price (centavos), delivery_days }] }`. Origem: CEP 89093880 (Timbó/SC). Pacote padrão: 0,5kg 10×15×20cm. Rate limit: 30 req/min. Cache 5 min. Proxy Next.js disponível em `/api/frete?cep=` (uso client-side).
 
 ## Protegidas (Bearer JWT obrigatório)
 

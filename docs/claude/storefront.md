@@ -34,6 +34,67 @@ O link "Ver todas" da `NovidadesSection` aponta para `/novidades`.
 
 ---
 
+## Página /produtos
+Arquivo: `storefront-v2/src/app/(main)/produtos/page.tsx`
+
+Grid de produtos com filtros e paginação. Revalidação ISR 300s.
+
+- **FilterSidebar** (`components/product/FilterSidebar.tsx`): categorias root (sem `parent_category_id`), ordenadas pt-BR. Desktop: aside sticky. Mobile: drawer slide-from-right.
+- **URL state**: todos os filtros em query params (`?categoria=`, `?sort=`, `?q=`, `?page=`). Sem estado client.
+- **Grid**: `grid-cols-2 sm:grid-cols-3 lg:grid-cols-4`
+- **Ordenação**: Mais recentes (default), Mais antigos, Menor preço, Maior preço — preserva categoria+q ao trocar.
+- **Badges no ProductCard**: NOVO (amarelo, < 30 dias, campo `created_at`) → % OFF (rosa) → ESGOTADO (cinza). Os 3 podem aparecer juntos.
+- **Faixa de preço**: adiada para próxima iteração.
+
+---
+
+## Página /produto/[handle]
+Arquivo: `storefront-v2/src/app/(main)/produto/[handle]/page.tsx`
+
+Página de detalhe de produto. Revalidação ISR 300s.
+
+### Componentes
+| Componente | Arquivo | Tipo |
+|---|---|---|
+| ImageGallery | `components/product/ImageGallery.tsx` | client |
+| FreteCalculator | `components/product/FreteCalculator.tsx` | client |
+| BuyNowButton | `components/product/BuyNowButton.tsx` | client |
+| AddToCartButton | `components/product/AddToCartButton.tsx` | client |
+| VariantSelector | `components/product/VariantSelector.tsx` | client |
+| DescriptionAccordion | inline em page.tsx | server |
+
+### Galeria
+- `ImageGallery.tsx`: thumbnails clicáveis trocam a imagem principal. Hover zoom `scale-110` no desktop.
+- `images` = `product.images[]` se disponível, senão `[{ url: product.thumbnail }]`.
+
+### Botões de ação
+- **Produto simples** (sem variantes, em estoque): `BuyNowButton` (escuro) + `AddToCartButton` (rosa).
+- **Produto com variantes**: `VariantSelector` (gerencia estado internamente).
+- **Esgotado**: botão desabilitado + link WhatsApp "Avisar quando disponível".
+
+### BuyNowButton
+`addItem(variantId, 1)` → `router.push('/checkout')`. Passa pelo carrinho, redireciona sem abrir CartDrawer.
+
+### Calculadora de frete
+`FreteCalculator.tsx` chama `/api/frete?cep=` (rota Next.js em `src/app/api/frete/route.ts`).
+A rota Next.js proxia para `${API_URL}/api/public/frete?cep=` (CRM interno, sem CORS).
+Resultado: PAC + SEDEX com preço (centavos) e prazo (dias úteis). Nota: frete final recalculado no checkout.
+
+### Descrição
+`<details>` nativo (accordion sem JS extra). Classe `legal-content` para formatação.
+
+### Avaliações
+Placeholder visual (5 estrelas amarelas). Sem backend.
+
+### Produtos relacionados
+`listProducts({ categoryId: product.categories?.[0]?.id })`. Se sem categoria → `listProducts({ limit: 5 })` genérico.
+Campo `+categories` adicionado ao `getProductByHandle` fields.
+
+### WhatsApp
+Botão verde "Tirar dúvidas" → `wa.me/5547933862514` com texto pré-preenchido incluindo URL do produto.
+
+---
+
 ## Loja Online — Configurações centralizadas (CRM)
 
 Painel no CRM (sidebar > Loja Online > Configurações) — storefront consome via API.

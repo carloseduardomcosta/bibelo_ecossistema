@@ -12,6 +12,7 @@ interface ProductCardProps {
     title: string
     handle: string
     thumbnail?: string | null
+    created_at?: string | null
     variants?: Array<{
       id: string
       calculated_price?: {
@@ -38,6 +39,10 @@ export default function ProductCard({ product }: ProductCardProps) {
     variant?.inventory_quantity !== undefined &&
     variant.inventory_quantity <= 0
 
+  // NOVO: produto criado nos últimos 30 dias
+  const isNew = !!product.created_at &&
+    Date.now() - new Date(product.created_at).getTime() < 30 * 24 * 60 * 60 * 1000
+
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -54,13 +59,16 @@ export default function ProductCard({ product }: ProductCardProps) {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Badges */}
+      {/* Badges — ordem: NOVO → % OFF → ESGOTADO. Os 3 podem aparecer juntos. */}
       <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
-        {isOutOfStock && (
-          <span className="badge-sold-out">ESGOTADO</span>
+        {isNew && !isOutOfStock && (
+          <span className="badge-new">NOVO</span>
         )}
         {isOnSale && !isOutOfStock && (
           <span className="badge-off">{discountPercent}% OFF</span>
+        )}
+        {isOutOfStock && (
+          <span className="badge-sold-out">ESGOTADO</span>
         )}
       </div>
 

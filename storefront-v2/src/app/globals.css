@@ -70,6 +70,11 @@
     @apply bg-gray-500 text-white text-xs font-bold px-2 py-0.5 rounded-full;
   }
 
+  /* Badge novo produto (< 30 dias) */
+  .badge-new {
+    @apply bg-bibelo-amarelo text-bibelo-dark text-xs font-bold px-2 py-0.5 rounded-full;
+  }
+
   /* Card de produto */
   .product-card {
     @apply bg-white rounded-xl overflow-hidden border border-gray-100

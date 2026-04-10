@@ -905,3 +905,19 @@ sync.category_sync_log         (auditoria)
   - flow.service.ts buildLeadCouponEmail: fallback CLUBEBIBELO → BIBELO10
   - flow.service.ts buildWelcomeStorefrontEmail: hardcode CLUBEBIBELO/7% → BIBELO10/10%
   - docs/claude/email-fluxos.md: documentação atualizada
+
+---
+
+- feat(storefront-v2): página de produto com galeria, frete e compra direta (0d5d4e6)
+  - ImageGallery: thumbnails clicáveis trocam imagem principal, zoom scale-110 no hover desktop
+  - FreteCalculator: input CEP com máscara, PAC + SEDEX via Melhor Envio, prazo em dias úteis
+  - BuyNowButton: addItem + router.push('/checkout') sem abrir CartDrawer
+  - DescriptionAccordion: <details> nativo, sem JS extra
+  - Avaliações: placeholder visual 5 estrelas amarelas
+  - Relacionados por categoria (product.categories[0].id), fallback genérico se sem categoria
+  - WhatsApp: renomeado de "Preciso de ajuda" para "Tirar dúvidas"
+  - getProductByHandle: adicionado +categories nos fields
+  - API CRM: GET /api/public/frete?cep= (público, rate-limited 30/min, cache 5min)
+  - Proxy Next.js: src/app/api/frete/route.ts → CRM interno (evita CORS/Cloudflare Access)
+  - Arquivo: api/src/routes/public-frete.ts, storefront-v2/src/app/api/frete/route.ts
+  - Componentes: ImageGallery.tsx, FreteCalculator.tsx, BuyNowButton.tsx
