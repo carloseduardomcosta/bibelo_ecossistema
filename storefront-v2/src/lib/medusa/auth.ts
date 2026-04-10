@@ -244,6 +244,28 @@ export async function requestPasswordReset(email: string) {
   return true
 }
 
+// ── Atualizar endereço existente ─────────────────────────────
+export async function updateAddress(token: string, addressId: string, address: {
+  first_name?: string; last_name?: string; address_1?: string;
+  address_2?: string; city?: string; province?: string;
+  postal_code?: string; country_code?: string; phone?: string;
+}) {
+  const res = await fetch(`${PUBLIC_MEDUSA_URL}/store/customers/me/addresses/${addressId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "x-publishable-api-key": PUBLISHABLE_KEY,
+    },
+    body: JSON.stringify(address),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.message || "Erro ao atualizar endereço")
+  }
+  return res.json()
+}
+
 // ── Buscar pedido por ID ──────────────────────────────────────
 export async function getOrderById(token: string, id: string) {
   const fields = "+shipping_address,+fulfillments,+shipping_methods"
