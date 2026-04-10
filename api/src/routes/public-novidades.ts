@@ -120,7 +120,15 @@ publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
           nf.data_emissao                     AS nf_sort,
           nf.criado_em                        AS nf_criado_em,
           nei.numero_item,
-          COALESCE(MAX(bs.saldo_fisico), 0)   AS saldo_fisico
+          -- Estoque = saldo do próprio produto + soma dos filhos (variantes).
+          -- No Bling o produto pai fica zerado; o estoque real está nos filhos.
+          COALESCE(MAX(bs.saldo_fisico), 0) + COALESCE((
+            SELECT SUM(bsf.saldo_fisico)
+            FROM sync.bling_products bpf
+            JOIN sync.bling_stock bsf ON bsf.bling_product_id = bpf.bling_id
+            WHERE (bpf.dados_raw->>'idProdutoPai')::text = bp.bling_id::text
+              AND bsf.saldo_fisico > 0
+          ), 0) AS saldo_fisico
         FROM nf_candidates nf
         JOIN financeiro.notas_entrada_itens nei
           ON nei.nota_id = nf.id
@@ -141,7 +149,15 @@ publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
           bp.id, bp.bling_id, bp.nome, bp.sku, bp.preco_venda,
           bp.imagens, bp.dados_raw, bp.categoria,
           nf.id, nf.numero, nf.data_emissao, nf.criado_em, nei.numero_item
-        HAVING COALESCE(MAX(bs.saldo_fisico), 0) > 0
+        HAVING (
+          COALESCE(MAX(bs.saldo_fisico), 0) > 0
+          OR EXISTS (
+            SELECT 1 FROM sync.bling_products bpf
+            JOIN sync.bling_stock bsf ON bsf.bling_product_id = bpf.bling_id
+            WHERE (bpf.dados_raw->>'idProdutoPai')::text = bp.bling_id::text
+              AND bsf.saldo_fisico > 0
+          )
+        )
       ),
       latest_nf AS (
         SELECT nf_id
