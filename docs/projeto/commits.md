@@ -953,3 +953,13 @@ sync.category_sync_log         (auditoria)
   - Job cron `briefing-diario` (7h BRT) removido do sync.queue.ts
   - Case no worker e import de `enviarBriefingEmail` removidos
   - Briefing continua disponível na plataforma via GET /api/briefing (só dashboard, sem custo)
+
+- **ca233a3** — fix(email): corrige imagens e scroll infinito no template Novidades (fix 1)
+  - `warmProxyImage()` aguarda download das imagens antes de gerar o HTML
+  - `proxyImageUrl()` refatorado para reutilizar `downloadAndCacheImage()`
+
+- **480e816** — fix(campanhas): corrige layout e dedup no template Novidades v2
+  - Reescreve geração de produtos como tabela 2 colunas (compatível Gmail/Outlook/Yahoo)
+  - Dedup por `ns_url` elimina cards repetidos quando múltiplos itens da NF batem no mesmo produto
+  - `escHtml()` local para sanitizar nomes no HTML dos cards
+  - Layout simplificado: 1 produto = hero centralizado, 2+ = grade `<table width="560">`
