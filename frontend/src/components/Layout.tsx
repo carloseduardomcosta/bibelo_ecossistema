@@ -43,6 +43,7 @@ import {
   GitMerge,
   Server,
   Handshake,
+  BookImage,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -113,6 +114,7 @@ const navGroups: NavGroup[] = [
       { to: '/inteligencia', label: 'Inteligência', icon: Target },
       { to: '/meta-ads', label: 'Meta Ads', icon: Radar },
       { to: '/landing-pages', label: 'Landing Pages', icon: Layers },
+      { to: '/catalogo-whatsapp', label: 'Catálogo WhatsApp', icon: BookImage },
     ],
   },
   {
