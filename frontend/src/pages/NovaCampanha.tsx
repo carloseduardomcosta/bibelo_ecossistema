@@ -58,13 +58,17 @@ export default function NovaCampanha() {
   const [catSearch, setCatSearch] = useState('');
   const [maxPorCat, setMaxPorCat] = useState(2);
 
-  // Novidades — seletor manual de NF
+  // Novidades — seletor manual de NF (múltiplas)
   const [nfLista, setNfLista] = useState<NF[]>([]);
-  const [nfSelecionada, setNfSelecionada] = useState<NF | null>(null);
-  const [nfProdutos, setNfProdutos] = useState<Produto[]>([]);
+  const [nfsSelecionadas, setNfsSelecionadas] = useState<Set<string>>(new Set());
+  const [nfProdutosMap, setNfProdutosMap] = useState<Map<string, Produto[]>>(new Map());
   const [nfProdutosSel, setNfProdutosSel] = useState<string[]>([]); // UUIDs bling_products.id
   const [carregandoNFs, setCarregandoNFs] = useState(false);
-  const [carregandoNFProdutos, setCarregandoNFProdutos] = useState(false);
+  const [carregandoNFId, setCarregandoNFId] = useState<string | null>(null);
+
+  // Produtos combinados de todas as NFs selecionadas (deduplicados por id)
+  const nfProdutosTodos = Array.from(nfsSelecionadas).flatMap((id) => nfProdutosMap.get(id) ?? [])
+    .filter((p, i, arr) => arr.findIndex((x) => x.id === p.id) === i);
 
   // Produtos individuais
   const [produtoBusca, setProdutoBusca] = useState('');
@@ -114,21 +118,45 @@ export default function NovaCampanha() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selecaoTab]);
 
-  // Carregar produtos ao selecionar uma NF
-  useEffect(() => {
-    if (!nfSelecionada) return;
-    setCarregandoNFProdutos(true);
-    setNfProdutos([]);
-    setNfProdutosSel([]);
-    api.get(`/campaigns/nfs/${nfSelecionada.id}/produtos`)
-      .then((r) => {
-        setNfProdutos(r.data);
-        setNfProdutosSel(r.data.map((p: Produto) => p.id as string)); // seleciona todos por default
-      })
-      .catch(() => {})
-      .finally(() => setCarregandoNFProdutos(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nfSelecionada?.id]);
+  // Toggle de NF: adiciona/remove da seleção e carrega produtos se necessário
+  const toggleNF = async (nf: NF) => {
+    const isSelected = nfsSelecionadas.has(nf.id);
+    if (isSelected) {
+      // Desselecionar: remove NF e desmarca os produtos dela
+      setNfsSelecionadas((prev) => { const next = new Set(prev); next.delete(nf.id); return next; });
+      const nfProds = nfProdutosMap.get(nf.id) ?? [];
+      const nfProdIds = new Set(nfProds.map((p) => p.id as string));
+      setNfProdutosSel((prev) => prev.filter((id) => !nfProdIds.has(id)));
+    } else {
+      // Selecionar: adiciona NF
+      setNfsSelecionadas((prev) => new Set([...prev, nf.id]));
+      if (!nfProdutosMap.has(nf.id)) {
+        // Carrega produtos (primeira vez)
+        setCarregandoNFId(nf.id);
+        try {
+          const r = await api.get(`/campaigns/nfs/${nf.id}/produtos`);
+          const prods = r.data as Produto[];
+          setNfProdutosMap((prev) => new Map([...prev, [nf.id, prods]]));
+          setNfProdutosSel((prev) => {
+            const existing = new Set(prev);
+            return [...prev, ...prods.map((p) => p.id as string).filter((id) => !existing.has(id))];
+          });
+        } catch {
+          // remove da seleção se falhou
+          setNfsSelecionadas((prev) => { const next = new Set(prev); next.delete(nf.id); return next; });
+        } finally {
+          setCarregandoNFId(null);
+        }
+      } else {
+        // Já em cache: só marca todos os produtos desta NF
+        const prods = nfProdutosMap.get(nf.id) ?? [];
+        setNfProdutosSel((prev) => {
+          const existing = new Set(prev);
+          return [...prev, ...prods.map((p) => p.id as string).filter((id) => !existing.has(id))];
+        });
+      }
+    }
+  };
 
   // Buscar produtos individuais
   const buscarProdutos = async (search: string) => {
@@ -496,29 +524,38 @@ export default function NovaCampanha() {
 
                 <div className="space-y-1.5 max-h-52 overflow-y-auto">
                   {nfLista.map((nf) => {
-                    const sel = nfSelecionada?.id === nf.id;
+                    const sel = nfsSelecionadas.has(nf.id);
+                    const loading = carregandoNFId === nf.id;
                     return (
                       <button
                         key={nf.id}
-                        onClick={() => setNfSelecionada(sel ? null : nf)}
-                        className={`w-full text-left flex items-center justify-between px-4 py-3 rounded-lg border transition-colors ${
+                        onClick={() => toggleNF(nf)}
+                        disabled={loading}
+                        className={`w-full text-left flex items-center justify-between px-4 py-3 rounded-lg border transition-colors disabled:opacity-60 ${
                           sel
                             ? 'border-bibelo-primary bg-bibelo-primary/10'
                             : 'border-bibelo-border hover:border-bibelo-primary/40'
                         }`}
                       >
-                        <div>
-                          <p className={`text-sm font-semibold ${sel ? 'text-bibelo-primary' : 'text-bibelo-text'}`}>
-                            NF {nf.numero}
-                          </p>
-                          <p className="text-[11px] text-bibelo-muted mt-0.5 truncate max-w-xs">
-                            {nf.fornecedor} · {new Date(nf.data_emissao + 'T12:00:00').toLocaleDateString('pt-BR')}
-                          </p>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                            sel ? 'bg-bibelo-primary border-bibelo-primary' : 'border-bibelo-border'
+                          }`}>
+                            {sel && <Check size={10} className="text-white" />}
+                          </div>
+                          <div>
+                            <p className={`text-sm font-semibold ${sel ? 'text-bibelo-primary' : 'text-bibelo-text'}`}>
+                              NF {nf.numero}
+                            </p>
+                            <p className="text-[11px] text-bibelo-muted mt-0.5 truncate max-w-xs">
+                              {nf.fornecedor} · {new Date(nf.data_emissao + 'T12:00:00').toLocaleDateString('pt-BR')}
+                            </p>
+                          </div>
                         </div>
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                           sel ? 'bg-bibelo-primary text-white' : 'bg-bibelo-border text-bibelo-muted'
                         }`}>
-                          {nf.total_itens} itens
+                          {loading ? '...' : `${nf.total_itens} itens`}
                         </span>
                       </button>
                     );
@@ -526,30 +563,31 @@ export default function NovaCampanha() {
                 </div>
               </div>
 
-              {/* Produtos da NF selecionada */}
-              {nfSelecionada && (
+              {/* Produtos das NFs selecionadas */}
+              {nfsSelecionadas.size > 0 && (
                 <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
-                  {carregandoNFProdutos && (
+                  {carregandoNFId && (
                     <p className="text-xs text-bibelo-muted py-4 text-center">Carregando produtos...</p>
                   )}
 
-                  {!carregandoNFProdutos && nfProdutos.length === 0 && (
+                  {!carregandoNFId && nfProdutosTodos.length === 0 && (
                     <div className="flex items-center gap-2 text-amber-400 text-xs py-2">
                       <AlertTriangle size={13} />
-                      Nenhum produto desta NF está disponível para email (sem cadastro no Bling, sem foto ou sem estoque).
+                      Nenhum produto disponível nas NFs selecionadas (sem cadastro no Bling, sem foto ou sem estoque).
                     </div>
                   )}
 
-                  {!carregandoNFProdutos && nfProdutos.length > 0 && (
+                  {nfProdutosTodos.length > 0 && (
                     <>
                       {/* Cabeçalho + seleção total */}
                       <div className="flex items-center justify-between mb-3">
                         <p className="text-xs font-bold text-bibelo-text">
-                          {nfProdutosSel.length} de {nfProdutos.length} selecionados para o email
+                          {nfProdutosSel.length} de {nfProdutosTodos.length} selecionados
+                          {nfsSelecionadas.size > 1 && <span className="text-bibelo-muted font-normal"> · {nfsSelecionadas.size} NFs</span>}
                         </p>
                         <div className="flex gap-2">
                           <button
-                            onClick={() => setNfProdutosSel(nfProdutos.map((p) => p.id as string))}
+                            onClick={() => setNfProdutosSel(nfProdutosTodos.map((p) => p.id as string))}
                             className="text-[11px] px-2.5 py-1 rounded-lg border border-bibelo-primary text-bibelo-primary hover:bg-bibelo-primary/10 transition-colors"
                           >
                             Todos
@@ -565,7 +603,7 @@ export default function NovaCampanha() {
 
                       {/* Grid de produtos com toggle */}
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-96 overflow-y-auto">
-                        {nfProdutos.map((p) => {
+                        {nfProdutosTodos.map((p) => {
                           const selecionado = nfProdutosSel.includes(p.id as string);
                           return (
                             <button
