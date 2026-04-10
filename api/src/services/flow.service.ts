@@ -7,6 +7,8 @@ import { gerarLinkDescadastro, proxyImageUrl, warmProxyImage } from "../routes/e
 import crypto from "crypto";
 import { escHtml } from "../utils/sanitize";
 
+const GRUPO_VIP_URL = "https://chat.whatsapp.com/DzOJHBZ2vECF1taXiRRv6g";
+
 // ── Gerar cupom único por lead via NuvemShop API ────────────────
 
 async function gerarCupomUnico(
@@ -1557,7 +1559,7 @@ function buildFomoVipEmail(nome: string, metadata: Record<string, unknown> = {})
       As membros do grupo sempre garantem os produtos antes de todo mundo.
       Semana passada, alguns lançamentos esgotaram em poucas horas!
     </p>
-    ${ctaButton("Quero entrar no grupo VIP", "https://wa.me/5547933862514?text=Oi!%20Quero%20entrar%20no%20grupo%20VIP%20da%20Bibelô!")}
+    ${ctaButton("Entrar no grupo VIP agora", GRUPO_VIP_URL)}
     <p style="font-size:13px;color:#999;text-align:center;">
       Vagas limitadas. Sem spam — só novidades e ofertas exclusivas.
     </p>
@@ -1635,7 +1637,7 @@ function buildVipInviteEmail(nome: string, metadata: Record<string, unknown> = {
         Dicas de papelaria e organização
       </p>
     </div>
-    ${ctaButton("Aceitar convite VIP", "https://wa.me/5547933862514?text=Oi!%20Aceito%20o%20convite%20para%20o%20grupo%20VIP!")}
+    ${ctaButton("Aceitar convite VIP", GRUPO_VIP_URL)}
     <p style="font-size:13px;color:#999;text-align:center;">
       Grupo com +115 membros. Sem spam, prometemos! 💕
     </p>

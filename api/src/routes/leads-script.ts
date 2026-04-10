@@ -289,7 +289,7 @@ leadsScriptRouter.get("/popup.js", scriptLimiter, (_req: Request, res: Response)
         success.style.display = 'block';
         document.getElementById('bibelo-popup-msg').textContent = data.mensagem || 'Verifique seu e-mail!';
 
-        var vipLink = 'https://boasvindas.papelariabibelo.com.br/api/links/grupo-vip';
+        var vipLink = 'https://chat.whatsapp.com/DzOJHBZ2vECF1taXiRRv6g';
         var vipBtn = '<a href="' + vipLink + '" target="_blank" style="display:inline-block;background:#25D366;color:#fff;padding:10px 24px;border-radius:50px;text-decoration:none;font-size:13px;font-weight:600;margin-top:12px;font-family:Jost,sans-serif;">Entrar no Clube VIP \\uD83D\\uDCAC</a>';
         var shopBtn = '<div style="margin-top:10px;"><a href="javascript:void(0)" onclick="document.getElementById(\\'bibelo-popup-overlay\\').querySelector(\\'[id=bibelo-popup-close]\\').click()" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#e91e63);color:#fff;padding:10px 24px;border-radius:50px;text-decoration:none;font-size:13px;font-weight:600;font-family:Jost,sans-serif;">Continuar comprando \\uD83D\\uDECD\\uFE0F</a></div>';
 
