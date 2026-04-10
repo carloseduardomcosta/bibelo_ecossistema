@@ -55,6 +55,7 @@ Referência completa de todos os endpoints.
 - `POST /api/sync/bling` — sync manual (?tipo=full|incremental)
 - `POST /api/sync/bling/categorias` — remapeia todas as categorias Bling → produtos (full refresh do campo `categoria`)
 - `POST /api/sync/bling/imagens` — busca imagens HD (`midia.imagens.internas[].link`) para produtos com miniatura ou sem foto. Body opcional: `{ blingIds: ["123","456"] }`. Roda em background, responde imediatamente. Re-executar após cadastrar/trocar fotos no Bling quando o webhook não disparar.
+- `POST /api/sync/bling/gtins` — backfill de GTINs via `GET /produtos/{id}` (listing Bling não retorna gtin). Atualiza `sync.bling_products.gtin` para produtos com `gtin IS NULL`. Body opcional: `{ blingIds: ["123","456"] }`. Roda em background. O UPSERT do sync incremental preserva GTIN via `COALESCE` — nunca sobrescrito a cada ciclo.
 
 ### Categorias Sync (Bling ↔ Medusa)
 Painel de mapeamento de categorias Bling → Medusa. Rota base: `/api/categorias-sync`.

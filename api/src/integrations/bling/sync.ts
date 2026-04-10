@@ -426,7 +426,12 @@ export async function syncProducts(since?: string): Promise<{ total: number; cha
                ELSE $8
              END,
              ativo = $9, tipo = $10, unidade = $11,
-             peso_bruto = $12, gtin = $13, dados_raw = $14, sincronizado_em = NOW()`,
+             peso_bruto = $12,
+             -- Preserva GTIN já salvo: o listing Bling (ProdutosDadosBaseDTO) não retorna gtin.
+             -- Só o detalhe GET /produtos/{id} tem o campo. Sem isso, cada sync incremental
+             -- sobrescreveria o gtin com NULL, apagando o backfill do syncProductGtins.
+             gtin = COALESCE($13, sync.bling_products.gtin),
+             dados_raw = $14, sincronizado_em = NOW()`,
           [
             blingId,
             prod.nome || "Sem nome",

@@ -40,6 +40,44 @@ Body opcional: `{ blingIds: ["123", "456"] }` para produtos específicos.
 
 ---
 
+## GTINs de produtos Bling
+
+### Problema
+O listing `GET /produtos` retorna `ProdutosDadosBaseDTO` que **não inclui o campo `gtin`**.
+Somente `GET /produtos/{id}` (`ProdutosDados`) retorna o GTIN. Resultado: o sync incremental
+nunca populava `sync.bling_products.gtin`, deixando todos os produtos com `gtin = NULL`.
+
+### Impacto
+O match de produtos na query de Novidades tem 4 critérios (OR):
+1. SKU exato
+2. GTIN produto = código NF
+3. `nei.gtin IS NOT NULL AND bp.gtin = nei.gtin` ← exige bp.gtin preenchido
+4. SKU normalizado (remove ` - `)
+
+Sem GTIN, produtos cujo SKU difere do código da NF não aparecem nas Novidades.
+
+### Solução implementada
+**Dupla proteção em `sync.ts`:**
+
+1. **UPSERT protegido**: `gtin = COALESCE($13, sync.bling_products.gtin)` — o listing envia NULL, mas `COALESCE` preserva o valor já salvo. O GTIN nunca é sobrescrito para NULL a cada ciclo incremental.
+
+2. **`syncProductGtins(blingIds?)`** — backfill via `GET /produtos/{id}`: busca até 500 produtos com `gtin IS NULL`, extrai `data.gtin` e atualiza. Mesmo padrão do `syncProductImages`.
+
+**Webhook** (`webhook.ts`): `processProduct()` já chama `GET /produtos/{id}` — salva `gtin` corretamente em product events.
+
+Rota: `POST /api/sync/bling/gtins` (autenticada) — dispara em background.
+Body opcional: `{ blingIds: ["123", "456"] }` para produtos específicos.
+
+### Resultado atual
+105/417 produtos com GTIN (os demais não têm GTIN cadastrado no Bling).
+
+### Quando re-executar
+- Ao cadastrar novos produtos com GTIN no Bling (webhook cuida automaticamente)
+- Após backfill inicial em novo ambiente
+- O sync incremental NÃO sobrescreve mais os GTINs salvos
+
+---
+
 ## Fluxo completo: Produto no Bling → Seção Novidades
 
 ### Como funciona a seção Novidades
