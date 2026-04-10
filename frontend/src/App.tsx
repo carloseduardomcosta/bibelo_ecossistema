@@ -36,6 +36,7 @@ import Sistema from './pages/Sistema';
 import SEO from './pages/SEO';
 import LandingPages from './pages/LandingPages';
 import LojaOnline from './pages/LojaOnline';
+import CategoriasSync from './pages/CategoriasSync';
 import { ToastProvider } from './components/Toast';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
@@ -108,6 +109,7 @@ export default function App() {
               <Route path="/seo" element={<SEO />} />
               <Route path="/landing-pages" element={<LandingPages />} />
               <Route path="/loja-online" element={<LojaOnline />} />
+              <Route path="/categorias-sync" element={<CategoriasSync />} />
             </Route>
           </Routes>
           </ErrorBoundary>

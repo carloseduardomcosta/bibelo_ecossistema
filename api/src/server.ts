@@ -41,6 +41,7 @@ import { metaAdsRouter } from "./routes/meta-ads";
 import { seoRouter } from "./routes/seo";
 import { landingPagesRouter } from "./routes/landing-pages";
 import { storeSettingsRouter } from "./routes/store-settings";
+import { categoriaSyncRouter } from "./routes/categorias-sync";
 import { publicNovidadesRouter } from "./routes/public-novidades";
 import { systemRouter } from "./routes/system";
 import { firewallRouter } from "./routes/firewall";
@@ -121,6 +122,7 @@ app.use("/lp", landingPagesRouter);             // público: /lp/dia-das-maes
 app.use("/api/landing-pages", landingPagesRouter); // admin: CRUD
 app.use("/api/seo", seoRouter);
 app.use("/api", storeSettingsRouter);              // GET público + PUT autenticado
+app.use("/api/categorias-sync", categoriaSyncRouter); // painel sync categorias Bling↔Medusa
 app.use("/api/public/novidades", publicNovidadesRouter); // público: novidades via NF Bling (sem auth)
 app.use("/api/system", systemRouter);              // status VPS + code stats
 app.use("/api/firewall", firewallRouter);          // firewall SSH + whitelist

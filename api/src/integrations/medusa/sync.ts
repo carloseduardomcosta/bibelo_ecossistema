@@ -1201,3 +1201,88 @@ export async function syncCollectionsToMedusa(): Promise<{ created: number; upda
   logger.info(`Medusa collections sync: ${created} criadas, ${updated} atualizadas`)
   return { created, updated }
 }
+
+// ── Painel de Categorias — exports para categorias-sync.ts ───
+
+/**
+ * Lista categorias disponíveis no Medusa para o dropdown do painel.
+ */
+export async function getMedusaCategoriesFromMedusa(): Promise<
+  Array<{ id: string; name: string; handle: string; parent_id: string | null }>
+> {
+  const data = await medusaRequest<{
+    product_categories: Array<{
+      id: string
+      name: string
+      handle: string
+      parent_category_id?: string
+    }>
+  }>("GET", "/admin/product-categories?limit=200&fields=id,name,handle,parent_category_id")
+
+  return data.product_categories.map((c) => ({
+    id:        c.id,
+    name:      c.name,
+    handle:    c.handle,
+    parent_id: c.parent_category_id || null,
+  }))
+}
+
+/**
+ * Aplica mapeamentos de categoria nos produtos do Medusa.
+ * Usado pelo botão "Sincronizar tudo" do painel.
+ *
+ * Comportamento: REPLACE (Medusa v2 substitui categorias pelo array enviado).
+ * Seguro para este projeto — cada produto Bling tem exatamente 1 categoria.
+ * Não remove categorias do Medusa, apenas atualiza a categoria de cada produto.
+ */
+export async function applyCategoryMappingToMedusa(
+  categoryMapping: Map<string, string> // bling_category_id → medusa_category_id
+): Promise<{ atualizados: number; sem_medusa: number; erros: number; total_produtos: number }> {
+  if (categoryMapping.size === 0) {
+    return { atualizados: 0, sem_medusa: 0, erros: 0, total_produtos: 0 }
+  }
+
+  // Produtos do Bling com categoria dentro do mapeamento confirmado
+  const catIds       = [...categoryMapping.keys()]
+  const placeholders = catIds.map((_, i) => `$${i + 1}`).join(", ")
+  const blingProducts = await query<{ bling_id: string; sku: string; bling_category_id: string }>(
+    `SELECT bling_id::text, sku, bling_category_id
+       FROM sync.bling_products
+      WHERE ativo = true
+        AND sku IS NOT NULL AND sku != ''
+        AND bling_category_id IN (${placeholders})`,
+    catIds
+  )
+
+  const total_produtos = blingProducts.length
+  if (total_produtos === 0) {
+    return { atualizados: 0, sem_medusa: 0, erros: 0, total_produtos: 0 }
+  }
+
+  const medusaBySku = await getMedusaProductsBySku()
+  let atualizados = 0
+  let sem_medusa  = 0
+  let erros       = 0
+
+  for (const product of blingProducts) {
+    const medusaCatId   = categoryMapping.get(product.bling_category_id)
+    if (!medusaCatId) continue
+
+    const medusaProduct = medusaBySku.get(product.sku)
+    if (!medusaProduct) { sem_medusa++; continue }
+
+    try {
+      await medusaRequest("POST", `/admin/products/${medusaProduct.id}`, {
+        categories: [{ id: medusaCatId }],
+      })
+      atualizados++
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro"
+      logger.error(`Falha ao atualizar categoria: sku=${product.sku}: ${msg}`)
+      erros++
+    }
+  }
+
+  logger.info("applyCategoryMappingToMedusa concluído", { atualizados, sem_medusa, erros, total_produtos })
+  return { atualizados, sem_medusa, erros, total_produtos }
+}

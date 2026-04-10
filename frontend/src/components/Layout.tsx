@@ -40,6 +40,7 @@ import {
   Globe,
   Layers,
   Store,
+  GitMerge,
   Server,
   type LucideIcon,
 } from 'lucide-react';
@@ -98,7 +99,8 @@ const navGroups: NavGroup[] = [
   {
     label: 'Loja Online',
     items: [
-      { to: '/loja-online', label: 'Configurações', icon: Store },
+      { to: '/loja-online',      label: 'Configurações',    icon: Store    },
+      { to: '/categorias-sync',  label: 'Categorias Sync',  icon: GitMerge },
     ],
   },
   {
