@@ -444,6 +444,10 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
     ? categorias.slice(0, 2).join(", ") + (categorias.length > 2 ? " e mais" : "")
     : "novidades";
 
+  function escHtml(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
   // Limpa nome do produto (remove sufixos de NF, usa nome NS quando disponível)
   function limparNome(p: { descricao: string; ns_nome: string | null }): string {
     // Nome da NuvemShop é mais limpo e é o que o cliente vê na loja
@@ -462,91 +466,91 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
     return p.estoque_ns ?? p.estoque_bling ?? null;
   }
 
+  // ── Dedup por URL do produto (evita repetir o mesmo produto quando múltiplos itens da NF batem no mesmo) ──
+  const seenUrls = new Set<string>();
+  const produtosUnicos = produtos.filter(p => {
+    const key = p.ns_url || limparNome(p).toLowerCase().substring(0, 30);
+    if (seenUrls.has(key)) return false;
+    seenUrls.add(key);
+    return true;
+  });
+
   // ── Aquece o cache das imagens em paralelo antes de gerar o HTML ──
   // Garante que as URLs de proxy já existem no disco quando o email é enviado/visualizado
   await Promise.all(
-    produtos.map(p => {
+    produtosUnicos.map(p => {
       const rawUrl = p.ns_imagem || (p.imagem_url && p.imagem_url.startsWith("http") ? p.imagem_url : null);
       return rawUrl ? warmProxyImage(rawUrl) : Promise.resolve();
     })
   );
 
   // ── Layout adaptativo ao volume de produtos ─────────────────
-  // 1-2: hero (1col grande), 3-6: medio (2col), 7+: catalogo moderno (2col compacto)
-  const qtd = produtos.length;
-  const layout = qtd <= 2 ? "hero" : qtd <= 6 ? "medio" : "catalogo";
+  // 1: hero (1col), 2-6: 2col tabela, 7+: 2col compacto
+  const qtd = produtosUnicos.length;
+  const layout = qtd === 1 ? "hero" : "grid";
 
-  // Gera card individual — tamanho e detalhes adaptam ao layout
-  const produtosHtml = produtos.map((p, idx) => {
+  // Gera um card individual
+  function gerarCard(p: typeof produtosUnicos[0]): string {
     const preco = p.preco_venda ? parseFloat(p.preco_venda) : null;
     const precoFormatado = preco ? `R$ ${preco.toFixed(2).replace(".", ",")}` : "";
     const nome = limparNome(p);
     const est = estoqueEfetivo(p);
     const estoqueBaixo = est !== null && est > 0 && est <= 3;
-
     const rawImgSrc = p.ns_imagem || (p.imagem_url && p.imagem_url.startsWith("http") ? p.imagem_url : null);
     const imgSrc = rawImgSrc ? proxyImageUrl(rawImgSrc) : null;
     const link = p.ns_url || `${linkBase}/novidades/`;
+    const badge = estoqueBaixo
+      ? `<p style="margin:0 0 6px;color:#ff4444;font-size:11px;font-weight:700;">Últimas ${est}!</p>`
+      : `<p style="margin:0 0 6px;color:#fe68c4;font-size:11px;font-weight:700;">Novo ✨</p>`;
+    const imgTag = imgSrc
+      ? `<img src="${imgSrc}" alt="${escHtml(nome)}" width="260" height="220" style="display:block;width:100%;height:220px;object-fit:cover;border-radius:10px 10px 0 0;" />`
+      : `<div style="width:100%;height:160px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:10px 10px 0 0;text-align:center;font-size:40px;padding-top:56px;box-sizing:border-box;">🎀</div>`;
 
-    if (layout === "catalogo") {
-      // Card moderno 2-col: imagem quadrada + nome + preço + link sutil
-      const imgBlock = imgSrc
-        ? `<img src="${imgSrc}" alt="${nome}" width="248" height="248" style="width:100%;height:248px;object-fit:cover;display:block;" />`
-        : `<div style="width:100%;height:160px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);text-align:center;padding-top:56px;box-sizing:border-box;font-size:36px;">🎀</div>`;
+    return `<a href="${link}" style="display:block;text-decoration:none;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #f5e8f0;">
+      ${imgTag}
+      <div style="padding:14px 16px 16px;">
+        ${badge}
+        <p style="margin:0 0 6px;color:#333;font-weight:700;font-size:14px;line-height:1.35;">${escHtml(nome)}</p>
+        ${precoFormatado ? `<p style="margin:0 0 12px;color:#222;font-weight:800;font-size:18px;">${precoFormatado}</p>` : ""}
+        <div style="background:#fe68c4;color:#fff;padding:10px 14px;border-radius:8px;text-align:center;font-weight:700;font-size:13px;">Quero este!</div>
+      </div>
+    </a>`;
+  }
 
-      return `
-      <div style="display:inline-block;vertical-align:top;width:50%;max-width:268px;padding:6px;box-sizing:border-box;">
-        <a href="${link}" style="text-decoration:none;display:block;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.06);border:1px solid #f5f0f2;">
-          <div style="position:relative;overflow:hidden;">
-            ${imgBlock}
-            ${estoqueBaixo ? `<span style="position:absolute;top:6px;right:6px;background:#ff4444;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">Ultimas ${est}!</span>` : ""}
-          </div>
-          <div style="padding:10px 12px 12px;">
-            <p style="margin:0 0 6px;color:#333;font-weight:600;font-size:12px;line-height:1.3;min-height:32px;">${nome}</p>
-            <div style="display:flex;align-items:center;justify-content:space-between;">
-              ${precoFormatado ? `<span style="color:#222;font-weight:800;font-size:15px;">${precoFormatado}</span>` : ""}
-              <span style="color:#fe68c4;font-size:11px;font-weight:700;">Ver &rarr;</span>
-            </div>
-          </div>
-        </a>
-      </div>`;
+  // ── Monta tabela 2-colunas (compatível com todos os email clients, incl. Outlook/Gmail) ──
+  let produtosHtml: string;
+  if (layout === "hero") {
+    const p = produtosUnicos[0];
+    const preco = p.preco_venda ? parseFloat(p.preco_venda) : null;
+    const precoFormatado = preco ? `R$ ${preco.toFixed(2).replace(".", ",")}` : "";
+    const nome = limparNome(p);
+    const rawImgSrc = p.ns_imagem || (p.imagem_url && p.imagem_url.startsWith("http") ? p.imagem_url : null);
+    const imgSrc = rawImgSrc ? proxyImageUrl(rawImgSrc) : null;
+    const link = p.ns_url || `${linkBase}/novidades/`;
+    produtosHtml = `
+    <a href="${link}" style="display:block;text-decoration:none;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.07);border:1px solid #f5e8f0;margin:0 10px;">
+      ${imgSrc ? `<img src="${imgSrc}" alt="${escHtml(nome)}" width="540" height="380" style="display:block;width:100%;height:380px;object-fit:cover;" />` : `<div style="height:280px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);text-align:center;font-size:56px;padding-top:100px;box-sizing:border-box;">🎀</div>`}
+      <div style="padding:20px 24px 24px;text-align:center;">
+        <p style="color:#fe68c4;font-size:12px;font-weight:700;text-transform:uppercase;margin:0 0 6px;">Novidade</p>
+        <p style="color:#333;font-weight:700;font-size:20px;margin:0 0 8px;">${escHtml(nome)}</p>
+        ${precoFormatado ? `<p style="color:#222;font-weight:800;font-size:24px;margin:0 0 18px;">${precoFormatado}</p>` : ""}
+        <div style="display:inline-block;background:#fe68c4;color:#fff;padding:14px 36px;border-radius:30px;font-weight:700;font-size:15px;">Quero este!</div>
+      </div>
+    </a>`;
+  } else {
+    // Grid 2 colunas usando tabela — funciona em Outlook, Gmail, Apple Mail
+    const rows: string[] = [];
+    for (let i = 0; i < produtosUnicos.length; i += 2) {
+      const left = produtosUnicos[i];
+      const right = produtosUnicos[i + 1];
+      rows.push(`
+      <tr>
+        <td width="270" valign="top" style="width:270px;padding:6px;">${gerarCard(left)}</td>
+        <td width="270" valign="top" style="width:270px;padding:6px;">${right ? gerarCard(right) : ""}</td>
+      </tr>`);
     }
-
-    // Hero e medio: imagem grande, botão, badge, categoria
-    const maxW = layout === "hero" ? "500" : "260";
-    const imgH = layout === "hero" ? "400" : "240";
-    const imgBlock = imgSrc
-      ? `<img src="${imgSrc}" alt="${nome}" width="${maxW}" height="${imgH}" style="width:100%;max-width:${maxW}px;height:${imgH}px;object-fit:cover;border-radius:12px 12px 0 0;display:block;margin:0 auto;" />`
-      : `<div style="width:100%;max-width:${maxW}px;height:${imgH}px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:12px 12px 0 0;text-align:center;padding-top:${layout === "hero" ? "160" : "96"}px;box-sizing:border-box;font-size:48px;margin:0 auto;">🎀</div>`;
-
-    const badgeHtml = estoqueBaixo
-      ? `<span style="position:absolute;top:10px;left:10px;background:#ff4444;color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:10px;">Ultimas ${est}!</span>`
-      : `<span style="position:absolute;top:10px;left:10px;background:#fe68c4;color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:10px;">Novo</span>`;
-
-    const fontSize = layout === "hero"
-      ? { nome: "18px", preco: "22px", btn: "15px" }
-      : { nome: "14px", preco: "18px", btn: "13px" };
-
-    return `
-    <!--[if mso]><td valign="top" width="${maxW}" style="width:${maxW}px;padding:8px;"><![endif]-->
-    <div style="display:inline-block;vertical-align:top;width:100%;max-width:${maxW}px;padding:8px;box-sizing:border-box;">
-      <a href="${link}" style="text-decoration:none;display:block;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06);border:1px solid #f5f0f2;">
-        <div style="position:relative;">
-          ${imgBlock}
-          ${badgeHtml}
-        </div>
-        <div style="padding:16px 18px 18px;">
-          ${p.categoria ? `<p style="margin:0 0 4px;color:#fe68c4;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">${p.categoria}</p>` : ""}
-          <p style="margin:0 0 8px;color:#333;font-weight:700;font-size:${fontSize.nome};line-height:1.3;">${nome}</p>
-          ${precoFormatado ? `<p style="margin:0 0 14px;color:#222;font-weight:800;font-size:${fontSize.preco};">${precoFormatado}</p>` : ""}
-          <div style="background:#fe68c4;color:#fff;padding:11px 16px;border-radius:10px;text-align:center;font-weight:700;font-size:${fontSize.btn};">
-            Quero este!
-          </div>
-        </div>
-      </a>
-    </div>
-    <!--[if mso]></td><![endif]-->`;
-  }).join("");
+    produtosHtml = `<table width="560" cellpadding="0" cellspacing="0" border="0" style="width:560px;margin:0 auto;">${rows.join("")}</table>`;
+  }
 
   // WhatsApp CTA
   const whatsappMsg = encodeURIComponent("Oi! Vi as novidades no email e quero saber mais!");
@@ -567,7 +571,7 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
   const assuntosOpcoes = qtd === 1
     ? [
         `{{nome}}, chegou algo especial pra voce!`,
-        `Novidade fresquinha: ${limparNome(produtos[0])}`,
+        `Novidade fresquinha: ${limparNome(produtosUnicos[0])}`,
         `Acabou de chegar na Bibelô e voce precisa ver!`,
       ]
     : qtd <= 3
@@ -585,7 +589,7 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
 
   // Preheader adaptativo
   const preheader = qtd === 1
-    ? `${limparNome(produtos[0])} acabou de chegar. Corre que tem pouca unidade!`
+    ? `${limparNome(produtosUnicos[0])} acabou de chegar. Corre que tem pouca unidade!`
     : `${qtd} produtos novos acabaram de chegar. ${categorias.slice(0, 3).join(", ")}. Corre que o estoque e limitado!`;
 
   const html = `<!DOCTYPE html>
@@ -622,11 +626,9 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
       </p>
     </div>
 
-    <!-- Produtos: layout adaptativo -->
-    <div style="padding:12px ${layout === "hero" ? "20px" : "10px"} 0;text-align:center;font-size:0;">
-      <!--[if mso]><table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr><![endif]-->
+    <!-- Produtos -->
+    <div style="padding:12px 10px 0;text-align:center;">
       ${produtosHtml}
-      <!--[if mso]></tr></table><![endif]-->
     </div>
 
     <!-- CTA principal -->
