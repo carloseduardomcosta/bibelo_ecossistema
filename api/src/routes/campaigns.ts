@@ -167,7 +167,7 @@ campaignsRouter.get("/novidades-nf", async (_req: Request, res: Response) => {
         FROM sync.nuvemshop_products np2
         WHERE (vp.sku IS NOT NULL AND LOWER(np2.sku) = LOWER(vp.sku))
           OR LOWER(np2.nome) LIKE LOWER(SUBSTRING(vp.nome FROM 1 FOR 40)) || '%'
-        ORDER BY prio ASC
+        ORDER BY prio ASC, (np2.dados_raw->>'created_at') ASC NULLS LAST
         LIMIT 1
       ) np ON true
       ORDER BY vp.numero_item ASC
@@ -296,7 +296,7 @@ campaignsRouter.get("/nfs/:id/produtos", async (req: Request, res: Response) => 
         FROM sync.nuvemshop_products np2
         WHERE (bp.sku IS NOT NULL AND LOWER(np2.sku) = LOWER(bp.sku))
           OR LOWER(np2.nome) LIKE LOWER(SUBSTRING(bp.nome FROM 1 FOR 40)) || '%'
-        ORDER BY prio ASC
+        ORDER BY prio ASC, (np2.dados_raw->>'created_at') ASC NULLS LAST
         LIMIT 1
       ) np ON true
       WHERE ne.id = $1 AND ne.status != 'cancelada'
@@ -856,7 +856,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
         FROM sync.nuvemshop_products np2
         WHERE (bp.sku IS NOT NULL AND LOWER(np2.sku) = LOWER(bp.sku))
           OR LOWER(np2.nome) LIKE LOWER(SUBSTRING(bp.nome FROM 1 FOR 40)) || '%'
-        ORDER BY prio ASC
+        ORDER BY prio ASC, (np2.dados_raw->>'created_at') ASC NULLS LAST
         LIMIT 1
       ) np ON true
       WHERE bp.id IN (${idParams})
@@ -941,7 +941,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
         FROM sync.nuvemshop_products np2
         WHERE (vp.sku IS NOT NULL AND LOWER(np2.sku) = LOWER(vp.sku))
           OR LOWER(np2.nome) LIKE LOWER(SUBSTRING(vp.nome FROM 1 FOR 40)) || '%'
-        ORDER BY prio ASC
+        ORDER BY prio ASC, (np2.dados_raw->>'created_at') ASC NULLS LAST
         LIMIT 1
       ) np ON true
       ORDER BY vp.numero_item ASC
