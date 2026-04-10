@@ -979,3 +979,28 @@ sync.category_sync_log         (auditoria)
   - Cobre: auth 401, estrutura `{ deals: [] }`, inclui as 3 origens boasvindas, exclui outras origens, exclui deals >72h, campos obrigatórios no retorno
   - Cleanup automático no `afterAll` — sem dados residuais no banco
   - 25/25 testes passando no arquivo `deals.test.ts`
+
+### Sessão 10/04/2026 (tarde) — Campanha Novidades multi-NF + GTIN sync
+
+- **5a878fb** — fix(sync): preserva GTIN no upsert incremental + backfill `syncProductGtins`
+  - Root cause: `GET /produtos` (listing Bling) retorna `ProdutosDadosBaseDTO` sem `gtin` → upsert sobrescrevia `gtin = NULL` a cada ciclo
+  - Fix: `gtin = COALESCE($13, sync.bling_products.gtin)` — preserva valor existente se incoming é NULL
+  - Nova função `syncProductGtins(blingIds?)`: chama `GET /produtos/{id}` individualmente para preencher GTINs em batch (mesmo padrão do `syncProductImages`)
+  - Nova rota `POST /api/sync/bling/gtins` (autenticada, background)
+  - Resultado: 105/417 produtos com GTIN. NF #099573 passou de 5 → 8 produtos válidos
+  - Webhook `processProduct()` já chamava o detalhe — salva GTIN corretamente em eventos novos
+
+- **011deee** — feat(campanhas): seleção múltipla de NFs no wizard Novidades
+  - Permite combinar produtos de 2 ou 3 NFs que chegam juntas numa campanha
+  - NF cards agora usam checkbox (toggle) em vez de radio — múltipla seleção simultânea
+  - `nfsSelecionadas`: Set de IDs; `nfProdutosMap`: cache Map por NF (não recarrega ao re-selecionar)
+  - `nfProdutosTodos`: array combinado e deduplicado de todas as NFs selecionadas
+  - `toggleNF()`: ao selecionar nova NF → carrega e auto-marca todos os produtos; ao desselecionar → remove os dela
+  - Header mostra "X de Y selecionados · N NFs" quando mais de uma NF ativa
+  - Backend inalterado: `bling_produto_ids` já era flat array independente de NF
+
+- **9d1acf1** — fix: 3 bugs encontrados por QA automatizado (76 casos de teste)
+  - **BUG 1**: `GET /campaigns/nfs/:id/produtos` retornava 500 quando `:id` não era UUID. Fix: validação regex RFC4122 → 400 antes da query PostgreSQL
+  - **BUG 2**: `GET /public/novidades?limit=-1` ou `?limit=abc` retornava 500. Fix: `Math.max(1, isNaN(parsed) ? 20 : parsed)` antes do `Math.min(x, 50)` — sempre 1-50
+  - **BUG 3** (UX): `gerar-personalizada` retornava `produtos[].nome` com `limparNome()` aplicado (sufixos de variante removidos), dificultando confirmar quais variantes foram selecionadas. Fix: `p.nome` completo no array; `limparNome()` só no HTML do email
+  - Extra: `email_optout = true` para Julia Bucci (co-dona) — removida de listas de disparo de marketing

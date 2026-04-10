@@ -8,7 +8,7 @@ Referência completa de todos os endpoints.
 - `GET  /health` — status da API e banco
 - `POST /api/auth/google` — recebe credential Google, retorna accessToken + refreshToken
 - `GET  /api/images/serve/:id` — serve imagem temporária convertida (público, sem auth — usado pelo Bling para puxar imagens)
-- `GET  /api/public/novidades?limit=20` — produtos da NF de entrada mais recente com foto + preço + descrição + estoque válidos. `limit` máx 50. Retorna `{ novidades[], total, nf_numero, atualizado_em }`. Cache 5 min.
+- `GET  /api/public/novidades?limit=20` — produtos da NF de entrada mais recente com foto + preço + descrição + estoque válidos. `limit` clamp 1-50 (NaN/negativo → 20). Retorna `{ novidades[], total, nf_numero, atualizado_em }`. Cache 5 min.
 - `GET  /api/public/frete?cep=XXXXXXXX` — calcula frete PAC + SEDEX via Melhor Envio. CEP deve ter 8 dígitos. Retorna `{ cep, options: [{ id, name, price (centavos), delivery_days }] }`. Origem: CEP 89093880 (Timbó/SC). Pacote padrão: 0,5kg 10×15×20cm. Rate limit: 30 req/min. Cache 5 min. Proxy Next.js disponível em `/api/frete?cep=` (uso client-side).
 
 ## Protegidas (Bearer JWT obrigatório)
@@ -145,7 +145,10 @@ Painel de mapeamento de categorias Bling → Medusa. Rota base: `/api/categorias
 ### Campanhas Personalizadas
 - `GET  /api/campaigns/categorias` — lista categorias de produto com estoque para multi-select
 - `GET  /api/campaigns/produtos?search=X` — busca produtos em estoque para seleção individual
-- `POST /api/campaigns/gerar-personalizada` — gera email HTML com categorias + produto_ids + público + max_por_categoria
+- `GET  /api/campaigns/novidades-nf` — produtos válidos da NF mais recente (imagem HD + URL NuvemShop). Autenticado.
+- `GET  /api/campaigns/nfs` — lista últimas 20 NFs contabilizadas: `id, numero, data_emissao, fornecedor, total_itens`. Base do seletor multi-NF no wizard.
+- `GET  /api/campaigns/nfs/:id/produtos` — produtos válidos de uma NF por UUID. Valida UUID → 400 se inválido. Retorna `id, nome, preco, estoque, img, url, categoria`.
+- `POST /api/campaigns/gerar-personalizada` — gera email HTML. Suporta `fonte:"novidades"` + `bling_produto_ids:uuid[]` para campanha Novidades com produtos de 1 ou mais NFs. Layout adaptativo: hero (1-2), medio (3-6), catalogo (7+). Retorna `{ assunto, html, produtos[], destinatarios[] }` — `produtos[].nome` preserva variante completa.
 - `POST /api/campaigns/enviar-personalizada` — dispara campanha personalizada para clientes selecionados via Resend
 - `GET  /api/campaigns/gerar-reengajamento?customer_id=X` — gera email personalizado baseado no histórico de compra do cliente
 - `GET  /api/campaigns/email-events?hours=48` — retorna eventos recentes de email (opens, clicks, bounces) de campanhas e fluxos
