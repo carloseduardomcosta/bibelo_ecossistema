@@ -186,11 +186,17 @@ const ALLOWED_IMG_DOMAINS = [
   "images.unsplash.com",
 ];
 
-// Detecta se um buffer é WEBP pelos magic bytes (RIFF....WEBP)
+// Detecta formato real da imagem pelos magic bytes
 function isWebpBuffer(buf: Buffer): boolean {
   return buf.length >= 12
     && buf.toString("ascii", 0, 4) === "RIFF"
     && buf.toString("ascii", 8, 12) === "WEBP";
+}
+function isPngBuffer(buf: Buffer): boolean {
+  return buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47;
+}
+function needsJpegConversion(buf: Buffer): boolean {
+  return isWebpBuffer(buf) || isPngBuffer(buf);
 }
 
 // GET /api/email/img/:hash — serve imagem cacheada
@@ -211,12 +217,15 @@ emailRouter.get("/img/:hash", imgProxyLimiter, async (req: Request, res: Respons
     const ext = path.extname(hash).toLowerCase();
     const buf = fs.readFileSync(filePath);
 
-    // Arquivos .jpg que na verdade são WEBP (Bling S3 não inclui extensão na URL):
-    // converte on-the-fly e substitui o cache para próximas requisições
-    if ((ext === ".jpg" || ext === ".jpeg") && isWebpBuffer(buf)) {
+    // Converte WEBP ou PNG salvo como .jpg → JPEG real
+    // Bling S3 serve imagens sem extensão; o proxy assume .jpg mas o conteúdo pode ser WEBP ou PNG
+    if ((ext === ".jpg" || ext === ".jpeg") && needsJpegConversion(buf)) {
       try {
         const sharp = (await import("sharp")).default;
-        const converted = await sharp(buf).jpeg({ quality: 90 }).toBuffer();
+        const converted = await sharp(buf)
+          .flatten({ background: { r: 255, g: 255, b: 255 } }) // fundo branco para PNG com transparência
+          .jpeg({ quality: 90 })
+          .toBuffer();
         fs.writeFileSync(filePath, converted); // atualiza cache
         res.setHeader("Content-Type", "image/jpeg");
         res.setHeader("Cache-Control", "public, max-age=2592000");
@@ -224,7 +233,7 @@ emailRouter.get("/img/:hash", imgProxyLimiter, async (req: Request, res: Respons
         res.end(converted);
         return;
       } catch (err) {
-        logger.error("Erro ao converter WEBP cacheado", { hash });
+        logger.error("Erro ao converter imagem cacheada para JPEG", { hash });
       }
     }
 
@@ -252,15 +261,19 @@ async function downloadAndCacheImage(externalUrl: string, filePath: string, orig
   const buf = Buffer.from(resp.data);
   const contentType = ((resp.headers["content-type"] as string) || "").toLowerCase();
 
-  // Detecta WEBP pelo ext declarado, pelo Content-Type da resposta ou pelos magic bytes
-  // (Bling S3 serve WEBP sem extensão na URL — content-type e magic bytes são as fontes corretas)
-  const isWebp = originalExt === "webp"
+  // Detecta formato real: WEBP ou PNG → converte para JPEG
+  // (Bling S3 serve WEBP/PNG sem extensão na URL; content-type e magic bytes são as fontes corretas)
+  const mustConvert = originalExt === "webp"
     || contentType.includes("webp")
-    || isWebpBuffer(buf);
+    || contentType.includes("png")
+    || needsJpegConversion(buf);
 
-  if (isWebp) {
+  if (mustConvert) {
     const sharp = (await import("sharp")).default;
-    const converted = await sharp(buf).jpeg({ quality: 90 }).toBuffer();
+    const converted = await sharp(buf)
+      .flatten({ background: { r: 255, g: 255, b: 255 } }) // fundo branco para PNG com transparência
+      .jpeg({ quality: 90 })
+      .toBuffer();
     fs.writeFileSync(filePath, converted);
   } else {
     fs.writeFileSync(filePath, buf);
@@ -286,7 +299,11 @@ export async function warmProxyImage(externalUrl: string): Promise<void> {
   const ext = originalExt === "webp" ? "jpg" : originalExt;
   const filePath = path.join(IMG_CACHE_DIR, `${hash}.${ext}`);
 
-  if (!fs.existsSync(filePath)) {
+  // Re-baixa se: arquivo não existe OU se existente ainda é WEBP/PNG (conversão pendente)
+  const alreadyCached = fs.existsSync(filePath);
+  const needsRedownload = alreadyCached && needsJpegConversion(fs.readFileSync(filePath).slice(0, 12));
+
+  if (!alreadyCached || needsRedownload) {
     try {
       await downloadAndCacheImage(externalUrl, filePath, originalExt);
     } catch {
