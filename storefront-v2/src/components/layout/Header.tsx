@@ -7,6 +7,8 @@ import { useCartStore } from "@/store/cart"
 import { useMenuStore } from "@/store/menu"
 import TopBar from "./TopBar"
 import PromoBanner from "./PromoBanner"
+import { listProducts } from "@/lib/medusa/products"
+import { formatPrice } from "@/lib/utils"
 
 const NAV_LINKS = [
   { label: "INÍCIO", href: "/" },
@@ -15,10 +17,106 @@ const NAV_LINKS = [
   { label: "OFERTAS", href: "/produtos?sort=price_asc" },
 ]
 
+type SearchResult = {
+  id: string
+  title: string
+  handle: string
+  thumbnail?: string | null
+  variants?: Array<{ calculated_price?: { calculated_amount: number } }>
+}
+
+function SearchDropdown({
+  query,
+  loading,
+  results,
+  onClose,
+}: {
+  query: string
+  loading: boolean
+  results: SearchResult[]
+  onClose: () => void
+}) {
+  if (!query.trim()) return null
+  return (
+    <div className="absolute top-full left-0 right-0 z-50 mt-1.5 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+      {query.trim().length < 2 ? (
+        <p className="px-4 py-5 text-sm text-center text-gray-400">
+          Digite para buscar produtos...
+        </p>
+      ) : loading ? (
+        <div className="flex items-center justify-center py-6">
+          <div className="w-5 h-5 border-2 border-bibelo-pink/30 border-t-bibelo-pink rounded-full animate-spin" />
+        </div>
+      ) : results.length === 0 ? (
+        <p className="px-4 py-5 text-sm text-center text-gray-400">
+          Nenhum produto encontrado para &ldquo;{query}&rdquo;
+        </p>
+      ) : (
+        <ul>
+          {results.map((p) => (
+            <li key={p.id} className="border-b border-gray-50 last:border-0">
+              <Link
+                href={`/produto/${p.handle}`}
+                onClick={onClose}
+                className="flex items-center gap-3 px-4 py-3 hover:bg-bibelo-rosa/30 transition-colors"
+              >
+                <div className="w-11 h-11 rounded-lg overflow-hidden bg-gray-50 shrink-0">
+                  {p.thumbnail ? (
+                    <Image
+                      src={p.thumbnail}
+                      alt={p.title}
+                      width={44}
+                      height={44}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-bibelo-rosa/30">
+                      <span className="font-heading text-base text-bibelo-pink/60">
+                        {p.title.charAt(0)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 line-clamp-1">{p.title}</p>
+                  {p.variants?.[0]?.calculated_price?.calculated_amount ? (
+                    <p className="text-sm font-bold text-bibelo-pink mt-0.5">
+                      {formatPrice(p.variants[0].calculated_price.calculated_amount)}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-400 mt-0.5">Consulte o preço</p>
+                  )}
+                </div>
+              </Link>
+            </li>
+          ))}
+          <li>
+            <button
+              type="button"
+              onClick={() => {
+                onClose()
+                window.location.href = `/busca?q=${encodeURIComponent(query.trim())}`
+              }}
+              className="w-full px-4 py-2.5 text-sm text-bibelo-pink font-semibold hover:bg-bibelo-rosa/20 transition-colors text-center border-t border-gray-100"
+            >
+              Ver todos os resultados →
+            </button>
+          </li>
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export default function Header() {
   const [searchQuery, setSearchQuery] = useState("")
   const [scrolled, setScrolled] = useState(false)
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
+  const desktopRef = useRef<HTMLDivElement>(null)
+  const mobileRef = useRef<HTMLDivElement>(null)
   const { itemCount, openCart } = useCartStore()
   const { openMenu } = useMenuStore()
 
@@ -34,9 +132,43 @@ export default function Header() {
     }
   }, [])
 
+  // Busca com debounce 300ms
+  useEffect(() => {
+    const q = searchQuery.trim()
+    if (q.length < 2) {
+      setSearchResults([])
+      setSearchLoading(false)
+      return
+    }
+    setSearchLoading(true)
+    const timer = setTimeout(async () => {
+      try {
+        const { products } = await listProducts({ q, limit: 6 })
+        setSearchResults(products as SearchResult[])
+      } catch {
+        setSearchResults([])
+      } finally {
+        setSearchLoading(false)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  // Fechar dropdown ao clicar fora
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (!desktopRef.current?.contains(t) && !mobileRef.current?.contains(t))
+        setShowDropdown(false)
+    }
+    document.addEventListener("mousedown", handle)
+    return () => document.removeEventListener("mousedown", handle)
+  }, [])
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     if (searchQuery.trim()) {
+      setShowDropdown(false)
       window.location.href = `/busca?q=${encodeURIComponent(searchQuery.trim())}`
     }
   }
@@ -63,14 +195,16 @@ export default function Header() {
               />
             </Link>
 
-            {/* Busca central */}
-            <div className="flex-1 hidden md:block">
+            {/* Busca central — desktop */}
+            <div ref={desktopRef} className="flex-1 hidden md:block relative">
               <form onSubmit={handleSearch} className="relative">
                 <input
                   ref={searchRef}
                   type="search"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setShowDropdown(true) }}
+                  onFocus={() => { if (searchQuery.trim()) setShowDropdown(true) }}
+                  onKeyDown={(e) => { if (e.key === "Escape") setShowDropdown(false) }}
                   placeholder="O que você está buscando?"
                   className="w-full border-2 border-bibelo-pink/40 rounded-full px-5 py-2.5 text-sm
                              focus:outline-none focus:border-bibelo-pink transition-colors
@@ -86,6 +220,14 @@ export default function Header() {
                   </svg>
                 </button>
               </form>
+              {showDropdown && (
+                <SearchDropdown
+                  query={searchQuery}
+                  loading={searchLoading}
+                  results={searchResults}
+                  onClose={() => setShowDropdown(false)}
+                />
+              )}
             </div>
 
             {/* Ações direita — somente desktop (no mobile está na bottom nav) */}
@@ -174,12 +316,14 @@ export default function Header() {
         </div>
 
         {/* Busca mobile */}
-        <div className="md:hidden px-4 pb-3">
+        <div ref={mobileRef} className="md:hidden px-4 pb-3 relative">
           <form onSubmit={handleSearch} className="relative">
             <input
               type="search"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setShowDropdown(true) }}
+              onFocus={() => { if (searchQuery.trim()) setShowDropdown(true) }}
+              onKeyDown={(e) => { if (e.key === "Escape") setShowDropdown(false) }}
               placeholder="O que você está buscando?"
               className="w-full border-2 border-bibelo-pink/30 rounded-full px-4 py-2 text-sm
                          focus:outline-none focus:border-bibelo-pink transition-colors
@@ -195,6 +339,14 @@ export default function Header() {
               </svg>
             </button>
           </form>
+          {showDropdown && (
+            <SearchDropdown
+              query={searchQuery}
+              loading={searchLoading}
+              results={searchResults}
+              onClose={() => setShowDropdown(false)}
+            />
+          )}
         </div>
 
         {/* Nav bar de categorias */}

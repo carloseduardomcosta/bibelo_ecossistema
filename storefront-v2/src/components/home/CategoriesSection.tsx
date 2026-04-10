@@ -1,8 +1,8 @@
 import Link from "next/link"
 import { listCategories } from "@/lib/medusa/products"
 
-// Mapeamento de handles para emojis visuais
-const EMOJI_MAP: Record<string, string> = {
+// Mapeamento de handles para emojis visuais — exportado para reuso em /categoria/[handle]
+export const EMOJI_MAP: Record<string, string> = {
   caderno: "📓",
   caderneta: "📕",
   cadernico: "📗",
@@ -102,7 +102,7 @@ export default async function CategoriesSection() {
           {sorted.map((cat) => (
             <Link
               key={cat.id}
-              href={`/produtos?categoria=${cat.handle}`}
+              href={`/categoria/${cat.handle}`}
               className="flex flex-col items-center gap-2 w-[80px] shrink-0"
             >
               <div className="w-16 h-16 rounded-2xl bg-bibelo-rosa flex items-center justify-center text-2xl
@@ -121,7 +121,7 @@ export default async function CategoriesSection() {
           {sorted.slice(0, 8).map((cat) => (
             <Link
               key={cat.id}
-              href={`/produtos?categoria=${cat.handle}`}
+              href={`/categoria/${cat.handle}`}
               className="flex items-center gap-3 px-4 py-3 rounded-xl bg-bibelo-rosa/50 hover:bg-bibelo-pink/15
                          transition-colors group"
             >
