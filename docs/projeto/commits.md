@@ -1023,3 +1023,10 @@ sync.category_sync_log         (auditoria)
   - Grade responsiva 2/3/4 colunas com foto, categoria, nome, preço, estoque
   - Status bar da NF (número, data, total de produtos), skeleton loading, estados de erro/vazio
   - Rota `/catalogo-whatsapp` + item no menu Marketing (ícone BookImage)
+
+- **40515a6** — fix(emails): botões grupo VIP apontam direto para o grupo WhatsApp
+  - Clientes que chegam por email já forneceram dados — formulário intermediário era fricção desnecessária
+  - `flow.service.ts`: constante `GRUPO_VIP_URL` + atualiza `buildFomoVipEmail` e `buildVipInviteEmail`
+  - `leads.ts`: botão confirmação pós-verificação → link direto do grupo
+  - `leads-script.ts`: popup success "Entrar no Clube VIP" → link direto do grupo
+  - Mantidos no formulário: menu boasvindas (Instagram bio) e BenefitsStrip (homepage) — tráfego frio
