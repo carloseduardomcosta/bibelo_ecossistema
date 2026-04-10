@@ -18,7 +18,7 @@ Referência completa de todos os endpoints.
 - `POST /api/auth/logout`
 
 ### Customers
-- `GET  /api/customers` — lista paginada com filtros (search, segmento, canal_origem, contato, cidade, ordenar). Exclui fornecedores (CNPJ) por padrão.
+- `GET  /api/customers` — lista paginada com filtros (search, segmento, canal_origem, contato, cidade, ordenar, **tipo**). `tipo=cliente` (padrão, B2C), `tipo=b2b` (somente CNPJ), `tipo=todos`. B2B excluídos automaticamente nos padrões de campanha.
 - `GET  /api/customers/stats` — KPIs: total, com email, com WhatsApp, novos 30d, inativos, score
 - `GET  /api/customers/cidades` — lista cidades com contagem para filtro
 - `GET  /api/customers/:id` — perfil completo + score
@@ -148,7 +148,7 @@ Painel de mapeamento de categorias Bling → Medusa. Rota base: `/api/categorias
 - `GET  /api/campaigns/novidades-nf` — produtos válidos da NF mais recente (imagem HD + URL NuvemShop). Autenticado.
 - `GET  /api/campaigns/nfs` — lista últimas 20 NFs contabilizadas: `id, numero, data_emissao, fornecedor, total_itens`. Base do seletor multi-NF no wizard.
 - `GET  /api/campaigns/nfs/:id/produtos` — produtos válidos de uma NF por UUID. Valida UUID → 400 se inválido. Retorna `id, nome, preco, estoque, img, url, categoria`.
-- `POST /api/campaigns/gerar-personalizada` — gera email HTML. Suporta `fonte:"novidades"` + `bling_produto_ids:uuid[]` para campanha Novidades com produtos de 1 ou mais NFs. Layout adaptativo: hero (1-2), medio (3-6), catalogo (7+). Retorna `{ assunto, html, produtos[], destinatarios[] }` — `produtos[].nome` preserva variante completa.
+- `POST /api/campaigns/gerar-personalizada` — gera email HTML. Suporta `fonte:"novidades"` + `bling_produto_ids:uuid[]` para campanha Novidades com produtos de 1 ou mais NFs. Layout adaptativo: hero (1-2), medio (3-6), catalogo (7+). Retorna `{ assunto, html, produtos[], destinatarios[] }` — `produtos[].nome` preserva variante completa. `publico` aceita: `todos`, `todos_com_email`, `nunca_contatados`, `segmento`, `manual`, **`b2b`** (somente clientes B2B). Públicos não-manuais excluem B2B automaticamente.
 - `POST /api/campaigns/enviar-personalizada` — dispara campanha personalizada para clientes selecionados via Resend
 - `GET  /api/campaigns/gerar-reengajamento?customer_id=X` — gera email personalizado baseado no histórico de compra do cliente
 - `GET  /api/campaigns/email-events?hours=48` — retorna eventos recentes de email (opens, clicks, bounces) de campanhas e fluxos

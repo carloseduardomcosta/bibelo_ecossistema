@@ -1030,3 +1030,31 @@ sync.category_sync_log         (auditoria)
   - `leads.ts`: botão confirmação pós-verificação → link direto do grupo
   - `leads-script.ts`: popup success "Entrar no Clube VIP" → link direto do grupo
   - Mantidos no formulário: menu boasvindas (Instagram bio) e BenefitsStrip (homepage) — tráfego frio
+
+### Sessão 10/04/2026 (tarde/noite) — Testes de email, segmentação B2B, filtro frontend
+
+- **0b0d461** — test(campaigns): cobertura completa do fluxo de email (novidades-nf, gerar, enviar, reengajamento, E2E)
+  - 56 testes de integração para campanhas de email — sem envio real (mock VITEST=true)
+  - Suítes: `GET /novidades-nf` (6), `POST /gerar-personalizada` (8), `POST /enviar-personalizada` (6), `GET /gerar-reengajamento` (5), E2E pipeline completo (1)
+  - Testa: auth, 400s, layout HTML table, links de loja, proxy de imagens, LGPD opt-out
+  - Total do projeto sobe para 522 testes (100% passando)
+
+- **78db297** — fix(test): corrige interferência de dedup no teste de Reativação condicional
+  - `triggerFlow("customer.inactive")` disparava fluxo real de Reativação junto ao fluxo de teste
+  - Fluxo real gravava interação `template: "Reativação"` → dedup 72h bloqueava step 0 do fluxo de teste
+  - Fix: deleta execuções de outros fluxos para o customer de teste imediatamente após triggerFlow
+
+- **20324c1** — feat(crm): segmentação B2B — filtro tipo no painel e público b2b em campanhas
+  - 19 clientes `tipo='fornecedor'` migrados para `tipo='b2b'` no banco
+  - 4 clientes de teste deletados
+  - `GET /api/customers` aceita `?tipo=cliente|b2b|todos` (padrão: cliente — exclui B2B)
+  - Enum Zod de `publico` em `gerar-personalizada` ampliado para incluir `'b2b'`
+  - Audiências padrão (todos, todos_com_email, nunca_contatados, segmento) filtram B2B via `COALESCE(tipo,'cliente')='cliente'`
+  - Novo case `'b2b'`: seleciona somente `WHERE c.tipo = 'b2b'`
+  - NuvemShop tiebreaker: `ORDER BY (np2.dados_raw->>'created_at') ASC NULLS LAST` — prefere produto original quando dois produtos NuvemShop têm nome similar (fix link YINS aramado vs giratório)
+
+- **48c60a6** — feat(frontend): toggle B2C/B2B/Todos no painel de clientes
+  - Tabs B2C | B2B | Todos no header da página Clientes
+  - Filtro de segmento oculto automaticamente na view B2B (irrelevante)
+  - Badge "B2B" azul na coluna segmento para clientes tipo b2b
+  - `tipo` adicionado ao campo `Customer` interface e ao `useCallback` deps
