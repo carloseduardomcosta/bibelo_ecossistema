@@ -1125,69 +1125,70 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
 
   // ── Template Novidades: layout adaptativo (hero/medio/catalogo) + imagens HD ──
   if (fonte === "novidades") {
-    const qtd = produtos.length;
-    const layout = qtd <= 2 ? "hero" : qtd <= 6 ? "medio" : "catalogo";
+    // Aquece cache das imagens antes de gerar HTML (garante proxy disponível ao abrir o email)
+    await Promise.all(produtos.map(p => p.img ? warmProxyImage(p.img) : Promise.resolve()));
 
-    const produtosHtmlNov = produtos.map((p) => {
+    const qtd = produtos.length;
+    const imgH = qtd === 1 ? 380 : 220;
+
+    // Card individual — altura fixa (aspect-ratio não funciona em Gmail/Outlook)
+    function gerarCardNov(p: typeof produtos[0]): string {
       const preco = parseFloat(p.preco);
       const precoFmt = preco ? `R$ ${preco.toFixed(2).replace(".", ",")}` : "";
       const nome = limparNome(p.nome);
       const link = p.url || `${linkBase}/novidades/`;
       const estoqueBaixo = p.estoque > 0 && p.estoque <= 3;
-      // proxyImageUrl converte webp→jpg para compatibilidade com Outlook/Yahoo
-      const rawImg = p.img;
-      const imgSrc = rawImg ? proxyImageUrl(rawImg) : null;
-
-      if (layout === "catalogo") {
-        const imgBlock = imgSrc
-          ? `<img src="${imgSrc}" alt="${nome}" width="248" style="width:100%;height:auto;aspect-ratio:1;object-fit:cover;display:block;" />`
-          : `<div style="width:100%;aspect-ratio:1;background:linear-gradient(135deg,#ffe5ec,#fff7c1);display:flex;align-items:center;justify-content:center;font-size:36px;">🎀</div>`;
-        return `
-        <div style="display:inline-block;vertical-align:top;width:50%;max-width:268px;padding:6px;box-sizing:border-box;">
-          <a href="${link}" style="text-decoration:none;display:block;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.06);border:1px solid #f5f0f2;">
-            <div style="position:relative;overflow:hidden;">
-              ${imgBlock}
-              ${estoqueBaixo ? `<span style="position:absolute;top:6px;right:6px;background:#ff4444;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">Últimas ${p.estoque}!</span>` : ""}
-            </div>
-            <div style="padding:10px 12px 12px;">
-              ${p.categoria ? `<p style="margin:0 0 3px;color:#fe68c4;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">${p.categoria}</p>` : ""}
-              <p style="margin:0 0 6px;color:#333;font-weight:600;font-size:12px;line-height:1.3;min-height:32px;">${nome}</p>
-              <div style="display:flex;align-items:center;justify-content:space-between;">
-                ${precoFmt ? `<span style="color:#222;font-weight:800;font-size:15px;">${precoFmt}</span>` : ""}
-                <span style="color:#fe68c4;font-size:11px;font-weight:700;">Ver →</span>
-              </div>
-            </div>
-          </a>
-        </div>`;
-      }
-
-      // hero / medio: imagem grande, botão "Quero este!"
-      const maxW = layout === "hero" ? "500" : "260";
-      const imgBlock = imgSrc
-        ? `<img src="${imgSrc}" alt="${nome}" width="${maxW}" style="width:100%;max-width:${maxW}px;height:auto;aspect-ratio:1;object-fit:cover;border-radius:12px 12px 0 0;display:block;margin:0 auto;" />`
-        : `<div style="width:100%;max-width:${maxW}px;height:200px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:12px 12px 0 0;display:flex;align-items:center;justify-content:center;font-size:48px;margin:0 auto;">🎀</div>`;
+      const imgSrc = p.img ? proxyImageUrl(p.img) : null;
       const badge = estoqueBaixo
         ? `<span style="position:absolute;top:10px;left:10px;background:#ff4444;color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:10px;">Últimas ${p.estoque}!</span>`
         : `<span style="position:absolute;top:10px;left:10px;background:#fe68c4;color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:10px;">Novo</span>`;
-      const fs = layout === "hero"
-        ? { nome: "18px", preco: "22px", btn: "15px" }
-        : { nome: "14px", preco: "18px", btn: "13px" };
+      const imgTag = imgSrc
+        ? `<img src="${imgSrc}" alt="${nome}" width="260" height="${imgH}" style="display:block;width:100%;height:${imgH}px;object-fit:cover;border-radius:10px 10px 0 0;" />`
+        : `<div style="height:${imgH}px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:10px 10px 0 0;text-align:center;font-size:40px;padding-top:${Math.floor(imgH / 2) - 20}px;box-sizing:border-box;">🎀</div>`;
+      return `<a href="${link}" style="display:block;text-decoration:none;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #f5e8f0;">
+        <div style="position:relative;">${imgTag}${badge}</div>
+        <div style="padding:14px 16px 16px;">
+          ${p.categoria ? `<p style="margin:0 0 4px;color:#fe68c4;font-size:10px;font-weight:700;text-transform:uppercase;">${p.categoria}</p>` : ""}
+          <p style="margin:0 0 6px;color:#333;font-weight:700;font-size:14px;line-height:1.35;">${nome}</p>
+          ${precoFmt ? `<p style="margin:0 0 12px;color:#222;font-weight:800;font-size:18px;">${precoFmt}</p>` : ""}
+          <div style="background:#fe68c4;color:#fff;padding:10px 14px;border-radius:8px;text-align:center;font-weight:700;font-size:13px;">Quero este!</div>
+        </div>
+      </a>`;
+    }
 
-      return `
-      <!--[if mso]><td valign="top" width="${maxW}" style="width:${maxW}px;padding:8px;"><![endif]-->
-      <div style="display:inline-block;vertical-align:top;width:100%;max-width:${maxW}px;padding:8px;box-sizing:border-box;">
-        <a href="${link}" style="text-decoration:none;display:block;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06);border:1px solid #f5f0f2;">
-          <div style="position:relative;">${imgBlock}${badge}</div>
-          <div style="padding:16px 18px 18px;">
-            ${p.categoria ? `<p style="margin:0 0 4px;color:#fe68c4;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">${p.categoria}</p>` : ""}
-            <p style="margin:0 0 8px;color:#333;font-weight:700;font-size:${fs.nome};line-height:1.3;">${nome}</p>
-            ${precoFmt ? `<p style="margin:0 0 14px;color:#222;font-weight:800;font-size:${fs.preco};">${precoFmt}</p>` : ""}
-            <div style="background:#fe68c4;color:#fff;padding:11px 16px;border-radius:10px;text-align:center;font-weight:700;font-size:${fs.btn};">Quero este!</div>
-          </div>
-        </a>
-      </div>
-      <!--[if mso]></td><![endif]-->`;
-    }).join("");
+    let produtosHtmlNov: string;
+    if (qtd === 1) {
+      // Hero: 1 produto centralizado
+      const p = produtos[0];
+      const nome = limparNome(p.nome);
+      const preco = parseFloat(p.preco);
+      const precoFmt = preco ? `R$ ${preco.toFixed(2).replace(".", ",")}` : "";
+      const link = p.url || `${linkBase}/novidades/`;
+      const imgSrc = p.img ? proxyImageUrl(p.img) : null;
+      produtosHtmlNov = `
+      <a href="${link}" style="display:block;text-decoration:none;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.07);border:1px solid #f5e8f0;margin:0 10px;">
+        ${imgSrc ? `<img src="${imgSrc}" alt="${nome}" width="540" height="380" style="display:block;width:100%;height:380px;object-fit:cover;" />` : `<div style="height:280px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);text-align:center;font-size:56px;padding-top:100px;box-sizing:border-box;">🎀</div>`}
+        <div style="padding:20px 24px 24px;text-align:center;">
+          <p style="color:#fe68c4;font-size:12px;font-weight:700;text-transform:uppercase;margin:0 0 6px;">Novidade</p>
+          <p style="color:#333;font-weight:700;font-size:20px;margin:0 0 8px;">${nome}</p>
+          ${precoFmt ? `<p style="color:#222;font-weight:800;font-size:24px;margin:0 0 18px;">${precoFmt}</p>` : ""}
+          <div style="display:inline-block;background:#fe68c4;color:#fff;padding:14px 36px;border-radius:30px;font-weight:700;font-size:15px;">Quero este!</div>
+        </div>
+      </a>`;
+    } else {
+      // Grade 2 colunas — tabela compatível com Gmail, Outlook, Yahoo, Apple Mail
+      const rows: string[] = [];
+      for (let i = 0; i < produtos.length; i += 2) {
+        const left = produtos[i];
+        const right = produtos[i + 1];
+        rows.push(`
+        <tr>
+          <td width="270" valign="top" style="width:270px;padding:6px;">${gerarCardNov(left)}</td>
+          <td width="270" valign="top" style="width:270px;padding:6px;">${right ? gerarCardNov(right) : ""}</td>
+        </tr>`);
+      }
+      produtosHtmlNov = `<table width="560" cellpadding="0" cellspacing="0" border="0" style="width:560px;margin:0 auto;">${rows.join("")}</table>`;
+    }
 
     const saudacao = qtd === 1
       ? `Tem uma novidade especial que acabou de chegar e é a sua cara:`
@@ -1230,10 +1231,8 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
       <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 6px;">Oi, <strong>{{nome}}</strong>! 💕</p>
       <p style="color:#555;font-size:15px;line-height:1.6;margin:0;">${saudacao}</p>
     </div>
-    <div style="padding:12px ${layout === "hero" ? "20px" : "10px"} 0;text-align:center;font-size:0;">
-      <!--[if mso]><table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr><![endif]-->
+    <div style="padding:12px 10px 0;text-align:center;">
       ${produtosHtmlNov}
-      <!--[if mso]></tr></table><![endif]-->
     </div>
     <div style="padding:20px 25px 8px;text-align:center;">
       <a href="${linkBase}/novidades/" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#ff8fd3);color:#fff;padding:16px 40px;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">Ver Todas as Novidades</a>
@@ -1257,32 +1256,41 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
   } else {
     const catLabel = categorias.slice(0, 3).join(", ");
 
-    const produtosHtml = produtos.map((p) => {
+    await Promise.all(produtos.map(p => p.img ? warmProxyImage(p.img) : Promise.resolve()));
+
+    const imgHPad = 220;
+    function gerarCardPad(p: typeof produtos[0]): string {
       const preco = parseFloat(p.preco);
       const precoFmt = preco ? `R$ ${preco.toFixed(2).replace(".", ",")}` : "";
       const nomeLimpo = limparNome(p.nome);
       const link = p.url || linkBase;
-      const imgBlock = p.img
-        ? `<img src="${p.img}" alt="${nomeLimpo}" width="248" style="width:100%;height:auto;aspect-ratio:1;object-fit:cover;display:block;" />`
-        : `<div style="width:100%;aspect-ratio:1;background:linear-gradient(135deg,#ffe5ec,#fff7c1);display:flex;align-items:center;justify-content:center;font-size:36px;">🎀</div>`;
+      const imgSrc = p.img ? proxyImageUrl(p.img) : null;
+      const imgBlock = imgSrc
+        ? `<img src="${imgSrc}" alt="${nomeLimpo}" width="260" height="${imgHPad}" style="display:block;width:100%;height:${imgHPad}px;object-fit:cover;" />`
+        : `<div style="height:${imgHPad}px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);text-align:center;font-size:36px;padding-top:${Math.floor(imgHPad / 2) - 20}px;box-sizing:border-box;">🎀</div>`;
       const badge = p.estoque <= 3
         ? `<span style="position:absolute;top:6px;right:6px;background:#ff4444;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">Últimas ${p.estoque}!</span>`
         : `<span style="position:absolute;top:6px;left:6px;background:#fe68c4;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">Novo</span>`;
+      return `<a href="${link}" style="display:block;text-decoration:none;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.06);border:1px solid #f5f0f2;">
+        <div style="position:relative;overflow:hidden;">${imgBlock}${badge}</div>
+        <div style="padding:10px 12px 12px;">
+          <p style="margin:0 0 6px;color:#333;font-weight:600;font-size:12px;line-height:1.3;min-height:32px;">${nomeLimpo}</p>
+          <div style="color:#fe68c4;font-size:11px;font-weight:700;text-align:right;">${precoFmt ? `<span style="color:#222;font-weight:800;font-size:15px;margin-right:6px;">${precoFmt}</span>` : ""}Ver →</div>
+        </div>
+      </a>`;
+    }
 
-      return `
-      <div style="display:inline-block;vertical-align:top;width:50%;max-width:268px;padding:6px;box-sizing:border-box;">
-        <a href="${link}" style="text-decoration:none;display:block;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.06);border:1px solid #f5f0f2;">
-          <div style="position:relative;overflow:hidden;">${imgBlock}${badge}</div>
-          <div style="padding:10px 12px 12px;">
-            <p style="margin:0 0 6px;color:#333;font-weight:600;font-size:12px;line-height:1.3;min-height:32px;">${nomeLimpo}</p>
-            <div style="display:flex;align-items:center;justify-content:space-between;">
-              ${precoFmt ? `<span style="color:#222;font-weight:800;font-size:15px;">${precoFmt}</span>` : ""}
-              <span style="color:#fe68c4;font-size:11px;font-weight:700;">Ver →</span>
-            </div>
-          </div>
-        </a>
-      </div>`;
-    }).join("");
+    const rowsPad: string[] = [];
+    for (let i = 0; i < produtos.length; i += 2) {
+      const left = produtos[i];
+      const right = produtos[i + 1];
+      rowsPad.push(`
+      <tr>
+        <td width="270" valign="top" style="width:270px;padding:6px;">${gerarCardPad(left)}</td>
+        <td width="270" valign="top" style="width:270px;padding:6px;">${right ? gerarCardPad(right) : ""}</td>
+      </tr>`);
+    }
+    const produtosHtml = `<table width="560" cellpadding="0" cellspacing="0" border="0" style="width:560px;margin:0 auto;">${rowsPad.join("")}</table>`;
 
     assunto = `{{nome}}, novidades em ${catLabel} na Bibelô! ✨`;
 
@@ -1302,7 +1310,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
       <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 6px;">Oi, <strong>{{nome}}</strong>! 💕</p>
       <p style="color:#555;font-size:14px;line-height:1.7;margin:0;">Separamos <strong>${produtos.length} produtos</strong> que acabaram de chegar na Bibelô. Dá uma olhada:</p>
     </div>
-    <div style="padding:12px 10px 0;text-align:center;font-size:0;">${produtosHtml}</div>
+    <div style="padding:12px 10px 0;text-align:center;">${produtosHtml}</div>
     <div style="padding:20px 25px 8px;text-align:center;">
       <a href="${linkBase}/novidades/" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#ff8fd3);color:#fff;padding:14px 36px;border-radius:30px;text-decoration:none;font-weight:700;font-size:15px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">Ver Mais Novidades</a>
     </div>
@@ -1602,35 +1610,41 @@ campaignsRouter.get("/gerar-reengajamento", async (req: Request, res: Response) 
 
   const itensCompradosTexto = compras.map((c) => limparNome(c.nome_item)).slice(0, 3).join(", ");
 
-  const produtosHtml = produtos.map((p) => {
+  await Promise.all(produtos.map(p => p.img ? warmProxyImage(p.img) : Promise.resolve()));
+
+  const imgHRe = 220;
+  function gerarCardRe(p: typeof produtos[0]): string {
     const preco = parseFloat(p.preco);
     const precoFmt = preco ? `R$ ${preco.toFixed(2).replace(".", ",")}` : "";
     const nomeLimpo = limparNome(p.nome);
     const link = p.url || linkBase;
-    const imgBlock = p.img
-      ? `<img src="${p.img}" alt="${nomeLimpo}" width="248" style="width:100%;height:auto;aspect-ratio:1;object-fit:cover;display:block;" />`
-      : `<div style="width:100%;aspect-ratio:1;background:linear-gradient(135deg,#ffe5ec,#fff7c1);display:flex;align-items:center;justify-content:center;font-size:36px;">🎀</div>`;
+    const imgSrc = p.img ? proxyImageUrl(p.img) : null;
+    const imgBlock = imgSrc
+      ? `<img src="${imgSrc}" alt="${nomeLimpo}" width="260" height="${imgHRe}" style="display:block;width:100%;height:${imgHRe}px;object-fit:cover;" />`
+      : `<div style="height:${imgHRe}px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);text-align:center;font-size:36px;padding-top:${Math.floor(imgHRe / 2) - 20}px;box-sizing:border-box;">🎀</div>`;
     const estoqueBadge = p.estoque <= 3
       ? `<span style="position:absolute;top:6px;right:6px;background:#ff4444;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">Últimas ${p.estoque}!</span>`
       : "";
+    return `<a href="${link}" style="display:block;text-decoration:none;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.06);border:1px solid #f5f0f2;">
+      <div style="position:relative;overflow:hidden;">${imgBlock}${estoqueBadge}</div>
+      <div style="padding:10px 12px 12px;">
+        <p style="margin:0 0 6px;color:#333;font-weight:600;font-size:12px;line-height:1.3;min-height:32px;">${nomeLimpo}</p>
+        <div style="color:#fe68c4;font-size:11px;font-weight:700;text-align:right;">${precoFmt ? `<span style="color:#222;font-weight:800;font-size:15px;margin-right:6px;">${precoFmt}</span>` : ""}Ver →</div>
+      </div>
+    </a>`;
+  }
 
-    return `
-    <div style="display:inline-block;vertical-align:top;width:50%;max-width:268px;padding:6px;box-sizing:border-box;">
-      <a href="${link}" style="text-decoration:none;display:block;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.06);border:1px solid #f5f0f2;">
-        <div style="position:relative;overflow:hidden;">
-          ${imgBlock}
-          ${estoqueBadge}
-        </div>
-        <div style="padding:10px 12px 12px;">
-          <p style="margin:0 0 6px;color:#333;font-weight:600;font-size:12px;line-height:1.3;min-height:32px;">${nomeLimpo}</p>
-          <div style="display:flex;align-items:center;justify-content:space-between;">
-            ${precoFmt ? `<span style="color:#222;font-weight:800;font-size:15px;">${precoFmt}</span>` : ""}
-            <span style="color:#fe68c4;font-size:11px;font-weight:700;">Ver →</span>
-          </div>
-        </div>
-      </a>
-    </div>`;
-  }).join("");
+  const rowsRe: string[] = [];
+  for (let i = 0; i < produtos.length; i += 2) {
+    const left = produtos[i];
+    const right = produtos[i + 1];
+    rowsRe.push(`
+    <tr>
+      <td width="270" valign="top" style="width:270px;padding:6px;">${gerarCardRe(left)}</td>
+      <td width="270" valign="top" style="width:270px;padding:6px;">${right ? gerarCardRe(right) : ""}</td>
+    </tr>`);
+  }
+  const produtosHtml = `<table width="560" cellpadding="0" cellspacing="0" border="0" style="width:560px;margin:0 auto;">${rowsRe.join("")}</table>`;
 
   const assunto = `${nome}, separamos novidades especiais pra você! ✨`;
   const preheader = `Baseado na sua última compra, achamos que você vai amar esses produtos.`;
@@ -1666,7 +1680,7 @@ campaignsRouter.get("/gerar-reengajamento", async (req: Request, res: Response) 
       </p>
     </div>
 
-    <div style="padding:12px 10px 0;text-align:center;font-size:0;">
+    <div style="padding:12px 10px 0;text-align:center;">
       ${produtosHtml}
     </div>
 
