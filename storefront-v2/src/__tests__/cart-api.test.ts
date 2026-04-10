@@ -108,7 +108,7 @@ describe("Cart API Functions", () => {
         quantity: 3,
       })
       expect(cart).toBeTruthy()
-      expect(cart?.items[0].quantity).toBe(3)
+      expect(cart?.items?.[0].quantity).toBe(3)
     })
   })
 
