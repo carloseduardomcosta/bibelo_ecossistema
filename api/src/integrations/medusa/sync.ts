@@ -864,6 +864,14 @@ export async function syncBlingToMedusa(): Promise<{
   const variantCount = productGroups.filter((g) => g.isVariant).length
   const childrenCount = productGroups.reduce((sum, g) => sum + g.children.length, 0)
 
+  // Mapa de fallback por handle (cobre produtos sem SKU na variante do Medusa)
+  const medusaByHandle = new Map<string, MedusaProduct>()
+  for (const p of medusaProducts.values()) {
+    if (p.handle && !medusaByHandle.has(p.handle)) {
+      medusaByHandle.set(p.handle, p)
+    }
+  }
+
   logger.info(
     `Medusa sync: ${productsToSync.length} produtos → ${productGroups.length} grupos (${simpleCount} simples + ${variantCount} com variantes, ${childrenCount} filhos), ${medusaProducts.size} no Medusa, ${categoryMapping.size} categorias, ${imageMap.size} imagens`
   )
@@ -877,7 +885,20 @@ export async function syncBlingToMedusa(): Promise<{
   for (const group of productGroups) {
     const product = group.parent
     const stock = stockMap[product.bling_id] || 0
-    const existing = medusaProducts.get(product.sku)
+    let existing: MedusaProduct | undefined = medusaProducts.get(product.sku)
+
+    // Fallback 1: grupos com variantes — SKU do pai não está no Medusa, filhos estão
+    if (!existing && group.isVariant) {
+      for (const child of group.children) {
+        const found = medusaProducts.get(child.sku)
+        if (found) { existing = found; break }
+      }
+    }
+
+    // Fallback 2: produto sem SKU na variante do Medusa — buscar por handle
+    if (!existing) {
+      existing = medusaByHandle.get(toHandle(product.nome, product.sku))
+    }
 
     // Substituir imagens do Bling S3 por URLs locais cacheadas
     const cachedImageUrl = imageMap.get(product.bling_id)

@@ -354,6 +354,7 @@ export default function CategoriasSync() {
           <button
             onClick={handleImportar}
             disabled={importando}
+            title="Busca as categorias atuais do Bling e atualiza o painel. Novas categorias aparecem como pendentes para você mapear."
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
             {importando
@@ -364,6 +365,7 @@ export default function CategoriasSync() {
           <button
             onClick={handleSincronizar}
             disabled={sincronizando || stats.mapped === 0}
+            title="Aplica todos os mapeamentos confirmados nos produtos do Medusa. Use após reorganizar ou remapear categorias."
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-bibelo-primary text-white rounded-xl hover:bg-bibelo-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {sincronizando

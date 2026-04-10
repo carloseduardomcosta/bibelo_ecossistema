@@ -1,6 +1,6 @@
 # Status das Integrações — BibelôCRM
 
-Última atualização: 9 de Abril de 2026
+Última atualização: 10 de Abril de 2026
 
 | Integração | Status | Observações |
 |-----------|--------|-------------|
@@ -37,7 +37,8 @@
 | Google Reviews | ✅ produção | Places API (New), cache DB 6h, widget JS NuvemShop via GTM |
 | Inteligência de Fluxos | ✅ produção | pula step cupom se lead já comprou, reativação só com pedido |
 | Medusa.js v2 | ✅ produção | porta 9000, Admin Dashboard ativo, 373 produtos sincronizados do Bling, Pix integrado |
-| Sync Bling → Medusa | ✅ produção | CRM como hub: sync.bling_products → Medusa Admin API, BullMQ 30min, dedup SKU, estoque → published/draft |
+| Sync Bling → Medusa | ✅ produção | CRM como hub: sync.bling_products → Medusa Admin API, BullMQ 30min, dedup SKU+handle (fallback), estoque → published/draft. Fix 10/04: fallback handle p/ produtos sem SKU na variante |
+| Categorias Sync (painel) | ✅ produção | Painel CRM Loja Online → Categorias Sync. 4 rotas `/api/categorias-sync`. Fluxo automático: webhook product.* → syncCategoriesToMedusa() → cria+marca mapped. Manual: importar/mapear/sincronizar. 54 categorias mapeadas. |
 | Next.js Storefront | 🔧 em desenvolvimento | porta 8001, integrado com Medusa.js v2 |
 | Mercado Pago Pix | ✅ produção | Payment provider Medusa v2 — API Orders (Checkout Transparente), webhook HMAC validado, Nginx+SSL em api.papelariabibelo.com.br |
 | Melhor Envio | ✅ produção | OAuth2 conectado, fulfillment provider Medusa v2, PAC+SEDEX calculados via API, token via CRM |

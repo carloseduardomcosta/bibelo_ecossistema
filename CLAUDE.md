@@ -696,7 +696,42 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 9 de Abril de 2026 — imagens HD Bling (syncProductImages, UPSERT protegido), página /novidades, NF entrada via API Bling, seção Novidades storefront*
+*Última atualização: 10 de Abril de 2026 — painel Categorias Sync, mutex sync Medusa, fix lookup variantes*
+
+---
+
+## Painel de Sincronização de Categorias (Bling ↔ Medusa)
+
+### Localização no CRM
+Sidebar → Loja Online → Categorias Sync (`/categorias-sync`)
+
+### Tabelas
+- `sync.bling_medusa_categories` — mapeamento bling_category_id ↔ medusa_category_id. Campos: `status` (mapped/pending/ignored), `bling_category_name`, `bling_parent_id`, `origem` (full/manual), `created_at`, `sincronizado_em`
+- `sync.category_sync_log` — auditoria de operações (importar, mapear, ignorar, sincronizar)
+
+### Fluxo automático (sem ação manual)
+1. Carlos salva produto no Bling com categoria
+2. Bling dispara `product.updated` → webhook CRM
+3. `syncBlingToMedusa()` em background → `syncCategoriesToMedusa()`
+4. Se categoria nova: criada no Medusa + `status='mapped'` na tabela automaticamente
+5. Produto atualizado no Medusa com categoria correta — painel já mostra `mapped`
+
+### Fluxo manual (painel)
+1. "Importar do Bling" — busca categorias atuais, novas chegam como `pending`
+2. Dropdown por linha → selecionar categoria Medusa → "Mapear"
+3. "Sincronizar tudo" — aplica todos `mapped` nos produtos do Medusa (bulk REPLACE)
+
+### Categorias ignoradas automaticamente
+`TESTE`, `TODOS OS PRODUTOS`, `KIT SUBLIMAÇÃO` → inseridas como `ignored` no importar
+
+### Mutex no sync Medusa (`webhook.ts`)
+- Padrão run + pending: N webhooks em burst → 1 sync ativo + 1 pendente (não N paralelos)
+- Flags: `medusaSyncRunning` + `medusaSyncPending` no módulo webhook.ts
+
+### Fix lookup variantes (`sync.ts` — 10/04/2026)
+- Bug: `medusaProducts.get(product.sku)` usava SKU do pai, mas no Medusa os filhos têm seus próprios SKUs
+- Fix Fallback 1 — grupos com variantes: tenta SKUs dos filhos em sequência
+- Fix Fallback 2 — tenta handle (`toHandle(nome, sku)`) via mapa `medusaByHandle` (O(n) pré-loop)
 
 ---
 

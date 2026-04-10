@@ -811,3 +811,86 @@ Para histórico completo e atualizado, usar `git log --oneline`.
   - Container parado e removido — liberou 512MB RAM + 0.5 CPU
   - Storefront v2 (porta 8001) continua como único storefront ativo em homolog.papelariabibelo.com.br
   - Motivo: nenhum Nginx apontava para porta 8000, healthcheck falhava (307 redirect), sem tráfego
+
+---
+
+## Sessão 09–10/04/2026 — Painel Categorias Sync + Fix Bugs Medusa Sync
+
+### Commits desta sessão
+- `749f902` feat(categorias-sync): painel de mapeamento Bling ↔ Medusa
+- `68ee9c4` fix: mutex no sync Medusa + Zod nullable no medusa_handle
+- `26434b8` fix(categorias-sync): auto-ignorar categorias internas do Bling no importar
+- `e5203f8` style(categorias-sync): dropdown Medusa com fundo rosé + ordem alfabética
+- `1a2c7a1` fix(medusa-sync): syncCategoriesToMedusa marca status='mapped' automaticamente
+- Não commitado: tooltips nos botões do painel + fix lookup produtos variantes no sync
+
+### feat: Migration 029 — Painel Categorias Sync
+- Arquivo: `db/migrations/029_category_sync_panel.sql`
+- Adiciona 5 colunas à `sync.bling_medusa_categories`: `status` (mapped/pending/ignored), `bling_category_name`, `created_at`, `origem`, `bling_parent_id`
+- Migra 54 linhas existentes para `status='mapped'` (retrocompatibilidade)
+- Cria `sync.category_sync_log` para auditoria de operações do painel
+
+### feat: Rota `/api/categorias-sync` (4 endpoints)
+- Arquivo: `api/src/routes/categorias-sync.ts`
+- `GET /` — mapeamentos + stats + dropdown Medusa + último log
+- `POST /importar` — importa categorias Bling via fetchCategoryMap, upsert pending. Categorias internas (TESTE, TODOS OS PRODUTOS, KIT SUBLIMAÇÃO) auto-inseridas como `ignored`
+- `PUT /:blingId` — salva mapeamento manual (mapped/ignored/pending)
+- `POST /sincronizar` — aplica todos os `mapped` nos produtos Medusa em background via `applyCategoryMappingToMedusa()`
+
+### feat: Exports novos em `medusa/sync.ts`
+- `getMedusaCategoriesFromMedusa()` — lista categorias Medusa para o dropdown
+- `applyCategoryMappingToMedusa(mapping)` — bulk update de categorias nos produtos Medusa (REPLACE behavior)
+- Fix crítico em `syncCategory()`: INSERT/ON CONFLICT agora inclui `status='mapped'`, `origem='full'`, `bling_category_name` — antes o sync automático criava a categoria no Medusa mas não marcava como `mapped` no painel
+
+### feat: Frontend — página CategoriasSync.tsx
+- Arquivo: `frontend/src/pages/CategoriasSync.tsx`
+- Stats bar (total/mapped/pending/ignored com cores)
+- Tabs de filtro + busca por nome de categoria
+- Tabela com status badges, dropdown de categorias Medusa (fundo rosé #fff5f8, ordem alfabética pt-BR)
+- Ações por linha: Mapear, Ignorar, Reativar, Alterar
+- Último log da operação no rodapé
+- Botão "Importar do Bling" + "Sincronizar tudo" com tooltips explicativos (title attribute)
+- Rota: `/categorias-sync` — navegação em Loja Online > Categorias Sync (ícone GitMerge)
+
+### fix: Mutex no Bling webhook → Medusa sync
+- Arquivo: `api/src/integrations/bling/webhook.ts`
+- Padrão "run + pending": se sync em andamento e novo webhook chega, marca `medusaSyncPending=true`
+- Ao terminar o sync ativo, dispara mais 1 (e não mais) via `setImmediate`
+- Antes: N webhooks em burst disparavam N syncs paralelos simultâneos
+- Depois: máximo 1 sync ativo + 1 pendente acumulado
+
+### fix: Lookup produtos variantes no Medusa sync
+- Arquivo: `api/src/integrations/medusa/sync.ts`
+- Bug: `medusaProducts.get(product.sku)` usava SKU do pai, mas Medusa armazena SKUs dos filhos nas variantes → 33 produtos com variantes caíam no CREATE → 400 "already exists"
+- Fix: Fallback 1 — para grupos com variantes, tenta SKUs dos filhos em sequência
+- Fix: Fallback 2 — se ainda não encontrado, tenta pelo handle (`toHandle(nome, sku)`)
+- Mapa `medusaByHandle` construído em O(n) antes do loop principal
+- Resultado esperado: 0 criados, 120+ atualizados (era 87 atualizados + 33 erros + circuit breaker)
+
+### Fluxo automático de categorias (como funciona após a sessão)
+```
+Carlos salva produto no Bling com categoria
+  ↓ webhook product.updated (tempo real)
+  ↓ syncBlingToMedusa() em background
+  ↓ syncCategoriesToMedusa() — lê staging table, zero chamadas Bling
+  ↓ se categoria nova: cria no Medusa + marca status='mapped' na tabela
+  ↓ produto atualizado no Medusa com a categoria correta
+Painel CRM: categoria já aparece como 'mapped' — sem ação manual
+```
+
+### Diagrama das tabelas de categorias
+```
+sync.bling_categories          (cache das categorias do Bling ERP)
+    bling_id | descricao | id_pai
+    → populado pelo fetchCategoryMap() a cada sync
+
+sync.bling_medusa_categories   (mapeamento bidirecional)
+    bling_category_id | bling_category_name | medusa_category_id
+    handle | bling_parent_id | status | origem | sincronizado_em
+    → status: mapped | pending | ignored
+    → origem: full (sync automático) | manual (painel CRM)
+
+sync.category_sync_log         (auditoria)
+    operacao | origem | usuario | detalhes | criado_em
+    → operações: importar | mapear | ignorar | sincronizar
+```

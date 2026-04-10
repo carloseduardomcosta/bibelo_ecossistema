@@ -54,6 +54,25 @@ Referência completa de todos os endpoints.
 - `POST /api/sync/bling` — sync manual (?tipo=full|incremental)
 - `POST /api/sync/bling/categorias` — remapeia todas as categorias Bling → produtos (full refresh do campo `categoria`)
 - `POST /api/sync/bling/imagens` — busca imagens HD (`midia.imagens.internas[].link`) para produtos com miniatura ou sem foto. Body opcional: `{ blingIds: ["123","456"] }`. Roda em background, responde imediatamente. Re-executar após cadastrar/trocar fotos no Bling quando o webhook não disparar.
+
+### Categorias Sync (Bling ↔ Medusa)
+Painel de mapeamento de categorias Bling → Medusa. Rota base: `/api/categorias-sync`.
+
+- `GET  /api/categorias-sync` — lista todos os mapeamentos + stats (total, mapped, pending, ignored) + dropdown de categorias Medusa + último log de operação
+- `POST /api/categorias-sync/importar` — importa categorias da API Bling (via fetchCategoryMap) e faz upsert na tabela de mapeamento. Novas categorias chegam como `pending`. Categorias internas (TESTE, TODOS OS PRODUTOS, KIT SUBLIMAÇÃO) chegam como `ignored`. Atualiza nome e hierarquia de categorias existentes sem alterar status/mapeamento.
+- `PUT  /api/categorias-sync/:blingId` — salva mapeamento manual. Body: `{ status: "mapped"|"pending"|"ignored", medusa_category_id?: string|null, medusa_handle?: string|null }`. Registra no log de sincronização.
+- `POST /api/categorias-sync/sincronizar` — aplica todos os mapeamentos `status=mapped` nos produtos do Medusa via `applyCategoryMappingToMedusa()`. Opera em background (responde imediatamente). Usa REPLACE (Medusa v2 substitui categorias pelo array enviado — seguro pois cada produto Bling tem exatamente 1 categoria).
+
+**Tabelas:**
+- `sync.bling_medusa_categories` — mapeamento bling_category_id ↔ medusa_category_id com status (mapped/pending/ignored), origem (manual/full), hierarquia bling_parent_id
+- `sync.category_sync_log` — log de todas as operações: importar, mapear, ignorar, sincronizar
+
+**Fluxo automático:** novo produto via webhook `product.*` → `syncBlingToMedusa()` → `syncCategoriesToMedusa()` → cria categoria no Medusa se necessário + marca `status=mapped` automaticamente. Sem ação manual necessária para novos produtos.
+
+**Fluxo manual (painel CRM → Loja Online → Categorias Sync):**
+1. "Importar do Bling" → busca categorias atuais do Bling, pendentes aparecem na lista
+2. Dropdown por linha → selecionar categoria Medusa correspondente → "Mapear"
+3. "Sincronizar tudo" → aplica todos os `mapped` nos produtos do Medusa (bulk update de categorias)
 - `GET  /api/auth/bling` — retorna URL de autorização OAuth Bling
 - `GET  /api/auth/bling/callback` — callback OAuth, salva tokens, redireciona frontend
 - `GET  /api/auth/nuvemshop` — retorna URL de autorização OAuth NuvemShop
