@@ -1004,3 +1004,22 @@ sync.category_sync_log         (auditoria)
   - **BUG 2**: `GET /public/novidades?limit=-1` ou `?limit=abc` retornava 500. Fix: `Math.max(1, isNaN(parsed) ? 20 : parsed)` antes do `Math.min(x, 50)` — sempre 1-50
   - **BUG 3** (UX): `gerar-personalizada` retornava `produtos[].nome` com `limparNome()` aplicado (sufixos de variante removidos), dificultando confirmar quais variantes foram selecionadas. Fix: `p.nome` completo no array; `limparNome()` só no HTML do email
   - Extra: `email_optout = true` para Julia Bucci (co-dona) — removida de listas de disparo de marketing
+
+### Sessão 10/04/2026 (noite) — Top-5 melhorias qualidade + Catálogo WhatsApp
+
+- **ad05afc** — refactor: top-5 melhorias de qualidade e resiliência
+  - **`utils/sanitize.ts`** (NOVO): consolida 8 funções `esc()`/`escHtml()` duplicadas em um único módulo — `escHtml()` e `escJs()` — importado por `email.ts`, `leads.ts`, `landing-pages.ts`, `briefing.ts`, `flow.service.ts`, `storefront-email.service.ts`, `resend/email.ts`, `reviews-widget.ts`
+  - **`validateEnv()`** em `server.ts`: fast-fail na inicialização se alguma das 9 vars obrigatórias estiver ausente — processo encerra antes de tentar conectar ao banco
+  - **`withRetry<T>()`** em `melhorenvio/shipping.ts`: retry com exponential backoff (1s→2s→4s) nas 4 chamadas ME (cart, checkout, generate, print); timeout reduzido 30s→10s
+  - **Migration 030** (`idx_customers_email_lower`): índice funcional `LOWER(email)` em `crm.customers` — elimina full table scan em todas as queries `WHERE LOWER(c.email) = $1`
+  - `tsc --noEmit` limpo após todas as alterações
+
+- **dd906e6** — feat(marketing): página Catálogo WhatsApp
+  - Nova página `frontend/src/pages/CatalogoWhatsApp.tsx` — exibe produtos da última NF com fotos para compartilhar no grupo VIP
+  - Consome endpoint existente `GET /api/public/novidades?limit=50` (sem nova rota de API)
+  - Link UTM automático: `utm_source=whatsapp&utm_medium=grupo_vip&utm_campaign=novidades_nfXXXXX`
+  - Mensagem pronta: "🆕 Novidades chegaram na Bibelô! Confira os lançamentos: [link]"
+  - 4 ações: Copiar mensagem (pink), Abrir WhatsApp Web (verde #25d366), Só o link (cinza), Ver página (external)
+  - Grade responsiva 2/3/4 colunas com foto, categoria, nome, preço, estoque
+  - Status bar da NF (número, data, total de produtos), skeleton loading, estados de erro/vazio
+  - Rota `/catalogo-whatsapp` + item no menu Marketing (ícone BookImage)
