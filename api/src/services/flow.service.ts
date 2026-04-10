@@ -2,7 +2,7 @@ import { query, queryOne } from "../db";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../integrations/resend/email";
 import { getNuvemShopToken, nsRequest } from "../integrations/nuvemshop/auth";
-import { gerarLinkDescadastro, proxyImageUrl } from "../routes/email";
+import { gerarLinkDescadastro, proxyImageUrl, warmProxyImage } from "../routes/email";
 
 import crypto from "crypto";
 
@@ -1140,6 +1140,9 @@ export async function buildNfProductsGrid(limit = 4): Promise<string> {
 
     // Só inclui se tiver imagem confirmada
     if (!imgSrc) continue;
+
+    // Aquece o cache antes de usar — garante que o arquivo existe quando o email for lido
+    await warmProxyImage(imgSrc);
 
     seenUrls.add(urlKey);
     valid.push({

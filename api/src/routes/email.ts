@@ -216,8 +216,55 @@ emailRouter.get("/img/:hash", imgProxyLimiter, async (req: Request, res: Respons
   res.status(404).json({ error: "Imagem não encontrada" });
 });
 
+// ── Helper: baixar e cachear imagem de forma async ────────────
+async function downloadAndCacheImage(externalUrl: string, filePath: string, originalExt: string): Promise<void> {
+  const axios = (await import("axios")).default;
+  const resp = await axios.get(externalUrl, {
+    responseType: "arraybuffer",
+    timeout: 15000,
+  });
+  const buf = Buffer.from(resp.data);
+
+  if (originalExt === "webp") {
+    const sharp = (await import("sharp")).default;
+    const converted = await sharp(buf).jpeg({ quality: 90 }).toBuffer();
+    fs.writeFileSync(filePath, converted);
+  } else {
+    fs.writeFileSync(filePath, buf);
+  }
+}
+
+// ── Helper: aquece o cache de uma imagem (aguarda o download) ──
+// Usar antes de gerar HTML de email para garantir que a imagem existe no cache
+export async function warmProxyImage(externalUrl: string): Promise<void> {
+  if (!externalUrl || !externalUrl.startsWith("http")) return;
+
+  try {
+    const parsed = new URL(externalUrl);
+    if (!ALLOWED_IMG_DOMAINS.some(d => parsed.hostname.endsWith(d))) return;
+  } catch { return; }
+
+  const hash = crypto.createHash("sha256").update(externalUrl).digest("hex");
+  const urlPath = externalUrl.split("?")[0];
+  const originalExt = urlPath.endsWith(".png") ? "png"
+    : urlPath.endsWith(".gif") ? "gif"
+    : urlPath.endsWith(".webp") ? "webp"
+    : "jpg";
+  const ext = originalExt === "webp" ? "jpg" : originalExt;
+  const filePath = path.join(IMG_CACHE_DIR, `${hash}.${ext}`);
+
+  if (!fs.existsSync(filePath)) {
+    try {
+      await downloadAndCacheImage(externalUrl, filePath, originalExt);
+    } catch {
+      logger.error("Erro ao aquecer cache de imagem", { url: externalUrl.substring(0, 80) });
+    }
+  }
+}
+
 // ── Helper: converter URL externa em URL proxy ────────────────
-// Usado pelos templates de campanha
+// Usado pelos templates de campanha. Chame warmProxyImage() antes de enviar
+// para garantir que o arquivo está em cache quando o email for lido.
 export function proxyImageUrl(externalUrl: string): string {
   if (!externalUrl || !externalUrl.startsWith("http")) return externalUrl;
 
@@ -241,29 +288,11 @@ export function proxyImageUrl(externalUrl: string): string {
   const fileName = `${hash}.${ext}`;
   const filePath = path.join(IMG_CACHE_DIR, fileName);
 
-  // Baixar e converter em background se não cacheado
+  // Baixar em background se não cacheado (fire-and-forget para uso rápido)
   if (!fs.existsSync(filePath)) {
-    (async () => {
-      try {
-        const axios = (await import("axios")).default;
-        const resp = await axios.get(externalUrl, {
-          responseType: "arraybuffer",
-          timeout: 15000,
-        });
-        const buf = Buffer.from(resp.data);
-
-        // Converter webp → jpg via sharp (compatibilidade email)
-        if (originalExt === "webp") {
-          const sharp = (await import("sharp")).default;
-          const converted = await sharp(buf).jpeg({ quality: 90 }).toBuffer();
-          fs.writeFileSync(filePath, converted);
-        } else {
-          fs.writeFileSync(filePath, buf);
-        }
-      } catch (err) {
-        logger.error("Erro ao cachear imagem para email", { url: externalUrl.substring(0, 80) });
-      }
-    })();
+    downloadAndCacheImage(externalUrl, filePath, originalExt).catch(() => {
+      logger.error("Erro ao cachear imagem para email", { url: externalUrl.substring(0, 80) });
+    });
   }
 
   const baseUrl = process.env.WEBHOOK_BASE_URL || "https://webhook.papelariabibelo.com.br";

@@ -4,7 +4,7 @@ import { query, queryOne, db } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { sendCampaignEmails, sendEmail, isResendConfigured, getResendStatus } from "../integrations/resend/email";
-import { gerarLinkDescadastro, proxyImageUrl } from "./email";
+import { gerarLinkDescadastro, proxyImageUrl, warmProxyImage } from "./email";
 
 export const campaignsRouter = Router();
 campaignsRouter.use(authMiddleware);
@@ -347,7 +347,7 @@ campaignsRouter.get("/nfs/:id/produtos", async (req: Request, res: Response) => 
 
 campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
   const diasPedido = Math.min(Number(req.query.dias) || 7, 90);
-  const limite = Math.min(Number(req.query.limite) || 30, 50);
+  const limite = Math.min(Number(req.query.limite) || 8, 12);
   const minProdutos = Math.min(Number(req.query.min) || 3, limite);
   const linkBase = "https://www.papelariabibelo.com.br";
 
@@ -462,6 +462,15 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
     return p.estoque_ns ?? p.estoque_bling ?? null;
   }
 
+  // ── Aquece o cache das imagens em paralelo antes de gerar o HTML ──
+  // Garante que as URLs de proxy já existem no disco quando o email é enviado/visualizado
+  await Promise.all(
+    produtos.map(p => {
+      const rawUrl = p.ns_imagem || (p.imagem_url && p.imagem_url.startsWith("http") ? p.imagem_url : null);
+      return rawUrl ? warmProxyImage(rawUrl) : Promise.resolve();
+    })
+  );
+
   // ── Layout adaptativo ao volume de produtos ─────────────────
   // 1-2: hero (1col grande), 3-6: medio (2col), 7+: catalogo moderno (2col compacto)
   const qtd = produtos.length;
@@ -482,8 +491,8 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
     if (layout === "catalogo") {
       // Card moderno 2-col: imagem quadrada + nome + preço + link sutil
       const imgBlock = imgSrc
-        ? `<img src="${imgSrc}" alt="${nome}" width="248" style="width:100%;height:auto;aspect-ratio:1;object-fit:cover;display:block;" />`
-        : `<div style="width:100%;aspect-ratio:1;background:linear-gradient(135deg,#ffe5ec,#fff7c1);display:flex;align-items:center;justify-content:center;font-size:36px;">🎀</div>`;
+        ? `<img src="${imgSrc}" alt="${nome}" width="248" height="248" style="width:100%;height:248px;object-fit:cover;display:block;" />`
+        : `<div style="width:100%;height:160px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);text-align:center;padding-top:56px;box-sizing:border-box;font-size:36px;">🎀</div>`;
 
       return `
       <div style="display:inline-block;vertical-align:top;width:50%;max-width:268px;padding:6px;box-sizing:border-box;">
@@ -505,9 +514,10 @@ campaignsRouter.get("/gerar-novidades", async (req: Request, res: Response) => {
 
     // Hero e medio: imagem grande, botão, badge, categoria
     const maxW = layout === "hero" ? "500" : "260";
+    const imgH = layout === "hero" ? "400" : "240";
     const imgBlock = imgSrc
-      ? `<img src="${imgSrc}" alt="${nome}" width="${maxW}" style="width:100%;max-width:${maxW}px;height:auto;aspect-ratio:1;object-fit:cover;border-radius:12px 12px 0 0;display:block;margin:0 auto;" />`
-      : `<div style="width:100%;max-width:${maxW}px;height:200px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:12px 12px 0 0;display:flex;align-items:center;justify-content:center;font-size:48px;margin:0 auto;">🎀</div>`;
+      ? `<img src="${imgSrc}" alt="${nome}" width="${maxW}" height="${imgH}" style="width:100%;max-width:${maxW}px;height:${imgH}px;object-fit:cover;border-radius:12px 12px 0 0;display:block;margin:0 auto;" />`
+      : `<div style="width:100%;max-width:${maxW}px;height:${imgH}px;background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:12px 12px 0 0;text-align:center;padding-top:${layout === "hero" ? "160" : "96"}px;box-sizing:border-box;font-size:48px;margin:0 auto;">🎀</div>`;
 
     const badgeHtml = estoqueBaixo
       ? `<span style="position:absolute;top:10px;left:10px;background:#ff4444;color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:10px;">Ultimas ${est}!</span>`
