@@ -255,11 +255,17 @@ export async function syncCategoriesToMedusa(): Promise<{
 
         await query(
           `INSERT INTO sync.bling_medusa_categories
-           (bling_category_id, medusa_category_id, nome, handle, sincronizado_em)
-           VALUES ($1, $2, $3, $4, NOW())
+           (bling_category_id, bling_category_name, medusa_category_id, nome, handle, status, origem, created_at, sincronizado_em)
+           VALUES ($1, $5, $2, $3, $4, 'mapped', 'full', NOW(), NOW())
            ON CONFLICT (bling_category_id) DO UPDATE SET
-             medusa_category_id = $2, nome = $3, handle = $4, sincronizado_em = NOW()`,
-          [blingId, medusaCategoryId, nome, handle]
+             medusa_category_id  = $2,
+             nome                = $3,
+             handle              = $4,
+             bling_category_name = COALESCE(sync.bling_medusa_categories.bling_category_name, $5),
+             status              = 'mapped',
+             origem              = 'full',
+             sincronizado_em     = NOW()`,
+          [blingId, medusaCategoryId, nome, handle, cat.descricao]
         )
       } else {
         const updateBody: Record<string, unknown> = {
