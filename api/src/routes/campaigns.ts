@@ -212,6 +212,136 @@ campaignsRouter.get("/novidades-nf", async (_req: Request, res: Response) => {
   }
 });
 
+// ── GET /api/campaigns/nfs — NFs recentes para o seletor do wizard ───────────────
+
+campaignsRouter.get("/nfs", async (_req: Request, res: Response) => {
+  try {
+    const rows = await query<{
+      id: string; numero: string; data_emissao: string;
+      fornecedor: string; total_itens: string;
+    }>(`
+      SELECT
+        ne.id, ne.numero, ne.data_emissao::text,
+        COALESCE(ne.fornecedor_nome, '') AS fornecedor,
+        COUNT(nei.id)::text              AS total_itens
+      FROM financeiro.notas_entrada ne
+      JOIN financeiro.notas_entrada_itens nei ON nei.nota_id = ne.id
+      WHERE ne.status = 'contabilizada'
+      GROUP BY ne.id, ne.numero, ne.data_emissao, ne.fornecedor_nome, ne.criado_em
+      ORDER BY ne.data_emissao DESC, ne.criado_em DESC
+      LIMIT 20
+    `);
+
+    res.json(rows.map((r) => ({
+      id: r.id,
+      numero: r.numero,
+      data_emissao: r.data_emissao,
+      fornecedor: r.fornecedor,
+      total_itens: Number(r.total_itens),
+    })));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Erro desconhecido";
+    logger.error("[campaigns/nfs] Erro", { error: msg });
+    res.status(500).json({ error: "Erro ao listar NFs" });
+  }
+});
+
+// ── GET /api/campaigns/nfs/:id/produtos — produtos válidos de uma NF específica ──
+
+campaignsRouter.get("/nfs/:id/produtos", async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const rows = await query<{
+      id: string; bling_id: string; nome: string; sku: string | null;
+      preco_venda: string; imagens: string; categoria: string | null;
+      saldo_fisico: string; ns_url: string | null; numero_item: string;
+    }>(`
+      SELECT
+        bp.id, bp.bling_id, bp.nome, bp.sku,
+        bp.preco_venda::text AS preco_venda,
+        bp.imagens::text     AS imagens,
+        bp.categoria,
+        nei.numero_item::text AS numero_item,
+        -- Estoque = saldo próprio + filhos (pai sempre fica zero no Bling)
+        COALESCE(MAX(bs.saldo_fisico), 0) + COALESCE((
+          SELECT SUM(bsf.saldo_fisico)
+          FROM sync.bling_products bpf
+          JOIN sync.bling_stock bsf ON bsf.bling_product_id = bpf.bling_id
+          WHERE (bpf.dados_raw->>'idProdutoPai')::text = bp.bling_id::text
+            AND bsf.saldo_fisico > 0
+        ), 0) AS saldo_fisico,
+        np.dados_raw->>'canonical_url' AS ns_url
+      FROM financeiro.notas_entrada ne
+      JOIN financeiro.notas_entrada_itens nei ON nei.nota_id = ne.id
+      JOIN sync.bling_products bp ON (
+        TRIM(bp.sku) = TRIM(nei.codigo_produto)
+        OR bp.gtin = nei.codigo_produto
+        OR (nei.gtin IS NOT NULL AND bp.gtin = nei.gtin)
+        OR REPLACE(TRIM(bp.sku), ' - ', ' ') = REPLACE(TRIM(nei.codigo_produto), ' - ', ' ')
+      )
+      AND bp.ativo = true
+      AND bp.preco_venda > 0
+      AND jsonb_array_length(bp.imagens) > 0
+      LEFT JOIN sync.bling_stock bs ON bs.bling_product_id = bp.bling_id
+      LEFT JOIN LATERAL (
+        SELECT np2.dados_raw FROM sync.nuvemshop_products np2
+        WHERE np2.sku = bp.sku
+          OR LOWER(np2.nome) LIKE '%' || LOWER(SUBSTRING(bp.nome FROM 1 FOR 15)) || '%'
+        ORDER BY np2.estoque DESC NULLS LAST
+        LIMIT 1
+      ) np ON true
+      WHERE ne.id = $1 AND ne.status != 'cancelada'
+      GROUP BY
+        bp.id, bp.bling_id, bp.nome, bp.sku, bp.preco_venda,
+        bp.imagens, bp.categoria, nei.numero_item, np.dados_raw
+      HAVING (
+        COALESCE(MAX(bs.saldo_fisico), 0) > 0
+        OR EXISTS (
+          SELECT 1 FROM sync.bling_products bpf
+          JOIN sync.bling_stock bsf ON bsf.bling_product_id = bpf.bling_id
+          WHERE (bpf.dados_raw->>'idProdutoPai')::text = bp.bling_id::text
+            AND bsf.saldo_fisico > 0
+        )
+      )
+      ORDER BY nei.numero_item ASC
+    `, [id]);
+
+    const produtos: Array<{
+      id: string; nome: string; preco: number; estoque: number;
+      img: string | null; url: string | null; categoria: string | null;
+    }> = [];
+    const seen = new Set<string>();
+
+    for (const row of rows) {
+      if (seen.has(row.bling_id)) continue;
+      let imagens: Array<{ url?: string; link?: string }> = [];
+      try { imagens = JSON.parse(row.imagens || "[]"); } catch { continue; }
+      const imgUrl = imagens.map((i) => i.url || i.link || "").find((u) => u.startsWith("http")) ?? null;
+      if (!imgUrl) continue;
+      const preco = parseFloat(row.preco_venda);
+      const estoque = parseFloat(row.saldo_fisico);
+      if (preco <= 0 || estoque <= 0) continue;
+      seen.add(row.bling_id);
+      produtos.push({
+        id: row.id,
+        nome: row.nome,
+        preco,
+        estoque,
+        img: imgUrl,
+        url: row.ns_url ?? "https://www.papelariabibelo.com.br/novidades/",
+        categoria: row.categoria,
+      });
+    }
+
+    res.json(produtos);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Erro desconhecido";
+    logger.error("[campaigns/nfs/:id/produtos] Erro", { error: msg, nfId: id });
+    res.status(500).json({ error: "Erro ao buscar produtos da NF" });
+  }
+});
+
 // ── GET /api/campaigns/gerar-novidades — template dinâmico com produtos novos ──
 // Inteligência: filtra esgotados, expande período se poucos, adapta layout ao volume
 
@@ -652,6 +782,8 @@ const gerarPersonalizadaSchema = z.object({
   segmento: z.string().optional(),
   customer_ids: z.array(z.string().uuid()).optional(),
   fonte: z.enum(["novidades"]).optional(),
+  // IDs dos bling_products selecionados manualmente no picker de NF
+  bling_produto_ids: z.array(z.string().uuid()).optional(),
 });
 
 campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response) => {
@@ -661,7 +793,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
     return;
   }
 
-  const { categorias, produto_ids, max_por_categoria, limite_produtos, publico, segmento, customer_ids, fonte } = parse.data;
+  const { categorias, produto_ids, max_por_categoria, limite_produtos, publico, segmento, customer_ids, fonte, bling_produto_ids } = parse.data;
 
   if (fonte !== "novidades" && categorias.length === 0 && produto_ids.length === 0) {
     res.status(400).json({ error: "Selecione pelo menos uma categoria ou um produto" });
@@ -674,8 +806,66 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
     img: string | null; url: string | null; categoria: string | null;
   }> = [];
 
-  // ── Branch Novidades: produtos da última NF com imagens HD ────────────────────
-  if (fonte === "novidades") {
+  // ── Branch Novidades (IDs manuais): lookup direto pelos produtos selecionados ─
+  if (fonte === "novidades" && bling_produto_ids && bling_produto_ids.length > 0) {
+    const idParams = bling_produto_ids.map((_, i) => `$${i + 1}`).join(", ");
+    const selRows = await query<{
+      id: string; bling_id: string; nome: string;
+      preco_venda: string; imagens: string; categoria: string | null;
+      saldo_fisico: string; ns_url: string | null;
+    }>(`
+      SELECT
+        bp.id, bp.bling_id, bp.nome,
+        bp.preco_venda::text AS preco_venda,
+        bp.imagens::text     AS imagens,
+        bp.categoria,
+        COALESCE(MAX(bs.saldo_fisico), 0) + COALESCE((
+          SELECT SUM(bsf.saldo_fisico)
+          FROM sync.bling_products bpf
+          JOIN sync.bling_stock bsf ON bsf.bling_product_id = bpf.bling_id
+          WHERE (bpf.dados_raw->>'idProdutoPai')::text = bp.bling_id::text
+            AND bsf.saldo_fisico > 0
+        ), 0) AS saldo_fisico,
+        MAX(np.dados_raw->>'canonical_url') AS ns_url
+      FROM sync.bling_products bp
+      LEFT JOIN sync.bling_stock bs ON bs.bling_product_id = bp.bling_id
+      LEFT JOIN LATERAL (
+        SELECT np2.dados_raw FROM sync.nuvemshop_products np2
+        WHERE np2.sku = bp.sku
+          OR LOWER(np2.nome) LIKE '%' || LOWER(SUBSTRING(bp.nome FROM 1 FOR 15)) || '%'
+        ORDER BY np2.estoque DESC NULLS LAST
+        LIMIT 1
+      ) np ON true
+      WHERE bp.id IN (${idParams})
+      GROUP BY bp.id, bp.bling_id, bp.nome, bp.preco_venda, bp.imagens, bp.categoria
+    `, bling_produto_ids);
+
+    const seenSel = new Set<string>();
+    for (const row of selRows) {
+      if (seenSel.has(row.bling_id)) continue;
+      let imagens: Array<{ url?: string; link?: string }> = [];
+      try { imagens = JSON.parse(row.imagens || "[]"); } catch { continue; }
+      const imgUrl = imagens.map((i) => i.url || i.link || "").find((u) => u.startsWith("http")) ?? null;
+      if (!imgUrl) continue;
+      seenSel.add(row.bling_id);
+      produtos.push({
+        nome: row.nome,
+        preco: row.preco_venda,
+        estoque: parseFloat(row.saldo_fisico),
+        img: imgUrl,
+        url: row.ns_url ?? "https://www.papelariabibelo.com.br/novidades/",
+        categoria: row.categoria,
+      });
+    }
+
+    if (produtos.length === 0) {
+      res.status(404).json({ error: "Nenhum produto válido nos IDs informados" });
+      return;
+    }
+  }
+
+  // ── Branch Novidades (auto última NF): mantido como fallback ──────────────────
+  if (fonte === "novidades" && (!bling_produto_ids || bling_produto_ids.length === 0)) {
     const nfRows = await query<{
       id: string; bling_id: string; nome: string; sku: string | null;
       preco_venda: string; imagens: string; categoria: string | null;
@@ -761,7 +951,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
   }
 
   // ── Branch padrão: produtos por categoria + individuais ──────────────────────
-  // Produtos selecionados individualmente
+  // Produtos selecionados individualmente (NuvemShop IDs)
   if (fonte !== "novidades" && produto_ids.length > 0) {
     const idParams = produto_ids.map((_, i) => `$${i + 1}`).join(", ");
     const manuais = await query<{

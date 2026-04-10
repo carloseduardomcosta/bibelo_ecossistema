@@ -25,6 +25,14 @@ interface Produto {
   categoria: string | null;
 }
 
+interface NF {
+  id: string;
+  numero: string;
+  data_emissao: string;
+  fornecedor: string;
+  total_itens: number;
+}
+
 interface Destinatario {
   id: string;
   nome: string;
@@ -50,10 +58,13 @@ export default function NovaCampanha() {
   const [catSearch, setCatSearch] = useState('');
   const [maxPorCat, setMaxPorCat] = useState(2);
 
-  // Novidades (última NF)
-  const [novidadesNF, setNovidadesNF] = useState<Produto[]>([]);
-  const [carregandoNF, setCarregandoNF] = useState(false);
-  const [erroNF, setErroNF] = useState('');
+  // Novidades — seletor manual de NF
+  const [nfLista, setNfLista] = useState<NF[]>([]);
+  const [nfSelecionada, setNfSelecionada] = useState<NF | null>(null);
+  const [nfProdutos, setNfProdutos] = useState<Produto[]>([]);
+  const [nfProdutosSel, setNfProdutosSel] = useState<string[]>([]); // UUIDs bling_products.id
+  const [carregandoNFs, setCarregandoNFs] = useState(false);
+  const [carregandoNFProdutos, setCarregandoNFProdutos] = useState(false);
 
   // Produtos individuais
   const [produtoBusca, setProdutoBusca] = useState('');
@@ -92,17 +103,32 @@ export default function NovaCampanha() {
     );
   };
 
-  // Carregar produtos da última NF ao selecionar aba Novidades
+  // Carregar lista de NFs ao entrar na aba Novidades (uma vez)
   useEffect(() => {
-    if (selecaoTab !== 'novidades' || novidadesNF.length > 0) return;
-    setCarregandoNF(true);
-    setErroNF('');
-    api.get('/campaigns/novidades-nf')
-      .then((r) => setNovidadesNF(r.data))
-      .catch(() => setErroNF('Nenhum produto disponível na última NF. Verifique se a NF foi sincronizada.'))
-      .finally(() => setCarregandoNF(false));
+    if (selecaoTab !== 'novidades' || nfLista.length > 0) return;
+    setCarregandoNFs(true);
+    api.get('/campaigns/nfs')
+      .then((r) => setNfLista(r.data))
+      .catch(() => {})
+      .finally(() => setCarregandoNFs(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selecaoTab]);
+
+  // Carregar produtos ao selecionar uma NF
+  useEffect(() => {
+    if (!nfSelecionada) return;
+    setCarregandoNFProdutos(true);
+    setNfProdutos([]);
+    setNfProdutosSel([]);
+    api.get(`/campaigns/nfs/${nfSelecionada.id}/produtos`)
+      .then((r) => {
+        setNfProdutos(r.data);
+        setNfProdutosSel(r.data.map((p: Produto) => p.id as string)); // seleciona todos por default
+      })
+      .catch(() => {})
+      .finally(() => setCarregandoNFProdutos(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nfSelecionada?.id]);
 
   // Buscar produtos individuais
   const buscarProdutos = async (search: string) => {
@@ -137,8 +163,8 @@ export default function NovaCampanha() {
       showError('Selecione pelo menos uma categoria ou um produto');
       return;
     }
-    if (selecaoTab === 'novidades' && novidadesNF.length === 0) {
-      showError('Nenhum produto disponível na última NF');
+    if (selecaoTab === 'novidades' && nfProdutosSel.length === 0) {
+      showError('Selecione pelo menos um produto da NF');
       return;
     }
     setLoading(true);
@@ -147,10 +173,11 @@ export default function NovaCampanha() {
         categorias: catSelecionadas,
         produto_ids: produtosSelecionados.map((p) => p.id).filter(Boolean),
         max_por_categoria: maxPorCat,
-        limite_produtos: selecaoTab === 'novidades' ? novidadesNF.length : limiteProdutos,
+        limite_produtos: selecaoTab === 'novidades' ? nfProdutosSel.length : limiteProdutos,
         publico,
         customer_ids: publico === 'manual' ? destSelecionados : undefined,
         fonte: selecaoTab === 'novidades' ? 'novidades' : undefined,
+        bling_produto_ids: selecaoTab === 'novidades' ? nfProdutosSel : undefined,
       });
       setProdutos(data.produtos);
       setDestinatarios(data.destinatarios);
@@ -171,6 +198,9 @@ export default function NovaCampanha() {
       if (selecaoTab !== 'novidades' && catSelecionadas.length === 0 && produtosSelecionados.length === 0) {
         showError('Selecione pelo menos uma categoria ou um produto'); return;
       }
+      if (selecaoTab === 'novidades' && nfProdutosSel.length === 0) {
+        showError('Selecione pelo menos um produto da NF'); return;
+      }
       await gerarPreview();
       setStep(1);
     } else if (step === 1) {
@@ -184,10 +214,11 @@ export default function NovaCampanha() {
           categorias: catSelecionadas,
           produto_ids: produtosSelecionados.map((p) => p.id).filter(Boolean),
           max_por_categoria: maxPorCat,
-          limite_produtos: selecaoTab === 'novidades' ? novidadesNF.length : limiteProdutos,
+          limite_produtos: selecaoTab === 'novidades' ? nfProdutosSel.length : limiteProdutos,
           publico: 'manual',
           customer_ids: destSelecionados,
           fonte: selecaoTab === 'novidades' ? 'novidades' : undefined,
+          bling_produto_ids: selecaoTab === 'novidades' ? nfProdutosSel : undefined,
         });
         setAssunto(data.assunto);
         setHtml(data.html);
@@ -445,65 +476,144 @@ export default function NovaCampanha() {
             </div>
           )}
 
-          {/* Tab: Novidades (última NF) */}
+          {/* Tab: Novidades — seletor manual de NF */}
           {selecaoTab === 'novidades' && (
-            <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-6">
-              <p className="text-xs text-bibelo-muted mb-4">
-                Produtos com foto HD e estoque confirmado — vinculados diretamente à página do produto na loja.
-              </p>
+            <div className="space-y-3">
 
-              {carregandoNF && (
-                <div className="flex items-center justify-center py-10 text-bibelo-muted text-sm gap-2">
-                  <span className="animate-spin">⟳</span> Carregando produtos...
+              {/* Lista de NFs */}
+              <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+                <p className="text-xs font-bold text-bibelo-muted mb-3">Selecione a NF de entrada:</p>
+
+                {carregandoNFs && (
+                  <p className="text-xs text-bibelo-muted py-2">Carregando notas...</p>
+                )}
+
+                {!carregandoNFs && nfLista.length === 0 && (
+                  <div className="flex items-center gap-2 text-amber-400 text-xs py-2">
+                    <AlertTriangle size={13} /> Nenhuma NF contabilizada encontrada.
+                  </div>
+                )}
+
+                <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                  {nfLista.map((nf) => {
+                    const sel = nfSelecionada?.id === nf.id;
+                    return (
+                      <button
+                        key={nf.id}
+                        onClick={() => setNfSelecionada(sel ? null : nf)}
+                        className={`w-full text-left flex items-center justify-between px-4 py-3 rounded-lg border transition-colors ${
+                          sel
+                            ? 'border-bibelo-primary bg-bibelo-primary/10'
+                            : 'border-bibelo-border hover:border-bibelo-primary/40'
+                        }`}
+                      >
+                        <div>
+                          <p className={`text-sm font-semibold ${sel ? 'text-bibelo-primary' : 'text-bibelo-text'}`}>
+                            NF {nf.numero}
+                          </p>
+                          <p className="text-[11px] text-bibelo-muted mt-0.5 truncate max-w-xs">
+                            {nf.fornecedor} · {new Date(nf.data_emissao + 'T12:00:00').toLocaleDateString('pt-BR')}
+                          </p>
+                        </div>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          sel ? 'bg-bibelo-primary text-white' : 'bg-bibelo-border text-bibelo-muted'
+                        }`}>
+                          {nf.total_itens} itens
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
+              </div>
 
-              {erroNF && !carregandoNF && (
-                <div className="flex items-center gap-2 text-amber-400 text-xs py-4">
-                  <AlertTriangle size={14} />
-                  {erroNF}
-                </div>
-              )}
+              {/* Produtos da NF selecionada */}
+              {nfSelecionada && (
+                <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+                  {carregandoNFProdutos && (
+                    <p className="text-xs text-bibelo-muted py-4 text-center">Carregando produtos...</p>
+                  )}
 
-              {!carregandoNF && novidadesNF.length > 0 && (
-                <>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-96 overflow-y-auto mb-4">
-                    {novidadesNF.map((p, i) => (
-                      <div key={i} className="bg-bibelo-bg border border-bibelo-border rounded-lg overflow-hidden">
-                        {p.img ? (
-                          <img src={p.img} alt={p.nome} className="w-full aspect-square object-cover" />
-                        ) : (
-                          <div className="w-full aspect-square bg-gradient-to-br from-pink-100 to-yellow-50 flex items-center justify-center text-2xl">🎀</div>
-                        )}
-                        <div className="p-2">
-                          <p className="text-[11px] font-medium text-bibelo-text line-clamp-2">{p.nome}</p>
-                          <div className="flex items-center justify-between mt-1">
-                            <span className="text-xs font-bold text-bibelo-text">{formatCurrency(p.preco)}</span>
-                            {p.estoque <= 3 && (
-                              <span className="text-[10px] px-1.5 py-0.5 bg-red-400/10 text-red-400 rounded-full">{p.estoque} un</span>
-                            )}
-                          </div>
+                  {!carregandoNFProdutos && nfProdutos.length === 0 && (
+                    <div className="flex items-center gap-2 text-amber-400 text-xs py-2">
+                      <AlertTriangle size={13} />
+                      Nenhum produto desta NF está disponível para email (sem cadastro no Bling, sem foto ou sem estoque).
+                    </div>
+                  )}
+
+                  {!carregandoNFProdutos && nfProdutos.length > 0 && (
+                    <>
+                      {/* Cabeçalho + seleção total */}
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-bold text-bibelo-text">
+                          {nfProdutosSel.length} de {nfProdutos.length} selecionados para o email
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setNfProdutosSel(nfProdutos.map((p) => p.id as string))}
+                            className="text-[11px] px-2.5 py-1 rounded-lg border border-bibelo-primary text-bibelo-primary hover:bg-bibelo-primary/10 transition-colors"
+                          >
+                            Todos
+                          </button>
+                          <button
+                            onClick={() => setNfProdutosSel([])}
+                            className="text-[11px] px-2.5 py-1 rounded-lg border border-bibelo-border text-bibelo-muted hover:border-bibelo-primary/40 transition-colors"
+                          >
+                            Nenhum
+                          </button>
                         </div>
                       </div>
-                    ))}
-                  </div>
 
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-bibelo-muted">Total no email:</label>
-                    <select
-                      value={limiteProdutos}
-                      onChange={(e) => setLimiteProdutos(Number(e.target.value))}
-                      className="bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-1.5 text-sm text-bibelo-text"
-                    >
-                      {[4, 6, 8, 10, 12].filter((n) => n <= novidadesNF.length).concat(
-                        novidadesNF.length <= 12 ? [novidadesNF.length] : []
-                      ).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b).map((n) => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                    </select>
-                    <span className="text-xs text-bibelo-muted">de {novidadesNF.length} disponíveis</span>
-                  </div>
-                </>
+                      {/* Grid de produtos com toggle */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-96 overflow-y-auto">
+                        {nfProdutos.map((p) => {
+                          const selecionado = nfProdutosSel.includes(p.id as string);
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() =>
+                                setNfProdutosSel((prev) =>
+                                  selecionado
+                                    ? prev.filter((id) => id !== p.id)
+                                    : [...prev, p.id as string]
+                                )
+                              }
+                              className={`text-left rounded-xl border overflow-hidden transition-all ${
+                                selecionado
+                                  ? 'border-bibelo-primary ring-2 ring-bibelo-primary/20'
+                                  : 'border-bibelo-border opacity-50 hover:opacity-75'
+                              }`}
+                            >
+                              <div className="relative">
+                                {p.img ? (
+                                  <img src={p.img} alt={p.nome} className="w-full aspect-square object-cover" />
+                                ) : (
+                                  <div className="w-full aspect-square bg-gradient-to-br from-pink-100 to-yellow-50 flex items-center justify-center text-2xl">🎀</div>
+                                )}
+                                {/* Checkbox overlay */}
+                                <div className={`absolute top-2 right-2 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                                  selecionado
+                                    ? 'bg-bibelo-primary border-bibelo-primary'
+                                    : 'bg-white/80 border-bibelo-border'
+                                }`}>
+                                  {selecionado && <Check size={11} className="text-white" />}
+                                </div>
+                                {p.estoque <= 3 && (
+                                  <span className="absolute bottom-1.5 left-1.5 text-[9px] px-1.5 py-0.5 bg-red-500 text-white rounded-full font-bold">
+                                    {p.estoque} un
+                                  </span>
+                                )}
+                              </div>
+                              <div className="p-2">
+                                <p className="text-[10px] font-medium text-bibelo-text line-clamp-2 leading-tight">{p.nome}</p>
+                                <p className="text-xs font-bold text-bibelo-text mt-1">{formatCurrency(p.preco)}</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -592,9 +702,10 @@ export default function NovaCampanha() {
                         categorias: catSelecionadas,
                         produto_ids: produtosSelecionados.map((p) => p.id).filter(Boolean),
                         max_por_categoria: maxPorCat,
-                        limite_produtos: selecaoTab === 'novidades' ? novidadesNF.length : limiteProdutos,
+                        limite_produtos: selecaoTab === 'novidades' ? nfProdutosSel.length : limiteProdutos,
                         publico: opt.value,
                         fonte: selecaoTab === 'novidades' ? 'novidades' : undefined,
+                        bling_produto_ids: selecaoTab === 'novidades' ? nfProdutosSel : undefined,
                       });
                       setDestinatarios(data.destinatarios);
                       setDestSelecionados(data.destinatarios.map((d: Destinatario) => d.id));
@@ -782,7 +893,7 @@ export default function NovaCampanha() {
             disabled={
             loading ||
             (step === 0 && selecaoTab !== 'novidades' && catSelecionadas.length === 0 && produtosSelecionados.length === 0) ||
-            (step === 0 && selecaoTab === 'novidades' && novidadesNF.length === 0) ||
+            (step === 0 && selecaoTab === 'novidades' && nfProdutosSel.length === 0) ||
             (step === 2 && destSelecionados.length === 0)
           }
             className="flex items-center gap-2 px-5 py-2.5 bg-bibelo-primary text-white rounded-lg text-sm font-medium hover:bg-bibelo-primary/90 transition-colors disabled:opacity-50"
