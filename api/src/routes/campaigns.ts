@@ -799,7 +799,7 @@ const gerarPersonalizadaSchema = z.object({
   produto_ids: z.array(z.string()).default([]),
   max_por_categoria: z.number().int().min(1).max(4).default(2),
   limite_produtos: z.number().int().min(1).max(12).default(6),
-  publico: z.enum(["todos", "todos_com_email", "nunca_contatados", "segmento", "manual"]),
+  publico: z.enum(["todos", "todos_com_email", "nunca_contatados", "segmento", "manual", "b2b"]),
   segmento: z.string().optional(),
   customer_ids: z.array(z.string().uuid()).optional(),
   fonte: z.enum(["novidades"]).optional(),
@@ -1059,7 +1059,8 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
       destinatarios = await query(
         `SELECT c.id, c.nome, c.email FROM crm.customers c
          JOIN crm.customer_scores cs ON cs.customer_id = c.id
-         WHERE c.ativo = true AND c.email IS NOT NULL AND c.email_optout = false AND cs.total_pedidos::int > 0
+         WHERE c.ativo = true AND c.email IS NOT NULL AND c.email_optout = false
+           AND cs.total_pedidos::int > 0 AND COALESCE(c.tipo, 'cliente') = 'cliente'
          ORDER BY cs.ltv DESC`
       );
       break;
@@ -1068,6 +1069,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
       destinatarios = await query(
         `SELECT c.id, c.nome, c.email FROM crm.customers c
          WHERE c.ativo = true AND c.email IS NOT NULL AND c.email_optout = false
+           AND COALESCE(c.tipo, 'cliente') = 'cliente'
          ORDER BY c.nome`
       );
       break;
@@ -1076,7 +1078,8 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
       destinatarios = await query(
         `SELECT c.id, c.nome, c.email FROM crm.customers c
          JOIN crm.customer_scores cs ON cs.customer_id = c.id
-         WHERE c.ativo = true AND c.email IS NOT NULL AND c.email_optout = false AND cs.total_pedidos::int > 0
+         WHERE c.ativo = true AND c.email IS NOT NULL AND c.email_optout = false
+           AND cs.total_pedidos::int > 0 AND COALESCE(c.tipo, 'cliente') = 'cliente'
            AND NOT EXISTS (SELECT 1 FROM crm.interactions i WHERE i.customer_id = c.id AND i.tipo = 'email_enviado')
          ORDER BY cs.ltv DESC`
       );
@@ -1091,9 +1094,18 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
         `SELECT c.id, c.nome, c.email FROM crm.customers c
          JOIN crm.customer_scores cs ON cs.customer_id = c.id
          WHERE c.ativo = true AND c.email IS NOT NULL AND c.email_optout = false
-           AND cs.segmento = $1
+           AND COALESCE(c.tipo, 'cliente') = 'cliente' AND cs.segmento = $1
          ORDER BY cs.ltv DESC`,
         [segmento]
+      );
+      break;
+
+    case "b2b":
+      destinatarios = await query(
+        `SELECT c.id, c.nome, c.email FROM crm.customers c
+         WHERE c.ativo = true AND c.email IS NOT NULL AND c.email_optout = false
+           AND c.tipo = 'b2b'
+         ORDER BY c.nome`
       );
       break;
 

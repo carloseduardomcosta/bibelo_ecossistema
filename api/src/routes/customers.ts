@@ -41,6 +41,7 @@ const listQuerySchema = z.object({
   contato: z.enum(["com_email", "sem_email", "com_telefone", "sem_telefone"]).optional(),
   cidade: z.string().optional(),
   ordenar: z.enum(["recentes", "nome", "score", "score_desc"]).default("recentes"),
+  tipo: z.enum(["cliente", "b2b", "todos"]).default("cliente"),
 });
 
 // ── GET /api/customers — lista paginada ────────────────────────
@@ -52,10 +53,12 @@ customersRouter.get("/", async (req: Request, res: Response) => {
     return;
   }
 
-  const { page, limit, search, segmento, canal_origem, contato, cidade, ordenar } = parse.data;
+  const { page, limit, search, segmento, canal_origem, contato, cidade, ordenar, tipo } = parse.data;
   const offset = (page - 1) * limit;
 
-  const conditions: string[] = ["c.ativo = true", "COALESCE(c.tipo, 'cliente') = 'cliente'"];
+  const conditions: string[] = ["c.ativo = true"];
+  if (tipo === "cliente") conditions.push("COALESCE(c.tipo, 'cliente') = 'cliente'");
+  else if (tipo === "b2b") conditions.push("c.tipo = 'b2b'");
   const params: unknown[] = [];
   let idx = 1;
 
