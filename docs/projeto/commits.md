@@ -946,3 +946,10 @@ sync.category_sync_log         (auditoria)
   - Proxy Next.js: src/app/api/frete/route.ts → CRM interno (evita CORS/Cloudflare Access)
   - Arquivo: api/src/routes/public-frete.ts, storefront-v2/src/app/api/frete/route.ts
   - Componentes: ImageGallery.tsx, FreteCalculator.tsx, BuyNowButton.tsx
+
+---
+
+- **b4d0ecd** — feat: remove envio automático de briefing diário por email
+  - Job cron `briefing-diario` (7h BRT) removido do sync.queue.ts
+  - Case no worker e import de `enviarBriefingEmail` removidos
+  - Briefing continua disponível na plataforma via GET /api/briefing (só dashboard, sem custo)
