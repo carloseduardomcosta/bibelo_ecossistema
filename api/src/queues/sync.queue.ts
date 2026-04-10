@@ -5,7 +5,6 @@ import { syncBlingToMedusa } from "../integrations/medusa/sync";
 import { calculateScore } from "../services/customer.service";
 import { triggerFlow } from "../services/flow.service";
 import { refreshReviewsCache } from "../integrations/google/reviews";
-import { enviarBriefingEmail } from "../routes/briefing";
 import { syncMetaAds } from "../services/meta.service";
 import { query, queryOne } from "../db";
 
@@ -114,12 +113,6 @@ export const syncWorker = new Worker(
           break;
         }
 
-        case "briefing-diario": {
-          await enviarBriefingEmail();
-          result = { processed: 1 };
-          break;
-        }
-
         case "meta-ads-sync": {
           const metaResult = await syncMetaAds();
           result = {
@@ -217,17 +210,12 @@ export async function registerScheduledJobs(): Promise<void> {
     repeat: { pattern: "0 4 * * *" },
   });
 
-  // Briefing diário: 7h BRT = 10h UTC
-  await syncQueue.add("briefing-diario", {}, {
-    repeat: { pattern: "0 10 * * *" },
-  });
-
   // Meta Ads sync: a cada 6h (0h, 6h, 12h, 18h UTC)
   await syncQueue.add("meta-ads-sync", {}, {
     repeat: { pattern: "0 */6 * * *" },
   });
 
-  logger.info("Jobs agendados registrados: bling-sync (30min), scores (2h), google-reviews (6h), cleanup (4h), briefing (7h BRT), meta-ads (6h)");
+  logger.info("Jobs agendados registrados: bling-sync (30min), scores (2h), google-reviews (6h), cleanup (4h), meta-ads (6h)");
 }
 
 // ── Event listeners ────────────────────────────────────────────
