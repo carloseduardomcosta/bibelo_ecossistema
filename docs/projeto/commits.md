@@ -1063,3 +1063,48 @@ sync.category_sync_log         (auditoria)
   - 11 ocorrências de `/novidades/` em `campaigns.ts` atualizadas para `/novidades/?sort_by=created-descending`
   - Afeta: botões CTA "Ver Todas as Novidades" e "Ver Mais Novidades", fallbacks de produto sem URL NuvemShop
   - Cobre os 3 geradores: `gerar-novidades`, `gerar-personalizada`, `gerar-reengajamento`
+
+---
+
+### Sessão 10/04/2026 (noite) — Área de Cliente completa + Busca com facets
+
+#### Storefront v2 — 4 features implementadas
+
+- **42e5e4b** — feat(storefront-v2): busca inline com dropdown + página /categoria/[handle]
+  - `Header.tsx`: campo de busca com dropdown de sugestões ao digitar ≥ 2 chars; fecha no Esc/clique fora
+  - `/categoria/[handle]`: grid com paginação client-side, botão VIP WhatsApp corrigido (link direto grupo)
+  - `generateStaticParams` em `/categoria/[handle]` — pré-renderiza categorias em build
+
+- **2d33148** — feat(storefront-v2): /conta/perfil, recuperação de senha e menu atualizado
+  - `/conta/perfil`: edição de nome/telefone (`updateCustomer`), alteração de senha (`updatePassword`)
+  - Usuários Google: campo de senha oculto, cartão azul "Conta Google — senha gerenciada pelo Google"
+  - Detecção Google por `getTokenMetadata(token).given_name` (sempre presente no JWT OAuth, nunca em email/password)
+  - `/conta/recuperar-senha`: página pública — envia email via `requestPasswordReset()`, Medusa retorna 200 mesmo para emails inexistentes
+  - `/conta/nova-senha`: lê `?token=` da URL via `useSearchParams`; chama `updatePassword()` — sem auto-login após reset (Medusa retorna `{ success: true }` sem novo token)
+  - `redirect_url` usa `NEXT_PUBLIC_SITE_URL || "https://homolog.papelariabibelo.com.br"`
+  - `conta/page.tsx`: link "Meu Perfil" adicionado no topo do menu; "Esqueceu a senha?" abaixo do campo senha no modo login
+
+- **5d04319** — feat(storefront-v2): /conta/pedidos/[id] detalhe de pedido com timeline
+  - Status combinado: `payment_status` + `fulfillment_status` → label + cor para o cliente
+  - Timeline 5 etapas: Pedido realizado, Pagamento confirmado, Separando itens, Em transporte, Entregue
+  - Timestamps das etapas vindos de `fulfillments[0].packed_at/shipped_at/delivered_at`
+  - `notFoundState` pattern: `useEffect` seta estado, `notFound()` chamado durante render (não no efeito)
+  - Botão WhatsApp "Acompanhar entrega" só exibido para `shipped/partially_shipped/delivered`
+  - `conta/pedidos/page.tsx`: botão "Acompanhar" trocado por link "Ver detalhes →" apontando para `/conta/pedidos/[id]`
+
+- **c95ec11** — feat(storefront-v2): CEP auto-complete + updateAddress em /conta/enderecos
+  - CEP auto-complete via ViaCEP: dispara ao digitar 8 dígitos, spinner inline, preenche logradouro/bairro/cidade/estado sem sobrescrever numero/complemento
+  - Formulário de edição inline (baixo do card), pré-preenchido com dados do endereço existente
+  - `buildPayload()`: combina `logradouro + numero → address_1`, `complemento + bairro → address_2` (sep: " — ")
+  - Limitação aceita: ao editar, `address_2` mostra valor combinado (usuário ajusta se necessário)
+  - `updateAddress()` em `auth.ts`: PATCH `/store/customers/me/addresses/:id`
+
+- **054cf16** — feat(storefront-v2): /busca com facets client-side (categoria, preço, estoque, sort)
+  - Arquitetura: server component exporta `<Suspense><BuscaContent /></Suspense>` — `BuscaContent` é client
+  - `searchProducts(q)` em `products.ts`: limit 100, inclui `+categories` para construção de facets
+  - Facets de categoria: extraídos dos produtos retornados (não da listCategories), com contagens
+  - Filtros: categoria (URL param), preço min/max (input local → URL no blur/Enter), disponibilidade (default ON), ordenação (5 opções)
+  - Chips ativos com × individual + "Limpar tudo" (aparece com 2+ chips)
+  - URL state completo: todos os filtros em query params, `router.push({ scroll: false })`
+  - Desktop: sidebar sticky. Mobile: pills top-4 categorias + sort dropdown
+  - Skeleton, empty state, grid 2-col mobile / 4-col desktop
