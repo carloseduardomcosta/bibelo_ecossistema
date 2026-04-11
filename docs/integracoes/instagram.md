@@ -10,6 +10,20 @@ Trazer KPIs orgânicos do Instagram comercial da Bibelô para o CRM, acumulando 
 
 ---
 
+## Credenciais e IDs
+
+| Campo | Valor |
+|-------|-------|
+| `ig-user-id` | `17841478800595116` |
+| `page-id` | `958122297382938` |
+| Username | `@papelariabibelo` |
+| Nome | Bibelô Papelaria Premium |
+| Token | System User `Bibelo-api` — **nunca expira** |
+
+IDs salvos em `sync.sync_state` (chaves: `instagram_user_id`, `instagram_page_id`).
+
+---
+
 ## KPIs disponíveis via Instagram Graph API
 
 ### Conta (nível perfil)
@@ -45,34 +59,20 @@ Em 6 meses: 180 dias de evolução de seguidores, sazonalidade de engajamento, c
 
 ---
 
-## Pré-requisitos
+## Permissões no token Meta (System User Bibelo-api)
 
-### Conta Instagram
-- Deve ser conta Business ou Creator (não pessoal)
-- Deve estar conectada a uma Página do Facebook
-
-### Permissões no token Meta (System User)
-O token atual (`META_ACCESS_TOKEN`) já tem:
-- `pages_show_list` ✅
-- `pages_read_engagement` ✅
-- `ads_read` ✅
-- `ads_management` ✅
-
-**Faltam apenas estas duas:**
-- `instagram_basic` ❌
-- `instagram_manage_insights` ❌
-
-### Como adicionar as permissões
-1. Acessar `https://business.facebook.com/settings/system-users`
-2. Clicar no System User **BibeloCRM-API**
-3. Clicar em **"Gerar token"**
-4. Selecionar o app **BibelôCRM**
-5. Marcar TODAS as permissões (incluindo as já existentes + as duas novas)
-6. Copiar o novo token e atualizar `META_ACCESS_TOKEN` no `.env`
+| Permissão | Status |
+|-----------|--------|
+| `pages_show_list` | ✅ |
+| `pages_read_engagement` | ✅ |
+| `ads_read` | ✅ |
+| `ads_management` | ✅ |
+| `instagram_basic` | ✅ adicionado em 11/04/2026 |
+| `instagram_manage_insights` | ✅ adicionado em 11/04/2026 |
 
 ---
 
-## Arquitetura técnica planejada
+## Arquitetura técnica
 
 ### Backend
 | Arquivo | Função |
@@ -82,7 +82,7 @@ O token atual (`META_ACCESS_TOKEN`) já tem:
 
 ### Job BullMQ
 - Nome: `instagram-sync`
-- Frequência: 1x por dia (ex: 06:00)
+- Frequência: 1x por dia às 07:00
 - Janela: últimos 2 dias (overlap)
 - Tabelas de destino: UPSERT por data
 
@@ -93,28 +93,45 @@ O token atual (`META_ACCESS_TOKEN`) já tem:
 | `instagram_posts` | Posts com métricas (likes, comments, saves, shares, reach, engagement_rate) |
 | `instagram_audience` | Snapshot semanal de audiência (gênero/idade, cidades) |
 
-### Endpoints planejados
+### Endpoints
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| GET | `/api/instagram/overview?periodo=30d` | KPIs conta + evolução seguidores |
+| GET | `/api/instagram/status` | Status conexão + seguidores atuais |
+| GET | `/api/instagram/overview?periodo=30d` | KPIs conta + evolução diária |
 | GET | `/api/instagram/posts?periodo=30d` | Posts com métricas |
 | GET | `/api/instagram/audience` | Breakdown audiência |
 | POST | `/api/instagram/sync` | Sync manual |
-
-### Frontend
-Nova página **"Instagram"** no menu Marketing (ao lado de Meta Ads).
+| GET | `/api/instagram/sync-status` | Último sync + total registros |
 
 ---
 
-## Fluxo de autenticação (uma vez só)
+## Mapa das rotas Instagram Graph API
 
+### Métricas diárias da conta
 ```
-GET /me/accounts                            → lista Páginas Facebook
-GET /{page-id}?fields=instagram_business_account → retorna ig-user-id
-GET /{ig-user-id}?fields=name,followers_count   → confirma conexão
+GET /{ig-user-id}/insights
+  ?metric=impressions,reach,profile_views,follower_count,
+          email_contacts,website_clicks,phone_call_clicks
+  &period=day
+  &since=UNIX_TIMESTAMP
+  &until=UNIX_TIMESTAMP
 ```
 
-O `ig-user-id` fica salvo em `sync.sync_state` (chave: `instagram_user_id`).
+### Posts
+```
+GET /{ig-user-id}/media
+  ?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count
+
+GET /{ig-media-id}/insights
+  ?metric=impressions,reach,saved,shares,video_views (+ reels: ig_reels_avg_watch_time)
+```
+
+### Audiência (lifetime snapshot)
+```
+GET /{ig-user-id}/insights
+  ?metric=audience_gender_age,audience_city,audience_country
+  &period=lifetime
+```
 
 ---
 
@@ -124,10 +141,14 @@ O `ig-user-id` fica salvo em `sync.sync_state` (chave: `instagram_user_id`).
 |-------|--------|
 | Levantamento KPIs disponíveis | ✅ Concluído |
 | Arquitetura definida | ✅ Concluído |
-| Permissões no token Meta | ⏳ Pendente — Carlos adiciona `instagram_basic` + `instagram_manage_insights` |
-| Implementação backend + tabelas | 📋 Aguardando token |
-| Implementação frontend | 📋 Aguardando token |
+| Permissões no token Meta | ✅ Concluído em 11/04/2026 |
+| IDs salvos no banco | ✅ ig-user-id: 17841478800595116 |
+| Migration 031_instagram.sql | ✅ Implementado |
+| Backend client + rotas | ✅ Implementado |
+| Job BullMQ diário 07:00 | ✅ Implementado |
+| Frontend Instagram.tsx | ✅ Implementado |
 
 ---
 
 *Criado em: 10 de Abril de 2026*
+*Atualizado em: 11 de Abril de 2026 — token configurado, IDs descobertos, implementação completa*

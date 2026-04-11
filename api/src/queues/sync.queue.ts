@@ -6,6 +6,7 @@ import { calculateScore } from "../services/customer.service";
 import { triggerFlow } from "../services/flow.service";
 import { refreshReviewsCache } from "../integrations/google/reviews";
 import { syncMetaAds } from "../services/meta.service";
+import { syncInstagram } from "../integrations/meta/instagram";
 import { query, queryOne } from "../db";
 
 // ── Redis connection ───────────────────────────────────────────
@@ -122,6 +123,15 @@ export const syncWorker = new Worker(
           break;
         }
 
+        case "instagram-sync": {
+          const igResult = await syncInstagram();
+          result = {
+            processed: igResult.dias + igResult.posts,
+            ...igResult,
+          };
+          break;
+        }
+
         case "cleanup-old-data": {
           const tracking = await query(
             "DELETE FROM crm.tracking_events WHERE criado_em < NOW() - INTERVAL '90 days'"
@@ -215,7 +225,12 @@ export async function registerScheduledJobs(): Promise<void> {
     repeat: { pattern: "0 */6 * * *" },
   });
 
-  logger.info("Jobs agendados registrados: bling-sync (30min), scores (2h), google-reviews (6h), cleanup (4h), meta-ads (6h)");
+  // Instagram organic sync: diário às 07:00 (janela 2 dias, acumula histórico)
+  await syncQueue.add("instagram-sync", {}, {
+    repeat: { pattern: "0 7 * * *" },
+  });
+
+  logger.info("Jobs agendados registrados: bling-sync (30min), scores (2h), google-reviews (6h), cleanup (4h), meta-ads (6h), instagram (7h)");
 }
 
 // ── Event listeners ────────────────────────────────────────────

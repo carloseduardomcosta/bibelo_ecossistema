@@ -38,6 +38,7 @@ import { sesWebhookRouter }      from "./integrations/ses/webhook";
 import { emailConsumptionRouter } from "./routes/email-consumption";
 import { queueMonitorRouter } from "./routes/queue-monitor";
 import { metaAdsRouter } from "./routes/meta-ads";
+import { instagramRouter } from "./routes/instagram";
 import { seoRouter } from "./routes/seo";
 import { landingPagesRouter } from "./routes/landing-pages";
 import { storeSettingsRouter } from "./routes/store-settings";
@@ -140,6 +141,7 @@ app.use("/api/webhooks/ses", sesWebhookRouter);
 app.use("/api/email-consumption", emailConsumptionRouter);
 app.use("/api/queues", queueMonitorRouter);
 app.use("/api/meta-ads", metaAdsRouter);
+app.use("/api/instagram", instagramRouter);
 app.use("/lp", landingPagesRouter);             // público: /lp/dia-das-maes
 app.use("/api/landing-pages", landingPagesRouter); // admin: CRUD
 app.use("/api/seo", seoRouter);

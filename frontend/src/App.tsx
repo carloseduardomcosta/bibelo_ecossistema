@@ -31,6 +31,7 @@ import EditorImagens from './pages/EditorImagens';
 import ConsumoEmail from './pages/ConsumoEmail';
 import Inteligencia from './pages/Inteligencia';
 import MetaAds from './pages/MetaAds';
+import InstagramPage from './pages/Instagram';
 import Filas from './pages/Filas';
 import Sistema from './pages/Sistema';
 import SEO from './pages/SEO';
@@ -104,6 +105,7 @@ export default function App() {
               <Route path="/consumo-email" element={<ConsumoEmail />} />
               <Route path="/inteligencia" element={<Inteligencia />} />
               <Route path="/meta-ads" element={<MetaAds />} />
+              <Route path="/instagram" element={<InstagramPage />} />
               <Route path="/sync" element={<Sync />} />
               <Route path="/filas" element={<Filas />} />
               <Route path="/sistema" element={<Sistema />} />
