@@ -103,10 +103,13 @@ export async function metaGet<T = unknown>(
 export function periodoToRange(periodo: string): { since: string; until: string } {
   const now = new Date();
   const until = now.toISOString().split("T")[0];
+  // "1d" = somente hoje (since = until = hoje)
+  if (periodo === "1d") return { since: until, until };
   let days = 7;
-  if (periodo === "15d") days = 15;
+  if (periodo === "3d")  days = 3;
+  else if (periodo === "15d") days = 15;
   else if (periodo === "30d") days = 30;
-  else if (periodo === "3m") days = 90;
+  else if (periodo === "3m")  days = 90;
   const since = new Date(now.getTime() - days * 86400000).toISOString().split("T")[0];
   return { since, until };
 }

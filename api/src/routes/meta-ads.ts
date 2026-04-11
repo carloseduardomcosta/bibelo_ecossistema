@@ -18,7 +18,7 @@ export const metaAdsRouter = Router();
 metaAdsRouter.use(authMiddleware);
 
 const periodoSchema = z.object({
-  periodo: z.enum(["7d", "15d", "30d", "3m"]).default("7d"),
+  periodo: z.enum(["1d", "3d", "7d", "15d", "30d", "3m"]).default("7d"),
 });
 
 // ── Status da conexão ─────────────────────────────────────────
@@ -257,11 +257,11 @@ metaAdsRouter.post("/sync", async (_req: Request, res: Response) => {
 // ── Histórico de insights do banco ───────────────────────────
 
 const historicoSchema = z.object({
-  periodo: z.enum(["7d", "15d", "30d", "3m", "6m", "1a"]).default("30d"),
+  periodo: z.enum(["1d", "3d", "7d", "15d", "30d", "3m", "6m", "1a"]).default("30d"),
 });
 
 function periodoDias(p: string): number {
-  const map: Record<string, number> = { "7d": 7, "15d": 15, "30d": 30, "3m": 90, "6m": 180, "1a": 365 };
+  const map: Record<string, number> = { "1d": 1, "3d": 3, "7d": 7, "15d": 15, "30d": 30, "3m": 90, "6m": 180, "1a": 365 };
   return map[p] || 30;
 }
 
