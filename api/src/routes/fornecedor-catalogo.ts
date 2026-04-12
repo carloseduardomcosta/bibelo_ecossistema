@@ -445,7 +445,7 @@ fornecedorCatalogoRouter.get("/produtos", async (req: Request, res: Response) =>
     conditions.push(`p.nome ILIKE $${idx++}`);
     params.push(`%${search}%`);
   }
-  if (categoria) { conditions.push(`p.categoria = $${idx++}`); params.push(categoria); }
+  if (categoria) { conditions.push(`COALESCE(p.slug_categoria, p.categoria) = $${idx++}`); params.push(categoria); }
   if (status)    { conditions.push(`p.status = $${idx++}`);    params.push(status); }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
