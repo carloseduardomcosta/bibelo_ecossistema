@@ -1125,6 +1125,17 @@ sync.category_sync_log         (auditoria)
   - `docker builder prune -f`: limpeza de build cache acumulado de rebuilds do dia — 31.24GB liberados
   - Nenhum container parado, nenhuma imagem ativa removida, nenhum serviço afetado
 
+- **4d34652** — feat(portal-b2b): catálogo público para revendedoras com preço de tier (12/04/2026)
+  - Rota pública `/api/portal/:token` — 3 endpoints sem auth: info, categorias, catálogo com preço final
+  - Token validado em cada requisição; nunca expõe `preco_custo`, `markup_override` ou margem — apenas `preco_final`
+  - `preco_final = preco_custo × COALESCE(markup_override, markup_cat, 2.00) × (1 - desconto_tier / 100)`
+  - Bronze 20% · Prata 25% · Ouro 30% — preço calculado via `percentual_desconto` da revendedora
+  - `POST /api/revendedoras/:id/gerar-token` — gera link válido por 90 dias
+  - Frontend `PortalRevendedora.tsx`: busca com debounce, filtro de categoria, paginação, badge de nível, WhatsApp flutuante
+  - Botão "Link do catálogo" no `RevendedoraPerfil.tsx` com copiar e abrir em nova aba
+  - `db/migrations/034_portal_revendedora.sql`: índice em `crm.revendedoras(portal_token)` para lookup eficiente
+  - Rate limit portal: 120 req/min; rota pública registrada em `App.tsx` fora do `ProtectedRoute`
+
 - **054cf16** — feat(storefront-v2): /busca com facets client-side (categoria, preço, estoque, sort)
   - Arquitetura: server component exporta `<Suspense><BuscaContent /></Suspense>` — `BuscaContent` é client
   - `searchProducts(q)` em `products.ts`: limit 100, inclui `+categories` para construção de facets
