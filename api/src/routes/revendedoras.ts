@@ -530,3 +530,32 @@ revendedorasRouter.get("/:id/conquistas", async (req: Request, res: Response) =>
   `, [id]);
   res.json({ data: rows });
 });
+
+// ── POST /:id/gerar-token — gera/renova token do portal B2B ─
+
+revendedorasRouter.post("/:id/gerar-token", async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const rev = await queryOne<{ id: string; nome: string }>(
+    "SELECT id, nome FROM crm.revendedoras WHERE id = $1",
+    [id]
+  );
+  if (!rev) { res.status(404).json({ error: "Revendedora não encontrada" }); return; }
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const expira = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); // 90 dias
+
+  await queryOne(
+    `UPDATE crm.revendedoras
+     SET portal_token = $1, portal_token_expira_em = $2, atualizado_em = NOW()
+     WHERE id = $3`,
+    [token, expira, id]
+  );
+
+  logger.info("Token portal gerado", { id, nome: rev.nome });
+  res.json({
+    portal_token: token,
+    portal_token_expira_em: expira.toISOString(),
+    link: `/portal/${token}`,
+  });
+});

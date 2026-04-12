@@ -4,7 +4,7 @@ import {
   ArrowLeft, Mail, Phone, MapPin, Medal, Star, Crown, Package,
   ShoppingCart, Trophy, TrendingUp, AlertTriangle, Edit2, Check,
   X, ChevronDown, Clock, Truck, CheckCircle2, XCircle,
-  Lock, Flame,
+  Lock, Flame, Link2, Copy, ExternalLink,
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
@@ -516,6 +516,8 @@ export default function RevendedoraPerfil() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('visao');
   const [alterandoStatus, setAlterandoStatus] = useState(false);
+  const [gerandoLink, setGerandoLink] = useState(false);
+  const [portalLink, setPortalLink] = useState<string | null>(null);
 
   const fetchRev = useCallback(async () => {
     try {
@@ -541,6 +543,25 @@ export default function RevendedoraPerfil() {
     } finally {
       setAlterandoStatus(false);
     }
+  }
+
+  async function gerarLinkPortal() {
+    setGerandoLink(true);
+    try {
+      const res = await api.post(`/revendedoras/${id}/gerar-token`);
+      const url = `${window.location.origin}${res.data.link}`;
+      setPortalLink(url);
+      toast.success('Link do portal gerado!');
+    } catch {
+      toast.error('Erro ao gerar link do portal');
+    } finally {
+      setGerandoLink(false);
+    }
+  }
+
+  function copiarLink() {
+    if (!portalLink) return;
+    navigator.clipboard.writeText(portalLink).then(() => toast.success('Link copiado!'));
   }
 
   if (loading) {
@@ -640,6 +661,37 @@ export default function RevendedoraPerfil() {
             </select>
             {rev.aprovada_em && (
               <p className="text-xs text-bibelo-muted">Aprovada em {formatDate(rev.aprovada_em)}</p>
+            )}
+            {/* Portal B2B */}
+            {!portalLink ? (
+              <button
+                onClick={gerarLinkPortal}
+                disabled={gerandoLink}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#fe68c4]/10 text-[#fe68c4] border border-[#fe68c4]/30 hover:bg-[#fe68c4]/20 transition-colors disabled:opacity-50"
+              >
+                {gerandoLink
+                  ? <div className="w-3 h-3 border border-[#fe68c4] border-t-transparent rounded-full animate-spin" />
+                  : <Link2 size={12} />
+                }
+                {gerandoLink ? 'Gerando...' : 'Link do catálogo'}
+              </button>
+            ) : (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={copiarLink}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-400/10 text-emerald-400 border border-emerald-400/30 hover:bg-emerald-400/20 transition-colors"
+                  title={portalLink}
+                >
+                  <Copy size={11} /> Copiar link
+                </button>
+                <a
+                  href={portalLink}
+                  target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-bibelo-bg border border-bibelo-border hover:border-bibelo-primary text-bibelo-muted hover:text-bibelo-text transition-colors"
+                >
+                  <ExternalLink size={11} />
+                </a>
+              </div>
             )}
           </div>
         </div>

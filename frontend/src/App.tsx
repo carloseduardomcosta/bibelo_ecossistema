@@ -42,6 +42,7 @@ import CatalogoWhatsApp from './pages/CatalogoWhatsApp';
 import Revendedoras from './pages/Revendedoras';
 import RevendedoraPerfil from './pages/RevendedoraPerfil';
 import FornecedorCatalogo from './pages/FornecedorCatalogo';
+import PortalRevendedora from './pages/PortalRevendedora';
 import { ToastProvider } from './components/Toast';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
@@ -75,6 +76,7 @@ export default function App() {
           <ToastProvider>
           <ErrorBoundary>
           <Routes>
+            <Route path="/portal/:token" element={<PortalRevendedora />} />
             <Route path="/login" element={<Login />} />
             <Route
               element={
