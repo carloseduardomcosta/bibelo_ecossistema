@@ -71,9 +71,10 @@ const navGroups: NavGroup[] = [
   {
     label: 'CRM',
     items: [
-      { to: '/clientes', label: 'Clientes', icon: Users },
-      { to: '/segmentos', label: 'Segmentos', icon: Target },
-      { to: '/pipeline', label: 'Pipeline', icon: Kanban },
+      { to: '/clientes',     label: 'Clientes',     icon: Users },
+      { to: '/segmentos',    label: 'Segmentos',     icon: Target },
+      { to: '/pipeline',     label: 'Pipeline',      icon: Kanban },
+      { to: '/revendedoras', label: 'Revendedoras',  icon: Handshake },
     ],
   },
   {
@@ -86,6 +87,7 @@ const navGroups: NavGroup[] = [
       { to: '/vendas', label: 'Vendas', icon: ShoppingBag },
       { to: '/editor-imagens', label: 'Editor Imagens', icon: ImagePlus },
       { to: '/seo', label: 'SEO', icon: Globe },
+      { to: '/fornecedor-catalogo', label: 'Catálogo Fornecedor', icon: Package },
     ],
   },
   {

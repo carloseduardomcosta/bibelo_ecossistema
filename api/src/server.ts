@@ -47,6 +47,8 @@ import { publicNovidadesRouter } from "./routes/public-novidades";
 import { publicFreteRouter }    from "./routes/public-frete";
 import { systemRouter } from "./routes/system";
 import { firewallRouter } from "./routes/firewall";
+import { revendedorasRouter } from "./routes/revendedoras";
+import { fornecedorCatalogoRouter } from "./routes/fornecedor-catalogo";
 import { registerScheduledJobs, closeSyncQueue } from "./queues/sync.queue";
 import { registerFlowJobs, closeFlowQueue }      from "./queues/flow.queue";
 
@@ -150,7 +152,9 @@ app.use("/api/categorias-sync", categoriaSyncRouter); // painel sync categorias 
 app.use("/api/public/novidades", publicNovidadesRouter); // público: novidades via NF Bling (sem auth)
 app.use("/api/public/frete",    publicFreteRouter);    // público: cálculo de frete Melhor Envio (sem auth)
 app.use("/api/system", systemRouter);              // status VPS + code stats
-app.use("/api/firewall", firewallRouter);          // firewall SSH + whitelist
+app.use("/api/firewall", firewallRouter);
+app.use("/api/revendedoras", revendedorasRouter);
+app.use("/api/fornecedor-catalogo", fornecedorCatalogoRouter); // catálogo JC Atacado + curadoria markup
 
 // ── 404
 app.use((_req, res) => {

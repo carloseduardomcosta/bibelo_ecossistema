@@ -1099,6 +1099,22 @@ sync.category_sync_log         (auditoria)
   - Limitação aceita: ao editar, `address_2` mostra valor combinado (usuário ajusta se necessário)
   - `updateAddress()` em `auth.ts`: PATCH `/store/customers/me/addresses/:id`
 
+- **[próximo commit]** — feat(crm): catálogo fornecedor JC Atacado + módulo revendedoras (12/04/2026)
+  - Scraper JC Atacado: importa 172 categorias via GA4 dataLayer (bracket-matching) — 1.186 produtos novos, ~73k atualizados em ~89min
+  - Backend: `api/src/routes/fornecedor-catalogo.ts` — scraper com modo Retomar, curadoria (aprovar/pausar em lote), markup por categoria, histórico de imports
+  - Retomar usa `fornecedor_markup_categorias` como marcador de categoria concluída (robusto contra queda do container)
+  - Frontend: `FornecedorCatalogo.tsx` — stats cards, barra de progresso real-time (3s polling), tab Curadoria, tab Markups, tab Histórico
+  - Módulo Revendedoras: `api/src/routes/revendedoras.ts` + `Revendedoras.tsx` + `RevendedoraPerfil.tsx` — CRUD completo
+  - Migrations: `032_revendedoras.sql`, `033_fornecedor_catalogo.sql`
+  - Fix CSP Nginx: `script-src` + `connect-src` Cloudflare Insights para eliminar erro no browser
+  - Fix `z.toFixed is not a function`: PostgreSQL NUMERIC retorna string — `Number()` em todos os cálculos de markup
+  - 46 testes automatizados: `fornecedor-catalogo.test.ts` cobre todos os endpoints + 401
+
+- **[sem commit]** — chore: limpeza de disco — imagens lixo + build cache Docker (10/04/2026)
+  - Removidos 21 arquivos de imagem lixo: 4 PNGs duplicados na raiz `/opt/bibelocrm/`, 3 arquivos de teste em `/tmp/`, 17 arquivos de cache de testes locais em `api/uploads/email-img-cache/` (~1.8MB)
+  - `docker builder prune -f`: limpeza de build cache acumulado de rebuilds do dia — 31.24GB liberados
+  - Nenhum container parado, nenhuma imagem ativa removida, nenhum serviço afetado
+
 - **054cf16** — feat(storefront-v2): /busca com facets client-side (categoria, preço, estoque, sort)
   - Arquitetura: server component exporta `<Suspense><BuscaContent /></Suspense>` — `BuscaContent` é client
   - `searchProducts(q)` em `products.ts`: limit 100, inclui `+categories` para construção de facets
