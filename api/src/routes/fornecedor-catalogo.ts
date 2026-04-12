@@ -427,7 +427,7 @@ fornecedorCatalogoRouter.put("/markup", async (req: Request, res: Response) => {
 fornecedorCatalogoRouter.get("/produtos", async (req: Request, res: Response) => {
   const schema = z.object({
     page:      z.coerce.number().int().min(1).default(1),
-    limit:     z.coerce.number().int().min(1).max(100).default(24),
+    limit:     z.coerce.number().int().min(1).max(500).default(24),
     search:    z.string().optional(),
     categoria: z.string().optional(),
     status:    z.enum(["rascunho", "aprovado", "pausado"]).optional(),
