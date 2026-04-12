@@ -144,8 +144,8 @@ async function getCategoriasSitemap(): Promise<string[]> {
     "termos", "login", "cadastro", "minha-conta", "politica",
   ]);
 
-  // URLs com exatamente 1 segmento de path, sem query string
-  const regex = /<loc>(https:\/\/www\.atacadojc\.com\.br\/([a-z0-9][a-z0-9-]{1,80})\/?)<\/loc>/g;
+  // URLs com exatamente 1 segmento de path — aceita múltiplos traços (ex: mochila---bolsa)
+  const regex = /<loc>(https:\/\/www\.atacadojc\.com\.br\/([a-z0-9][a-z0-9-]{1,100})\/?)<\/loc>/g;
   const slugs = new Set<string>();
   let m: RegExpExecArray | null;
   while ((m = regex.exec(html)) !== null) {
@@ -576,6 +576,119 @@ fornecedorCatalogoRouter.post("/scraper/iniciar", async (req: Request, res: Resp
   setImmediate(() => { executarScraper(logRow.id, retomar).catch(e => logger.error("Scraper erro", { error: e.message })); });
 
   res.json({ ok: true, log_id: logRow.id, retomar, mensagem: retomar ? "Retomando — categorias já importadas serão puladas" : "Scraper iniciado em background" });
+});
+
+/** POST /scraper/categorias — importa slugs específicos em background
+ *  Body: { slugs: ["mochila---bolsa", "outro-slug"] }
+ */
+fornecedorCatalogoRouter.post("/scraper/categorias", async (req: Request, res: Response) => {
+  if (scraperState.running) {
+    res.status(409).json({ error: "Scraper já está em execução" });
+    return;
+  }
+
+  const parse = z.object({
+    slugs: z.array(z.string().min(1)).min(1).max(20),
+  }).safeParse(req.body);
+  if (!parse.success) { res.status(400).json({ error: "Dados inválidos" }); return; }
+
+  const { slugs } = parse.data;
+
+  const logRow = await queryOne<{ id: string }>(
+    "INSERT INTO sync.fornecedor_sync_log DEFAULT VALUES RETURNING id"
+  );
+  if (!logRow) { res.status(500).json({ error: "Erro ao criar log" }); return; }
+
+  Object.assign(scraperState, {
+    running: true,
+    total_categorias: slugs.length,
+    categorias_feitas: 0,
+    categoria_atual: "",
+    produtos_salvos: 0,
+    produtos_atualizados: 0,
+    erros: 0,
+    log_id: logRow.id,
+    iniciado_em: new Date().toISOString(),
+    mensagem: `Importando ${slugs.length} categoria(s) específica(s)...`,
+  });
+
+  logger.info("Scraper JC — categorias específicas", { slugs, user: (req as Request & { user?: { email: string } }).user?.email });
+
+  // Reutiliza executarScraper mas com lista fixa
+  async function executarSlugsDireto() {
+    const logs: string[] = [`Categorias específicas: ${slugs.join(", ")}`];
+    await queryOne(
+      "UPDATE sync.fornecedor_sync_log SET total_categorias = $1 WHERE id = $2",
+      [slugs.length, logRow!.id]
+    );
+    for (const slug of slugs) {
+      if (!scraperState.running) { logs.push("Interrompido."); break; }
+      scraperState.categoria_atual = slug;
+      try {
+        const url1 = urlPagina(slug, 1, null);
+        const res1 = await HTTP.get(url1);
+        await sleep(DELAY_MS);
+        const produtos1 = extrairProdutosDaPagina(res1.data);
+        if (produtos1.length === 0) {
+          scraperState.categorias_feitas++;
+          logs.push(`✗ ${slug}: sem produtos na página 1`);
+          continue;
+        }
+        const deptCode = extrairDeptCode(res1.data, slug);
+        const [s1, a1] = await salvarProdutos(produtos1);
+        scraperState.produtos_salvos += s1;
+        scraperState.produtos_atualizados += a1;
+        await queryOne(
+          `UPDATE sync.fornecedor_catalogo_jc SET slug_categoria = $1 WHERE item_id = ANY($2::text[]) AND slug_categoria IS NULL`,
+          [slug, produtos1.map(p => p.item_id)]
+        );
+        let page = 2;
+        while (page <= 80 && scraperState.running) {
+          const res = await HTTP.get(urlPagina(slug, page, deptCode));
+          await sleep(DELAY_MS);
+          const prods = extrairProdutosDaPagina(res.data);
+          if (prods.length === 0) break;
+          const [s, a] = await salvarProdutos(prods);
+          scraperState.produtos_salvos += s;
+          scraperState.produtos_atualizados += a;
+          await queryOne(
+            `UPDATE sync.fornecedor_catalogo_jc SET slug_categoria = $1 WHERE item_id = ANY($2::text[]) AND slug_categoria IS NULL`,
+            [slug, prods.map(p => p.item_id)]
+          );
+          page++;
+        }
+        scraperState.categorias_feitas++;
+        logs.push(`✓ ${slug}: ${page - 1} páginas`);
+        await queryOne(
+          `INSERT INTO sync.fornecedor_markup_categorias (categoria) VALUES ($1) ON CONFLICT (categoria) DO NOTHING`,
+          [slug]
+        );
+        await queryOne(
+          `UPDATE sync.fornecedor_sync_log SET categorias_processadas=$1, produtos_salvos=$2, produtos_atualizados=$3 WHERE id=$4`,
+          [scraperState.categorias_feitas, scraperState.produtos_salvos, scraperState.produtos_atualizados, logRow!.id]
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logs.push(`✗ ${slug}: ${msg}`);
+        scraperState.erros++;
+        await sleep(DELAY_MS * 2);
+      }
+    }
+    const finalStatus = scraperState.running ? "concluido" : "interrompido";
+    await queryOne(
+      `UPDATE sync.fornecedor_sync_log SET status=$1, concluido_em=NOW(), erros=$2, log=$3, categorias_processadas=$4, produtos_salvos=$5, produtos_atualizados=$6 WHERE id=$7`,
+      [finalStatus, scraperState.erros, logs.join("\n"), scraperState.categorias_feitas, scraperState.produtos_salvos, scraperState.produtos_atualizados, logRow!.id]
+    );
+    scraperState.mensagem = `Concluído — ${scraperState.produtos_salvos} novos, ${scraperState.produtos_atualizados} atualizados`;
+    scraperState.running = false;
+  }
+
+  setImmediate(() => executarSlugsDireto().catch(e => {
+    logger.error("Scraper categorias específicas — erro", { error: e.message });
+    scraperState.running = false;
+  }));
+
+  res.json({ ok: true, log_id: logRow.id, slugs, mensagem: `Importando: ${slugs.join(", ")}` });
 });
 
 /** POST /scraper/parar — interrompe a varredura */

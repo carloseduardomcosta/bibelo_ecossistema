@@ -1099,6 +1099,16 @@ sync.category_sync_log         (auditoria)
   - Limitação aceita: ao editar, `address_2` mostra valor combinado (usuário ajusta se necessário)
   - `updateAddress()` em `auth.ts`: PATCH `/store/customers/me/addresses/:id`
 
+- **[próximo commit]** — fix(fornecedor-catalogo): curadoria automática, markups histórico Bling, mochila---bolsa (12/04/2026)
+  - Fix filtro categoria: `COALESCE(slug_categoria, categoria)` — slug "caneta-esferografica" não casava com "Caneta Esferográfica" do GA4
+  - Fix limit Zod: max 100→500 para suportar expansão de categoria com 200 produtos
+  - Fix regex sitemap: aceita slugs com múltiplos traços (ex: `mochila---bolsa`)
+  - Novo endpoint `POST /scraper/categorias`: importa slugs específicos sem reimportar tudo
+  - Markups automáticos baseados no histórico real de preços Bling (234 produtos, 16 categorias calculadas)
+  - Curadoria automática: 796 produtos Bling-matched aprovados + 15/cat core + 8/cat demais = 1.211 aprovados
+  - Importação `mochila---bolsa`: 165 produtos, 12 páginas, markup 2.5×, 15 produtos aprovados (R$69-R$79)
+  - Documentação completa: `docs/claude/fornecedor-catalogo.md`
+
 - **[próximo commit]** — feat(crm): catálogo fornecedor JC Atacado + módulo revendedoras (12/04/2026)
   - Scraper JC Atacado: importa 172 categorias via GA4 dataLayer (bracket-matching) — 1.186 produtos novos, ~73k atualizados em ~89min
   - Backend: `api/src/routes/fornecedor-catalogo.ts` — scraper com modo Retomar, curadoria (aprovar/pausar em lote), markup por categoria, histórico de imports
