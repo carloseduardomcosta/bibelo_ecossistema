@@ -219,6 +219,7 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 @docs/claude/storefront.md
 @docs/claude/integracoes.md
 @docs/claude/medusa-operacional.md
+@docs/claude/fornecedor-catalogo.md
 @docs/claude/documentacao-complementar.md
 
 ---
