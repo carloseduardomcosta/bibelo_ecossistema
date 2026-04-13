@@ -125,13 +125,18 @@ function buildOTPEmail(nome: string, codigo: string): string {
       <table width="480" cellpadding="0" cellspacing="0"
              style="background:#ffffff;border-radius:16px;overflow:hidden;max-width:480px;width:100%;">
 
-        <!-- Header -->
+        <!-- Header com logo -->
         <tr>
           <td style="background:#fe68c4;padding:28px 32px;text-align:center;">
-            <p style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.5px;">
-              🎀 Papelaria Bibelô
+            <img src="https://webhook.papelariabibelo.com.br/logo.png"
+                 alt="Papelaria Bibelô" width="60" height="60"
+                 style="display:block;margin:0 auto 10px;width:60px;height:60px;
+                        border-radius:50%;border:3px solid rgba(255,255,255,0.5);"
+                 onerror="this.style.display='none'" />
+            <p style="margin:0;color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.5px;">
+              Papelaria Bibelô
             </p>
-            <p style="margin:8px 0 0;color:rgba(255,255,255,0.88);font-size:13px;">
+            <p style="margin:6px 0 0;color:rgba(255,255,255,0.88);font-size:13px;">
               Catálogo Exclusivo para Revendedoras
             </p>
           </td>
@@ -627,9 +632,13 @@ function buildEmailNovoPedido(
 <tr><td align="center">
 <table width="520" cellpadding="0" cellspacing="0"
        style="background:#fff;border-radius:16px;overflow:hidden;max-width:520px;width:100%;">
-  <tr><td style="background:#fe68c4;padding:24px 32px;">
-    <p style="margin:0;color:#fff;font-size:20px;font-weight:700;">🎀 Papelaria Bibelô</p>
-    <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">Novo pedido recebido pelo Portal Sou Parceira</p>
+  <tr><td style="background:#fe68c4;padding:24px 32px;text-align:center;">
+    <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô"
+         width="52" height="52"
+         style="display:block;margin:0 auto 8px;width:52px;height:52px;border-radius:50%;border:2px solid rgba(255,255,255,0.5);"
+         onerror="this.style.display='none'" />
+    <p style="margin:0;color:#fff;font-size:18px;font-weight:700;">Papelaria Bibelô</p>
+    <p style="margin:5px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">Novo pedido recebido pelo Portal Sou Parceira</p>
   </td></tr>
   <tr><td style="padding:28px 32px;">
     <p style="margin:0 0 4px;font-size:15px;color:#333;">Pedido de <strong>${escHtml(revNome)}</strong></p>

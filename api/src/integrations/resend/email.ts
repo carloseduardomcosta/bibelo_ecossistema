@@ -46,6 +46,7 @@ interface SendEmailParams {
   subject: string;
   html: string;
   text?: string;
+  from?: string;  // override opcional: "Nome <email@dominio.com>"
   replyTo?: string;
   tags?: Array<{ name: string; value: string }>;
 }
@@ -58,7 +59,7 @@ export async function sendEmail(params: SendEmailParams): Promise<{ id: string }
     return { id: fakeId };
   }
 
-  const rawFrom = process.env.EMAIL_FROM || "noreply@papelariabibelo.com.br";
+  const rawFrom = params.from || process.env.EMAIL_FROM || "noreply@papelariabibelo.com.br";
   const from = rawFrom.includes("<") ? rawFrom : `Papelaria Bibelô <${rawFrom}>`;
   const replyTo = params.replyTo || process.env.EMAIL_REPLY_TO || "contato@papelariabibelo.com.br";
   const provider = getEmailProvider();

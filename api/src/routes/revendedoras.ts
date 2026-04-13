@@ -47,6 +47,183 @@ function calcularProgresso(volume: number): {
   return { proximo: "bronze", meta: 150,  faltam, percentual };
 }
 
+// ── E-mail de boas-vindas — disparado ao cadastrar revendedora ────
+
+const LOGO_URL = "https://webhook.papelariabibelo.com.br/logo.png";
+const PORTAL_URL = "https://souparceira.papelariabibelo.com.br";
+const FROM_PARCEIRAS = "Sou Parceira Bibelô <souparceira@papelariabibelo.com.br>";
+
+function buildBoasVindasParceira(nome: string, cpf: string, desconto: number): string {
+  const nomeEsc = escHtml(nome);
+  const cpfFormatado = cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4").replace(/[^\d.-]/g, "") || cpf;
+
+  const nivelRow = (emoji: string, label: string, desc: number, meta: string, frete: string, destaque: boolean) => `
+    <tr style="${destaque ? "background:#ffe5ec;" : ""}">
+      <td style="padding:10px 14px;border-bottom:1px solid #fce8f0;">
+        <span style="font-size:18px;">${emoji}</span>
+      </td>
+      <td style="padding:10px 0;border-bottom:1px solid #fce8f0;">
+        <strong style="color:#2d2d2d;font-size:13px;">${label}</strong>
+        <span style="color:#888;font-size:12px;"> · ${meta}</span>
+      </td>
+      <td style="padding:10px 14px;border-bottom:1px solid #fce8f0;text-align:right;">
+        <strong style="color:#fe68c4;font-size:14px;">${desc}% OFF</strong>
+      </td>
+      <td style="padding:10px 14px;border-bottom:1px solid #fce8f0;text-align:right;white-space:nowrap;">
+        <span style="font-size:11px;color:${frete === "Frete grátis" ? "#16a34a" : "#888"};">
+          ${frete === "Frete grátis" ? "✅" : "📦"} ${frete}
+        </span>
+      </td>
+    </tr>`;
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bem-vinda ao Programa Sou Parceira — Bibelô</title>
+</head>
+<body style="margin:0;padding:0;background:#ffe5ec;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#ffe5ec;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="520" cellpadding="0" cellspacing="0"
+             style="background:#ffffff;border-radius:16px;overflow:hidden;max-width:520px;width:100%;">
+
+        <!-- Header com logo -->
+        <tr>
+          <td style="background:#fe68c4;padding:28px 32px;text-align:center;">
+            <img src="${LOGO_URL}" alt="Papelaria Bibelô"
+                 width="120" height="auto"
+                 style="display:block;margin:0 auto 12px;max-height:50px;object-fit:contain;"
+                 onerror="this.style.display='none'" />
+            <p style="margin:0;color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.5px;">
+              🤝 Programa Sou Parceira
+            </p>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,0.88);font-size:13px;">
+              Catálogo exclusivo com preços de revendedora
+            </p>
+          </td>
+        </tr>
+
+        <!-- Corpo -->
+        <tr>
+          <td style="padding:32px 32px 24px;">
+            <p style="margin:0 0 6px;color:#2d2d2d;font-size:16px;font-weight:700;">
+              Olá, ${nomeEsc}! 🎉
+            </p>
+            <p style="margin:0 0 20px;color:#555;font-size:14px;line-height:1.7;">
+              Você foi cadastrada no <strong>Programa Sou Parceira da Papelaria Bibelô</strong>.
+              Agora você tem acesso ao catálogo exclusivo com preços de revendedora e
+              pode fazer pedidos direto pelo portal!
+            </p>
+
+            <!-- Como acessar -->
+            <table width="100%" cellpadding="0" cellspacing="0"
+                   style="background:#f9f0f8;border-radius:12px;margin-bottom:24px;">
+              <tr>
+                <td style="padding:18px 20px;">
+                  <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#2d2d2d;">
+                    🔑 Como acessar o portal
+                  </p>
+                  <p style="margin:0 0 6px;font-size:13px;color:#555;line-height:1.6;">
+                    1. Acesse
+                    <a href="${PORTAL_URL}" style="color:#fe68c4;font-weight:600;text-decoration:none;">
+                      souparceira.papelariabibelo.com.br
+                    </a>
+                  </p>
+                  <p style="margin:0 0 6px;font-size:13px;color:#555;line-height:1.6;">
+                    2. Digite seu CPF: <strong style="color:#2d2d2d;">${cpfFormatado}</strong>
+                  </p>
+                  <p style="margin:0;font-size:13px;color:#555;line-height:1.6;">
+                    3. Confirme o código enviado para este e-mail — pronto!
+                  </p>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Tabela de níveis -->
+            <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#2d2d2d;">
+              📊 Como funciona o programa de níveis
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0"
+                   style="border-radius:10px;overflow:hidden;border:1px solid #fce8f0;margin-bottom:8px;">
+              <thead>
+                <tr style="background:#ffe5ec;">
+                  <th style="padding:8px 14px;font-size:11px;color:#fe68c4;text-align:left;font-weight:700;" colspan="2">NÍVEL</th>
+                  <th style="padding:8px 14px;font-size:11px;color:#fe68c4;text-align:right;font-weight:700;">DESCONTO</th>
+                  <th style="padding:8px 14px;font-size:11px;color:#fe68c4;text-align:right;font-weight:700;">FRETE</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${nivelRow("✨", "Iniciante", 15, "até R$149/mês", "Por sua conta", desconto === 15)}
+                ${nivelRow("🥉", "Bronze", 20, "R$150 a R$599/mês", "Por sua conta", desconto === 20)}
+                ${nivelRow("🥈", "Prata", 25, "R$600 a R$1.199/mês", "Por sua conta", desconto === 25)}
+                ${nivelRow("🥇", "Ouro", 30, "R$1.200+/mês", "Frete grátis", desconto === 30)}
+              </tbody>
+            </table>
+            <p style="margin:0 0 24px;font-size:11px;color:#aaa;line-height:1.5;">
+              O nível é atualizado automaticamente conforme seu volume de compras no mês.
+              Seu nível atual está destacado na tabela.
+            </p>
+
+            <!-- CTA -->
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td align="center">
+                  <a href="${PORTAL_URL}"
+                     style="display:inline-block;background:#fe68c4;color:#ffffff;font-size:15px;
+                            font-weight:700;text-decoration:none;padding:14px 36px;
+                            border-radius:10px;letter-spacing:-0.3px;">
+                    Acessar catálogo →
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Dúvidas WhatsApp -->
+        <tr>
+          <td style="padding:0 32px 24px;">
+            <table width="100%" cellpadding="0" cellspacing="0"
+                   style="background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0;">
+              <tr>
+                <td style="padding:14px 18px;">
+                  <p style="margin:0;font-size:13px;color:#166534;">
+                    💬 <strong>Dúvidas?</strong> Fale com a gente pelo WhatsApp:
+                    <a href="https://wa.me/5547933862514"
+                       style="color:#166534;font-weight:700;text-decoration:none;">
+                      (47) 9 3386-2514
+                    </a>
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f9f9f9;padding:16px 32px;text-align:center;
+                     border-top:1px solid #f0e0e8;">
+            <p style="margin:0;color:#aaa;font-size:11px;line-height:1.6;">
+              Papelaria Bibelô · Timbó/SC ·
+              <a href="https://papelariabibelo.com.br"
+                 style="color:#fe68c4;text-decoration:none;">papelariabibelo.com.br</a>
+            </p>
+            <p style="margin:6px 0 0;color:#ccc;font-size:10px;">
+              Este e-mail foi enviado pois você foi cadastrada como revendedora Bibelô.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
 async function gerarNumeroPedido(): Promise<string> {
   const now = new Date();
   const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -248,6 +425,18 @@ revendedorasRouter.post("/", async (req: Request, res: Response) => {
   );
 
   logger.info("Revendedora criada", { id: (rev as Record<string,unknown>).id, nome: d.nome });
+
+  // E-mail de boas-vindas (não-bloqueante)
+  if (d.email) {
+    sendEmail({
+      to:      d.email,
+      from:    FROM_PARCEIRAS,
+      subject: `Bem-vinda ao Programa Sou Parceira — Papelaria Bibelô! 🤝`,
+      html:    buildBoasVindasParceira(d.nome, (d.documento ?? "").replace(/\D/g, ""), desconto),
+      tags:    [{ name: "tipo", value: "boas_vindas_parceira" }],
+    }).catch(err => logger.error("Erro ao enviar email boas-vindas parceira", { error: (err as Error).message }));
+  }
+
   res.status(201).json(rev);
 });
 
