@@ -349,7 +349,10 @@ function NotificationBell() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const urgentes = vendas.length + resumo.atrasados + resumo.vence_em_breve + leads.length + emailEvents.length + boasvindasDeals.length + pedidosRevResumo.pendentes + pedidosRevResumo.mensagens_nao_lidas;
+  const parceirasBtoB = boasvindasDeals.filter(d => d.origem === 'parcerias_b2b');
+  const contatosVip   = boasvindasDeals.filter(d => d.origem !== 'parcerias_b2b');
+
+  const urgentes = vendas.length + resumo.atrasados + resumo.vence_em_breve + leads.length + emailEvents.length + parceirasBtoB.length + contatosVip.length + pedidosRevResumo.pendentes + pedidosRevResumo.mensagens_nao_lidas;
 
   return (
     <div ref={ref} className="relative">
@@ -395,9 +398,14 @@ function NotificationBell() {
                   {emailEvents.length} email{emailEvents.length > 1 ? 's' : ''}
                 </span>
               )}
-              {boasvindasDeals.length > 0 && (
+              {parceirasBtoB.length > 0 && (
+                <span className="text-[10px] px-2 py-0.5 bg-cyan-400/10 text-cyan-400 rounded-full font-medium animate-pulse">
+                  {parceirasBtoB.length} parceira{parceirasBtoB.length > 1 ? 's' : ''} B2B
+                </span>
+              )}
+              {contatosVip.length > 0 && (
                 <span className="text-[10px] px-2 py-0.5 bg-violet-400/10 text-violet-400 rounded-full font-medium animate-pulse">
-                  {boasvindasDeals.length} contato{boasvindasDeals.length > 1 ? 's' : ''} boasvindas
+                  {contatosVip.length} contato{contatosVip.length > 1 ? 's' : ''} boasvindas
                 </span>
               )}
               {(pedidosRevResumo.pendentes > 0 || pedidosRevResumo.mensagens_nao_lidas > 0) && (
@@ -578,13 +586,43 @@ function NotificationBell() {
               </>
             )}
 
-            {/* ── Contatos Boasvindas (B2B, VIP, Formulário) ── */}
-            {boasvindasDeals.length > 0 && (
+            {/* ── Novas Parceiras B2B ── */}
+            {parceirasBtoB.length > 0 && (
+              <>
+                <div className="px-4 py-2 bg-cyan-400/5 border-b border-bibelo-border/50">
+                  <p className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider">Novas Parceiras B2B</p>
+                </div>
+                {parceirasBtoB.map((d) => (
+                  <button
+                    key={d.id}
+                    onClick={() => { setOpen(false); navigate('/revendedoras'); }}
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bibelo-border/30 transition-colors text-left border-b border-bibelo-border/50"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-cyan-400/20 flex items-center justify-center shrink-0">
+                      <Handshake size={14} className="text-cyan-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-bibelo-text truncate">
+                        {d.cliente_nome || d.cliente_email.split('@')[0]}
+                      </p>
+                      <p className="text-xs text-bibelo-muted truncate">
+                        <span className="text-cyan-400 font-medium">Parceira B2B</span>
+                        {d.cliente_email && <span className="ml-1">· {d.cliente_email}</span>}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-cyan-400 font-medium shrink-0">{timeAgo(d.criado_em)}</span>
+                  </button>
+                ))}
+              </>
+            )}
+
+            {/* ── Contatos Boasvindas (Grupo VIP, Formulário) ── */}
+            {contatosVip.length > 0 && (
               <>
                 <div className="px-4 py-2 bg-violet-400/5 border-b border-bibelo-border/50">
                   <p className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">Contatos Boasvindas</p>
                 </div>
-                {boasvindasDeals.map((d) => (
+                {contatosVip.map((d) => (
                   <button
                     key={d.id}
                     onClick={() => { setOpen(false); navigate('/pipeline'); }}
