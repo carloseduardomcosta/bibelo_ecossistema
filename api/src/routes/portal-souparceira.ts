@@ -482,6 +482,10 @@ portalSouParceiraRouter.get(
         ROUND(
           p.preco_custo
           * COALESCE(p.markup_override, m.markup, 2.00)
+        , 2) AS preco_sem_desconto,
+        ROUND(
+          p.preco_custo
+          * COALESCE(p.markup_override, m.markup, 2.00)
           * (1.0 - $${idx} / 100.0)
         , 2) AS preco_final
       FROM sync.fornecedor_catalogo_jc p

@@ -21,7 +21,7 @@ api.interceptors.request.use(cfg => {
 
 interface Revendedora {
   nome: string;
-  nivel: 'bronze' | 'prata' | 'ouro';
+  nivel: 'iniciante' | 'bronze' | 'prata' | 'ouro';
   percentual_desconto: number;
 }
 
@@ -35,6 +35,7 @@ interface Produto {
   nome: string;
   categoria: string;
   preco_final: string;
+  preco_sem_desconto: string;
   imagem_url: string | null;
   imagens_urls: string[] | null;
   descricao: string | null;
@@ -118,9 +119,10 @@ type Secao  = 'dashboard' | 'catalogo' | 'pedidos' | 'recursos';
 // ── Config visual por nível ──────────────────────────────────────
 
 const NIVEL = {
-  bronze: { label: 'Bronze', cor: 'bg-amber-100 text-amber-700 border-amber-300', icon: Medal },
-  prata:  { label: 'Prata',  cor: 'bg-slate-100 text-slate-600 border-slate-300', icon: Star  },
-  ouro:   { label: 'Ouro',   cor: 'bg-yellow-100 text-yellow-700 border-yellow-400', icon: Crown },
+  iniciante: { label: 'Iniciante', cor: 'bg-gray-100 text-gray-600 border-gray-300',         icon: Sparkles, desconto: 15, freteGratis: false, meta: 150  },
+  bronze:    { label: 'Bronze',    cor: 'bg-amber-100 text-amber-700 border-amber-300',       icon: Medal,    desconto: 20, freteGratis: false, meta: 600  },
+  prata:     { label: 'Prata',     cor: 'bg-slate-100 text-slate-600 border-slate-300',       icon: Star,     desconto: 25, freteGratis: false, meta: 1200 },
+  ouro:      { label: 'Ouro',      cor: 'bg-yellow-100 text-yellow-700 border-yellow-400',    icon: Crown,    desconto: 30, freteGratis: true,  meta: null },
 };
 
 const STATUS_PEDIDO: Record<string, { label: string; cor: string; icon: typeof Clock }> = {
@@ -784,11 +786,11 @@ function Dashboard({ rev, onIrCatalogo }: { rev: Revendedora; onIrCatalogo: () =
 
       {/* Badge nível + barra progresso */}
       <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
           <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full
                           text-sm font-semibold border ${nivelCfg.cor}`}>
             <NivelIcon className="w-3.5 h-3.5" />
-            Nível {nivelCfg.label}
+            Nível {nivelCfg.label} · {nivelCfg.desconto}% OFF
           </span>
           {pg?.proximo && (
             <p className="text-xs text-gray-400">
@@ -796,6 +798,14 @@ function Dashboard({ rev, onIrCatalogo }: { rev: Revendedora; onIrCatalogo: () =
             </p>
           )}
         </div>
+        {/* Frete info */}
+        <p className={`text-xs font-medium mb-2 flex items-center gap-1.5 ${nivelCfg.freteGratis ? 'text-green-600' : 'text-gray-400'}`}>
+          <Truck className="w-3 h-3" />
+          {nivelCfg.freteGratis
+            ? 'Frete grátis — a Bibelô arca pelo envio 🎉'
+            : 'Frete por sua conta · chegue ao Ouro para frete grátis!'
+          }
+        </p>
         {pg && pg.proximo && (
           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
             <div
@@ -805,7 +815,7 @@ function Dashboard({ rev, onIrCatalogo }: { rev: Revendedora; onIrCatalogo: () =
           </div>
         )}
         {!pg?.proximo && (
-          <p className="text-xs text-gray-500">🏆 Você atingiu o nível máximo!</p>
+          <p className="text-xs text-gray-500">🏆 Você atingiu o nível máximo! Frete sempre grátis.</p>
         )}
       </div>
 
@@ -1001,7 +1011,17 @@ function ProdutoDetalheModal({ produto: p, cart, onAddToCart, onClose }: Produto
 
           {/* Preço */}
           <div className="bg-[#ffe5ec]/50 rounded-xl px-4 py-3 mb-5">
-            <p className="text-[11px] text-gray-500 font-medium mb-0.5">Seu preço de revendedora</p>
+            <p className="text-[11px] text-gray-500 font-medium mb-1">Seu preço de revendedora</p>
+            {p.preco_sem_desconto && Number(p.preco_sem_desconto) > Number(p.preco_final) && (
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-sm text-gray-400 line-through">
+                  {formatCurrency(p.preco_sem_desconto)}
+                </p>
+                <span className="text-[11px] font-bold text-white bg-[#fe68c4] px-2 py-0.5 rounded-full leading-none">
+                  -{Math.round((1 - Number(p.preco_final) / Number(p.preco_sem_desconto)) * 100)}%
+                </span>
+              </div>
+            )}
             <p className="text-2xl font-bold text-[#fe68c4] leading-none">
               {formatCurrency(p.preco_final)}
             </p>
@@ -1289,10 +1309,15 @@ function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
               </p>
               <div className="flex items-end justify-between mt-1 gap-2">
                 <div>
+                  {p.preco_sem_desconto && Number(p.preco_sem_desconto) > Number(p.preco_final) && (
+                    <p className="text-[11px] text-gray-400 line-through leading-none mb-0.5">
+                      {formatCurrency(p.preco_sem_desconto)}
+                    </p>
+                  )}
                   <p className="text-base font-bold text-[#fe68c4] leading-none">
                     {formatCurrency(p.preco_final)}
                   </p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">preço de revenda</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">seu preço</p>
                 </div>
                 {cart.has(p.id) ? (
                   <div className="flex items-center gap-1 bg-[#ffe5ec] rounded-lg px-1.5 py-1">
@@ -1995,25 +2020,41 @@ export default function SouParceira() {
         />
 
         {/* Hero strip tier — só no catálogo */}
-        {secao === 'catalogo' && (
-          <div className="bg-gradient-to-r from-[#fe68c4] to-[#fd4fb8] text-white">
-            <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-medium text-white/70 uppercase tracking-wider mb-0.5">
-                  Seu desconto exclusivo
-                </p>
-                <p className="text-xl font-bold leading-none">
-                  {rev.percentual_desconto}% OFF{' '}
-                  <span className="text-base font-normal text-white/80">em todo o catálogo</span>
-                </p>
+        {secao === 'catalogo' && (() => {
+          const cfg = NIVEL[rev.nivel] ?? NIVEL.iniciante;
+          const Icon = cfg.icon;
+          return (
+            <div className="bg-gradient-to-r from-[#fe68c4] to-[#fd4fb8] text-white">
+              <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium text-white/70 uppercase tracking-wider mb-0.5">
+                    Seu desconto exclusivo
+                  </p>
+                  <p className="text-xl font-bold leading-none">
+                    {rev.percentual_desconto}% OFF{' '}
+                    <span className="text-base font-normal text-white/80">em todo o catálogo</span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Frete info */}
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold
+                    ${cfg.freteGratis
+                      ? 'bg-green-400/30 border border-green-300/50 text-white'
+                      : 'bg-white/15 border border-white/25 text-white/80'
+                    }`}>
+                    <Truck className="w-3.5 h-3.5" />
+                    {cfg.freteGratis ? 'Frete grátis' : 'Frete por sua conta'}
+                  </span>
+                  {/* Tier badge */}
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                                   bg-white/20 border border-white/30 text-white text-sm font-semibold">
+                    <Icon className="w-4 h-4" /> {cfg.label}
+                  </span>
+                </div>
               </div>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
-                              bg-white/20 border border-white/30 text-white text-sm font-semibold">
-                {(() => { const cfg = NIVEL[rev.nivel] ?? NIVEL.bronze; const Icon = cfg.icon; return <><Icon className="w-4 h-4" /> Tier {cfg.label}</>; })()}
-              </span>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {secao === 'dashboard' && <Dashboard rev={rev} onIrCatalogo={() => setSecao('catalogo')} />}
         {secao === 'catalogo'  && (

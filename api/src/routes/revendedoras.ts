@@ -12,10 +12,16 @@ revendedorasRouter.use(authMiddleware);
 
 // ── Helpers ──────────────────────────────────────────────────
 
+// Estrutura de níveis:
+//   iniciante : volume < 150  → 15%, frete por conta da revendedora
+//   bronze    : 150 ≤ vol < 600 → 20%, frete por conta da revendedora
+//   prata     : 600 ≤ vol < 1200 → 25%, frete por conta da revendedora
+//   ouro      : vol ≥ 1200 → 30%, frete GRÁTIS (Bibelô arca)
 function calcularNivel(volume: number): { nivel: string; desconto: number } {
-  if (volume >= 1200) return { nivel: "ouro", desconto: 30 };
-  if (volume >= 600)  return { nivel: "prata", desconto: 25 };
-  return { nivel: "bronze", desconto: 20 };
+  if (volume >= 1200) return { nivel: "ouro",      desconto: 30 };
+  if (volume >= 600)  return { nivel: "prata",     desconto: 25 };
+  if (volume >= 150)  return { nivel: "bronze",    desconto: 20 };
+  return                    { nivel: "iniciante",  desconto: 15 };
 }
 
 function calcularProgresso(volume: number): {
@@ -24,17 +30,21 @@ function calcularProgresso(volume: number): {
   faltam: number;
   percentual: number;
 } {
-  if (volume < 600) {
-    const faltam = Math.max(0, 600 - volume);
-    const percentual = Math.min(100, Math.max(0, ((volume - 300) / 300) * 100));
-    return { proximo: "prata", meta: 600, faltam, percentual };
-  }
-  if (volume < 1200) {
+  if (volume >= 1200) return { proximo: null,     meta: 1200, faltam: 0,              percentual: 100 };
+  if (volume >= 600) {
     const faltam = Math.max(0, 1200 - volume);
     const percentual = Math.min(100, Math.max(0, ((volume - 600) / 600) * 100));
-    return { proximo: "ouro", meta: 1200, faltam, percentual };
+    return { proximo: "ouro",   meta: 1200, faltam, percentual };
   }
-  return { proximo: null, meta: 1200, faltam: 0, percentual: 100 };
+  if (volume >= 150) {
+    const faltam = Math.max(0, 600 - volume);
+    const percentual = Math.min(100, Math.max(0, ((volume - 150) / 450) * 100));
+    return { proximo: "prata",  meta: 600,  faltam, percentual };
+  }
+  // iniciante
+  const faltam = Math.max(0, 150 - volume);
+  const percentual = Math.min(100, Math.max(0, (volume / 150) * 100));
+  return { proximo: "bronze", meta: 150,  faltam, percentual };
 }
 
 async function gerarNumeroPedido(): Promise<string> {
@@ -120,7 +130,7 @@ const listQuerySchema = z.object({
   limit:  z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
   status: z.enum(["pendente", "ativa", "inativa", "suspensa"]).optional(),
-  nivel:  z.enum(["bronze", "prata", "ouro"]).optional(),
+  nivel:  z.enum(["iniciante", "bronze", "prata", "ouro"]).optional(),
 });
 
 // ── GET /stats ────────────────────────────────────────────────
@@ -129,7 +139,7 @@ revendedorasRouter.get("/stats", async (_req: Request, res: Response) => {
   const stats = await queryOne<{
     total: string; ativas: string; pendentes: string;
     volume_mes: string; pedidos_pendentes: string;
-    nivel_bronze: string; nivel_prata: string; nivel_ouro: string;
+    nivel_iniciante: string; nivel_bronze: string; nivel_prata: string; nivel_ouro: string;
   }>(`
     SELECT
       COUNT(*)::text                                          AS total,
@@ -137,6 +147,7 @@ revendedorasRouter.get("/stats", async (_req: Request, res: Response) => {
       COUNT(*) FILTER (WHERE status = 'pendente')::text      AS pendentes,
       COALESCE(SUM(volume_mes_atual) FILTER (WHERE status = 'ativa'), 0)::text AS volume_mes,
       (SELECT COUNT(*)::text FROM crm.revendedora_pedidos WHERE status = 'pendente') AS pedidos_pendentes,
+      COUNT(*) FILTER (WHERE nivel = 'iniciante')::text      AS nivel_iniciante,
       COUNT(*) FILTER (WHERE nivel = 'bronze')::text         AS nivel_bronze,
       COUNT(*) FILTER (WHERE nivel = 'prata')::text          AS nivel_prata,
       COUNT(*) FILTER (WHERE nivel = 'ouro')::text           AS nivel_ouro
@@ -219,8 +230,8 @@ revendedorasRouter.post("/", async (req: Request, res: Response) => {
     return;
   }
 
-  const desconto = d.percentual_desconto ?? 20;
-  const minimo   = d.pedido_minimo ?? 300;
+  const desconto = d.percentual_desconto ?? 15; // novas revendedoras entram como Iniciante
+  const minimo   = d.pedido_minimo ?? 150;
 
   const rev = await queryOne(
     `INSERT INTO crm.revendedoras
@@ -572,11 +583,14 @@ revendedorasRouter.put("/:id/pedidos/:pedidoId/status", async (req: Request, res
           "UPDATE crm.revendedoras SET nivel = $1, percentual_desconto = $2 WHERE id = $3",
           [novoNivel, novoDesc, id]
         );
+        if (novoNivel === "bronze") {
+          await concederConquista(id, "nivel_bronze", "Chegou ao Bronze! 🥉 Continue crescendo!", 25);
+        }
         if (novoNivel === "prata") {
           await concederConquista(id, "nivel_prata", "Subiu para Prata! 🥈 Parabéns!", 50);
         }
         if (novoNivel === "ouro") {
-          await concederConquista(id, "nivel_ouro", "Chegou ao Ouro! 🥇 Você é incrível!", 100);
+          await concederConquista(id, "nivel_ouro", "Chegou ao Ouro! 🥇 Frete grátis desbloqueado!", 100);
         }
         logger.info("Revendedora subiu de nível", { id, de: revAtualizada.nivel, para: novoNivel });
       }
