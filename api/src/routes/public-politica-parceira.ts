@@ -6,9 +6,8 @@ import { Router, Request, Response } from "express";
 
 export const politicaParceiraRouter = Router();
 
-const PORTAL_URL  = "https://souparceira.papelariabibelo.com.br";
-const LOGO_URL    = "https://webhook.papelariabibelo.com.br/logo.png";
-const WHATSAPP    = "https://wa.me/5547933862514";
+const PORTAL_URL = "https://souparceira.papelariabibelo.com.br";
+const WHATSAPP   = "https://wa.me/5547933862514";
 
 politicaParceiraRouter.get("/", (_req: Request, res: Response) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -34,11 +33,23 @@ politicaParceiraRouter.get("/", (_req: Request, res: Response) => {
 
     /* ── Header ── */
     .header {
-      background: #fe68c4;
+      background: linear-gradient(135deg, #fe68c4 0%, #fd4fb8 100%);
       text-align: center;
       padding: 36px 20px 28px;
     }
-    .header img { height: 48px; display: block; margin: 0 auto 14px; }
+    .logo-mark {
+      width: 52px; height: 52px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.22);
+      border: 2px solid rgba(255,255,255,0.45);
+      color: #fff;
+      font-family: 'Jost', Arial, sans-serif;
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 52px;
+      margin: 0 auto 14px;
+      letter-spacing: -1px;
+    }
     .header h1 { color: #fff; font-size: 22px; font-weight: 700; letter-spacing: -0.4px; }
     .header p  { color: rgba(255,255,255,0.85); font-size: 14px; margin-top: 6px; }
 
@@ -138,8 +149,7 @@ politicaParceiraRouter.get("/", (_req: Request, res: Response) => {
 
   <!-- Header -->
   <div class="header">
-    <img src="${LOGO_URL}" alt="Papelaria Bibelô"
-         onerror="this.style.display='none'" />
+    <div class="logo-mark">B</div>
     <h1>🤝 Regulamento do Programa Sou Parceira</h1>
     <p>Papelaria Bibelô · Timbó/SC · Versão atualizada em abril de 2026</p>
   </div>
