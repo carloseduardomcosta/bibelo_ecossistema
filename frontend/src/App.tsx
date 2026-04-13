@@ -43,6 +43,7 @@ import Revendedoras from './pages/Revendedoras';
 import RevendedoraPerfil from './pages/RevendedoraPerfil';
 import FornecedorCatalogo from './pages/FornecedorCatalogo';
 import PortalRevendedora from './pages/PortalRevendedora';
+import SouParceira from './pages/SouParceira';
 import { ToastProvider } from './components/Toast';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '130005911318-drbfhqtc0trct0rr1918rtgjiiflbhoh.apps.googleusercontent.com';
@@ -69,6 +70,11 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
 }
 
 export default function App() {
+  // Portal Sou Parceira — subdomínio isolado, sem auth CRM
+  if (window.location.hostname.startsWith('souparceira')) {
+    return <SouParceira />;
+  }
+
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <BrowserRouter>

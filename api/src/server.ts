@@ -50,6 +50,7 @@ import { firewallRouter } from "./routes/firewall";
 import { revendedorasRouter } from "./routes/revendedoras";
 import { fornecedorCatalogoRouter } from "./routes/fornecedor-catalogo";
 import { portalRevendedoraRouter } from "./routes/portal-revendedora";
+import { portalSouParceiraRouter } from "./routes/portal-souparceira";
 import { registerScheduledJobs, closeSyncQueue } from "./queues/sync.queue";
 import { registerFlowJobs, closeFlowQueue }      from "./queues/flow.queue";
 
@@ -156,7 +157,8 @@ app.use("/api/system", systemRouter);              // status VPS + code stats
 app.use("/api/firewall", firewallRouter);
 app.use("/api/revendedoras", revendedorasRouter);
 app.use("/api/fornecedor-catalogo", fornecedorCatalogoRouter);
-app.use("/api/portal", portalRevendedoraRouter);          // portal público B2B revendedoras (sem auth) // catálogo JC Atacado + curadoria markup
+app.use("/api/portal", portalRevendedoraRouter);           // portal público B2B revendedoras (link token)
+app.use("/api/souparceira", portalSouParceiraRouter);      // portal Sou Parceira — OTP por CPF + email
 
 // ── 404
 app.use((_req, res) => {
