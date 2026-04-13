@@ -231,10 +231,10 @@ portalSouParceiraRouter.post(
 
     const email = rev?.email ?? null;
 
-    // Resposta genérica — não revela se o CPF existe (segurança)
+    // CPF não encontrado como revendedora ativa
     if (!rev || !email) {
       await new Promise(r => setTimeout(r, 400)); // evita timing attack
-      res.json({ ok: true, email_masked: null });
+      res.json({ ok: false, cadastrada: false });
       return;
     }
 

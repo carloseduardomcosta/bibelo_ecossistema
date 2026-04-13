@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import axios from 'axios';
 import {
-  ShoppingBag, MessageCircle, ChevronLeft, ChevronRight,
+  Handshake, ShoppingBag, MessageCircle, ChevronLeft, ChevronRight,
   Tag, Search, Medal, Star, Crown, LogOut, Loader2,
   ArrowRight, CheckCircle2, Sparkles, TrendingUp, Package,
 } from 'lucide-react';
@@ -171,7 +171,7 @@ function AuthShell({ children, step }: { children: React.ReactNode; step: 1 | 2 
         <div className="w-full max-w-sm mb-10">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-11 h-11 bg-[#fe68c4] rounded-xl flex items-center justify-center shadow-md">
-              <ShoppingBag className="w-5 h-5 text-white" />
+              <Handshake className="w-5 h-5 text-white" />
             </div>
             <div>
               <p className="text-xs text-gray-400 leading-none tracking-wide uppercase">Papelaria Bibelô</p>
@@ -261,6 +261,11 @@ function LoginForm({ onCodigoEnviado }: LoginFormProps) {
     setLoading(true);
     try {
       const res = await api.post('/souparceira/solicitar', { cpf });
+      // CPF não cadastrado como revendedora ativa
+      if (!res.data.ok || res.data.cadastrada === false) {
+        setErro('nao_cadastrada');
+        return;
+      }
       onCodigoEnviado(cpf, res.data.email_masked ?? null);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })
@@ -307,12 +312,33 @@ function LoginForm({ onCodigoEnviado }: LoginFormProps) {
             <p className="text-xs text-gray-400 mt-1.5">Somente para revendedoras cadastradas</p>
           </div>
 
-          {erro && (
+          {erro === 'nao_cadastrada' ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-4 space-y-2">
+              <p className="text-sm font-semibold text-amber-800">
+                CPF não encontrado como parceira
+              </p>
+              <p className="text-xs text-amber-700 leading-relaxed">
+                Este CPF não está cadastrado no programa de revendedoras da Bibelô.
+                Quer se tornar parceira?
+              </p>
+              <a
+                href="https://wa.me/5547933862514?text=Olá!+Gostaria+de+me+cadastrar+como+revendedora+Bibelô"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold
+                           text-white bg-[#25d366] hover:bg-[#1fba57]
+                           px-3 py-1.5 rounded-lg transition-colors mt-1"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                Fale conosco no WhatsApp
+              </a>
+            </div>
+          ) : erro ? (
             <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <div className="w-1.5 h-1.5 bg-red-400 rounded-full mt-1.5 flex-shrink-0" />
               <p className="text-sm text-red-600">{erro}</p>
             </div>
-          )}
+          ) : null}
 
           <button
             type="submit"
@@ -576,7 +602,7 @@ function Catalogo({ rev, onLogout }: CatalogoProps) {
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-[#fe68c4] rounded-xl flex items-center justify-center shadow-sm">
-              <ShoppingBag className="w-4 h-4 text-white" />
+              <Handshake className="w-4 h-4 text-white" />
             </div>
             <div>
               <p className="text-[10px] text-gray-400 uppercase tracking-widest leading-none">Sou Parceira</p>

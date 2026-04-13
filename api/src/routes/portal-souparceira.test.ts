@@ -119,20 +119,20 @@ describe("POST /api/souparceira/solicitar", () => {
     expect(res.body.error).toMatch(/inválido/i);
   });
 
-  it("retorna ok:true com email_masked null para CPF não cadastrado", async () => {
+  it("retorna ok:false para CPF não cadastrado como revendedora ativa", async () => {
     const res = await request(app)
       .post("/api/souparceira/solicitar")
       .send({ cpf: "456.789.012-49" }); // CPF válido mas não cadastrado
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ ok: true, email_masked: null });
+    expect(res.body).toMatchObject({ ok: false, cadastrada: false });
   });
 
-  it("retorna ok:true com email_masked null para CPF de revendedora pendente", async () => {
+  it("retorna ok:false para CPF de revendedora pendente (não ativa)", async () => {
     const res = await request(app)
       .post("/api/souparceira/solicitar")
       .send({ cpf: CPF_INATIVO });
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ ok: true, email_masked: null });
+    expect(res.body).toMatchObject({ ok: false, cadastrada: false });
   });
 
   it("envia OTP para revendedora ativa e retorna email mascarado", async () => {
