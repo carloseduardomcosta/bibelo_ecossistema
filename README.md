@@ -21,7 +21,7 @@ O **BibelôCRM** centraliza tudo que uma papelaria moderna precisa gerenciar:
 | **Marketing** | 11 fluxos automáticos, 23 templates email, popup captura, tracking comportamental |
 | **E-commerce** | Medusa.js v2 + Next.js Storefront, Mercado Pago Pix, Melhor Envio |
 | **Financeiro** | Fluxo de caixa, DRE, NF de entrada, despesas fixas, contas a pagar |
-| **B2B Revendedoras** | Portal de catálogo privado com preço por nível (Bronze/Prata/Ouro) |
+| **B2B Revendedoras** | Portal Sou Parceira: 5 tiers, preço server-side, OTP via CPF, threads de mensagens |
 | **Ads** | Dashboard Meta Ads (Facebook + Instagram) integrado |
 | **Infra** | CI/CD, backup automático Google Drive, firewall, Uptime Kuma |
 
@@ -295,6 +295,7 @@ bash scripts/test.sh
 | `crm.papelariabibelo.com.br` | CRM interno | Cloudflare Zero Trust (Google login) |
 | `api.papelariabibelo.com.br` | API + Medusa Admin | Cloudflare proxy |
 | `webhook.papelariabibelo.com.br` | Webhooks Bling/NuvemShop + email proxy | DNS-only |
+| `souparceira.papelariabibelo.com.br` | Portal B2B Revendedoras (Nginx → :4000) | Público |
 | `homolog.papelariabibelo.com.br` | Storefront Next.js (homolog) | Público |
 | `boasvindas.papelariabibelo.com.br` | Página de links + formulários | Público |
 | `status.papelariabibelo.com.br` | Uptime Kuma | Público |
@@ -305,10 +306,12 @@ bash scripts/test.sh
 
 ```
 crm         → customers, interactions, deals, segments, tracking_events
-marketing   → templates, campaigns, flows, leads, email_events
+              revendedoras, revendedora_pedidos, revendedora_pedido_itens,
+              revendedora_estoque, revendedora_conquistas, revendedora_pedido_mensagens
+marketing   → templates (slug), campaigns, flows, leads, email_events
 sync        → bling_orders, bling_products, nuvemshop_orders, fornecedor_catalogo_jc
 financeiro  → lancamentos, notas_entrada, despesas_fixas, canais_venda
-public      → users, sessions, store_settings, migrations
+public      → users, sessions, store_settings, notificacoes, migrations
 ```
 
 ---
@@ -334,17 +337,35 @@ public      → users, sessions, store_settings, migrations
 - **Mercado Pago Pix** + cartão + boleto (checkout transparente)
 - **Melhor Envio** PAC + SEDEX com etiqueta automática
 
-### Portal B2B Revendedoras
-- Link tokenizado único por revendedora (90 dias)
-- Catálogo JC Atacado aprovado (~1.200 produtos)
-- Preço calculado por tier: Bronze 20% · Prata 25% · Ouro 30% off
-- Nunca expõe custo de aquisição ou markup
+### Portal B2B — Programa Sou Parceira
+
+Portal dedicado para revendedoras em `souparceira.papelariabibelo.com.br`.
+
+| Tier | Volume mensal | Desconto | Frete |
+|------|--------------|----------|-------|
+| Iniciante | < R$ 150 | 15% | Por conta da revendedora |
+| Bronze | R$ 150–599 | 25% | Por conta da revendedora |
+| Prata | R$ 600–1.199 | 35% | Por conta da revendedora |
+| Ouro | R$ 1.200–2.999 | 45% | **Grátis** (Bibelô arca) |
+| Diamante | R$ 3.000+ | 45% | **Grátis** + benefícios exclusivos |
+
+- Autenticação passwordless: CPF + OTP de 6 dígitos (email, expira em 10 min)
+- JWT com `iss: "souparceira"` — completamente isolado do JWT do CRM
+- Preço **sempre** calculado server-side: `preco_custo × markup × (1 − desconto%)`
+- Custo de aquisição e markup nunca expostos para a revendedora
+- Thread de mensagens por pedido (revendedora ↔ admin)
+- 3 templates de email editáveis via CRM (boas-vindas, status do pedido, nova mensagem)
+- Catálogo aprovado com ~1.200 produtos JC Atacado
+- Gamificação: conquistas, progresso de nível, streak mensal
+
+Documentação completa: [docs/sou-parceira.md](docs/sou-parceira.md)
 
 ---
 
 ## Documentação detalhada
 
 - [Rotas da API (~120 endpoints)](docs/api/rotas.md)
+- [Programa Sou Parceira — documentação completa](docs/sou-parceira.md)
 - [Banco de dados — schemas completos](docs/claude/banco-schemas.md)
 - [Fluxos de email e templates](docs/claude/email-fluxos.md)
 - [Infraestrutura e segurança](docs/infra/seguranca.md)

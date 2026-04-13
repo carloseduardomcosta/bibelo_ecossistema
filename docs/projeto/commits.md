@@ -1225,3 +1225,38 @@ sync.category_sync_log         (auditoria)
     - PUT status com observacao_admin e mensagem automática
     - Notificações: GET, lida-tudo, :id/lida, 404
   - Suite total: **651/651** (antes 612)
+
+### feat(parceiras): email boas-vindas ao cadastrar + logo em todos os emails B2B — `09c1dbe` (13/04/2026)
+- Email de boas-vindas disparado automaticamente ao criar revendedora via CRM
+- Logo da Bibelô adicionado ao header de todos os 3 templates de email B2B
+- `buildBoasVindasParceira()` atualizado com remetente `souparceira@papelariabibelo.com.br`
+
+### feat(revendedoras): nível Iniciante 15% + preço riscado + frete por tier — `1565e6d` (13/04/2026)
+- Novo tier Iniciante (< R$ 150/mês, 15% desconto) — `db/migrations/039_nivel_iniciante.sql`
+- Tier Diamante (R$ 3.000+/mês, 45%, frete grátis + benefícios) — `db/migrations/040_nivel_diamante.sql`
+- Preço riscado no catálogo do portal (preço cheio × desconto aplicado)
+- Frete exibido por tier no portal (`Grátis` para Ouro/Diamante)
+- `NIVEL_CONFIG` no frontend atualizado com todos os 5 tiers (corrige Error Boundary)
+
+### feat(souparceira): modal de detalhe do produto antes de adicionar ao carrinho — `227f1a7` (13/04/2026)
+- Modal de produto no catálogo do portal com detalhes, faixa de preço e quantidade
+- Botão "Adicionar" no catálogo abre modal antes de incluir no pedido
+- Campos `markup` e `preco_custo` nunca expostos — apenas `preco_com_desconto`
+
+### feat(b2b): pedidos portal + thread mensagens + notificações sininho — `e515673` (13/04/2026)
+- Portal Sou Parceira: fluxo completo de pedido (seleção → envio → acompanhamento)
+- Thread de mensagens por pedido (`crm.revendedora_pedido_mensagens`)
+- Notificações no sininho CRM para novos pedidos e novas mensagens
+- Tabela `public.notificacoes` + endpoints GET/PUT lida-tudo/:id/lida
+- `GET /api/revendedoras/pedidos-recentes` registrado ANTES de `/:id` (fix conflito rota UUID)
+
+### feat(revendedoras): editor de emails Sou Parceira via frontend — `61dda0a` (13/04/2026)
+- Botão "✉ Editar emails" na página Revendedoras abre modal com editor HTML
+- 3 templates editáveis: boas-vindas, status do pedido, nova mensagem
+- Sidebar para selecionar template, chips com variáveis disponíveis (hover = descrição)
+- Pré-visualização via iframe, dirty tracking, salvar persiste em `marketing.templates`
+- Migration `041_email_templates_revendedoras.sql`: coluna `slug` UNIQUE em `marketing.templates` + 3 templates iniciais
+- `GET /api/revendedoras/email-templates` + `PUT /api/revendedoras/email-templates/:slug`
+- Fallback automático para HTML hardcoded se template for removido do banco
+- RTK AI instalado: hook `PreToolUse` comprime output de Bash pesado antes de chegar ao LLM
+- `docs/sou-parceira.md`: documentação completa do programa (tiers, auth, DB, API, segurança)

@@ -236,6 +236,8 @@ Painel de mapeamento de categorias Bling → Medusa. Rota base: `/api/categorias
 - `GET  /api/revendedoras` — lista paginada com filtros (search, nivel, status)
 - `POST /api/revendedoras` — criar revendedora
 - `GET  /api/revendedoras/pedidos-recentes` — últimos 10 pedidos (7 dias ou pendentes) com `pendentes` + `mensagens_nao_lidas` para sininho CRM
+- `GET  /api/revendedoras/email-templates` — lista os 3 templates editáveis (`revendedoras_boas_vindas`, `revendedoras_status_pedido`, `revendedoras_nova_mensagem`) com assunto, html e variáveis disponíveis
+- `PUT  /api/revendedoras/email-templates/:slug` — atualiza assunto e HTML de um template. Body: `{ assunto, html }`. Persiste em `marketing.templates`. Próximos envios usam o template salvo; fallback para HTML hardcoded se removido do banco.
 - `GET  /api/revendedoras/:id` — perfil completo com KPIs
 - `PUT  /api/revendedoras/:id` — atualizar dados
 - `DELETE /api/revendedoras/:id` — remover
