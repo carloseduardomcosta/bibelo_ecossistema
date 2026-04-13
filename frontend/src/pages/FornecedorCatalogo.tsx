@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Package, RefreshCw, Play, StopCircle, CheckCircle, Clock,
   Tag, BarChart2, AlertCircle, ChevronDown, ChevronUp,
-  Search, Percent, Edit2, Check, X,
+  Search, Percent, Edit2, Check, X, Camera,
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
@@ -76,6 +76,18 @@ interface SyncLog {
   erros: number;
 }
 
+interface EnrichState {
+  running: boolean;
+  fase: 'idle' | 'imagens' | 'descricoes' | 'concluido' | 'erro';
+  total: number;
+  feitos: number;
+  com_imagem: number;
+  com_descricao: number;
+  erros: number;
+  iniciado_em: string | null;
+  mensagem: string;
+}
+
 // ── Helpers ──────────────────────────────────────────────────
 function calcPrecoVenda(custo: number, markup: number): number {
   return custo * markup;
@@ -109,12 +121,22 @@ export default function FornecedorCatalogo() {
   const [stats, setStats]             = useState<Stats | null>(null);
   const [scraper, setScraper]         = useState<ScraperStatus | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [enrich, setEnrich]           = useState<EnrichState | null>(null);
 
   // ── Polling do scraper enquanto running ──────────────────
   const fetchStatus = useCallback(async () => {
     try {
       const { data } = await api.get<ScraperStatus>('/fornecedor-catalogo/scraper/status');
       setScraper(data);
+    } catch {
+      // silencia
+    }
+  }, []);
+
+  const fetchEnrichStatus = useCallback(async () => {
+    try {
+      const { data } = await api.get<EnrichState>('/fornecedor-catalogo/scraper/enriquecer/status');
+      setEnrich(data);
     } catch {
       // silencia
     }
@@ -134,13 +156,20 @@ export default function FornecedorCatalogo() {
   useEffect(() => {
     fetchStats();
     fetchStatus();
-  }, [fetchStats, fetchStatus]);
+    fetchEnrichStatus();
+  }, [fetchStats, fetchStatus, fetchEnrichStatus]);
 
   useEffect(() => {
     if (!scraper?.running) return;
     const id = setInterval(fetchStatus, 3000);
     return () => clearInterval(id);
   }, [scraper?.running, fetchStatus]);
+
+  useEffect(() => {
+    if (!enrich?.running) return;
+    const id = setInterval(fetchEnrichStatus, 3000);
+    return () => clearInterval(id);
+  }, [enrich?.running, fetchEnrichStatus]);
 
   // ── Controle do scraper ──────────────────────────────────
   async function iniciarScraper(retomar = false) {
@@ -163,6 +192,38 @@ export default function FornecedorCatalogo() {
     }
   }
 
+  // ── Controle do enriquecimento ───────────────────────────
+  async function iniciarEnriquecimento() {
+    try {
+      await api.post('/fornecedor-catalogo/scraper/enriquecer');
+      toast.success('Enriquecimento iniciado — buscando fotos e descrições');
+      await fetchEnrichStatus();
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Erro ao iniciar enriquecimento');
+    }
+  }
+
+  async function pararEnriquecimento() {
+    try {
+      await api.post('/fornecedor-catalogo/scraper/enriquecer/parar');
+      toast.success('Enriquecimento interrompido');
+      await fetchEnrichStatus();
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Erro ao parar enriquecimento');
+    }
+  }
+
+  const enrichPct =
+    enrich && enrich.total > 0
+      ? Math.round((enrich.feitos / enrich.total) * 100)
+      : 0;
+
+  const enrichFaseLabel =
+    enrich?.fase === 'imagens'   ? 'Fase 1: Imagens' :
+    enrich?.fase === 'descricoes' ? 'Fase 2: Descrições' :
+    enrich?.fase === 'concluido' ? 'Concluído' :
+    enrich?.fase === 'erro'      ? 'Erro' : '';
+
   const progressoPct =
     scraper && scraper.total_categorias > 0
       ? Math.round((scraper.categorias_feitas / scraper.total_categorias) * 100)
@@ -177,7 +238,29 @@ export default function FornecedorCatalogo() {
           <h1 className="text-2xl font-semibold text-gray-900">Catálogo Fornecedor</h1>
           <p className="text-sm text-gray-500 mt-0.5">JC Atacado — curadoria e markups</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {/* Botões de enriquecimento */}
+          {enrich?.running ? (
+            <button
+              onClick={pararEnriquecimento}
+              className="flex items-center gap-2 px-4 py-2 bg-pink-100 text-pink-700 rounded-lg hover:bg-pink-200 text-sm font-medium"
+            >
+              <StopCircle className="w-4 h-4" /> Parar enriquecimento
+            </button>
+          ) : (
+            <button
+              onClick={iniciarEnriquecimento}
+              disabled={scraper?.running}
+              className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-medium
+                         disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              style={{ backgroundColor: scraper?.running ? '#d1d5db' : '#fe68c4' }}
+              title={scraper?.running ? 'Aguarde o fim da importação' : 'Busca fotos e descrições dos produtos'}
+            >
+              <Camera className="w-4 h-4" /> Enriquecer fotos e descrições
+            </button>
+          )}
+
+          {/* Botões de importação */}
           {scraper?.running ? (
             <button
               onClick={pararScraper}
@@ -198,7 +281,7 @@ export default function FornecedorCatalogo() {
               )}
               <button
                 onClick={() => iniciarScraper(false)}
-                className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700 text-sm font-medium"
+                className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 text-sm font-medium"
                 title="Reimporta tudo do zero"
               >
                 <Play className="w-4 h-4" /> Importar tudo
@@ -206,7 +289,7 @@ export default function FornecedorCatalogo() {
             </div>
           )}
           <button
-            onClick={() => { fetchStats(); fetchStatus(); }}
+            onClick={() => { fetchStats(); fetchStatus(); fetchEnrichStatus(); }}
             className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
           >
             <RefreshCw className="w-4 h-4" />
@@ -239,6 +322,66 @@ export default function FornecedorCatalogo() {
             <span>{scraper.produtos_atualizados} atualizados</span>
             {scraper.erros > 0 && <span className="text-red-600">{scraper.erros} erros</span>}
           </div>
+        </div>
+      )}
+
+      {/* Barra de progresso do enriquecimento */}
+      {enrich?.running && (
+        <div className="bg-pink-50 border border-pink-200 rounded-xl p-4 space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium text-pink-800 flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#fe68c4' }} />
+              {enrichFaseLabel && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-pink-100 text-pink-700">{enrichFaseLabel}</span>}
+              <span className="text-pink-700 font-normal">{enrich.mensagem}</span>
+            </span>
+            <span className="font-semibold" style={{ color: '#fe68c4' }}>{enrichPct}%</span>
+          </div>
+          <div className="w-full bg-pink-200 rounded-full h-2">
+            <div
+              className="h-2 rounded-full transition-all duration-500"
+              style={{ width: `${enrichPct}%`, backgroundColor: '#fe68c4' }}
+            />
+          </div>
+          <div className="flex gap-6 text-xs text-pink-700">
+            <span>{enrich.feitos}/{enrich.total} produtos</span>
+            <span>{enrich.com_imagem} com foto</span>
+            <span>{enrich.com_descricao} com descrição</span>
+            {enrich.erros > 0 && <span className="text-red-600">{enrich.erros} erros</span>}
+          </div>
+        </div>
+      )}
+
+      {/* Status do enriquecimento (idle/concluído) */}
+      {enrich && !enrich.running && enrich.fase !== 'idle' && (
+        <div className={`rounded-xl p-3 border flex items-center gap-3 text-sm ${
+          enrich.fase === 'concluido'
+            ? 'bg-green-50 border-green-200 text-green-800'
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          {enrich.fase === 'concluido'
+            ? <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+            : <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+          }
+          <span>
+            {enrich.fase === 'concluido'
+              ? `✓ ${enrich.com_imagem} fotos, ${enrich.com_descricao} descrições capturadas`
+              : `Enriquecimento encerrado com erro: ${enrich.mensagem}`
+            }
+          </span>
+        </div>
+      )}
+
+      {/* Stats inline de enriquecimento quando idle e há dados */}
+      {enrich && !enrich.running && enrich.fase === 'idle' && (enrich.com_imagem > 0 || enrich.com_descricao > 0) && (
+        <div className="flex items-center gap-4 text-xs text-gray-500 px-1">
+          <Camera className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#fe68c4' }} />
+          <span>
+            <span className="font-semibold text-gray-700">{enrich.com_imagem}</span> produto{enrich.com_imagem !== 1 ? 's' : ''} com foto
+          </span>
+          <span>·</span>
+          <span>
+            <span className="font-semibold text-gray-700">{enrich.total - enrich.com_imagem}</span> sem foto
+          </span>
         </div>
       )}
 

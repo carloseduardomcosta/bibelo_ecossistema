@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import axios from "axios";
+import * as iconv from "iconv-lite";
 import { z } from "zod";
 import { query, queryOne } from "../db";
 import { logger } from "../utils/logger";
@@ -44,6 +45,32 @@ const scraperState: ScraperState = {
   mensagem: "Aguardando início",
 };
 
+// ── Estado do enriquecimento ──────────────────────────────────
+
+interface EnrichState {
+  running: boolean;
+  fase: "idle" | "imagens" | "descricoes" | "concluido" | "erro";
+  total: number;
+  feitos: number;
+  com_imagem: number;
+  com_descricao: number;
+  erros: number;
+  iniciado_em: string | null;
+  mensagem: string;
+}
+
+const enrichState: EnrichState = {
+  running: false,
+  fase: "idle",
+  total: 0,
+  feitos: 0,
+  com_imagem: 0,
+  com_descricao: 0,
+  erros: 0,
+  iniciado_em: null,
+  mensagem: "Aguardando início",
+};
+
 // ── Helpers do scraper ────────────────────────────────────────
 
 const BASE_URL = "https://www.atacadojc.com.br";
@@ -57,6 +84,208 @@ const HTTP = axios.create({
     "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
   },
 });
+
+// HTTP com resposta em buffer para suporte a ISO-8859-1
+const HTTP_BUFFER = axios.create({
+  timeout: 15000,
+  responseType: "arraybuffer",
+  headers: {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+  },
+});
+
+/** Converte buffer ISO-8859-1 para string UTF-8 */
+function decodeIso(buffer: Buffer): string {
+  return iconv.decode(buffer, "iso-8859-1");
+}
+
+/** Extrai (item_id → {imagem_url, produto_url}) de uma página de listagem */
+function extrairImagensEUrls(html: string): Map<string, { imagem: string; url: string }> {
+  const result = new Map<string, { imagem: string; url: string }>();
+  // Padrão: class="BoxProduto BoxProduto_{item_id}"
+  const boxPattern = /class="BoxProduto BoxProduto_(\d+)"([\s\S]*?)(?=class="BoxProduto BoxProduto_|$)/g;
+  let match: RegExpExecArray | null;
+  while ((match = boxPattern.exec(html)) !== null) {
+    const itemId = match[1];
+    const chunk  = match[2];
+    // Extrair primeiro href (relativo ao domínio)
+    const hrefMatch = chunk.match(/href="([a-z0-9][a-z0-9-/]+)"/);
+    // Extrair imagem (data-src ou src no CDN de produtos)
+    const imgMatch  = chunk.match(/data-src="(https:\/\/cdn[^"]+)"/);
+    if (hrefMatch && imgMatch) {
+      result.set(itemId, {
+        imagem: imgMatch[1],
+        url:    hrefMatch[1].replace(/\/$/, ""),
+      });
+    } else if (imgMatch) {
+      result.set(itemId, { imagem: imgMatch[1], url: "" });
+    }
+  }
+  return result;
+}
+
+/** Extrai descrição de uma página de produto (ISO-8859-1) */
+function extrairDescricao(html: string): string {
+  // A descrição fica em elemento com class contendo "texto"
+  const m = html.match(/class="[^"]*texto[^"]*"[^>]*>([\s\S]*?)(?:<\/div>|<\/p>)/i);
+  if (!m) return "";
+  let desc = m[1]
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ").replace(/&#039;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return desc.slice(0, 1000); // max 1000 chars
+}
+
+/** Job de enriquecimento — roda em background */
+async function executarEnriquecimento(): Promise<void> {
+  try {
+    // ── Fase 1: imagens via re-scraping de listings ──────────────
+    enrichState.fase = "imagens";
+    enrichState.mensagem = "Buscando categorias com produtos aprovados sem foto...";
+
+    // Categorias distintas dos aprovados sem imagem
+    const cats = await query<{ slug: string; total: number }>(
+      `SELECT COALESCE(slug_categoria, categoria) AS slug, COUNT(*)::int AS total
+       FROM sync.fornecedor_catalogo_jc
+       WHERE status = 'aprovado' AND imagem_url IS NULL AND COALESCE(slug_categoria, categoria) IS NOT NULL
+       GROUP BY COALESCE(slug_categoria, categoria)
+       ORDER BY slug`
+    );
+
+    enrichState.total = cats.reduce((s, c) => s + c.total, 0);
+    enrichState.mensagem = `Fase 1/2: ${cats.length} categorias, ${enrichState.total} produtos sem foto`;
+    logger.info("Enriquecimento JC — fase imagens", { categorias: cats.length, produtos: enrichState.total });
+
+    for (const cat of cats) {
+      if (!enrichState.running) break;
+      const slug = cat.slug;
+
+      try {
+        // Pegar produto_ids aprovados sem imagem desta categoria
+        const prods = await query<{ item_id: string }>(
+          `SELECT item_id FROM sync.fornecedor_catalogo_jc
+           WHERE status = 'aprovado' AND imagem_url IS NULL
+             AND COALESCE(slug_categoria, categoria) = $1`,
+          [slug]
+        );
+        const pendingIds = new Set(prods.map(p => p.item_id));
+        if (pendingIds.size === 0) continue;
+
+        // Scrape páginas da categoria até encontrar todos os pendentes
+        const deptRes = await HTTP.get(`${BASE_URL}/${slug}/`);
+        await sleep(DELAY_MS);
+
+        let allFound = new Map<string, { imagem: string; url: string }>();
+        const found1 = extrairImagensEUrls(deptRes.data as string);
+        for (const [id, data] of found1) allFound.set(id, data);
+
+        const deptCode = extrairDeptCode(deptRes.data as string, slug);
+        let page = 2;
+        while (page <= 80 && enrichState.running) {
+          const url = urlPagina(slug, page, deptCode);
+          const res = await HTTP.get(url);
+          await sleep(DELAY_MS);
+          const found = extrairImagensEUrls(res.data as string);
+          if (found.size === 0) break;
+          for (const [id, data] of found) allFound.set(id, data);
+          page++;
+        }
+
+        // Atualizar DB para os pendentes desta categoria
+        let updated = 0;
+        for (const itemId of pendingIds) {
+          const data = allFound.get(itemId);
+          if (!data?.imagem) continue;
+          await queryOne(
+            `UPDATE sync.fornecedor_catalogo_jc
+             SET imagem_url = $1, produto_url = COALESCE(produto_url, $2), atualizado_em = NOW()
+             WHERE item_id = $3 AND imagem_url IS NULL`,
+            [data.imagem, data.url || null, itemId]
+          );
+          updated++;
+          enrichState.feitos++;
+          enrichState.com_imagem++;
+        }
+
+        logger.info(`Enriquecimento imagens: ${slug} — ${updated}/${pendingIds.size} atualizados`);
+
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn(`Enriquecimento imagens erro: ${slug} — ${msg}`);
+        enrichState.erros++;
+        await sleep(DELAY_MS * 2);
+      }
+    }
+
+    enrichState.mensagem = `Fase 1 concluída: ${enrichState.com_imagem} fotos. Iniciando descrições...`;
+
+    // ── Fase 2: descrições via página individual ─────────────────
+    enrichState.fase = "descricoes";
+
+    // Busca aprovados que têm produto_url mas não têm descrição
+    const semDesc = await query<{ id: string; item_id: string; produto_url: string }>(
+      `SELECT id, item_id, produto_url FROM sync.fornecedor_catalogo_jc
+       WHERE status = 'aprovado' AND produto_url IS NOT NULL AND descricao IS NULL
+       ORDER BY slug_categoria, item_id
+       LIMIT 2000`
+    );
+
+    enrichState.total = semDesc.length;
+    enrichState.mensagem = `Fase 2/2: ${semDesc.length} produtos sem descrição`;
+    logger.info("Enriquecimento JC — fase descrições", { produtos: semDesc.length });
+
+    for (const prod of semDesc) {
+      if (!enrichState.running) break;
+      enrichState.feitos++;
+
+      try {
+        const url = `${BASE_URL}/${prod.produto_url}/`;
+        const res = await HTTP_BUFFER.get(url);
+        await sleep(DELAY_MS);
+
+        const html = decodeIso(res.data as Buffer);
+        const desc = extrairDescricao(html);
+        if (desc) {
+          await queryOne(
+            `UPDATE sync.fornecedor_catalogo_jc SET descricao = $1, atualizado_em = NOW() WHERE id = $2`,
+            [desc, prod.id]
+          );
+          enrichState.com_descricao++;
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn(`Enriquecimento descrição erro: ${prod.item_id} — ${msg}`);
+        enrichState.erros++;
+        await sleep(DELAY_MS * 2);
+      }
+
+      if (enrichState.feitos % 50 === 0) {
+        enrichState.mensagem = `Fase 2: ${enrichState.feitos}/${semDesc.length} processados (${enrichState.com_descricao} com desc)`;
+      }
+    }
+
+    enrichState.fase     = "concluido";
+    enrichState.mensagem = `Concluído: ${enrichState.com_imagem} fotos, ${enrichState.com_descricao} descrições`;
+    logger.info("Enriquecimento JC concluído", {
+      imagens: enrichState.com_imagem,
+      descricoes: enrichState.com_descricao,
+      erros: enrichState.erros,
+    });
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    enrichState.fase     = "erro";
+    enrichState.mensagem = `Erro fatal: ${msg}`;
+    logger.error("Enriquecimento JC erro fatal", { error: msg });
+  } finally {
+    enrichState.running = false;
+  }
+}
 
 async function sleep(ms: number) {
   return new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -713,4 +942,53 @@ fornecedorCatalogoRouter.get("/scraper/historico", async (_req: Request, res: Re
     "SELECT * FROM sync.fornecedor_sync_log ORDER BY iniciado_em DESC LIMIT 20"
   );
   res.json(rows);
+});
+
+/** POST /scraper/enriquecer — captura fotos + descrições dos produtos aprovados */
+fornecedorCatalogoRouter.post("/scraper/enriquecer", async (req: Request, res: Response) => {
+  if (scraperState.running) {
+    res.status(409).json({ error: "Scraper principal está em execução — aguarde" });
+    return;
+  }
+  if (enrichState.running) {
+    res.status(409).json({ error: "Enriquecimento já está em execução" });
+    return;
+  }
+
+  Object.assign(enrichState, {
+    running: true,
+    fase: "imagens",
+    total: 0,
+    feitos: 0,
+    com_imagem: 0,
+    com_descricao: 0,
+    erros: 0,
+    iniciado_em: new Date().toISOString(),
+    mensagem: "Iniciando enriquecimento...",
+  });
+
+  logger.info("Enriquecimento JC iniciado", { user: (req as Request & { user?: { email: string } }).user?.email });
+  setImmediate(() => executarEnriquecimento().catch(e => {
+    logger.error("Enriquecimento erro", { error: e.message });
+    enrichState.running = false;
+    enrichState.fase = "erro";
+  }));
+
+  res.json({ ok: true, mensagem: "Enriquecimento iniciado em background — acompanhe em /scraper/enriquecer/status" });
+});
+
+/** POST /scraper/enriquecer/parar — para o enriquecimento */
+fornecedorCatalogoRouter.post("/scraper/enriquecer/parar", (_req: Request, res: Response) => {
+  if (!enrichState.running) {
+    res.status(409).json({ error: "Enriquecimento não está em execução" });
+    return;
+  }
+  enrichState.running = false;
+  enrichState.mensagem = "Interrompendo...";
+  res.json({ ok: true, mensagem: "Solicitação de parada enviada" });
+});
+
+/** GET /scraper/enriquecer/status — estado do enriquecimento */
+fornecedorCatalogoRouter.get("/scraper/enriquecer/status", (_req: Request, res: Response) => {
+  res.json(enrichState);
 });

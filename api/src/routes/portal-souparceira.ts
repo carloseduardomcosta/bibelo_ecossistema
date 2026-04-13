@@ -405,7 +405,7 @@ portalSouParceiraRouter.get(
       FROM sync.fornecedor_catalogo_jc p
       WHERE p.status = 'aprovado'
       GROUP BY COALESCE(p.slug_categoria, p.categoria, 'outros')
-      ORDER BY COUNT(*) DESC, COALESCE(p.slug_categoria, p.categoria, 'outros')
+      ORDER BY COALESCE(p.slug_categoria, p.categoria, 'outros') ASC
     `);
     res.json(rows);
   }

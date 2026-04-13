@@ -83,6 +83,16 @@ Foco: loja propria (substituir NuvemShop), infraestrutura solida, monitoramento.
 - [ ] WhatsApp oficial: Chatwoot + Meta Cloud API + Instagram DM (aguardando nova linha celular)
 - [ ] Sync audiences CRM → Meta Ads (fase 2 da integracao Meta)
 
+### Portal Sou Parceira — Backlog
+- [x] Login OTP por CPF + email (13/04/2026)
+- [x] Listagem de produtos aprovados do catalogo JC com preco de revenda (13/04/2026)
+- [x] Imagens e descricao dos produtos no portal (13/04/2026 — enriquecimento via scraper)
+- [x] Categorias em ordem alfabetica (13/04/2026)
+- [ ] **P1 — Pedido direto via portal**: revendedora seleciona produtos e envia pedido diretamente, sem precisar ir ao WhatsApp. Carlos recebe notificacao e confirma. Elimina atrito no processo de compra B2B.
+- [ ] P2 — Historico de pedidos da revendedora no portal
+- [ ] P2 — Busca de produtos por nome/categoria no portal
+- [ ] P3 — Notificacao automatica quando catalogo JC for atualizado (novos produtos aprovados)
+
 ---
 
 ## Fase 4: Supply Chain Management (SCM) — FUTURO

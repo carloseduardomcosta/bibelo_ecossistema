@@ -34,6 +34,8 @@ interface Produto {
   nome: string;
   categoria: string;
   preco_final: string;
+  imagem_url: string | null;
+  descricao: string | null;
 }
 
 interface CatalogoPaginado {
@@ -951,16 +953,42 @@ function Catalogo({ rev }: { rev: Revendedora }) {
                          hover:shadow-md hover:border-[#fe68c4]/30
                          transition-all duration-200 group cursor-default"
             >
+              {/* Imagem do produto */}
+              {p.imagem_url ? (
+                <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden mb-3">
+                  <img
+                    src={p.imagem_url}
+                    alt={p.nome}
+                    loading="lazy"
+                    className="object-contain w-full h-full"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      target.style.display = 'none';
+                      const placeholder = target.nextElementSibling as HTMLElement | null;
+                      if (placeholder) placeholder.style.display = 'flex';
+                    }}
+                  />
+                  <div className="hidden w-full h-full items-center justify-center bg-gray-100">
+                    <Package className="w-8 h-8 text-gray-300" />
+                  </div>
+                </div>
+              ) : null}
+
               <span className="inline-flex items-center gap-1 text-[10px] font-semibold
                                text-[#fe68c4] bg-[#ffe5ec] px-2 py-0.5 rounded-full
                                leading-none mb-3 max-w-full truncate">
                 <Tag className="w-2.5 h-2.5 flex-shrink-0" />
                 <span className="truncate">{formatCategoria(p.categoria)}</span>
               </span>
-              <p className="text-sm font-semibold text-gray-800 leading-snug mb-3 line-clamp-3
+              <p className="text-sm font-semibold text-gray-800 leading-snug mb-1.5 line-clamp-3
                             group-hover:text-gray-900 transition-colors">
                 {p.nome}
               </p>
+              {p.descricao && (
+                <p className="text-xs text-gray-500 leading-snug mb-2 line-clamp-2">
+                  {p.descricao}
+                </p>
+              )}
               <p className="text-lg font-bold text-[#fe68c4] leading-none">
                 {formatCurrency(p.preco_final)}
               </p>
