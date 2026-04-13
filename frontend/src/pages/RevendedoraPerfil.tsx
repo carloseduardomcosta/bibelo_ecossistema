@@ -4,7 +4,7 @@ import {
   ArrowLeft, Mail, Phone, MapPin, Medal, Star, Crown, Package,
   ShoppingCart, Trophy, TrendingUp, AlertTriangle, Edit2, Check,
   X, ChevronDown, Clock, Truck, CheckCircle2, XCircle,
-  Lock, Flame, Link2, Copy, ExternalLink, Sparkles,
+  Lock, Flame, Link2, Copy, ExternalLink, Sparkles, Gem,
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
@@ -26,7 +26,7 @@ interface RevendedoraFull {
   complemento: string | null;
   bairro: string | null;
   observacao: string | null;
-  nivel: 'iniciante' | 'bronze' | 'prata' | 'ouro';
+  nivel: 'iniciante' | 'bronze' | 'prata' | 'ouro' | 'diamante';
   pontos: number;
   volume_mes_atual: string;
   volume_mes_anterior: string;
@@ -93,6 +93,7 @@ const NIVEL_CONFIG = {
   bronze:    { label: 'Bronze',    icon: Medal,    color: 'text-amber-400',  bg: 'bg-amber-400/10',  bar: 'bg-amber-400',  border: 'border-amber-400/30'  },
   prata:     { label: 'Prata',     icon: Star,     color: 'text-slate-300',  bg: 'bg-slate-300/10',  bar: 'bg-slate-300',  border: 'border-slate-300/30'  },
   ouro:      { label: 'Ouro',      icon: Crown,    color: 'text-yellow-400', bg: 'bg-yellow-400/10', bar: 'bg-yellow-400', border: 'border-yellow-400/30' },
+  diamante:  { label: 'Diamante',  icon: Gem,      color: 'text-cyan-400',   bg: 'bg-cyan-400/10',   bar: 'bg-cyan-400',   border: 'border-cyan-400/30'   },
 } as const;
 
 const PEDIDO_STATUS = {
@@ -105,8 +106,10 @@ const PEDIDO_STATUS = {
 
 const BADGES_CATALOGO = [
   { tipo: 'primeiro_pedido', label: 'Primeira Compra',    emoji: '🎉', pontos: 10,  descricao: 'Realize seu primeiro pedido'   },
-  { tipo: 'nivel_prata',     label: 'Chegou na Prata',    emoji: '🥈', pontos: 50,  descricao: 'Volume de R$600/mês alcançado' },
-  { tipo: 'nivel_ouro',      label: 'Chegou no Ouro',     emoji: '🥇', pontos: 100, descricao: 'Volume de R$1.200/mês alcançado'},
+  { tipo: 'nivel_bronze',    label: 'Chegou no Bronze',   emoji: '🥉', pontos: 25,  descricao: 'Volume de R$150/mês alcançado'  },
+  { tipo: 'nivel_prata',     label: 'Chegou na Prata',    emoji: '🥈', pontos: 50,  descricao: 'Volume de R$600/mês alcançado'  },
+  { tipo: 'nivel_ouro',      label: 'Chegou no Ouro',     emoji: '🥇', pontos: 100, descricao: 'Volume de R$1.200/mês alcançado' },
+  { tipo: 'nivel_diamante',  label: 'Diamante!',          emoji: '💎', pontos: 200, descricao: 'Volume de R$3.000/mês alcançado' },
   { tipo: 'tres_meses',      label: '3 Meses Seguidos',   emoji: '🔥', pontos: 30,  descricao: 'Pedidos por 3 meses consecutivos'},
   { tipo: 'melhor_do_mes',   label: 'Melhor do Mês',      emoji: '🏆', pontos: 20,  descricao: 'Maior volume em um único mês'  },
   { tipo: 'embaixadora',     label: 'Embaixadora Bibelô', emoji: '🌟', pontos: 80,  descricao: 'Indicou outra revendedora aprovada'},
@@ -118,7 +121,7 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function NivelBadge({ nivel }: { nivel: 'iniciante' | 'bronze' | 'prata' | 'ouro' }) {
+function NivelBadge({ nivel }: { nivel: 'iniciante' | 'bronze' | 'prata' | 'ouro' | 'diamante' }) {
   const cfg = NIVEL_CONFIG[nivel];
   const Icon = cfg.icon;
   return (
@@ -148,7 +151,7 @@ function ProgressoNivel({ rev }: { rev: RevendedoraFull }) {
     );
   }
 
-  const nextCfg = NIVEL_CONFIG[pg.proximo as 'iniciante' | 'bronze' | 'prata' | 'ouro'];
+  const nextCfg = NIVEL_CONFIG[pg.proximo as 'iniciante' | 'bronze' | 'prata' | 'ouro' | 'diamante'];
   const NextIcon = nextCfg.icon;
 
   return (

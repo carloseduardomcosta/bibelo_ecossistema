@@ -13,14 +13,16 @@ revendedorasRouter.use(authMiddleware);
 // ── Helpers ──────────────────────────────────────────────────
 
 // Estrutura de níveis:
-//   iniciante : volume < 150  → 15%, frete por conta da revendedora
-//   bronze    : 150 ≤ vol < 600 → 20%, frete por conta da revendedora
-//   prata     : 600 ≤ vol < 1200 → 25%, frete por conta da revendedora
-//   ouro      : vol ≥ 1200 → 30%, frete GRÁTIS (Bibelô arca)
+//   iniciante : volume < 150     → 15%, frete por conta da revendedora
+//   bronze    : 150–599          → 25%, frete por conta da revendedora
+//   prata     : 600–1199         → 35%, frete por conta da revendedora
+//   ouro      : 1200–2999        → 45%, frete GRÁTIS (Bibelô arca)
+//   diamante  : 3000+            → 45%, frete GRÁTIS + benefícios exclusivos (topo)
 function calcularNivel(volume: number): { nivel: string; desconto: number } {
-  if (volume >= 1200) return { nivel: "ouro",      desconto: 30 };
-  if (volume >= 600)  return { nivel: "prata",     desconto: 25 };
-  if (volume >= 150)  return { nivel: "bronze",    desconto: 20 };
+  if (volume >= 3000) return { nivel: "diamante",  desconto: 45 };
+  if (volume >= 1200) return { nivel: "ouro",      desconto: 45 };
+  if (volume >= 600)  return { nivel: "prata",     desconto: 35 };
+  if (volume >= 150)  return { nivel: "bronze",    desconto: 25 };
   return                    { nivel: "iniciante",  desconto: 15 };
 }
 
@@ -30,21 +32,25 @@ function calcularProgresso(volume: number): {
   faltam: number;
   percentual: number;
 } {
-  if (volume >= 1200) return { proximo: null,     meta: 1200, faltam: 0,              percentual: 100 };
+  if (volume >= 3000) return { proximo: null,       meta: 3000, faltam: 0,               percentual: 100 };
+  if (volume >= 1200) {
+    const faltam = Math.max(0, 3000 - volume);
+    const percentual = Math.min(100, Math.max(0, ((volume - 1200) / 1800) * 100));
+    return { proximo: "diamante", meta: 3000, faltam, percentual };
+  }
   if (volume >= 600) {
     const faltam = Math.max(0, 1200 - volume);
     const percentual = Math.min(100, Math.max(0, ((volume - 600) / 600) * 100));
-    return { proximo: "ouro",   meta: 1200, faltam, percentual };
+    return { proximo: "ouro",     meta: 1200, faltam, percentual };
   }
   if (volume >= 150) {
     const faltam = Math.max(0, 600 - volume);
     const percentual = Math.min(100, Math.max(0, ((volume - 150) / 450) * 100));
-    return { proximo: "prata",  meta: 600,  faltam, percentual };
+    return { proximo: "prata",    meta: 600,  faltam, percentual };
   }
-  // iniciante
   const faltam = Math.max(0, 150 - volume);
   const percentual = Math.min(100, Math.max(0, (volume / 150) * 100));
-  return { proximo: "bronze", meta: 150,  faltam, percentual };
+  return { proximo: "bronze",   meta: 150,  faltam, percentual };
 }
 
 // ── E-mail de boas-vindas — disparado ao cadastrar revendedora ────
@@ -53,7 +59,7 @@ const LOGO_URL = "https://webhook.papelariabibelo.com.br/logo.png";
 const PORTAL_URL = "https://souparceira.papelariabibelo.com.br";
 const FROM_PARCEIRAS = "Sou Parceira Bibelô <souparceira@papelariabibelo.com.br>";
 
-function buildBoasVindasParceira(nome: string, cpf: string, desconto: number): string {
+function buildBoasVindasParceira(nome: string, cpf: string, desconto: number, nivel = "iniciante"): string {
   const nomeEsc = escHtml(nome);
   const cpfFormatado = cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4").replace(/[^\d.-]/g, "") || cpf;
 
@@ -155,10 +161,11 @@ function buildBoasVindasParceira(nome: string, cpf: string, desconto: number): s
                 </tr>
               </thead>
               <tbody>
-                ${nivelRow("✨", "Iniciante", 15, "até R$149/mês", "Por sua conta", desconto === 15)}
-                ${nivelRow("🥉", "Bronze", 20, "R$150 a R$599/mês", "Por sua conta", desconto === 20)}
-                ${nivelRow("🥈", "Prata", 25, "R$600 a R$1.199/mês", "Por sua conta", desconto === 25)}
-                ${nivelRow("🥇", "Ouro", 30, "R$1.200+/mês", "Frete grátis", desconto === 30)}
+                ${nivelRow("✨", "Iniciante", 15, "até R$149/mês",          "Por sua conta", nivel === "iniciante")}
+                ${nivelRow("🥉", "Bronze",    25, "R$150 a R$599/mês",      "Por sua conta", nivel === "bronze")}
+                ${nivelRow("🥈", "Prata",     35, "R$600 a R$1.199/mês",    "Por sua conta", nivel === "prata")}
+                ${nivelRow("🥇", "Ouro",      45, "R$1.200 a R$2.999/mês",  "Frete grátis",  nivel === "ouro")}
+                ${nivelRow("💎", "Diamante",  45, "R$3.000+/mês",           "Frete grátis",  nivel === "diamante")}
               </tbody>
             </table>
             <p style="margin:0 0 24px;font-size:11px;color:#aaa;line-height:1.5;">
@@ -307,7 +314,7 @@ const listQuerySchema = z.object({
   limit:  z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
   status: z.enum(["pendente", "ativa", "inativa", "suspensa"]).optional(),
-  nivel:  z.enum(["iniciante", "bronze", "prata", "ouro"]).optional(),
+  nivel:  z.enum(["iniciante", "bronze", "prata", "ouro", "diamante"]).optional(),
 });
 
 // ── GET /stats ────────────────────────────────────────────────
@@ -316,7 +323,7 @@ revendedorasRouter.get("/stats", async (_req: Request, res: Response) => {
   const stats = await queryOne<{
     total: string; ativas: string; pendentes: string;
     volume_mes: string; pedidos_pendentes: string;
-    nivel_iniciante: string; nivel_bronze: string; nivel_prata: string; nivel_ouro: string;
+    nivel_iniciante: string; nivel_bronze: string; nivel_prata: string; nivel_ouro: string; nivel_diamante: string;
   }>(`
     SELECT
       COUNT(*)::text                                          AS total,
@@ -327,7 +334,8 @@ revendedorasRouter.get("/stats", async (_req: Request, res: Response) => {
       COUNT(*) FILTER (WHERE nivel = 'iniciante')::text      AS nivel_iniciante,
       COUNT(*) FILTER (WHERE nivel = 'bronze')::text         AS nivel_bronze,
       COUNT(*) FILTER (WHERE nivel = 'prata')::text          AS nivel_prata,
-      COUNT(*) FILTER (WHERE nivel = 'ouro')::text           AS nivel_ouro
+      COUNT(*) FILTER (WHERE nivel = 'ouro')::text           AS nivel_ouro,
+      COUNT(*) FILTER (WHERE nivel = 'diamante')::text       AS nivel_diamante
     FROM crm.revendedoras
   `);
   res.json(stats);
@@ -432,7 +440,7 @@ revendedorasRouter.post("/", async (req: Request, res: Response) => {
       to:      d.email,
       from:    FROM_PARCEIRAS,
       subject: `Bem-vinda ao Programa Sou Parceira — Papelaria Bibelô! 🤝`,
-      html:    buildBoasVindasParceira(d.nome, (d.documento ?? "").replace(/\D/g, ""), desconto),
+      html:    buildBoasVindasParceira(d.nome, (d.documento ?? "").replace(/\D/g, ""), desconto, "iniciante"),
       tags:    [{ name: "tipo", value: "boas_vindas_parceira" }],
     }).catch(err => logger.error("Erro ao enviar email boas-vindas parceira", { error: (err as Error).message }));
   }
@@ -773,13 +781,16 @@ revendedorasRouter.put("/:id/pedidos/:pedidoId/status", async (req: Request, res
           [novoNivel, novoDesc, id]
         );
         if (novoNivel === "bronze") {
-          await concederConquista(id, "nivel_bronze", "Chegou ao Bronze! 🥉 Continue crescendo!", 25);
+          await concederConquista(id, "nivel_bronze",   "Chegou ao Bronze! 🥉 Continue crescendo!", 25);
         }
         if (novoNivel === "prata") {
-          await concederConquista(id, "nivel_prata", "Subiu para Prata! 🥈 Parabéns!", 50);
+          await concederConquista(id, "nivel_prata",    "Subiu para Prata! 🥈 Parabéns!", 50);
         }
         if (novoNivel === "ouro") {
-          await concederConquista(id, "nivel_ouro", "Chegou ao Ouro! 🥇 Frete grátis desbloqueado!", 100);
+          await concederConquista(id, "nivel_ouro",     "Chegou ao Ouro! 🥇 Frete grátis desbloqueado!", 100);
+        }
+        if (novoNivel === "diamante") {
+          await concederConquista(id, "nivel_diamante", "Diamante! 💎 Você é top de linha Bibelô!", 200);
         }
         logger.info("Revendedora subiu de nível", { id, de: revAtualizada.nivel, para: novoNivel });
       }

@@ -6,7 +6,7 @@ import {
   ArrowRight, CheckCircle2, Sparkles, TrendingUp, Package,
   LayoutDashboard, BookOpen, Lock, Clock, Truck, CheckCircle,
   XCircle, SortAsc, ShoppingCart, Plus, Minus, Trash2, Send, X,
-  ClipboardList, Eye, ImageOff,
+  ClipboardList, Eye, ImageOff, Gem,
 } from 'lucide-react';
 
 // Instância axios sem interceptors de auth do CRM
@@ -21,7 +21,7 @@ api.interceptors.request.use(cfg => {
 
 interface Revendedora {
   nome: string;
-  nivel: 'iniciante' | 'bronze' | 'prata' | 'ouro';
+  nivel: 'iniciante' | 'bronze' | 'prata' | 'ouro' | 'diamante';
   percentual_desconto: number;
 }
 
@@ -88,7 +88,7 @@ interface DashboardData {
   volume_mes_atual: number;
   total_pedidos: number;
   pontos: number;
-  nivel: 'bronze' | 'prata' | 'ouro';
+  nivel: 'iniciante' | 'bronze' | 'prata' | 'ouro' | 'diamante';
   percentual_desconto: number;
   progresso_nivel: {
     proximo: string | null;
@@ -120,9 +120,10 @@ type Secao  = 'dashboard' | 'catalogo' | 'pedidos' | 'recursos';
 
 const NIVEL = {
   iniciante: { label: 'Iniciante', cor: 'bg-gray-100 text-gray-600 border-gray-300',         icon: Sparkles, desconto: 15, freteGratis: false, meta: 150  },
-  bronze:    { label: 'Bronze',    cor: 'bg-amber-100 text-amber-700 border-amber-300',       icon: Medal,    desconto: 20, freteGratis: false, meta: 600  },
-  prata:     { label: 'Prata',     cor: 'bg-slate-100 text-slate-600 border-slate-300',       icon: Star,     desconto: 25, freteGratis: false, meta: 1200 },
-  ouro:      { label: 'Ouro',      cor: 'bg-yellow-100 text-yellow-700 border-yellow-400',    icon: Crown,    desconto: 30, freteGratis: true,  meta: null },
+  bronze:    { label: 'Bronze',    cor: 'bg-amber-100 text-amber-700 border-amber-300',       icon: Medal,    desconto: 25, freteGratis: false, meta: 600  },
+  prata:     { label: 'Prata',     cor: 'bg-slate-100 text-slate-600 border-slate-300',       icon: Star,     desconto: 35, freteGratis: false, meta: 1200 },
+  ouro:      { label: 'Ouro',      cor: 'bg-yellow-100 text-yellow-700 border-yellow-400',    icon: Crown,    desconto: 45, freteGratis: true,  meta: 3000 },
+  diamante:  { label: 'Diamante',  cor: 'bg-cyan-100 text-cyan-700 border-cyan-400',          icon: Gem,      desconto: 45, freteGratis: true,  meta: null },
 };
 
 const STATUS_PEDIDO: Record<string, { label: string; cor: string; icon: typeof Clock }> = {
