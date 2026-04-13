@@ -1166,3 +1166,15 @@ sync.category_sync_log         (auditoria)
   - `auth.ts`: rejeita tokens com `iss: 'souparceira'` no CRM (impede cross-portal token abuse)
   - `portal-souparceira.ts`: skip de rate limit IP em modo VITEST (evita falsos 429 nos testes)
   - `App.tsx`: ErrorBoundary ao redor do SouParceira (fix blank page em exceção React)
+- **c2ff263** — feat(souparceira): redesign split-layout com imagem hero + inputs de alto contraste (12/04/2026)
+  - Layout split `lg:grid-cols-2` — formulário à esq, imagem `revendedoras_bibelo_espontanea.png` à dir
+  - Badges flutuantes glassmorphism + animação float, headline Cormorant Garamond, chips de benefícios
+  - CPF input: `text-lg font-semibold text-gray-900` + `border-2` (alto contraste, visível)
+  - OTP: 6 boxes individuais com auto-submit + paste support
+  - Catálogo: hero banner rosa com desconto do tier em destaque
+- **cd8e662** — fix(souparceira): feedback claro para CPF não cadastrado + ícone aperto de mão (12/04/2026)
+  - Backend: retorna `{ ok: false, cadastrada: false }` para CPF não ativo (antes avançava pro OTP)
+  - Frontend: alerta âmbar "CPF não encontrado como parceira" + botão WhatsApp para se cadastrar
+  - Ícone ShoppingBag → Handshake (rosa) no header do login e do catálogo
+- **docs** — levantamento 4 evoluções portal Sou Parceira salvo em `docs/projeto/souparceira-evolucoes.md` (12/04/2026)
+  - Endereço no cadastro B2B (ViaCEP), Dashboard KPIs revendedora, Módulos/assinaturas, Catálogo configurável
