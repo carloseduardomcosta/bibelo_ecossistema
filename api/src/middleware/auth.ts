@@ -27,7 +27,12 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 
   const token = header.substring(7);
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    const payload = jwt.verify(token, JWT_SECRET) as AuthPayload & { iss?: string };
+    // Tokens do portal Sou Parceira (iss: 'souparceira') não têm acesso ao CRM
+    if (payload.iss === "souparceira") {
+      res.status(401).json({ error: "Token inválido ou expirado" });
+      return;
+    }
     req.user = payload;
     next();
   } catch {

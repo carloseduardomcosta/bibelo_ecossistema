@@ -72,7 +72,11 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
 export default function App() {
   // Portal Sou Parceira — subdomínio isolado, sem auth CRM
   if (window.location.hostname.startsWith('souparceira')) {
-    return <SouParceira />;
+    return (
+      <ErrorBoundary>
+        <SouParceira />
+      </ErrorBoundary>
+    );
   }
 
   return (

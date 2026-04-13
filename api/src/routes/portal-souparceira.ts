@@ -17,6 +17,7 @@ const limiterSolicitar = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Muitas tentativas. Aguarde alguns minutos." },
+  skip: () => process.env.VITEST === "true",
 });
 
 // Verificação de código: 10 tentativas por 15 min por IP
@@ -26,6 +27,7 @@ const limiterEntrar = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Muitas tentativas. Aguarde alguns minutos." },
+  skip: () => process.env.VITEST === "true",
 });
 
 // Leitura do catálogo: permissivo (revendedora navega bastante)
