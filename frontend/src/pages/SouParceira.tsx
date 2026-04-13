@@ -6,7 +6,7 @@ import {
   ArrowRight, CheckCircle2, Sparkles, TrendingUp, Package,
   LayoutDashboard, BookOpen, Lock, Clock, Truck, CheckCircle,
   XCircle, SortAsc, ShoppingCart, Plus, Minus, Trash2, Send, X,
-  ClipboardList,
+  ClipboardList, Eye, ImageOff,
 } from 'lucide-react';
 
 // Instância axios sem interceptors de auth do CRM
@@ -861,6 +861,198 @@ const SORT_LABELS: Record<SortOption, string> = {
   preco_desc: 'Maior preço',
 };
 
+// ── Modal: Detalhe do Produto ─────────────────────────────────────
+
+interface ProdutoDetalheModalProps {
+  produto: Produto;
+  cart: Map<string, CartItem>;
+  onAddToCart: (p: Produto, qty: number) => void;
+  onClose: () => void;
+}
+
+function ProdutoDetalheModal({ produto: p, cart, onAddToCart, onClose }: ProdutoDetalheModalProps) {
+  const imagens: string[] = [];
+  if (p.imagens_urls && p.imagens_urls.length > 0) imagens.push(...p.imagens_urls);
+  else if (p.imagem_url) imagens.push(p.imagem_url);
+
+  const [imgIdx, setImgIdx]   = useState(0);
+  const [imgError, setImgError] = useState(false);
+  const currentQty = cart.get(p.id)?.quantidade ?? 0;
+  const [qty, setQty] = useState(Math.max(1, currentQty));
+
+  function handleAdd() {
+    onAddToCart(p, qty);
+    onClose();
+  }
+
+  // Fechar no Escape
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+      {/* Modal */}
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+
+        {/* Botão fechar */}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 z-10 bg-white/90 backdrop-blur-sm rounded-full p-1.5
+                     text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors shadow-sm"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {/* Galeria de imagens */}
+        {imagens.length > 0 && !imgError ? (
+          <div className="relative bg-gray-50 rounded-t-2xl overflow-hidden">
+            <div className="aspect-square">
+              <img
+                src={imagens[imgIdx]}
+                alt={p.nome}
+                className="w-full h-full object-contain"
+                onError={() => setImgError(true)}
+              />
+            </div>
+            {/* Setas de navegação */}
+            {imagens.length > 1 && (
+              <>
+                <button
+                  onClick={() => setImgIdx(i => (i - 1 + imagens.length) % imagens.length)}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-1.5
+                             shadow-md hover:bg-white transition-colors"
+                >
+                  <ChevronLeft className="w-5 h-5 text-gray-700" />
+                </button>
+                <button
+                  onClick={() => setImgIdx(i => (i + 1) % imagens.length)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-1.5
+                             shadow-md hover:bg-white transition-colors"
+                >
+                  <ChevronRight className="w-5 h-5 text-gray-700" />
+                </button>
+                {/* Indicadores */}
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+                  {imagens.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setImgIdx(i)}
+                      className={`w-2 h-2 rounded-full transition-colors ${
+                        i === imgIdx ? 'bg-[#fe68c4]' : 'bg-gray-300'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="aspect-square bg-gray-100 rounded-t-2xl flex items-center justify-center">
+            <ImageOff className="w-12 h-12 text-gray-300" />
+          </div>
+        )}
+
+        {/* Thumbnails da galeria */}
+        {imagens.length > 1 && !imgError && (
+          <div className="flex gap-2 px-4 pt-3 overflow-x-auto">
+            {imagens.map((src, i) => (
+              <button
+                key={i}
+                onClick={() => setImgIdx(i)}
+                className={`flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${
+                  i === imgIdx ? 'border-[#fe68c4]' : 'border-gray-200 hover:border-[#fe68c4]/50'
+                }`}
+              >
+                <img src={src} alt="" className="w-full h-full object-contain" />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Conteúdo */}
+        <div className="p-5">
+          {/* Categoria */}
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold
+                           text-[#fe68c4] bg-[#ffe5ec] px-2.5 py-1 rounded-full mb-3">
+            <Tag className="w-3 h-3" />
+            {formatCategoria(p.categoria)}
+          </span>
+
+          {/* Nome */}
+          <h2 className="text-base font-bold text-gray-900 leading-snug mb-3">{p.nome}</h2>
+
+          {/* Descrição */}
+          {p.descricao ? (
+            <p className="text-sm text-gray-600 leading-relaxed mb-4 whitespace-pre-line">
+              {p.descricao}
+            </p>
+          ) : (
+            <p className="text-sm text-gray-400 italic mb-4">Sem descrição cadastrada.</p>
+          )}
+
+          {/* Preço */}
+          <div className="bg-[#ffe5ec]/50 rounded-xl px-4 py-3 mb-5">
+            <p className="text-[11px] text-gray-500 font-medium mb-0.5">Seu preço de revendedora</p>
+            <p className="text-2xl font-bold text-[#fe68c4] leading-none">
+              {formatCurrency(p.preco_final)}
+            </p>
+          </div>
+
+          {/* Controle de quantidade + botão */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center bg-gray-100 rounded-xl">
+              <button
+                onClick={() => setQty(q => Math.max(1, q - 1))}
+                className="px-3 py-2.5 text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+              <span className="px-3 text-base font-bold text-gray-900 min-w-[2.5rem] text-center">
+                {qty}
+              </span>
+              <button
+                onClick={() => setQty(q => q + 1)}
+                className="px-3 py-2.5 text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+
+            <button
+              onClick={handleAdd}
+              className="flex-1 flex items-center justify-center gap-2
+                         bg-[#fe68c4] hover:bg-[#fd4fb8] active:scale-95
+                         text-white font-bold text-sm py-3 rounded-xl
+                         transition-all shadow-sm shadow-[#fe68c4]/30"
+            >
+              <ShoppingCart className="w-4 h-4" />
+              {currentQty > 0
+                ? `Atualizar (${qty} ${qty === 1 ? 'unid.' : 'unids.'})`
+                : `Adicionar ao carrinho`
+              }
+            </button>
+          </div>
+
+          {currentQty > 0 && (
+            <p className="text-center text-xs text-gray-400 mt-2">
+              Você já tem {currentQty} no carrinho — vai ser substituído por {qty}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface CatalogoProps {
   rev: Revendedora;
   cart: Map<string, CartItem>;
@@ -882,6 +1074,15 @@ function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
   const [limit, setLimit]                     = useState<number>(
     () => Number(localStorage.getItem('souparceira_limit')) || 12
   );
+  const [produtoAberto, setProdutoAberto]     = useState<Produto | null>(null);
+
+  function addToCartQty(p: Produto, qty: number) {
+    const next = new Map(cart);
+    if (qty <= 0) { next.delete(p.id); }
+    else { next.set(p.id, { produto: p, quantidade: qty }); }
+    onCartChange(next);
+    saveCart(next);
+  }
 
   function addToCart(p: Produto) {
     const next = new Map(cart);
@@ -1040,18 +1241,21 @@ function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
                          hover:shadow-md hover:border-[#fe68c4]/30
                          transition-all duration-200 group flex flex-col"
             >
-              {/* Imagem do produto */}
+              {/* Imagem do produto — clicável para abrir modal */}
               {(() => {
                 const imgSrc = (p.imagens_urls && p.imagens_urls.length > 0)
                   ? p.imagens_urls[0]
                   : p.imagem_url;
                 return imgSrc ? (
-                  <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden mb-3">
+                  <div
+                    className="aspect-square bg-gray-50 rounded-lg overflow-hidden mb-3 cursor-pointer"
+                    onClick={() => setProdutoAberto(p)}
+                  >
                     <img
                       src={imgSrc}
                       alt={p.nome}
                       loading="lazy"
-                      className="object-contain w-full h-full"
+                      className="object-contain w-full h-full hover:scale-105 transition-transform duration-200"
                       onError={(e) => {
                         const target = e.currentTarget;
                         if (p.imagem_url && target.src !== p.imagem_url) {
@@ -1076,15 +1280,13 @@ function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
                 <Tag className="w-2.5 h-2.5 flex-shrink-0" />
                 <span className="truncate">{formatCategoria(p.categoria)}</span>
               </span>
-              <p className="text-sm font-semibold text-gray-800 leading-snug mb-1 line-clamp-2
-                            group-hover:text-gray-900 transition-colors flex-1">
+              <p
+                className="text-sm font-semibold text-gray-800 leading-snug mb-1 line-clamp-2
+                           group-hover:text-[#fe68c4] transition-colors flex-1 cursor-pointer"
+                onClick={() => setProdutoAberto(p)}
+              >
                 {p.nome}
               </p>
-              {p.descricao && (
-                <p className="text-xs text-gray-500 leading-snug mb-2 line-clamp-1">
-                  {p.descricao}
-                </p>
-              )}
               <div className="flex items-end justify-between mt-1 gap-2">
                 <div>
                   <p className="text-base font-bold text-[#fe68c4] leading-none">
@@ -1093,7 +1295,7 @@ function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
                   <p className="text-[10px] text-gray-400 mt-0.5">preço de revenda</p>
                 </div>
                 {cart.has(p.id) ? (
-                  <div className="flex items-center gap-1.5 bg-[#ffe5ec] rounded-lg px-2 py-1">
+                  <div className="flex items-center gap-1 bg-[#ffe5ec] rounded-lg px-1.5 py-1">
                     <button
                       onClick={() => {
                         const next = new Map(cart);
@@ -1106,9 +1308,12 @@ function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
                     >
                       <Minus className="w-3 h-3" />
                     </button>
-                    <span className="text-xs font-bold text-[#fe68c4] min-w-[16px] text-center">
+                    <button
+                      onClick={() => setProdutoAberto(p)}
+                      className="text-xs font-bold text-[#fe68c4] min-w-[20px] text-center hover:underline"
+                    >
                       {cart.get(p.id)!.quantidade}
-                    </span>
+                    </button>
                     <button
                       onClick={() => addToCart(p)}
                       className="text-[#fe68c4] hover:text-[#fd4fb8] transition-colors"
@@ -1118,13 +1323,13 @@ function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
                   </div>
                 ) : (
                   <button
-                    onClick={() => addToCart(p)}
+                    onClick={() => setProdutoAberto(p)}
                     className="flex items-center gap-1 bg-[#fe68c4] text-white
                                text-[11px] font-semibold px-2.5 py-1.5 rounded-lg
                                hover:bg-[#fd4fb8] active:scale-95 transition-all"
                   >
-                    <Plus className="w-3 h-3" />
-                    Adicionar
+                    <Eye className="w-3 h-3" />
+                    Ver produto
                   </button>
                 )}
               </div>
@@ -1192,6 +1397,16 @@ function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
           <MessageCircle className="w-5 h-5" />
           <span>Dúvidas</span>
         </a>
+      )}
+
+      {/* Modal de detalhe do produto */}
+      {produtoAberto && (
+        <ProdutoDetalheModal
+          produto={produtoAberto}
+          cart={cart}
+          onAddToCart={addToCartQty}
+          onClose={() => setProdutoAberto(null)}
+        />
       )}
     </div>
   );
