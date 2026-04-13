@@ -2125,6 +2125,30 @@ export default function SouParceira() {
             onPedidoCriado={() => { setCartOpen(false); setSecao('pedidos'); }}
           />
         )}
+
+        {/* Rodapé */}
+        <footer className="mt-auto border-t border-gray-100 bg-white/60 py-4 px-4 text-center text-xs text-gray-400">
+          <p>
+            Papelaria Bibelô · Timbó/SC ·{' '}
+            <a
+              href="/api/public/politica-parceira"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#fe68c4] hover:underline font-medium"
+            >
+              Regulamento do Programa
+            </a>
+            {' '}·{' '}
+            <a
+              href="https://wa.me/5547933862514"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#fe68c4] hover:underline"
+            >
+              Suporte WhatsApp
+            </a>
+          </p>
+        </footer>
       </div>
     );
   }

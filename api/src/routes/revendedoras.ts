@@ -588,6 +588,14 @@ revendedorasRouter.put("/:id/status", async (req: Request, res: Response) => {
   const { status } = parse.data;
   const user = (req as Request & { user?: { email: string } }).user?.email ?? "sistema";
 
+  // Busca status anterior para detectar primeira aprovação
+  const anterior = await queryOne<{
+    status: string; email: string; nome: string; documento: string | null; nivel: string; percentual_desconto: number;
+  }>(
+    "SELECT status, email, nome, documento, nivel, percentual_desconto FROM crm.revendedoras WHERE id = $1",
+    [id]
+  );
+
   const updated = await queryOne(
     `UPDATE crm.revendedoras
      SET status = $1::text,
@@ -600,6 +608,19 @@ revendedorasRouter.put("/:id/status", async (req: Request, res: Response) => {
   if (!updated) { res.status(404).json({ error: "Revendedora não encontrada" }); return; }
 
   logger.info("Status revendedora atualizado", { id, status, user });
+
+  // E-mail de aprovação — disparado apenas na transição pendente → ativa (primeira vez)
+  if (status === "ativa" && anterior && anterior.status !== "ativa" && anterior.email) {
+    const cpf = (anterior.documento ?? "").replace(/\D/g, "");
+    sendEmail({
+      to:      anterior.email,
+      from:    FROM_PARCEIRAS,
+      subject: "🎉 Sua conta Sou Parceira foi aprovada! Acesse o catálogo",
+      html:    buildBoasVindasParceira(anterior.nome, cpf, anterior.percentual_desconto, anterior.nivel),
+      tags:    [{ name: "tipo", value: "aprovacao_parceira" }],
+    }).catch(err => logger.error("Erro ao enviar email aprovação parceira", { error: (err as Error).message }));
+  }
+
   res.json(updated);
 });
 
