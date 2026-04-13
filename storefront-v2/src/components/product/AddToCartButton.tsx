@@ -2,12 +2,15 @@
 
 import { useState } from "react"
 import { useCartStore } from "@/store/cart"
+import { trackAddToCart } from "@/lib/meta-pixel"
 
 interface AddToCartButtonProps {
   variantId: string
+  productName?: string
+  price?: number
 }
 
-export default function AddToCartButton({ variantId }: AddToCartButtonProps) {
+export default function AddToCartButton({ variantId, productName, price }: AddToCartButtonProps) {
   const [quantity, setQuantity] = useState(1)
   const [isAdding, setIsAdding] = useState(false)
   const [added, setAdded] = useState(false)
@@ -17,6 +20,9 @@ export default function AddToCartButton({ variantId }: AddToCartButtonProps) {
     if (isAdding) return
     setIsAdding(true)
     await addItem(variantId, quantity)
+    if (productName && price) {
+      trackAddToCart({ contentId: variantId, contentName: productName, value: price * quantity })
+    }
     setIsAdding(false)
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)

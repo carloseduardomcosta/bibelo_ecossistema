@@ -3,12 +3,15 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useCartStore } from "@/store/cart"
+import { trackAddToCart } from "@/lib/meta-pixel"
 
 interface Props {
   variantId: string
+  productName?: string
+  price?: number
 }
 
-export default function BuyNowButton({ variantId }: Props) {
+export default function BuyNowButton({ variantId, productName, price }: Props) {
   const [loading, setLoading] = useState(false)
   const { addItem } = useCartStore()
   const router = useRouter()
@@ -17,6 +20,9 @@ export default function BuyNowButton({ variantId }: Props) {
     if (loading) return
     setLoading(true)
     await addItem(variantId, 1)
+    if (productName && price) {
+      trackAddToCart({ contentId: variantId, contentName: productName, value: price })
+    }
     router.push("/checkout")
   }
 

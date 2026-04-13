@@ -11,6 +11,7 @@ import {
   getInsights,
   periodoToRange,
   extractAction,
+  metaGet,
 } from "../integrations/meta/client";
 import { syncMetaAds } from "../services/meta.service";
 
@@ -369,6 +370,74 @@ metaAdsRouter.get("/historico/plataformas", async (req: Request, res: Response) 
     [dias]
   );
   res.json(data);
+});
+
+// ── Diagnóstico do Pixel ─────────────────────────────────────
+
+metaAdsRouter.get("/pixel/diagnostico", async (_req: Request, res: Response) => {
+  if (!isMetaConfigured()) {
+    res.status(503).json({ error: "Meta Ads não configurado" });
+    return;
+  }
+
+  const PIXEL_ID = process.env.META_PIXEL_ID || "1380166206444041";
+  const EVENTOS_ESPERADOS = ["PageView", "ViewContent", "AddToCart", "InitiateCheckout", "Purchase"];
+
+  try {
+    // Buscar stats das últimas 24h por evento
+    const statsData = await metaGet<{ data: Array<{ aggregation: string; data: Array<{ value: string; count: number }> }> }>(
+      `/${PIXEL_ID}/stats`,
+      { aggregation: "event" }
+    );
+
+    // Consolidar contagens por evento
+    const contagens: Record<string, number> = {};
+    for (const hora of statsData.data || []) {
+      for (const ev of hora.data || []) {
+        contagens[ev.value] = (contagens[ev.value] || 0) + ev.count;
+      }
+    }
+
+    // Montar status semáforo
+    const eventos = EVENTOS_ESPERADOS.map((nome) => {
+      const count = contagens[nome] || 0;
+      let status: "verde" | "amarelo" | "vermelho";
+      if (nome === "PageView" || nome === "ViewContent") {
+        status = count > 0 ? "verde" : "vermelho";
+      } else {
+        // AddToCart, InitiateCheckout, Purchase — esperado menos tráfego
+        status = count > 0 ? "verde" : "amarelo";
+      }
+      return { nome, count, status };
+    });
+
+    // Também buscar last_fired_time do pixel
+    const pixelInfo = await metaGet<{ last_fired_time?: string; is_unavailable?: boolean }>(
+      `/${PIXEL_ID}`,
+      { fields: "last_fired_time,is_unavailable" }
+    );
+
+    const semaforo = eventos.every((e) => e.status !== "vermelho")
+      ? "verde"
+      : eventos.some((e) => e.status === "vermelho" && ["AddToCart", "InitiateCheckout", "Purchase"].includes(e.nome))
+      ? "amarelo"
+      : "vermelho";
+
+    res.json({
+      pixel_id: PIXEL_ID,
+      ultimo_disparo: pixelInfo.last_fired_time || null,
+      ativo: !pixelInfo.is_unavailable,
+      semaforo,
+      eventos,
+      outros_eventos: Object.entries(contagens)
+        .filter(([nome]) => !EVENTOS_ESPERADOS.includes(nome))
+        .map(([nome, count]) => ({ nome, count })),
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Erro";
+    logger.error("Meta Ads pixel diagnostico erro", { error: msg });
+    res.status(500).json({ error: msg });
+  }
 });
 
 // ── Status do sync ───────────────────────────────────────────

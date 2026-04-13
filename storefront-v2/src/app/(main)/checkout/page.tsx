@@ -15,6 +15,7 @@ import {
   completeCart,
 } from "@/lib/medusa/cart"
 import { formatPrice } from "@/lib/utils"
+import { trackInitiateCheckout } from "@/lib/meta-pixel"
 
 type Step = "endereco" | "entrega" | "pagamento"
 type PaymentMethod = "pix" | "credit_card" | "boleto"
@@ -80,6 +81,14 @@ export default function CheckoutPage() {
       }))
     }
   }, [customer])
+
+  // Meta Pixel: InitiateCheckout ao entrar na página
+  useEffect(() => {
+    if (items.length > 0 && total) {
+      trackInitiateCheckout({ value: total, numItems: items.length })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (items.length === 0) {
     return (
@@ -239,12 +248,13 @@ export default function CheckoutPage() {
 
         // Para Pix, redirecionar para página de QR code se tiver dados
         const pixData = session?.data || result?.data
+        const totalParam = total ? `&total=${total}&num_items=${items.length}` : ""
         if (selectedPayment === "pix" && (pixData?.qr_code || pixData?.qr_code_base64)) {
-          router.push(`/checkout/confirmacao?order_id=${order.id}&display_id=${order.display_id || ""}&payment=pix&qr_code=${encodeURIComponent(pixData.qr_code || "")}&qr_code_base64=${encodeURIComponent(pixData.qr_code_base64 || "")}`)
+          router.push(`/checkout/confirmacao?order_id=${order.id}&display_id=${order.display_id || ""}&payment=pix&qr_code=${encodeURIComponent(pixData.qr_code || "")}&qr_code_base64=${encodeURIComponent(pixData.qr_code_base64 || "")}${totalParam}`)
         } else if (selectedPayment === "boleto" && pixData?.boleto_url) {
-          router.push(`/checkout/confirmacao?order_id=${order.id}&display_id=${order.display_id || ""}&payment=boleto&boleto_url=${encodeURIComponent(pixData.boleto_url || "")}`)
+          router.push(`/checkout/confirmacao?order_id=${order.id}&display_id=${order.display_id || ""}&payment=boleto&boleto_url=${encodeURIComponent(pixData.boleto_url || "")}${totalParam}`)
         } else {
-          router.push(`/checkout/confirmacao?order_id=${order.id}&display_id=${order.display_id || ""}&payment=${selectedPayment}`)
+          router.push(`/checkout/confirmacao?order_id=${order.id}&display_id=${order.display_id || ""}&payment=${selectedPayment}${totalParam}`)
         }
       } else {
         setError("Pedido criado, mas pagamento pendente. Entre em contato pelo WhatsApp.")

@@ -137,8 +137,8 @@ export default async function ProductPage({ params }: Props) {
             <VariantSelector product={product as unknown as Record<string, unknown>} />
           ) : !isOutOfStock && variant ? (
             <div className="flex flex-col gap-2">
-              <BuyNowButton variantId={variant.id} />
-              <AddToCartButton variantId={variant.id} />
+              <BuyNowButton variantId={variant.id} productName={product.title} price={calculatedAmount} />
+              <AddToCartButton variantId={variant.id} productName={product.title} price={calculatedAmount} />
             </div>
           ) : (
             <div>

@@ -5,6 +5,7 @@ import { logger } from "../../utils/logger";
 import { upsertCustomer, calculateScore } from "../../services/customer.service";
 import { triggerFlow, registerPendingOrder, markOrderConverted } from "../../services/flow.service";
 import { getNuvemShopToken, nsRequest } from "./auth";
+import { sendMetaConversionEvent } from "../meta/conversions";
 
 export const nuvemshopWebhookRouter = Router();
 
@@ -182,6 +183,19 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
         ns_order_id: resourceId,
         valor,
         itens: products.map((p) => ({ name: p.name, quantity: p.quantity })),
+      });
+
+      // ── Meta Conversions API: Purchase (server-side, não depende do pixel) ──
+      const customerEmailForMeta = customer ? (customer.email as string) : undefined;
+      const customerPhoneForMeta = customer ? (customer.phone as string) : undefined;
+      await sendMetaConversionEvent("Purchase", {
+        email: customerEmailForMeta,
+        phone: customerPhoneForMeta,
+        orderId: resourceId,
+        value: valor,
+        numItems: products.length,
+        eventSourceUrl: "https://www.papelariabibelo.com.br/checkout",
+        contentIds: products.map((p) => String(p.product_id || p.id || "")).filter(Boolean),
       });
 
       // ── Vincular visitor_id ao customer (resolve fragmentação de IDs de ads/webviews) ──

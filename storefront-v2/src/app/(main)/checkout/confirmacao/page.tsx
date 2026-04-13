@@ -1,8 +1,9 @@
 "use client"
 
-import { Suspense, useState } from "react"
+import { Suspense, useState, useEffect } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { trackPurchase } from "@/lib/meta-pixel"
 
 function ConfirmacaoContent() {
   const searchParams = useSearchParams()
@@ -12,7 +13,21 @@ function ConfirmacaoContent() {
   const qrCode = searchParams.get("qr_code") || ""
   const qrCodeBase64 = searchParams.get("qr_code_base64") || ""
   const boletoUrl = searchParams.get("boleto_url") || ""
+  const totalParam = searchParams.get("total")
+  const numItemsParam = searchParams.get("num_items")
   const [copied, setCopied] = useState(false)
+
+  // Meta Pixel: Purchase ao chegar na confirmação
+  useEffect(() => {
+    if (orderId) {
+      trackPurchase({
+        orderId,
+        value: totalParam ? parseInt(totalParam, 10) : 0,
+        numItems: numItemsParam ? parseInt(numItemsParam, 10) : 1,
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const copyPixCode = () => {
     if (qrCode) {
