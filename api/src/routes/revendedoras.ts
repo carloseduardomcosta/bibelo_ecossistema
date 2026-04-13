@@ -611,14 +611,24 @@ revendedorasRouter.put("/:id/status", async (req: Request, res: Response) => {
 
   // E-mail de aprovação — disparado apenas na transição pendente → ativa (primeira vez)
   if (status === "ativa" && anterior && anterior.status !== "ativa" && anterior.email) {
-    const cpf = (anterior.documento ?? "").replace(/\D/g, "");
-    sendEmail({
+    const cpf    = (anterior.documento ?? "").replace(/\D/g, "");
+    const cpfFmt = cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4") || cpf;
+    const NIVEL_LABELS: Record<string, string> = { iniciante: "Iniciante", bronze: "Bronze", prata: "Prata", ouro: "Ouro", diamante: "Diamante" };
+    const tabelaNiveis = buildTabelaNiveis(anterior.percentual_desconto);
+
+    getRenderedEmailTemplate("revendedoras_boas_vindas", {
+      nome:          anterior.nome,
+      cpf_formatado: cpfFmt,
+      desconto:      String(anterior.percentual_desconto),
+      nivel_label:   NIVEL_LABELS[anterior.nivel] ?? anterior.nivel,
+      tabela_niveis: tabelaNiveis,
+    }).then(tpl => sendEmail({
       to:      anterior.email,
       from:    FROM_PARCEIRAS,
-      subject: "🎉 Sua conta Sou Parceira foi aprovada! Acesse o catálogo",
-      html:    buildBoasVindasParceira(anterior.nome, cpf, anterior.percentual_desconto, anterior.nivel),
+      subject: tpl?.subject ?? "🎉 Sua conta Sou Parceira foi aprovada! Acesse o catálogo",
+      html:    tpl?.html    ?? buildBoasVindasParceira(anterior.nome, cpf, anterior.percentual_desconto, anterior.nivel),
       tags:    [{ name: "tipo", value: "aprovacao_parceira" }],
-    }).catch(err => logger.error("Erro ao enviar email aprovação parceira", { error: (err as Error).message }));
+    })).catch(err => logger.error("Erro ao enviar email aprovação parceira", { error: (err as Error).message }));
   }
 
   res.json(updated);
