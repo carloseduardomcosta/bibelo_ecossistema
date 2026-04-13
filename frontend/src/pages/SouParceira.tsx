@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import axios from 'axios';
 import {
   ShoppingBag, MessageCircle, ChevronLeft, ChevronRight,
   Tag, Search, Medal, Star, Crown, LogOut, Loader2,
-  Mail, KeyRound, ArrowRight, CheckCircle2,
+  ArrowRight, CheckCircle2, Sparkles, TrendingUp, Package,
 } from 'lucide-react';
 
 // Instância axios sem interceptors de auth do CRM
@@ -41,11 +41,7 @@ interface CatalogoPaginado {
   total_paginas: number;
 }
 
-type Tela =
-  | 'verificando'
-  | 'login_cpf_email'
-  | 'login_otp'
-  | 'catalogo';
+type Tela = 'verificando' | 'login_cpf' | 'login_otp' | 'catalogo';
 
 // ── Config visual por nível ──────────────────────────────────────
 
@@ -73,22 +69,182 @@ function maskCPF(value: string): string {
   return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;
 }
 
-// ── Tela: verificando sessão existente ───────────────────────────
+// ── Painel direito — hero imagem ─────────────────────────────────
+
+function HeroPanel() {
+  return (
+    <div className="hidden lg:flex relative overflow-hidden flex-col justify-end">
+      {/* Imagem de fundo */}
+      <img
+        src="/revendedoras.png"
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover object-center"
+        draggable={false}
+      />
+
+      {/* Gradiente overlay — sutil no topo, denso na base */}
+      <div className="absolute inset-0 bg-gradient-to-t from-[#1a1a1a]/85 via-[#1a1a1a]/20 to-transparent" />
+      {/* Toque de cor rosa no topo */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#fe68c4]/25 to-transparent" />
+
+      {/* Badge flutuante — canto superior direito */}
+      <div
+        className="absolute top-8 right-8 bg-white/15 backdrop-blur-md border border-white/30
+                   rounded-2xl px-4 py-3 text-white shadow-lg"
+        style={{ animation: 'floatBadge 4s ease-in-out infinite' }}
+      >
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-[#fe68c4]" />
+          <span className="text-sm font-semibold">Catálogo exclusivo</span>
+        </div>
+        <p className="text-xs text-white/70 mt-0.5">Preços de revendedora</p>
+      </div>
+
+      {/* Badge flutuante — centro esquerda */}
+      <div
+        className="absolute top-1/2 left-8 -translate-y-1/2 bg-white/15 backdrop-blur-md
+                   border border-white/30 rounded-2xl px-4 py-3 text-white shadow-lg"
+        style={{ animation: 'floatBadge 4s ease-in-out infinite 1.5s' }}
+      >
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-[#fff7c1]" />
+          <span className="text-sm font-semibold">Até 30% OFF</span>
+        </div>
+        <p className="text-xs text-white/70 mt-0.5">no preço de custo</p>
+      </div>
+
+      {/* Conteúdo inferior */}
+      <div className="relative z-10 p-10">
+        <p className="text-[#fe68c4] text-sm font-semibold tracking-widest uppercase mb-3">
+          Programa Parceiras
+        </p>
+        <h2
+          className="text-5xl font-bold text-white leading-tight mb-4"
+          style={{ fontFamily: '"Cormorant Garamond", Georgia, serif' }}
+        >
+          Venda o que você<br />ama. Ganhe mais.
+        </h2>
+        <p className="text-white/70 text-base leading-relaxed mb-8 max-w-sm">
+          Acesse preços exclusivos de revendedora, explore o catálogo completo
+          e feche pedidos diretamente pelo WhatsApp.
+        </p>
+
+        {/* Chips de benefícios */}
+        <div className="flex flex-wrap gap-2">
+          {[
+            { icon: Package,    label: '+1.000 produtos' },
+            { icon: TrendingUp, label: 'Desconto por tier' },
+            { icon: MessageCircle, label: 'Suporte WhatsApp' },
+          ].map(({ icon: Icon, label }) => (
+            <span
+              key={label}
+              className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur-sm
+                         border border-white/25 text-white text-xs font-medium
+                         px-3 py-1.5 rounded-full"
+            >
+              <Icon className="w-3 h-3" />
+              {label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Keyframes inline */}
+      <style>{`
+        @keyframes floatBadge {
+          0%, 100% { transform: translateY(0px); }
+          50%       { transform: translateY(-8px); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ── Layout split (login) ─────────────────────────────────────────
+
+function AuthShell({ children, step }: { children: React.ReactNode; step: 1 | 2 }) {
+  return (
+    <div className="min-h-screen grid lg:grid-cols-2" style={{ fontFamily: 'Jost, sans-serif' }}>
+      {/* Esquerda — formulário */}
+      <div className="flex flex-col items-center justify-center bg-white px-8 py-12 min-h-screen">
+        {/* Cabeçalho */}
+        <div className="w-full max-w-sm mb-10">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="w-11 h-11 bg-[#fe68c4] rounded-xl flex items-center justify-center shadow-md">
+              <ShoppingBag className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 leading-none tracking-wide uppercase">Papelaria Bibelô</p>
+              <p className="text-base font-bold text-gray-900 leading-tight">Sou Parceira</p>
+            </div>
+          </div>
+
+          {/* Indicador de etapa */}
+          <div className="flex items-center gap-2 mb-8">
+            {[1, 2].map(s => (
+              <div key={s} className="flex items-center gap-2">
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all
+                    ${s === step
+                      ? 'bg-[#fe68c4] text-white shadow-md shadow-[#fe68c4]/40'
+                      : s < step
+                        ? 'bg-[#fe68c4]/20 text-[#fe68c4]'
+                        : 'bg-gray-100 text-gray-400'
+                    }`}
+                >
+                  {s < step ? <CheckCircle2 className="w-4 h-4" /> : s}
+                </div>
+                {s < 2 && (
+                  <div className={`h-px w-10 ${step > s ? 'bg-[#fe68c4]/40' : 'bg-gray-200'}`} />
+                )}
+              </div>
+            ))}
+            <span className="ml-2 text-xs text-gray-400">
+              {step === 1 ? 'Identificação' : 'Verificação'}
+            </span>
+          </div>
+        </div>
+
+        {/* Conteúdo do step */}
+        <div className="w-full max-w-sm">
+          {children}
+        </div>
+
+        {/* Rodapé */}
+        <p className="mt-10 text-xs text-gray-400 text-center">
+          Ainda não é parceira?{' '}
+          <a
+            href="https://wa.me/5547933862514?text=Quero+ser+revendedora+Bibelô"
+            target="_blank" rel="noreferrer"
+            className="text-[#fe68c4] font-medium hover:underline"
+          >
+            Fale conosco
+          </a>
+        </p>
+      </div>
+
+      {/* Direita — hero */}
+      <HeroPanel />
+    </div>
+  );
+}
+
+// ── Tela: verificando sessão ─────────────────────────────────────
 
 function VerificandoSessao() {
   return (
-    <div className="min-h-screen bg-[#ffe5ec] flex items-center justify-center">
+    <div className="min-h-screen bg-white flex items-center justify-center">
       <div className="text-center">
-        <div className="w-12 h-12 border-4 border-[#fe68c4] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-[#fe68c4] font-medium" style={{ fontFamily: 'Jost, sans-serif' }}>
-          Verificando acesso...
+        <div className="w-10 h-10 border-[3px] border-[#fe68c4] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-sm text-gray-500" style={{ fontFamily: 'Jost, sans-serif' }}>
+          Verificando acesso…
         </p>
       </div>
     </div>
   );
 }
 
-// ── Tela: login CPF + email ───────────────────────────────────────
+// ── Tela: inserir CPF ─────────────────────────────────────────────
 
 interface LoginFormProps {
   onCodigoEnviado: (cpf: string, emailMasked: string | null) => void;
@@ -105,7 +261,6 @@ function LoginForm({ onCodigoEnviado }: LoginFormProps) {
     setLoading(true);
     try {
       const res = await api.post('/souparceira/solicitar', { cpf });
-      // Mesmo que o CPF não exista, simulamos sucesso (segurança)
       onCodigoEnviado(cpf, res.data.email_masked ?? null);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })
@@ -117,75 +272,64 @@ function LoginForm({ onCodigoEnviado }: LoginFormProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[#ffe5ec] flex items-center justify-center p-4"
-         style={{ fontFamily: 'Jost, sans-serif' }}>
-      <div className="w-full max-w-sm">
-
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-[#fe68c4] rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <ShoppingBag className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-800">Sou Parceira</h1>
-          <p className="text-gray-500 text-sm mt-1">Catálogo exclusivo da Papelaria Bibelô</p>
-        </div>
-
-        {/* Card */}
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <p className="text-sm text-gray-600 mb-5 leading-relaxed">
-            Digite seu <strong>CPF</strong> cadastrado e enviaremos um
-            código de acesso para o seu email.
-          </p>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">
-                CPF
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                placeholder="000.000.000-00"
-                value={cpf}
-                onChange={e => setCpf(maskCPF(e.target.value))}
-                required
-                autoFocus
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm
-                           focus:outline-none focus:border-[#fe68c4] focus:ring-1 focus:ring-[#fe68c4]"
-              />
-            </div>
-
-            {erro && (
-              <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-                {erro}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-[#fe68c4] text-white py-2.5 rounded-xl font-semibold text-sm
-                         hover:bg-[#fd4fb8] transition-colors disabled:opacity-50
-                         flex items-center justify-center gap-2"
-            >
-              {loading
-                ? <Loader2 className="w-4 h-4 animate-spin" />
-                : <><Mail className="w-4 h-4" /> Enviar código de acesso</>
-              }
-            </button>
-          </form>
-        </div>
-
-        <p className="text-center text-xs text-gray-400 mt-5">
-          Ainda não é parceira?{' '}
-          <a href="https://wa.me/5547933862514?text=Quero+ser+revendedora+Bibelô"
-             target="_blank" rel="noreferrer"
-             className="text-[#fe68c4] hover:underline">
-            Fale conosco
-          </a>
+    <AuthShell step={1}>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">
+          Bem-vinda de volta
+        </h1>
+        <p className="text-sm text-gray-500 mb-8 leading-relaxed">
+          Digite seu CPF para receber o código de acesso no email cadastrado.
         </p>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label
+              htmlFor="cpf"
+              className="block text-sm font-semibold text-gray-700 mb-2"
+            >
+              CPF
+            </label>
+            <input
+              id="cpf"
+              type="text"
+              inputMode="numeric"
+              placeholder="000.000.000-00"
+              value={cpf}
+              onChange={e => setCpf(maskCPF(e.target.value))}
+              required
+              autoFocus
+              className="w-full px-4 py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl
+                         text-gray-900 text-lg font-semibold tracking-wider
+                         placeholder:text-gray-300 placeholder:font-normal placeholder:tracking-normal
+                         focus:outline-none focus:border-[#fe68c4] focus:bg-white
+                         transition-all duration-200"
+            />
+            <p className="text-xs text-gray-400 mt-1.5">Somente para revendedoras cadastradas</p>
+          </div>
+
+          {erro && (
+            <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <div className="w-1.5 h-1.5 bg-red-400 rounded-full mt-1.5 flex-shrink-0" />
+              <p className="text-sm text-red-600">{erro}</p>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || cpf.replace(/\D/g, '').length < 11}
+            className="w-full bg-[#fe68c4] text-white py-3.5 rounded-xl font-semibold text-base
+                       hover:bg-[#fd4fb8] active:scale-[0.98] transition-all duration-150
+                       disabled:opacity-40 disabled:cursor-not-allowed
+                       flex items-center justify-center gap-2 shadow-md shadow-[#fe68c4]/30"
+          >
+            {loading
+              ? <><Loader2 className="w-5 h-5 animate-spin" /> Enviando…</>
+              : <><ArrowRight className="w-5 h-5" /> Continuar</>
+            }
+          </button>
+        </form>
       </div>
-    </div>
+    </AuthShell>
   );
 }
 
@@ -194,31 +338,109 @@ function LoginForm({ onCodigoEnviado }: LoginFormProps) {
 interface OTPFormProps {
   cpf: string;
   emailMasked: string | null;
-  onLogado: (rev: Revendedora, token: string) => void;
+  onLogado: (rev: Revendedora) => void;
   onVoltar: () => void;
 }
 
-function OTPForm({ cpf, emailMasked, onLogado, onVoltar }: OTPFormProps) {
-  const [codigo, setCodigo]     = useState('');
-  const [loading, setLoading]   = useState(false);
-  const [reenvio, setReenvio]   = useState(false);
-  const [erro, setErro]         = useState<string | null>(null);
+// 6 inputs individuais para o OTP
+function OTPBoxes({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const len  = 6;
 
-  async function handleSubmit(e: React.FormEvent) {
+  function focus(i: number) {
+    refs.current[i]?.focus();
+  }
+
+  function handleKey(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Backspace') {
+      if (value[i]) {
+        onChange(value.slice(0, i) + value.slice(i + 1));
+      } else if (i > 0) {
+        onChange(value.slice(0, i - 1) + value.slice(i));
+        focus(i - 1);
+      }
+      e.preventDefault();
+    } else if (e.key === 'ArrowLeft' && i > 0) {
+      focus(i - 1);
+    } else if (e.key === 'ArrowRight' && i < len - 1) {
+      focus(i + 1);
+    }
+  }
+
+  function handleInput(i: number, e: React.ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!raw) return;
+    // Colar múltiplos caracteres
+    const chars = raw.slice(0, len - i);
+    const next  = (value + '').slice(0, i) + chars + (value + '').slice(i + chars.length);
+    const clipped = next.slice(0, len);
+    onChange(clipped);
+    const nextFocus = Math.min(i + chars.length, len - 1);
+    focus(nextFocus);
+  }
+
+  function handlePaste(e: React.ClipboardEvent) {
     e.preventDefault();
+    const pasted = e.clipboardData.getData('text').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, len);
+    onChange(pasted);
+    focus(Math.min(pasted.length, len - 1));
+  }
+
+  return (
+    <div className="flex gap-2 justify-between">
+      {Array.from({ length: len }).map((_, i) => (
+        <input
+          key={i}
+          ref={el => { refs.current[i] = el; }}
+          type="text"
+          inputMode="text"
+          maxLength={1}
+          value={value[i] ?? ''}
+          onChange={e => handleInput(i, e)}
+          onKeyDown={e => handleKey(i, e)}
+          onFocus={e => e.target.select()}
+          onPaste={i === 0 ? handlePaste : undefined}
+          autoFocus={i === 0}
+          autoComplete={i === 0 ? 'one-time-code' : 'off'}
+          className={`w-12 h-14 text-center text-2xl font-bold rounded-xl border-2
+                      text-gray-900 bg-gray-50 uppercase
+                      transition-all duration-200 focus:outline-none
+                      ${value[i]
+                        ? 'border-[#fe68c4] bg-[#ffe5ec]/50 text-[#fe68c4]'
+                        : 'border-gray-200 focus:border-[#fe68c4] focus:bg-white'
+                      }`}
+          style={{ fontFamily: 'monospace' }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function OTPForm({ cpf, emailMasked, onLogado, onVoltar }: OTPFormProps) {
+  const [codigo, setCodigo]   = useState('');
+  const [loading, setLoading] = useState(false);
+  const [reenvio, setReenvio] = useState(false);
+  const [erro, setErro]       = useState<string | null>(null);
+
+  // Auto-submit quando todos os 6 caracteres preenchidos
+  useEffect(() => {
+    if (codigo.length === 6) {
+      submitCodigo(codigo);
+    }
+  }, [codigo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function submitCodigo(cod: string) {
     setErro(null);
     setLoading(true);
     try {
-      const res = await api.post('/souparceira/entrar', {
-        cpf,
-        codigo: codigo.toUpperCase(),
-      });
+      const res = await api.post('/souparceira/entrar', { cpf, codigo: cod });
       localStorage.setItem('souparceira_token', res.data.token);
-      onLogado(res.data.revendedora, res.data.token);
+      onLogado(res.data.revendedora);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })
         ?.response?.data?.error;
       setErro(msg || 'Código inválido ou expirado.');
+      setCodigo('');
     } finally {
       setLoading(false);
     }
@@ -227,6 +449,7 @@ function OTPForm({ cpf, emailMasked, onLogado, onVoltar }: OTPFormProps) {
   async function handleReenviar() {
     setReenvio(true);
     setErro(null);
+    setCodigo('');
     try {
       await api.post('/souparceira/solicitar', { cpf });
     } catch {
@@ -237,81 +460,63 @@ function OTPForm({ cpf, emailMasked, onLogado, onVoltar }: OTPFormProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[#ffe5ec] flex items-center justify-center p-4"
-         style={{ fontFamily: 'Jost, sans-serif' }}>
-      <div className="w-full max-w-sm">
+    <AuthShell step={2}>
+      <div>
+        <button
+          onClick={onVoltar}
+          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700
+                     transition-colors mb-6 -ml-1"
+        >
+          <ChevronLeft className="w-4 h-4" /> Voltar
+        </button>
 
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-[#fe68c4] rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <KeyRound className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-800">Código de acesso</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            {emailMasked
-              ? <>Enviamos o código para <strong>{emailMasked}</strong></>
-              : 'Verifique seu email cadastrado'}
-          </p>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">
+          Código de acesso
+        </h1>
+        <p className="text-sm text-gray-500 mb-8 leading-relaxed">
+          {emailMasked
+            ? <>Código enviado para <strong className="text-gray-700">{emailMasked}</strong></>
+            : 'Verifique o email cadastrado na sua conta.'}
+          {' '}Válido por 15 minutos.
+        </p>
 
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">
-                Código (6 caracteres)
-              </label>
-              <input
-                type="text"
-                placeholder="ABC123"
-                value={codigo}
-                onChange={e => setCodigo(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
-                required
-                autoFocus
-                autoComplete="one-time-code"
-                className="w-full px-3 py-3 border border-gray-200 rounded-xl text-center
-                           text-2xl font-bold tracking-[0.4em] font-mono
-                           focus:outline-none focus:border-[#fe68c4] focus:ring-1 focus:ring-[#fe68c4]
-                           uppercase"
-              />
-              <p className="text-xs text-gray-400 mt-1.5 text-center">Válido por 15 minutos</p>
+        <div className="space-y-6">
+          <OTPBoxes value={codigo} onChange={setCodigo} />
+
+          {loading && (
+            <div className="flex items-center justify-center gap-2 text-sm text-[#fe68c4]">
+              <Loader2 className="w-4 h-4 animate-spin" /> Verificando…
             </div>
+          )}
 
-            {erro && (
-              <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-                {erro}
+          {erro && (
+            <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <div className="w-1.5 h-1.5 bg-red-400 rounded-full mt-1.5 flex-shrink-0" />
+              <p className="text-sm text-red-600">{erro}</p>
+            </div>
+          )}
+
+          {/* Reenvio */}
+          <div className="text-center pt-2">
+            {reenvio ? (
+              <p className="text-sm text-green-600 flex items-center justify-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4" /> Novo código enviado!
+              </p>
+            ) : (
+              <p className="text-sm text-gray-400">
+                Não recebeu?{' '}
+                <button
+                  onClick={handleReenviar}
+                  className="text-[#fe68c4] font-semibold hover:underline"
+                >
+                  Reenviar código
+                </button>
               </p>
             )}
-
-            <button
-              type="submit"
-              disabled={loading || codigo.length < 6}
-              className="w-full bg-[#fe68c4] text-white py-2.5 rounded-xl font-semibold text-sm
-                         hover:bg-[#fd4fb8] transition-colors disabled:opacity-50
-                         flex items-center justify-center gap-2"
-            >
-              {loading
-                ? <Loader2 className="w-4 h-4 animate-spin" />
-                : <><ArrowRight className="w-4 h-4" /> Entrar no catálogo</>
-              }
-            </button>
-          </form>
-
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-            <button onClick={onVoltar}
-              className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
-              ← Voltar
-            </button>
-            <button
-              onClick={handleReenviar}
-              disabled={reenvio}
-              className="text-xs text-[#fe68c4] hover:underline disabled:opacity-50 transition-colors"
-            >
-              {reenvio ? <><CheckCircle2 className="w-3 h-3 inline mr-1" />Código reenviado!</> : 'Reenviar código'}
-            </button>
           </div>
         </div>
       </div>
-    </div>
+    </AuthShell>
   );
 }
 
@@ -323,43 +528,35 @@ interface CatalogoProps {
 }
 
 function Catalogo({ rev, onLogout }: CatalogoProps) {
-  const [categorias, setCategorias]     = useState<Categoria[]>([]);
-  const [catalogo, setCatalogo]         = useState<CatalogoPaginado | null>(null);
-  const [loadingCat, setLoadingCat]     = useState(false);
-  const [searchInput, setSearchInput]   = useState('');
-  const [search, setSearch]             = useState('');
+  const [categorias, setCategorias]           = useState<Categoria[]>([]);
+  const [catalogo, setCatalogo]               = useState<CatalogoPaginado | null>(null);
+  const [loadingCat, setLoadingCat]           = useState(false);
+  const [searchInput, setSearchInput]         = useState('');
+  const [search, setSearch]                   = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
-  const [pagina, setPagina]             = useState(1);
+  const [pagina, setPagina]                   = useState(1);
 
-  // Carrega categorias uma vez
   useEffect(() => {
     api.get('/souparceira/categorias').then(r => setCategorias(r.data)).catch(() => {});
   }, []);
 
-  // Carrega catálogo
   const fetchCatalogo = useCallback(async (pg: number, s: string, cat: string) => {
     setLoadingCat(true);
     try {
       const params = new URLSearchParams({
-        page:  String(pg),
-        limit: '24',
-        ...(s   && { search: s }),
-        ...(cat && { categoria: cat }),
+        page: String(pg), limit: '24',
+        ...(s && { search: s }), ...(cat && { categoria: cat }),
       });
       const res = await api.get(`/souparceira/catalogo?${params}`);
       setCatalogo(res.data);
-    } catch {
-      // mantém estado anterior
-    } finally {
+    } catch { /* mantém estado */ } finally {
       setLoadingCat(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchCatalogo(pagina, search, categoriaFiltro);
-  }, [pagina, search, categoriaFiltro, fetchCatalogo]);
+  useEffect(() => { fetchCatalogo(pagina, search, categoriaFiltro); },
+    [pagina, search, categoriaFiltro, fetchCatalogo]);
 
-  // Debounce busca
   useEffect(() => {
     const t = setTimeout(() => { setSearch(searchInput); setPagina(1); }, 350);
     return () => clearTimeout(t);
@@ -372,32 +569,35 @@ function Catalogo({ rev, onLogout }: CatalogoProps) {
   );
 
   return (
-    <div className="min-h-screen bg-[#ffe5ec]" style={{ fontFamily: 'Jost, sans-serif' }}>
+    <div className="min-h-screen bg-[#fdf6f9]" style={{ fontFamily: 'Jost, sans-serif' }}>
 
       {/* Header */}
-      <header className="bg-white shadow-sm sticky top-0 z-10">
+      <header className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-[#fe68c4] rounded-xl flex items-center justify-center">
-              <ShoppingBag className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 bg-[#fe68c4] rounded-xl flex items-center justify-center shadow-sm">
+              <ShoppingBag className="w-4 h-4 text-white" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 leading-none">Sou Parceira</p>
-              <p className="font-bold text-gray-800 leading-tight text-sm">Papelaria Bibelô</p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-widest leading-none">Sou Parceira</p>
+              <p className="font-bold text-gray-900 text-sm leading-tight">Papelaria Bibelô</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ${nivelCfg.cor}`}>
+
+          <div className="flex items-center gap-3">
+            <span className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
+                            text-xs font-semibold border ${nivelCfg.cor}`}>
               <NivelIcon className="w-3 h-3" />
               {nivelCfg.label} · {rev.percentual_desconto}% off
             </span>
-            <p className="text-sm font-semibold text-gray-700 hidden sm:block max-w-[130px] truncate">
+            <p className="text-sm font-semibold text-gray-800 hidden md:block max-w-[140px] truncate">
               {rev.nome}
             </p>
             <button
               onClick={onLogout}
               title="Sair"
-              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100
+                         rounded-lg transition-colors"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -405,26 +605,49 @@ function Catalogo({ rev, onLogout }: CatalogoProps) {
         </div>
       </header>
 
+      {/* Hero mini — desconto do tier */}
+      <div className="bg-gradient-to-r from-[#fe68c4] to-[#fd4fb8] text-white">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-medium text-white/70 uppercase tracking-wider mb-0.5">
+              Seu desconto exclusivo
+            </p>
+            <p className="text-2xl font-bold leading-none">
+              {rev.percentual_desconto}% OFF{' '}
+              <span className="text-base font-normal text-white/80">em todo o catálogo</span>
+            </p>
+          </div>
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                          bg-white/20 border border-white/30 text-white text-sm font-semibold`}>
+            <NivelIcon className="w-4 h-4" />
+            Tier {nivelCfg.label}
+          </span>
+        </div>
+      </div>
+
       <div className="max-w-5xl mx-auto px-4 py-5">
 
         {/* Busca + filtro */}
         <div className="flex flex-col sm:flex-row gap-3 mb-5">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
               placeholder="Buscar produto..."
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm
-                         focus:outline-none focus:border-[#fe68c4] focus:ring-1 focus:ring-[#fe68c4]"
+              className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl
+                         text-gray-900 text-sm font-medium
+                         focus:outline-none focus:border-[#fe68c4] focus:ring-1 focus:ring-[#fe68c4]/30
+                         transition-all shadow-sm"
             />
           </div>
           <select
             value={categoriaFiltro}
             onChange={e => { setCategoriaFiltro(e.target.value); setPagina(1); }}
-            className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm
-                       focus:outline-none focus:border-[#fe68c4] min-w-[180px]"
+            className="bg-white border border-gray-200 rounded-xl px-3 py-3 text-sm text-gray-700
+                       font-medium focus:outline-none focus:border-[#fe68c4] min-w-[200px]
+                       shadow-sm cursor-pointer"
           >
             <option value="">Todas as categorias</option>
             {categorias.map(c => (
@@ -437,8 +660,9 @@ function Catalogo({ rev, onLogout }: CatalogoProps) {
 
         {/* Totalizador */}
         {catalogo && (
-          <p className="text-xs text-gray-500 mb-4">
-            {catalogo.total} produto{catalogo.total !== 1 ? 's' : ''}
+          <p className="text-xs text-gray-500 mb-4 font-medium">
+            <span className="text-[#fe68c4] font-bold">{catalogo.total}</span>{' '}
+            produto{catalogo.total !== 1 ? 's' : ''}
             {categoriaFiltro ? ` em ${formatCategoria(categoriaFiltro)}` : ''}
             {search ? ` para "${search}"` : ''}
           </p>
@@ -448,53 +672,75 @@ function Catalogo({ rev, onLogout }: CatalogoProps) {
         {loadingCat ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="bg-white rounded-xl p-4 animate-pulse">
-                <div className="h-3 bg-gray-200 rounded mb-2 w-3/4" />
-                <div className="h-3 bg-gray-200 rounded mb-3 w-1/2" />
-                <div className="h-5 bg-gray-200 rounded w-2/3" />
+              <div key={i} className="bg-white rounded-xl p-4 animate-pulse border border-gray-100">
+                <div className="h-2.5 bg-gray-200 rounded-full mb-3 w-2/3" />
+                <div className="h-3 bg-gray-200 rounded mb-1.5 w-full" />
+                <div className="h-3 bg-gray-200 rounded mb-4 w-3/4" />
+                <div className="h-5 bg-[#ffe5ec] rounded w-1/2" />
               </div>
             ))}
           </div>
         ) : catalogo && catalogo.produtos.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {catalogo.produtos.map(p => (
-              <div key={p.id} className="bg-white rounded-xl p-3.5 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between gap-1 mb-2">
-                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#fe68c4] bg-[#ffe5ec] px-1.5 py-0.5 rounded-full leading-none">
-                    <Tag className="w-2.5 h-2.5" />
-                    {formatCategoria(p.categoria)}
-                  </span>
-                </div>
-                <p className="text-xs font-medium text-gray-700 leading-snug mb-3 line-clamp-3">{p.nome}</p>
-                <p className="text-base font-bold text-[#fe68c4]">{formatCurrency(p.preco_final)}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">preço de revenda</p>
+              <div
+                key={p.id}
+                className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm
+                           hover:shadow-md hover:border-[#fe68c4]/30
+                           transition-all duration-200 group cursor-default"
+              >
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold
+                                 text-[#fe68c4] bg-[#ffe5ec] px-2 py-0.5 rounded-full
+                                 leading-none mb-3 max-w-full truncate">
+                  <Tag className="w-2.5 h-2.5 flex-shrink-0" />
+                  <span className="truncate">{formatCategoria(p.categoria)}</span>
+                </span>
+                <p className="text-sm font-semibold text-gray-800 leading-snug mb-3 line-clamp-3
+                              group-hover:text-gray-900 transition-colors">
+                  {p.nome}
+                </p>
+                <p className="text-lg font-bold text-[#fe68c4] leading-none">
+                  {formatCurrency(p.preco_final)}
+                </p>
+                <p className="text-[10px] text-gray-400 mt-0.5 font-medium">preço de revenda</p>
               </div>
             ))}
           </div>
         ) : (
-          <div className="text-center py-16">
-            <ShoppingBag className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 text-sm">Nenhum produto encontrado</p>
+          <div className="text-center py-20">
+            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <ShoppingBag className="w-7 h-7 text-gray-400" />
+            </div>
+            <p className="text-gray-600 font-semibold">Nenhum produto encontrado</p>
+            <p className="text-gray-400 text-sm mt-1">Tente ajustar os filtros de busca</p>
           </div>
         )}
 
         {/* Paginação */}
         {catalogo && catalogo.total_paginas > 1 && (
-          <div className="flex items-center justify-center gap-3 mt-6">
+          <div className="flex items-center justify-center gap-3 mt-8 pb-4">
             <button
               onClick={() => setPagina(p => Math.max(1, p - 1))}
               disabled={pagina === 1}
-              className="p-2 bg-white rounded-xl border border-gray-200 disabled:opacity-40 hover:border-[#fe68c4] transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200
+                         rounded-xl text-sm font-medium text-gray-600
+                         disabled:opacity-40 hover:border-[#fe68c4] hover:text-[#fe68c4]
+                         transition-colors shadow-sm"
             >
-              <ChevronLeft className="w-4 h-4 text-gray-600" />
+              <ChevronLeft className="w-4 h-4" /> Anterior
             </button>
-            <span className="text-sm text-gray-600">{pagina} / {catalogo.total_paginas}</span>
+            <span className="text-sm text-gray-500 font-medium px-2">
+              {pagina} de {catalogo.total_paginas}
+            </span>
             <button
               onClick={() => setPagina(p => Math.min(catalogo!.total_paginas, p + 1))}
               disabled={pagina === catalogo.total_paginas}
-              className="p-2 bg-white rounded-xl border border-gray-200 disabled:opacity-40 hover:border-[#fe68c4] transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200
+                         rounded-xl text-sm font-medium text-gray-600
+                         disabled:opacity-40 hover:border-[#fe68c4] hover:text-[#fe68c4]
+                         transition-colors shadow-sm"
             >
-              <ChevronRight className="w-4 h-4 text-gray-600" />
+              Próxima <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         )}
@@ -504,12 +750,13 @@ function Catalogo({ rev, onLogout }: CatalogoProps) {
       <a
         href={`https://wa.me/5547933862514?text=${msgWA}`}
         target="_blank" rel="noreferrer"
-        className="fixed bottom-5 right-5 bg-green-500 text-white px-4 py-3 rounded-2xl
-                   shadow-lg hover:bg-green-600 transition-colors flex items-center gap-2
-                   font-medium text-sm z-50"
+        className="fixed bottom-6 right-6 bg-[#25d366] text-white px-5 py-3.5 rounded-2xl
+                   shadow-xl hover:bg-[#1fba57] active:scale-95 transition-all
+                   flex items-center gap-2 font-semibold text-sm z-50
+                   shadow-[#25d366]/40"
       >
         <MessageCircle className="w-5 h-5" />
-        <span className="hidden sm:inline">Fazer pedido</span>
+        <span>Fazer pedido</span>
       </a>
     </div>
   );
@@ -523,16 +770,14 @@ export default function SouParceira() {
   const [emailMasked, setEmailMasked] = useState<string | null>(null);
   const [rev, setRev]                 = useState<Revendedora | null>(null);
 
-  // Verifica token existente no localStorage
   useEffect(() => {
     const token = localStorage.getItem('souparceira_token');
-    if (!token) { setTela('login_cpf_email'); return; }
-
+    if (!token) { setTela('login_cpf'); return; }
     api.get('/souparceira/me')
       .then(r => { setRev(r.data); setTela('catalogo'); })
       .catch(() => {
         localStorage.removeItem('souparceira_token');
-        setTela('login_cpf_email');
+        setTela('login_cpf');
       });
   }, []);
 
@@ -547,18 +792,18 @@ export default function SouParceira() {
   function handleLogout() {
     localStorage.removeItem('souparceira_token');
     setRev(null); setCpf(''); setEmailMasked(null);
-    setTela('login_cpf_email');
+    setTela('login_cpf');
   }
 
-  if (tela === 'verificando')     return <VerificandoSessao />;
-  if (tela === 'login_cpf_email') return <LoginForm onCodigoEnviado={handleCodigoEnviado} />;
+  if (tela === 'verificando')  return <VerificandoSessao />;
+  if (tela === 'login_cpf')    return <LoginForm onCodigoEnviado={handleCodigoEnviado} />;
   if (tela === 'login_otp')
     return (
       <OTPForm
         cpf={cpf}
         emailMasked={emailMasked}
         onLogado={handleLogado}
-        onVoltar={() => setTela('login_cpf_email')}
+        onVoltar={() => setTela('login_cpf')}
       />
     );
   if (tela === 'catalogo' && rev)
