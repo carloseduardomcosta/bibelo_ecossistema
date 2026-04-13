@@ -1145,3 +1145,19 @@ sync.category_sync_log         (auditoria)
   - URL state completo: todos os filtros em query params, `router.push({ scroll: false })`
   - Desktop: sidebar sticky. Mobile: pills top-4 categorias + sort dropdown
   - Skeleton, empty state, grid 2-col mobile / 4-col desktop
+
+### Sessão 12/04/2026 — Portal "Sou Parceira" (OTP por CPF)
+
+- **259904b** — feat(souparceira): portal passwordless B2B com OTP por CPF
+  - Novo subdomínio `https://souparceira.papelariabibelo.com.br`
+  - Autenticação sem senha: CPF → sistema busca email cadastrado → envia OTP 6 chars → JWT 24h
+  - OTP: 6 caracteres do alfabeto sem ambiguidade (`ABCDEFGHJKMNPQRSTUVWXYZ23456789`), 15 min de validade, uso único, invalida OTPs anteriores ao gerar novo
+  - Rate limit: 5 req/10min por IP (Nginx+Express) + máx 3 OTPs/hora por revendedora (banco)
+  - Segurança: delay 400ms quando CPF não encontrado (anti-timing attack), email mascarado `co*****@dominio.com` na resposta, JWT com `iss: 'souparceira'` (isolado do CRM)
+  - Backend `api/src/routes/portal-souparceira.ts`: solicitar, entrar, /me, /categorias, /catálogo (paginado, busca, filtro por categoria)
+  - Frontend `frontend/src/pages/SouParceira.tsx`: tela CPF → OTP (com reenvio) → catálogo completo
+  - `App.tsx`: detecção `window.location.hostname.startsWith('souparceira')` → renderiza portal isolado
+  - Migration `035_portal_souparceira.sql`: `crm.portal_parceira_otp` + 2 índices
+  - Nginx: vhost HTTPS `souparceira.papelariabibelo.com.br` → frontend :3000 + `/api/` → API :4000
+  - SSL: Let's Encrypt via certbot, renovação automática
+  - DNS: registro A Cloudflare `souparceira → 187.77.254.241` (DNS-only) adicionado via API
