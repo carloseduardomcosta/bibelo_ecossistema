@@ -39,6 +39,24 @@ URL: `webhook.papelariabibelo.com.br/api/email/img/{hash}.jpg`
 Configuração nativa NuvemShop (Sul/Sudeste, R$79+, opção mais barata) — não depende de cupom.
 Banner presente em todos os emails de carrinho/produto.
 
+## Personalização regional — frete grátis Sul/SE
+
+Emails detectam automaticamente a região do cliente e personalizam a mensagem de frete.
+
+**Arquivo:** `api/src/utils/regiao.ts` — `detectarRegiao()`, `bannerFretep()`, `itemFreteHtml()`, `textoFreteInline()`
+
+**Fontes em ordem de prioridade:**
+1. `crm.customers.estado` (UF) — mais confiável
+2. DDD do `crm.customers.telefone` — ex: 47→SC, 11→SP
+3. GeoIP do IP da requisição via `geoip-lite` — fallback
+
+**Comportamento:**
+- Sul/Sudeste (SC, PR, RS, SP, RJ, ES, MG): "🚚 Frete grátis para Sul e Sudeste acima de R$ 79!"
+- Outras regiões (PA, BA, GO...): "📦 Entregamos para todo o Brasil!"
+- Região desconhecida: exibe Sul/SE por padrão (maioria das clientes)
+
+**Aplicado em:** 11 templates de fluxo, email de verificação de lead, página de confirmação, lembrete de verificação (cron).
+
 ## Dedup de template — anti-duplicidade cross-canal
 
 Antes de executar qualquer step de email, o motor verifica se o cliente já recebeu o **mesmo template** nas últimas **72h**, tanto por fluxo quanto por campanha manual.

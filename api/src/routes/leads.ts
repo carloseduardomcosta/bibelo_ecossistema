@@ -11,6 +11,8 @@ import { authMiddleware } from "../middleware/auth";
 
 import rateLimit from "express-rate-limit";
 import { escHtml as esc } from "../utils/sanitize";
+import { resolveGeo } from "../utils/geoip";
+import { type Regiao, detectarRegiao, itemFreteHtml } from "../utils/regiao";
 
 export const leadsRouter = Router();
 
@@ -84,10 +86,9 @@ export function gerarLinkVerificacao(email: string): string {
   return `${base}/api/leads/confirm?email=${encodeURIComponent(email)}&token=${token}`;
 }
 
-async function enviarEmailVerificacao(email: string, cupom: string | null, nome: string | null): Promise<void> {
+async function enviarEmailVerificacao(email: string, cupom: string | null, nome: string | null, regiao: Regiao = null): Promise<void> {
   const link = gerarLinkVerificacao(email);
-  const isBibelo10 = cupom === "BIBELO10";
-  const descontoTexto = isBibelo10 ? "10% OFF" : "7% OFF";
+  const descontoTexto = "10% OFF";
   const nomeDisplay = (nome || "Cliente").replace(/[<>"'&]/g, "");
 
   await sendEmail({
@@ -118,7 +119,7 @@ async function enviarEmailVerificacao(email: string, cupom: string | null, nome:
       </p>
       <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:12px;padding:16px 20px;margin:0 0 24px;text-align:left;">
         <p style="margin:0 0 6px;font-size:13px;color:#555;">🏷️ ${descontoTexto} de desconto na 1ª compra</p>
-        <p style="margin:0 0 6px;font-size:13px;color:#555;">🚚 Frete grátis Sul/Sudeste acima de R$79</p>
+        ${itemFreteHtml(regiao, "margin:0 0 6px;font-size:13px;color:#555;")}
         <p style="margin:0 0 6px;font-size:13px;color:#555;">🎁 Mimo surpresa em toda compra</p>
         <p style="margin:0;font-size:13px;color:#555;">✨ Novidades antes de todo mundo</p>
       </div>
@@ -177,6 +178,12 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
   const nome = rawNome ? rawNome.replace(/<[^>]*>/g, "").trim() : undefined;
   const { telefone, popup_id, visitor_id, pagina } = parsed.data;
   const email = parsed.data.email.toLowerCase().trim();
+
+  // Detecta região pelo IP (fallback para quando não há telefone/estado no cadastro)
+  const rawIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+    || req.socket.remoteAddress;
+  const geoCapture = resolveGeo(rawIp);
+  const regiaoCaptura = detectarRegiao({ telefone, geoRegion: geoCapture?.region });
 
   // ── Bloqueia clientes existentes que já compraram ──────────
   const clienteExistente = await queryOne<{ id: string; total_pedidos: string }>(
@@ -241,7 +248,7 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
 
     // Ainda não confirmou — reenvia email de verificação
     try {
-      await enviarEmailVerificacao(email, insertResult.cupom || cupom, nome || null);
+      await enviarEmailVerificacao(email, insertResult.cupom || cupom, nome || null, regiaoCaptura);
     } catch (err) {
       logger.warn("Falha ao reenviar verificação", { email, error: String(err) });
     }
@@ -275,7 +282,7 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
 
   // Envia email de verificação (cupom só após confirmar)
   try {
-    await enviarEmailVerificacao(email, cupom, nome || null);
+    await enviarEmailVerificacao(email, cupom, nome || null, regiaoCaptura);
   } catch (err) {
     logger.warn("Falha ao enviar verificação de lead", { email, error: String(err) });
   }
@@ -367,16 +374,33 @@ leadsRouter.get("/confirm", publicLimiter, async (req: Request, res: Response) =
     logger.info("Lead verificou email", { email, leadId: lead.id, customerId: lead.customer_id });
   }
 
+  // Detecta região para personalizar a página de confirmação
+  let regiaoConfirm: Regiao = null;
+  if (lead.customer_id) {
+    const customerGeo = await queryOne<{ estado: string | null; telefone: string | null }>(
+      "SELECT estado, telefone FROM crm.customers WHERE id = $1",
+      [lead.customer_id]
+    );
+    if (customerGeo) {
+      regiaoConfirm = detectarRegiao({ estado: customerGeo.estado, telefone: customerGeo.telefone });
+    }
+  }
+  if (regiaoConfirm === null) {
+    const rawIpConfirm = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+      || req.socket.remoteAddress;
+    const geoConfirm = resolveGeo(rawIpConfirm);
+    regiaoConfirm = detectarRegiao({ geoRegion: geoConfirm?.region });
+  }
+
   // Mostra página com o cupom
-  res.send(paginaCupomVerificado(email, lead.cupom));
+  res.send(paginaCupomVerificado(email, lead.cupom, regiaoConfirm));
 });
 
 // ── Páginas HTML de verificação ──────────────────────────────
 
-function paginaCupomVerificado(email: string, cupom: string | null): string {
+function paginaCupomVerificado(email: string, cupom: string | null, regiao: Regiao = null): string {
   const cupomCode = esc(cupom || "BIBELO10");
-  const isBibelo10 = cupom === "BIBELO10";
-  const descontoTexto = isBibelo10 ? "10% OFF" : "7% OFF";
+  const descontoTexto = "10% OFF";
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -400,7 +424,7 @@ function paginaCupomVerificado(email: string, cupom: string | null): string {
       <div style="background:#fff7c1;border-radius:10px;padding:14px 16px;margin:0 0 20px;text-align:left;">
         <p style="margin:0 0 8px;font-size:13px;color:#2d2d2d;font-weight:600;">O que você ganhou:</p>
         <p style="margin:0 0 4px;font-size:13px;color:#555;">🏷️ ${descontoTexto} de desconto na 1ª compra</p>
-        <p style="margin:0 0 4px;font-size:13px;color:#555;">🚚 Frete grátis Sul/Sudeste acima de R$79</p>
+        ${itemFreteHtml(regiao, "margin:0 0 4px;font-size:13px;color:#555;")}
         <p style="margin:0 0 4px;font-size:13px;color:#555;">🎁 Mimo surpresa em toda compra</p>
         <p style="margin:0;font-size:13px;color:#555;">✨ Novidades antes de todo mundo</p>
       </div>

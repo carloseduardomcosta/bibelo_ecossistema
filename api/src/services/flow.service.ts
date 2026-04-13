@@ -6,6 +6,7 @@ import { gerarLinkDescadastro, proxyImageUrl, warmProxyImage } from "../routes/e
 
 import crypto from "crypto";
 import { escHtml } from "../utils/sanitize";
+import { type Regiao, detectarRegiao, bannerFretep, textoFreteInline, itemFreteHtml } from "../utils/regiao";
 
 const GRUPO_VIP_URL = "https://chat.whatsapp.com/DzOJHBZ2vECF1taXiRRv6g";
 
@@ -351,8 +352,8 @@ export async function executeStep(executionId: string): Promise<boolean> {
   }
 
   // Busca dados do cliente
-  const customer = await queryOne<{ id: string; nome: string; email: string | null; telefone: string | null; email_optout: boolean }>(
-    "SELECT id, nome, email, telefone, email_optout FROM crm.customers WHERE id = $1",
+  const customer = await queryOne<{ id: string; nome: string; email: string | null; telefone: string | null; email_optout: boolean; estado: string | null }>(
+    "SELECT id, nome, email, telefone, email_optout, estado FROM crm.customers WHERE id = $1",
     [execution.customer_id]
   );
 
@@ -433,9 +434,12 @@ export async function executeStep(executionId: string): Promise<boolean> {
   try {
     let resultado: Record<string, unknown> = {};
 
+    // Detecta região do cliente para personalização de e-mails (frete grátis Sul/SE)
+    const regiaoCliente = detectarRegiao({ estado: customer.estado, telefone: customer.telefone });
+
     switch (currentStep.tipo) {
       case "email":
-        resultado = await executeEmailStep(customer, currentStep, execution.metadata);
+        resultado = await executeEmailStep(customer, currentStep, execution.metadata, regiaoCliente);
         break;
 
       case "whatsapp":
@@ -617,7 +621,8 @@ async function failExecution(executionId: string, motivo: string): Promise<void>
 async function executeEmailStep(
   customer: { id: string; nome: string; email: string | null },
   step: FlowStep,
-  metadata: Record<string, unknown>
+  metadata: Record<string, unknown>,
+  regiao: Regiao = null
 ): Promise<Record<string, unknown>> {
   if (!customer.email) {
     return { skipped: true, reason: "Cliente sem email" };
@@ -643,10 +648,10 @@ async function executeEmailStep(
     const totalPedidos = parseInt(scoreData?.total_pedidos || "0", 10);
     if (totalPedidos <= 1) {
       metadata.primeira_compra = true;
-      const cupom = await gerarCupomUnico(customer.nome, "percentage", 7, 30);
+      const cupom = await gerarCupomUnico(customer.nome, "percentage", 10, 30);
       if (cupom) {
         metadata.cupom = cupom;
-        logger.info("Cupom 7% OFF 1ª compra gerado", { cupom, customerId: customer.id });
+        logger.info("Cupom 10% OFF 1ª compra gerado", { cupom, customerId: customer.id });
       }
     }
   }
@@ -654,7 +659,7 @@ async function executeEmailStep(
   if (!template) {
     // Usa templates built-in ricos (com fotos, recovery_url, etc.)
     _currentRecipientEmail = customer.email || "";
-    const html = await buildFlowEmail(customer.nome, step.template || "", metadata);
+    const html = await buildFlowEmail(customer.nome, step.template || "", metadata, regiao);
     const subject = getFlowSubject(step.template || "", customer.nome, metadata);
 
     const result = await sendEmail({
@@ -924,7 +929,7 @@ function buildCartProductsTable(itens: Array<Record<string, unknown>>, valor?: s
   ${valor ? `<p style="text-align:right;font-size:18px;font-weight:700;color:#fe68c4;margin:10px 0;">Total: ${valor}</p>` : ""}`;
 }
 
-function buildAbandonedCartEmail(nome: string, metadata: Record<string, unknown>): string {
+function buildAbandonedCartEmail(nome: string, metadata: Record<string, unknown>, regiao: Regiao = null): string {
   const valor = formatBRL(metadata.valor);
   const recoveryUrl = (metadata.recovery_url as string) || "https://www.papelariabibelo.com.br";
   const itens = Array.isArray(metadata.itens) ? metadata.itens : [];
@@ -937,7 +942,7 @@ function buildAbandonedCartEmail(nome: string, metadata: Record<string, unknown>
     </p>
     ${buildCartProductsTable(itens, valor)}
     <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
-      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+      ${bannerFretep(regiao)}
     </div>
     ${ctaButton("Finalizar minha compra", recoveryUrl)}
     <p style="font-size:13px;color:#999;text-align:center;">
@@ -948,7 +953,7 @@ function buildAbandonedCartEmail(nome: string, metadata: Record<string, unknown>
 
 // ── Template: Última Chance ────────────────────────────────────
 
-function buildLastChanceEmail(nome: string, metadata: Record<string, unknown>): string {
+function buildLastChanceEmail(nome: string, metadata: Record<string, unknown>, regiao: Regiao = null): string {
   const valor = formatBRL(metadata.valor);
   const recoveryUrl = (metadata.recovery_url as string) || "https://www.papelariabibelo.com.br";
   const itens = Array.isArray(metadata.itens) ? metadata.itens : [];
@@ -961,7 +966,7 @@ function buildLastChanceEmail(nome: string, metadata: Record<string, unknown>): 
     </div>
     ${buildCartProductsTable(itens, valor)}
     <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
-      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+      ${bannerFretep(regiao)}
     </div>
     ${ctaButton("Garantir meus produtos agora", recoveryUrl)}
     <p style="font-size:13px;color:#999;text-align:center;">
@@ -972,7 +977,7 @@ function buildLastChanceEmail(nome: string, metadata: Record<string, unknown>): 
 
 // ── Template: Carrinho Reenvio (abordagem social proof) ───────
 
-function buildCartReminderEmail(nome: string, metadata: Record<string, unknown>): string {
+function buildCartReminderEmail(nome: string, metadata: Record<string, unknown>, regiao: Regiao = null): string {
   const valor = formatBRL(metadata.valor);
   const recoveryUrl = (metadata.recovery_url as string) || "https://www.papelariabibelo.com.br";
   const itens = Array.isArray(metadata.itens) ? metadata.itens : [];
@@ -988,7 +993,7 @@ function buildCartReminderEmail(nome: string, metadata: Record<string, unknown>)
       <p style="font-size:12px;color:#4CAF50;margin:6px 0 0;text-align:center;font-style:italic;">"Produtos lindos, entrega rápida e embalagem impecável!"</p>
     </div>
     <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:16px 0;">
-      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+      ${bannerFretep(regiao)}
     </div>
     ${ctaButton("Voltar ao meu carrinho", recoveryUrl)}
   `);
@@ -1031,7 +1036,7 @@ function buildThankYouEmail(nome: string, metadata: Record<string, unknown>): st
     <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border:2px dashed #fe68c4;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
       <p style="font-size:13px;color:#888;margin:0;text-transform:uppercase;letter-spacing:1px;">Presente especial pra você</p>
       <p style="font-size:28px;font-weight:700;color:#fe68c4;margin:8px 0;letter-spacing:2px;">${cupom}</p>
-      <p style="font-size:15px;color:#555;margin:0;font-weight:600;">7% OFF na sua próxima compra</p>
+      <p style="font-size:15px;color:#555;margin:0;font-weight:600;">10% OFF na sua próxima compra</p>
       <p style="font-size:12px;color:#999;margin:6px 0 0;">Cupom de uso único · Válido por 30 dias</p>
     </div>` : "";
 
@@ -1243,7 +1248,7 @@ export async function getNfProducts(limit = 8): Promise<Array<{ nome: string; pr
 
 // ── Template: Boas-vindas ──────────────────────────────────────
 
-async function buildWelcomeEmail(nome: string): Promise<string> {
+async function buildWelcomeEmail(nome: string, regiao: Regiao = null): Promise<string> {
   const productsGrid = await buildNfProductsGrid(3);
 
   return emailWrapper(`
@@ -1258,7 +1263,7 @@ async function buildWelcomeEmail(nome: string): Promise<string> {
     </p>
     ${productsGrid}
     <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
-      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+      ${bannerFretep(regiao)}
     </div>
     ${ctaButton("Conhecer a loja", "https://www.papelariabibelo.com.br")}
     <p style="font-size:13px;color:#999;text-align:center;">
@@ -1269,7 +1274,7 @@ async function buildWelcomeEmail(nome: string): Promise<string> {
 
 // ── Template: Reativação de Inativo ────────────────────────────
 
-async function buildReactivationEmail(nome: string): Promise<string> {
+async function buildReactivationEmail(nome: string, regiao: Regiao = null): Promise<string> {
   const productsGrid = await buildNfProductsGrid(4);
 
   return emailWrapper(`
@@ -1283,7 +1288,7 @@ async function buildReactivationEmail(nome: string): Promise<string> {
     </div>
     ${productsGrid}
     <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
-      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+      ${bannerFretep(regiao)}
     </div>
     ${ctaButton("Ver novidades", "https://www.papelariabibelo.com.br")}
   `);
@@ -1462,7 +1467,7 @@ async function buildSocialProofEmail(nome: string, _metadata: Record<string, unk
 
 // ── Template: Novidades da Semana ─────────────────────────────
 
-async function buildNewsEmail(nome: string): Promise<string> {
+async function buildNewsEmail(nome: string, regiao: Regiao = null): Promise<string> {
   const productsHtml = await buildNfProductsGrid(4);
 
   const fallback = !productsHtml ? `
@@ -1481,7 +1486,7 @@ async function buildNewsEmail(nome: string): Promise<string> {
     </p>
     ${productsHtml || fallback}
     <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
-      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+      ${bannerFretep(regiao)}
     </div>
     ${ctaButton("Ver todas as novidades", "https://www.papelariabibelo.com.br")}
   `);
@@ -1516,7 +1521,7 @@ function buildLeadCouponEmail(nome: string, metadata: Record<string, unknown>): 
 
 // ── Template: FOMO Grupo VIP WhatsApp ─────────────────────────
 
-function buildFomoVipEmail(nome: string, metadata: Record<string, unknown> = {}): string {
+function buildFomoVipEmail(nome: string, metadata: Record<string, unknown> = {}, regiao: Regiao = null): string {
   const isVip = metadata.fonte === "grupo_vip";
 
   if (isVip) {
@@ -1531,7 +1536,7 @@ function buildFomoVipEmail(nome: string, metadata: Record<string, unknown> = {})
         <p style="font-size:32px;margin:0;">🎀✨</p>
         <p style="font-size:16px;color:#2E7D32;font-weight:700;margin:10px 0 4px;">Vantagens VIP ativas</p>
         <p style="font-size:13px;color:#555;margin:0;line-height:1.6;">
-          7% OFF na 1ª compra · Frete grátis Sul/SE acima de R$ 79<br/>
+          10% OFF na 1ª compra · ${textoFreteInline(regiao)}<br/>
           Mimo surpresa em todo pedido · Lançamentos antes de todo mundo
         </p>
       </div>
@@ -1568,7 +1573,7 @@ function buildFomoVipEmail(nome: string, metadata: Record<string, unknown> = {})
 
 // ── Template: Produto Visitado ─────────────────────────────────
 
-function buildProductVisitedEmail(nome: string, metadata: Record<string, unknown>): string {
+function buildProductVisitedEmail(nome: string, metadata: Record<string, unknown>, regiao: Regiao = null): string {
   const productName = escHtml(String(metadata.resource_nome || ""));
   const productImg = safeImageUrl(metadata.resource_imagem as string);
   const productUrl = cleanProductUrl((metadata.resource_url as string) || (metadata.pagina as string));
@@ -1589,7 +1594,7 @@ function buildProductVisitedEmail(nome: string, metadata: Record<string, unknown
     </p>
     ${productBlock}
     <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
-      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+      ${bannerFretep(regiao)}
     </div>
     ${ctaButton(productName ? "Ver este produto" : "Voltar à loja", productUrl)}
   `);
@@ -1597,7 +1602,7 @@ function buildProductVisitedEmail(nome: string, metadata: Record<string, unknown
 
 // ── Template: Convite VIP WhatsApp ────────────────────────────
 
-function buildVipInviteEmail(nome: string, metadata: Record<string, unknown> = {}): string {
+function buildVipInviteEmail(nome: string, metadata: Record<string, unknown> = {}, regiao: Regiao = null): string {
   const isVip = metadata.fonte === "grupo_vip";
 
   if (isVip) {
@@ -1613,7 +1618,7 @@ function buildVipInviteEmail(nome: string, metadata: Record<string, unknown> = {
         <p style="font-size:18px;color:#fe68c4;font-weight:700;margin:12px 0 6px;">Sua 1ª compra especial</p>
         <p style="font-size:14px;color:#555;margin:0;line-height:1.5;">
           Use o cupom <strong style="color:#fe68c4;">BIBELO10</strong> e ganhe 10% OFF<br/>
-          Frete grátis Sul/Sudeste acima de R$ 79<br/>
+          ${textoFreteInline(regiao)}<br/>
           Mimo surpresa em todo pedido
         </p>
       </div>
@@ -1734,7 +1739,7 @@ function buildReviewReminderEmail(nome: string, metadata: Record<string, unknown
 
 // ── Build email por template name ──────────────────────────────
 
-export async function buildFlowEmail(nome: string, templateName: string, metadata: Record<string, unknown>): Promise<string> {
+export async function buildFlowEmail(nome: string, templateName: string, metadata: Record<string, unknown>, regiao: Regiao = null): Promise<string> {
   const lower = (templateName || "").toLowerCase();
 
   // Lead quente ANTES de carrinho abandonado (ambos contêm "carrinho")
@@ -1745,37 +1750,37 @@ export async function buildFlowEmail(nome: string, templateName: string, metadat
     return buildCartCouponEmail(nome, metadata);
   }
   if (lower.includes("carrinho reenvio") || lower.includes("carrinho lembrete")) {
-    return buildCartReminderEmail(nome, metadata);
+    return buildCartReminderEmail(nome, metadata, regiao);
   }
   if (lower.includes("carrinho abandonado") || lower.includes("recuperação")) {
-    return buildAbandonedCartEmail(nome, metadata);
+    return buildAbandonedCartEmail(nome, metadata, regiao);
   }
   if (lower.includes("última chance") || lower.includes("ultima chance")) {
-    return buildLastChanceEmail(nome, metadata);
+    return buildLastChanceEmail(nome, metadata, regiao);
   }
   if (lower.includes("agradecimento") || lower.includes("obrigad") || lower.includes("pós-compra")) {
     return buildThankYouEmail(nome, metadata);
   }
   if (lower.includes("boas-vindas") || lower.includes("welcome") || lower.includes("bem-vind")) {
-    return await buildWelcomeEmail(nome);
+    return await buildWelcomeEmail(nome, regiao);
   }
   if (lower.includes("reativação") || lower.includes("saudade") || lower.includes("inativ") || lower.includes("sentimos")) {
-    return await buildReactivationEmail(nome);
+    return await buildReactivationEmail(nome, regiao);
   }
   if (lower.includes("novidades") || lower.includes("semana")) {
-    return await buildNewsEmail(nome);
+    return await buildNewsEmail(nome, regiao);
   }
   if (lower.includes("lead cupom") || lower.includes("cupom exclusi")) {
     return buildLeadCouponEmail(nome, metadata);
   }
   if (lower.includes("fomo") || lower.includes("grupo vip")) {
-    return buildFomoVipEmail(nome, metadata);
+    return buildFomoVipEmail(nome, metadata, regiao);
   }
   if (lower.includes("produto visitado") || lower.includes("viu produto")) {
-    return buildProductVisitedEmail(nome, metadata);
+    return buildProductVisitedEmail(nome, metadata, regiao);
   }
   if (lower.includes("convite vip") || lower.includes("convite whatsapp")) {
-    return buildVipInviteEmail(nome, metadata);
+    return buildVipInviteEmail(nome, metadata, regiao);
   }
   if (lower.includes("lembrete") && (lower.includes("avalia") || lower.includes("review"))) {
     return buildReviewReminderEmail(nome, metadata);
@@ -1799,7 +1804,7 @@ export async function buildFlowEmail(nome: string, templateName: string, metadat
     return await buildRepurchaseEmail(nome, metadata);
   }
   if (lower.includes("carrinho tracking") || lower.includes("itens esperando")) {
-    return buildTrackingCartEmail(nome, metadata);
+    return buildTrackingCartEmail(nome, metadata, regiao);
   }
 
   // Fallback genérico
@@ -1860,7 +1865,7 @@ function getFlowSubject(templateName: string, nome: string, metadata: Record<str
   }
   if (lower.includes("convite vip") || lower.includes("convite whatsapp")) {
     if (metadata.fonte === "grupo_vip") {
-      return `${nome || "Oi"}, sua 1ª compra VIP com 7% OFF! 🎁`;
+      return `${nome || "Oi"}, sua 1ª compra VIP com 10% OFF! 🎁`;
     }
     return `${nome || "Oi"}, você foi convidada para o grupo VIP! 🎀`;
   }
@@ -2256,17 +2261,22 @@ export async function checkUnverifiedLeads(): Promise<number> {
     cupom: string | null;
     lembretes_enviados: number;
     criado_em: string;
+    telefone: string | null;
+    customer_estado: string | null;
+    customer_telefone: string | null;
   }>(
-    `SELECT id, email, nome, cupom, lembretes_enviados, criado_em
-     FROM marketing.leads
-     WHERE email_verificado = false
-       AND lembretes_enviados < 2
+    `SELECT l.id, l.email, l.nome, l.cupom, l.lembretes_enviados, l.criado_em,
+            l.telefone, c.estado AS customer_estado, c.telefone AS customer_telefone
+     FROM marketing.leads l
+     LEFT JOIN crm.customers c ON c.id = l.customer_id
+     WHERE l.email_verificado = false
+       AND l.lembretes_enviados < 2
        AND (
-         (lembretes_enviados = 0 AND criado_em < NOW() - INTERVAL '3 hours')
+         (l.lembretes_enviados = 0 AND l.criado_em < NOW() - INTERVAL '3 hours')
          OR
-         (lembretes_enviados = 1 AND ultimo_lembrete_em < NOW() - INTERVAL '24 hours')
+         (l.lembretes_enviados = 1 AND l.ultimo_lembrete_em < NOW() - INTERVAL '24 hours')
        )
-     ORDER BY criado_em ASC
+     ORDER BY l.criado_em ASC
      LIMIT 10`
   );
 
@@ -2279,11 +2289,15 @@ export async function checkUnverifiedLeads(): Promise<number> {
       const link = gerarLinkVerificacao(lead.email);
       const nomeDisplay = escHtml((lead.nome || "Cliente").replace(/[<>"'&]/g, ""));
       const isClube = lead.cupom === "CLUBEBIBELO";
+      const regiaoLead = detectarRegiao({
+        estado: lead.customer_estado,
+        telefone: lead.customer_telefone || lead.telefone,
+      });
       const isSegundo = lead.lembretes_enviados === 1;
 
       const subject = isSegundo
-        ? `⏰ ${nomeDisplay}, seu ${isClube ? "desconto de 7%" : "cupom"} vai expirar!`
-        : `💌 ${nomeDisplay}, você esqueceu de confirmar seu ${isClube ? "desconto de 7%" : "cupom"}!`;
+        ? `⏰ ${nomeDisplay}, seu ${isClube ? "desconto de 10%" : "cupom"} vai expirar!`
+        : `💌 ${nomeDisplay}, você esqueceu de confirmar seu ${isClube ? "desconto de 10%" : "cupom"}!`;
 
       const urgencia = isSegundo
         ? "Este é nosso <strong>último lembrete</strong> — não queremos que você perca essa oportunidade!"
@@ -2305,7 +2319,7 @@ export async function checkUnverifiedLeads(): Promise<number> {
       <img src="https://webhook.papelariabibelo.com.br/logo.png" alt="Papelaria Bibelô" width="52" height="52" style="width:52px;height:52px;border-radius:50%;border:2px solid rgba(254,104,196,0.3);margin-bottom:12px;" />
       ${isSegundo ? '<div style="background:#ff6b6b;color:#fff;display:inline-block;padding:5px 16px;border-radius:50px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">ÚLTIMO LEMBRETE</div>' : '<div style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;display:inline-block;padding:5px 16px;border-radius:50px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">LEMBRETE</div>'}
       <h1 style="color:#2d2d2d;margin:0 0 6px;font-size:26px;font-weight:600;font-family:Cormorant Garamond,Georgia,serif;line-height:1.2;">${isSegundo ? "Última chance!" : "Ainda dá tempo!"}</h1>
-      <p style="color:#999;margin:0;font-size:13px;">Seu ${isClube ? "desconto de 7% está esperando" : "cupom está esperando"}</p>
+      <p style="color:#999;margin:0;font-size:13px;">Seu ${isClube ? "desconto de 10% está esperando" : "cupom está esperando"}</p>
     </div>
     <div style="height:3px;background:linear-gradient(90deg,#fe68c4,#f472b6,#fe68c4);"></div>
     <div style="padding:32px 30px;text-align:center;">
@@ -2317,8 +2331,8 @@ export async function checkUnverifiedLeads(): Promise<number> {
       </p>
       ${isClube ? `
       <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border-radius:12px;padding:16px 20px;margin:0 0 24px;text-align:left;">
-        <p style="margin:0 0 6px;font-size:13px;color:#555;">🏷️ 7% de desconto na 1ª compra</p>
-        <p style="margin:0 0 6px;font-size:13px;color:#555;">🚚 Frete grátis Sul/Sudeste acima de R$79</p>
+        <p style="margin:0 0 6px;font-size:13px;color:#555;">🏷️ 10% de desconto na 1ª compra</p>
+        ${itemFreteHtml(regiaoLead, "margin:0 0 6px;font-size:13px;color:#555;")}
         <p style="margin:0 0 6px;font-size:13px;color:#555;">🎁 Mimo surpresa em toda compra</p>
         <p style="margin:0;font-size:13px;color:#555;">✨ Novidades antes de todo mundo</p>
       </div>` : ''}
@@ -2810,7 +2824,7 @@ async function buildRepurchaseEmail(nome: string, metadata: Record<string, unkno
 // CARRINHO TRACKING — Email para quem adicionou ao carrinho mas não fez checkout
 // ══════════════════════════════════════════════════════════════════
 
-function buildTrackingCartEmail(nome: string, metadata: Record<string, unknown>): string {
+function buildTrackingCartEmail(nome: string, metadata: Record<string, unknown>, regiao: Regiao = null): string {
   const produtos = (metadata.produtos_carrinho as Array<{ nome: string; preco: number }>) || [];
 
   let productsHtml = "";
@@ -2837,7 +2851,7 @@ function buildTrackingCartEmail(nome: string, metadata: Record<string, unknown>)
     </p>
     ${productsHtml}
     <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:16px 0;">
-      <p style="font-size:13px;color:#333;margin:0;font-weight:600;">🚚 Frete grátis para Sul e Sudeste acima de R$ 79!</p>
+      ${bannerFretep(regiao)}
     </div>
     ${ctaButton("Finalizar minha compra", "https://www.papelariabibelo.com.br/produtos?utm_source=email&utm_medium=flow&utm_campaign=cart_tracking&utm_content=cta_finalizar")}
     <p style="font-size:13px;color:#999;text-align:center;">
