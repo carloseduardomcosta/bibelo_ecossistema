@@ -1,0 +1,187 @@
+schema_version = 1
+
+# ─────────────────────────────────────────────────────────────────
+# BibelôCRM — filtros RTK locais do projeto
+# Precedência: aqui > ~/.config/rtk/filters.toml > built-in
+# ─────────────────────────────────────────────────────────────────
+
+
+# ── 1. docker compose up / build ─────────────────────────────────
+# Output bruto tem 60-100 linhas com hashes sha256, timings e
+# etapas internas. Mantém só erros + status final dos containers.
+[filters.docker-compose-build]
+description = "Compacta docker compose build/up — remove ruído de layers, mantém erros e status final"
+match_command = "^(DOCKER_BUILDKIT=\\d+\\s+)?docker compose (up|build)"
+strip_ansi = true
+strip_lines_matching = [
+  "^\\s*$",                         # Linhas vazias
+  "^#\\d+ \\[internal\\]",          # Load build definition, .dockerignore, etc.
+  "^#\\d+ transferring",            # Transferência de contexto/dockerfile
+  "^#\\d+ reading from",            # Reading from stdin/context
+  "^#\\d+ resolve ",                # Resolving imagem do registry
+  "^#\\d+ DONE [0-9]",              # Timings de conclusão de etapa (ex: "DONE 0.2s")
+  "^#\\d+ exporting",               # Exportando layers/config/manifests
+  "^#\\d+ naming to",               # Naming to docker.io/...
+  "^#\\d+ unpacking to",            # Unpacking para cache local
+  "^#\\d+ resolving provenance",    # Metadata de provenance
+  "^#\\d+ \\.\\.\\.",               # Progress dots de etapas paralelas
+  "@sha256:[a-f0-9]{20,}",          # Hashes sha256 longos (inline em URLs)
+  "^\\s*done$",                     # Linhas com só "done"
+]
+# Short-circuit: se tudo OK, retorna linha única com status
+match_output = [
+  { pattern = "Started|Built", message = "build/up: ok", unless = "error|Error|failed|Failed|Error response" },
+]
+tail_lines = 20
+max_lines = 30
+on_empty = "docker build/up: ok (sem output)"
+
+[[tests.docker-compose-build]]
+name = "build bem-sucedido — short-circuit"
+input = """
+#1 [internal] load build definition from Dockerfile
+#1 DONE 0.0s
+#9 [builder 6/7] COPY src ./src
+#9 CACHED
+ Image bibelocrm-api Built
+ Container bibelo_api Started
+"""
+expected = "build/up: ok"
+
+[[tests.docker-compose-build]]
+name = "build com erro — mostra erro"
+input = """
+#5 [builder 3/7] RUN npm ci --only=production
+#5 ERROR: npm ERR! code ENOTFOUND
+#5 0.234 npm ERR! network failure
+"""
+expected = "#5 [builder 3/7] RUN npm ci --only=production\n#5 ERROR: npm ERR! code ENOTFOUND\n#5 0.234 npm ERR! network failure"
+
+
+# ── 2. docker compose exec … psql ───────────────────────────────
+# O psql dentro do container tem header verbose e linhas em branco.
+# Mantém o conteúdo da query intacto, remove cabeçalho desnecessário.
+[filters.psql-exec]
+description = "Compacta psql via docker compose exec — remove header, mantém resultado"
+match_command = "^docker compose exec.*psql"
+strip_ansi = true
+strip_lines_matching = [
+  "^psql \\(",                       # "psql (16.2)" — versão do client
+  "^Type .help. for help",           # Instrução de ajuda
+  "^\\s*$",                          # Linhas vazias
+]
+truncate_lines_at = 200
+max_lines = 80
+on_empty = "psql: ok (sem resultado)"
+
+
+# ── 3. bash scripts/backup.sh ────────────────────────────────────
+# rclone imprime barras de progresso e linhas de transferência
+# repetidas. Mantém só sumário final e erros.
+[filters.backup-script]
+description = "Compacta output do backup — remove progresso rclone, mantém sumário e erros"
+match_command = "^bash scripts/backup\\.sh"
+strip_ansi = true
+strip_lines_matching = [
+  "^\\s*$",
+  "^Transferred:.*ETA",              # Linhas de progresso com ETA
+  "^Transferred:.*MiB/s",            # Linhas de throughput
+  "^\\s*-\\s",                       # Itens de lista do rclone
+  "^\\s*\\*",                        # Wildcards expandidos
+  "Checking:",                       # Progresso de check
+  "^\\[",                            # Progress bars com [====]
+]
+match_output = [
+  { pattern = "concluído|Backup.*ok|Completed|successfully", message = "backup: ok", unless = "[Ee]rror|[Ff]ailed|[Ff]alha" },
+]
+tail_lines = 15
+max_lines = 25
+on_empty = "backup: ok (sem output)"
+
+
+# ── 4. docker compose logs (variantes com --tail alto) ───────────
+# Já coberto pelo built-in, mas este filtro adiciona compressão
+# extra removendo linhas de infra repetitivas dos nossos containers.
+[filters.bibelo-logs]
+description = "Compacta logs dos containers Bibelô — remove health checks e linhas repetitivas"
+match_command = "^docker compose logs.*(api|frontend|medusa|storefront|postgres|redis)"
+strip_ansi = true
+strip_lines_matching = [
+  "^\\s*$",
+  "GET /health.*200",                # Health check pings (muito frequentes)
+  "HEAD /health.*200",
+  "GET /favicon",
+  "^\\s*\"GET / HTTP",               # Homepage pings do uptime kuma
+]
+truncate_lines_at = 300
+max_lines = 100
+on_empty = "logs: vazio"
+
+
+# ── 5. nginx -t (teste de configuração) ──────────────────────────
+[filters.nginx-test]
+description = "Compacta nginx -t — mantém só resultado"
+match_command = "^nginx -t"
+strip_ansi = true
+strip_lines_matching = [
+  "^\\s*$",
+  "nginx: the configuration file.*syntax is ok",
+]
+match_output = [
+  { pattern = "test is successful", message = "nginx: ok", unless = "error|Error|failed|emerg" },
+]
+on_empty = "nginx: ok"
+
+
+# ── 6. git push origin main ──────────────────────────────────────
+# Push tem output verboso de objetos delta, contagens e remote refs.
+[filters.git-push]
+description = "Compacta git push — remove contadores de delta, mantém branch e erros"
+match_command = "^git push"
+strip_ansi = true
+strip_lines_matching = [
+  "^\\s*$",
+  "^Counting objects:",
+  "^Delta compression",
+  "^Compressing objects:",
+  "^Writing objects:",
+  "^Total \\d+",
+  "^remote: Resolving",
+  "^remote: Compressing",
+  "^remote: Total",
+  "^remote:\\s*$",
+  "^To github\\.com",
+]
+match_output = [
+  { pattern = "main -> main|branch.*updated|up-to-date", message = "push: ok", unless = "[Ee]rror|[Rr]ejected|[Ff]ailed" },
+]
+tail_lines = 10
+max_lines = 15
+on_empty = "git push: ok"
+
+[[tests.git-push]]
+name = "push com sucesso"
+input = """
+Counting objects: 5, done.
+Delta compression using up to 8 threads.
+Compressing objects: 100% (3/3), done.
+Writing objects: 100% (5/5), 1.23 KiB | 1.23 MiB/s, done.
+Total 5 (delta 2), reused 0 (delta 0)
+remote: Resolving deltas: 100% (2/2), done.
+To github.com:carloseduardomcosta/bibelo_ecossistema.git
+   abc1234..def5678  main -> main
+"""
+expected = "push: ok"
+
+
+# ── 7. curl health checks ────────────────────────────────────────
+# Já coberto pelo built-in do RTK, mas adiciona compressão
+# específica para os nossos endpoints /health com JSON verbose.
+[filters.bibelo-health]
+description = "Compacta curl health check dos containers Bibelô"
+match_command = "^curl -s http://localhost:(4000|3000|9000|8001)/health"
+strip_ansi = true
+match_output = [
+  { pattern = "\"status\":\"ok\"|\"status\": \"ok\"|healthy", message = "health: ok", unless = "error|Error|unhealthy|false" },
+]
+on_empty = "health: sem resposta"

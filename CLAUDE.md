@@ -159,13 +159,15 @@ bash scripts/test.sh src/routes/leads.test.ts  # específico
 
 ## Comandos do dia a dia
 ```bash
-docker compose ps                    # status containers
-docker compose logs -f api           # logs API
-docker compose up -d --build api     # rebuild API
-docker compose up -d --build frontend # rebuild frontend
-curl -s http://localhost:4000/health | python3 -m json.tool
-docker compose exec postgres psql -U bibelocrm bibelocrm
-bash scripts/backup.sh
+# RTK instalado — prefixar com "rtk" nos comandos pesados para economia de tokens
+rtk docker compose ps                              # status containers
+rtk docker compose logs -f api                     # logs API
+rtk docker compose up -d --build api               # rebuild API
+rtk docker compose up -d --build frontend          # rebuild frontend
+rtk curl -s http://localhost:4000/health           # health check
+rtk docker compose exec postgres psql -U bibelocrm bibelocrm  # psql
+bash scripts/backup.sh                             # backup (usa rtk vitest internamente)
+rtk ufw status                                     # firewall
 ```
 
 ---

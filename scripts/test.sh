@@ -25,4 +25,4 @@ export REDIS_URL="redis://:${REDIS_PASS}@${REDIS_IP}:6379"
 export NODE_ENV=test
 
 echo "Rodando testes... (Postgres: ${PG_IP}, Redis: ${REDIS_IP})"
-npx vitest run "$@"
+rtk vitest run "$@"
