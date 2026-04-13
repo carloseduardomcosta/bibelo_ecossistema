@@ -436,13 +436,21 @@ revendedorasRouter.post("/", async (req: Request, res: Response) => {
 
   // E-mail de boas-vindas (não-bloqueante)
   if (d.email) {
-    sendEmail({
-      to:      d.email,
+    const NIVEL_LABELS: Record<string, string> = { iniciante: "Iniciante", bronze: "Bronze", prata: "Prata", ouro: "Ouro", diamante: "Diamante" };
+    const tabelaNiveis = buildTabelaNiveis(desconto);
+    getRenderedEmailTemplate("revendedoras_boas_vindas", {
+      nome:         d.nome,
+      cpf_formatado: (d.documento ?? "").replace(/\D/g, "").replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4") || (d.documento ?? ""),
+      desconto:     String(desconto),
+      nivel_label:  NIVEL_LABELS["iniciante"] ?? "Iniciante",
+      tabela_niveis: tabelaNiveis,
+    }).then(tpl => sendEmail({
+      to:      d.email!,
       from:    FROM_PARCEIRAS,
-      subject: `Bem-vinda ao Programa Sou Parceira — Papelaria Bibelô! 🤝`,
-      html:    buildBoasVindasParceira(d.nome, (d.documento ?? "").replace(/\D/g, ""), desconto, "iniciante"),
+      subject: tpl?.subject ?? `Bem-vinda ao Programa Sou Parceira — Papelaria Bibelô! 🤝`,
+      html:    tpl?.html    ?? buildBoasVindasParceira(d.nome, (d.documento ?? "").replace(/\D/g, ""), desconto, "iniciante"),
       tags:    [{ name: "tipo", value: "boas_vindas_parceira" }],
-    }).catch(err => logger.error("Erro ao enviar email boas-vindas parceira", { error: (err as Error).message }));
+    })).catch(err => logger.error("Erro ao enviar email boas-vindas parceira", { error: (err as Error).message }));
   }
 
   res.status(201).json(rev);
@@ -474,6 +482,41 @@ revendedorasRouter.get("/pedidos-recentes", async (_req: Request, res: Response)
   );
 
   res.json({ data: rows, pendentes, mensagens_nao_lidas });
+});
+
+// ── GET /email-templates — lista os 3 templates de revendedoras ──
+
+revendedorasRouter.get("/email-templates", async (_req: Request, res: Response) => {
+  const rows = await query<{ id: string; slug: string; nome: string; assunto: string; html: string; variaveis: unknown }>(
+    `SELECT id, slug, nome, assunto, html, variaveis
+     FROM marketing.templates
+     WHERE categoria = 'revendedoras' AND ativo = true
+     ORDER BY criado_em ASC`
+  );
+  res.json(rows);
+});
+
+// ── PUT /email-templates/:slug — atualiza assunto e HTML ─────────
+
+const emailTemplateSchema = z.object({
+  assunto: z.string().min(1).max(255),
+  html:    z.string().min(10),
+});
+
+revendedorasRouter.put("/email-templates/:slug", async (req: Request, res: Response) => {
+  const { slug } = req.params;
+  const d = emailTemplateSchema.parse(req.body);
+
+  const tpl = await queryOne<{ id: string }>(
+    `UPDATE marketing.templates SET assunto = $1, html = $2
+     WHERE slug = $3 AND categoria = 'revendedoras' AND ativo = true
+     RETURNING id`,
+    [d.assunto, d.html, slug]
+  );
+  if (!tpl) return res.status(404).json({ error: "Template não encontrado" });
+
+  logger.info("Template email revendedora atualizado", { slug });
+  res.json({ ok: true });
 });
 
 // ── GET /:id ──────────────────────────────────────────────────
@@ -738,12 +781,22 @@ revendedorasRouter.put("/:id/pedidos/:pedidoId/status", async (req: Request, res
 
   if (rev && status !== "pendente") {
     // Email de atualização de status para a revendedora
-    sendEmail({
-      to:      rev.email,
-      subject: `Pedido ${numPedido} — status atualizado: ${status}`,
-      html:    buildStatusEmail(rev.nome, numPedido, status, observacao_admin),
+    const STATUS_LABELS: Record<string, string> = { aprovado: "✅ Aprovado", enviado: "🚚 Enviado", entregue: "📦 Entregue", cancelado: "❌ Cancelado" };
+    const statusLabel = STATUS_LABELS[status] ?? status;
+    const obsBlock = observacao_admin
+      ? `<p style="font-size:13px;color:#555;background:#fff7c1;border-radius:8px;padding:12px 16px;margin:0;"><strong>Mensagem:</strong> ${escHtml(observacao_admin)}</p>`
+      : "";
+    getRenderedEmailTemplate("revendedoras_status_pedido", {
+      nome:            rev.nome,
+      numero_pedido:   numPedido,
+      status_label:    statusLabel,
+      observacao_block: obsBlock,
+    }).then(tpl => sendEmail({
+      to:      rev!.email,
+      subject: tpl?.subject ?? `Pedido ${numPedido} — status atualizado: ${status}`,
+      html:    tpl?.html    ?? buildStatusEmail(rev!.nome, numPedido, status, observacao_admin),
       tags:    [{ name: "tipo", value: "status_pedido" }],
-    }).catch(err => logger.error("Erro ao enviar email status pedido", { error: (err as Error).message }));
+    })).catch(err => logger.error("Erro ao enviar email status pedido", { error: (err as Error).message }));
 
     // Se admin enviou observação, criar mensagem no thread
     if (observacao_admin) {
@@ -873,16 +926,77 @@ revendedorasRouter.post("/:id/pedidos/:pedidoId/mensagens", async (req: Request,
   );
 
   // Email para a revendedora
-  sendEmail({
-    to:      rev.email,
-    subject: `Nova mensagem no pedido ${pedido.numero_pedido} — Papelaria Bibelô`,
-    html:    buildMensagemEmail(rev.nome, "Papelaria Bibelô", pedido.numero_pedido, conteudo),
+  getRenderedEmailTemplate("revendedoras_nova_mensagem", {
+    destinatario:  rev.nome,
+    remetente:     "Papelaria Bibelô",
+    numero_pedido: pedido.numero_pedido,
+    conteudo:      escHtml(conteudo),
+  }).then(tpl => sendEmail({
+    to:      rev!.email,
+    subject: tpl?.subject ?? `Nova mensagem no pedido ${pedido.numero_pedido} — Papelaria Bibelô`,
+    html:    tpl?.html    ?? buildMensagemEmail(rev!.nome, "Papelaria Bibelô", pedido.numero_pedido, conteudo),
     tags:    [{ name: "tipo", value: "mensagem_admin" }],
-  }).catch(err => logger.error("Erro ao enviar email mensagem admin", { error: (err as Error).message }));
+  })).catch(err => logger.error("Erro ao enviar email mensagem admin", { error: (err as Error).message }));
 
   logger.info("Mensagem admin enviada", { revendedoraId: id, pedidoId });
   res.status(201).json(msg);
 });
+
+/** Gera a tabela HTML comparativa de níveis para o email de boas-vindas.
+ *  Usado como valor da variável {{tabela_niveis}} no template do banco. */
+function buildTabelaNiveis(descontoAtual: number): string {
+  const niveis = [
+    { emoji: "✨", label: "Iniciante", desc: 15,  meta: "< R$150/mês",    frete: "Por conta da revendedora" },
+    { emoji: "🥉", label: "Bronze",    desc: 25,  meta: "R$150–599/mês",  frete: "Por conta da revendedora" },
+    { emoji: "🥈", label: "Prata",     desc: 35,  meta: "R$600–1199/mês", frete: "Por conta da revendedora" },
+    { emoji: "🥇", label: "Ouro",      desc: 45,  meta: "R$1200–2999/mês",frete: "Frete grátis" },
+    { emoji: "💎", label: "Diamante",  desc: 45,  meta: "R$3000+/mês",    frete: "Frete grátis + benefícios exclusivos" },
+  ];
+  const rows = niveis.map(n => {
+    const destaque = n.desc === descontoAtual;
+    const freteColor = n.frete === "Frete grátis" || n.frete.startsWith("Frete grátis") ? "#16a34a" : "#888";
+    const freteEmoji = n.frete.startsWith("Frete grátis") ? "✅" : "📦";
+    return `<tr style="${destaque ? "background:#ffe5ec;" : ""}">
+      <td style="padding:9px 12px;border-bottom:1px solid #fce8f0;font-size:16px;">${n.emoji}</td>
+      <td style="padding:9px 0;border-bottom:1px solid #fce8f0;">
+        <strong style="color:#2d2d2d;font-size:13px;">${n.label}</strong>
+        <span style="color:#888;font-size:11px;"> · ${n.meta}</span>
+      </td>
+      <td style="padding:9px 12px;border-bottom:1px solid #fce8f0;text-align:right;">
+        <strong style="color:#fe68c4;font-size:14px;">${n.desc}% OFF</strong>
+      </td>
+      <td style="padding:9px 12px;border-bottom:1px solid #fce8f0;white-space:nowrap;font-size:11px;color:${freteColor};">
+        ${freteEmoji} ${n.frete}
+      </td>
+    </tr>`;
+  }).join("");
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #fce8f0;border-radius:10px;overflow:hidden;margin:16px 0;font-family:Arial,sans-serif;">${rows}</table>`;
+}
+
+// ── Helpers de templates de email editáveis ──────────────────────
+
+/** Busca template do banco pelo slug e substitui placeholders.
+ *  Retorna null se não encontrado (fallback para funções hardcoded). */
+async function getRenderedEmailTemplate(
+  slug: string,
+  vars: Record<string, string>
+): Promise<{ subject: string; html: string } | null> {
+  const tpl = await queryOne<{ assunto: string; html: string }>(
+    `SELECT assunto, html FROM marketing.templates
+     WHERE slug = $1 AND ativo = true LIMIT 1`,
+    [slug]
+  );
+  if (!tpl) return null;
+
+  let subject = tpl.assunto;
+  let html    = tpl.html;
+  for (const [key, val] of Object.entries(vars)) {
+    const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, "g");
+    subject = subject.replace(placeholder, escHtml(val));
+    html    = html.replace(placeholder, val); // HTML já contém escaping necessário
+  }
+  return { subject, html };
+}
 
 // ── Email builders para revendedoras ────────────────────────────
 

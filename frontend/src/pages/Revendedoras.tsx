@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, TrendingUp, Package, Clock, Search, Plus, ChevronRight,
-  AlertTriangle, Medal, Star, Crown, X, Filter, Sparkles, Gem,
+  AlertTriangle, Medal, Star, Crown, X, Filter, Sparkles, Gem, Mail, Eye, Save, RotateCcw,
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
@@ -222,6 +222,204 @@ function ModalNovaRevendedora({ onClose, onSaved }: ModalProps) {
   );
 }
 
+// ── Modal Editar Emails ────────────────────────────────────────
+
+interface EmailTemplate {
+  id: string; slug: string; nome: string;
+  assunto: string; html: string;
+  variaveis: { nome: string; descricao: string }[];
+}
+
+const SLUG_LABELS: Record<string, { title: string; desc: string }> = {
+  revendedoras_boas_vindas:    { title: 'Boas-vindas',          desc: 'Enviado ao cadastrar nova revendedora' },
+  revendedoras_status_pedido:  { title: 'Status do Pedido',     desc: 'Enviado ao atualizar status de um pedido' },
+  revendedoras_nova_mensagem:  { title: 'Nova Mensagem',        desc: 'Enviado quando admin envia mensagem no pedido' },
+};
+
+function ModalEmailTemplates({ onClose }: { onClose: () => void }) {
+  const toast = useToast();
+  const [templates, setTemplates]       = useState<EmailTemplate[]>([]);
+  const [activeSlug, setActiveSlug]     = useState('');
+  const [assunto, setAssunto]           = useState('');
+  const [html, setHtml]                 = useState('');
+  const [original, setOriginal]         = useState<{ assunto: string; html: string } | null>(null);
+  const [loading, setLoading]           = useState(true);
+  const [saving, setSaving]             = useState(false);
+  const [preview, setPreview]           = useState(false);
+
+  useEffect(() => {
+    api.get('/revendedoras/email-templates').then(r => {
+      setTemplates(r.data);
+      if (r.data.length > 0) selectTemplate(r.data[0]);
+    }).catch(() => toast.error('Erro ao carregar templates')).finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function selectTemplate(tpl: EmailTemplate) {
+    setActiveSlug(tpl.slug);
+    setAssunto(tpl.assunto);
+    setHtml(tpl.html);
+    setOriginal({ assunto: tpl.assunto, html: tpl.html });
+    setPreview(false);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await api.put(`/revendedoras/email-templates/${activeSlug}`, { assunto, html });
+      toast.success('Template salvo!');
+      setOriginal({ assunto, html });
+      setTemplates(t => t.map(x => x.slug === activeSlug ? { ...x, assunto, html } : x));
+    } catch {
+      toast.error('Erro ao salvar template');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const dirty = original && (assunto !== original.assunto || html !== original.html);
+  const active = templates.find(t => t.slug === activeSlug);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-bibelo-card border border-bibelo-border rounded-2xl w-full max-w-5xl shadow-2xl flex flex-col" style={{ height: '90vh' }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-bibelo-border shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-bibelo-primary/10 flex items-center justify-center">
+              <Mail size={18} className="text-bibelo-primary" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-bibelo-text">Editar Emails — Sou Parceira</h2>
+              <p className="text-xs text-bibelo-muted">Personalize os 3 emails automáticos do programa</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-bibelo-muted hover:text-bibelo-text transition-colors"><X size={20} /></button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center flex-1">
+            <div className="w-6 h-6 border-2 border-bibelo-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <div className="flex flex-1 min-h-0">
+
+            {/* Sidebar — lista de templates */}
+            <div className="w-56 shrink-0 border-r border-bibelo-border p-3 space-y-1">
+              {templates.map(tpl => {
+                const meta = SLUG_LABELS[tpl.slug] ?? { title: tpl.nome, desc: '' };
+                return (
+                  <button
+                    key={tpl.slug}
+                    onClick={() => selectTemplate(tpl)}
+                    className={`w-full text-left px-3 py-3 rounded-xl transition-colors ${
+                      activeSlug === tpl.slug
+                        ? 'bg-bibelo-primary/10 border border-bibelo-primary/30'
+                        : 'hover:bg-bibelo-border/40 border border-transparent'
+                    }`}
+                  >
+                    <p className={`text-sm font-semibold ${activeSlug === tpl.slug ? 'text-bibelo-primary' : 'text-bibelo-text'}`}>
+                      {meta.title}
+                    </p>
+                    <p className="text-xs text-bibelo-muted mt-0.5 leading-tight">{meta.desc}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Editor */}
+            {active && (
+              <div className="flex-1 flex flex-col min-w-0 p-5 gap-4 overflow-auto">
+
+                {/* Assunto */}
+                <div>
+                  <label className="block text-xs font-semibold text-bibelo-muted uppercase tracking-wider mb-1.5">Assunto do email</label>
+                  <input
+                    value={assunto}
+                    onChange={e => setAssunto(e.target.value)}
+                    className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text focus:outline-none focus:border-bibelo-primary font-mono"
+                  />
+                </div>
+
+                {/* Variáveis disponíveis */}
+                <div className="flex flex-wrap gap-2">
+                  {active.variaveis.map(v => (
+                    <span key={v.nome} title={v.descricao}
+                      className="inline-flex items-center px-2 py-0.5 rounded bg-bibelo-border/50 text-xs text-bibelo-muted font-mono cursor-help">
+                      {`{{${v.nome}}}`}
+                    </span>
+                  ))}
+                  <span className="text-xs text-bibelo-muted self-center">(passe o mouse para ver o significado)</span>
+                </div>
+
+                {/* Toggle editor/preview */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPreview(false)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${!preview ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/40'}`}
+                  >
+                    <Save size={12} /> Editor HTML
+                  </button>
+                  <button
+                    onClick={() => setPreview(true)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${preview ? 'bg-bibelo-primary text-white' : 'text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/40'}`}
+                  >
+                    <Eye size={12} /> Pré-visualizar
+                  </button>
+                  {dirty && (
+                    <button
+                      onClick={() => { setAssunto(original!.assunto); setHtml(original!.html); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/40 transition-colors ml-auto"
+                    >
+                      <RotateCcw size={12} /> Descartar
+                    </button>
+                  )}
+                </div>
+
+                {/* HTML textarea ou preview */}
+                <div className="flex-1 min-h-0">
+                  {preview ? (
+                    <iframe
+                      srcDoc={html}
+                      className="w-full h-full min-h-[400px] rounded-xl border border-bibelo-border bg-white"
+                      sandbox="allow-same-origin"
+                      title="Preview email"
+                    />
+                  ) : (
+                    <textarea
+                      value={html}
+                      onChange={e => setHtml(e.target.value)}
+                      className="w-full h-full min-h-[400px] bg-bibelo-bg border border-bibelo-border rounded-xl px-4 py-3 text-xs text-bibelo-text font-mono focus:outline-none focus:border-bibelo-primary resize-none leading-relaxed"
+                      spellCheck={false}
+                    />
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between shrink-0 pt-2 border-t border-bibelo-border">
+                  <p className="text-xs text-bibelo-muted">
+                    {dirty ? '● Alterações não salvas' : '✓ Salvo'}
+                  </p>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving || !dirty}
+                    className="flex items-center gap-2 px-4 py-2 bg-bibelo-primary text-white rounded-lg text-sm font-semibold hover:bg-bibelo-primary/90 disabled:opacity-50 transition-colors"
+                  >
+                    <Save size={14} />
+                    {saving ? 'Salvando...' : 'Salvar template'}
+                  </button>
+                </div>
+
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Página principal ───────────────────────────────────────────
 
 export default function Revendedoras() {
@@ -234,6 +432,7 @@ export default function Revendedoras() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterNivel, setFilterNivel] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const [aprovandoId, setAprovandoId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -279,13 +478,22 @@ export default function Revendedoras() {
           <h1 className="text-2xl font-bold text-bibelo-text">Clube de Revendedoras</h1>
           <p className="text-sm text-bibelo-muted mt-0.5">Gerencie o programa de parcerias Bibelô</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-bibelo-primary text-white rounded-lg text-sm font-semibold hover:bg-bibelo-primary/90 transition-colors"
-        >
-          <Plus size={16} />
-          Nova Revendedora
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowEmailModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-bibelo-card border border-bibelo-border text-bibelo-muted rounded-lg text-sm font-medium hover:text-bibelo-text hover:border-bibelo-muted transition-colors"
+          >
+            <Mail size={15} />
+            Editar emails
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-bibelo-primary text-white rounded-lg text-sm font-semibold hover:bg-bibelo-primary/90 transition-colors"
+          >
+            <Plus size={16} />
+            Nova Revendedora
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -510,6 +718,10 @@ export default function Revendedoras() {
           onClose={() => setShowModal(false)}
           onSaved={() => { setShowModal(false); fetchData(); }}
         />
+      )}
+
+      {showEmailModal && (
+        <ModalEmailTemplates onClose={() => setShowEmailModal(false)} />
       )}
     </div>
   );
