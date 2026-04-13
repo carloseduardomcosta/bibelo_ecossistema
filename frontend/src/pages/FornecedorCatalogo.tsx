@@ -78,10 +78,11 @@ interface SyncLog {
 
 interface EnrichState {
   running: boolean;
-  fase: 'idle' | 'imagens' | 'descricoes' | 'concluido' | 'erro';
+  fase: 'idle' | 'imagens' | 'galeria' | 'concluido' | 'erro';
   total: number;
   feitos: number;
   com_imagem: number;
+  com_galeria: number;
   com_descricao: number;
   erros: number;
   iniciado_em: string | null;
@@ -219,8 +220,8 @@ export default function FornecedorCatalogo() {
       : 0;
 
   const enrichFaseLabel =
-    enrich?.fase === 'imagens'   ? 'Fase 1: Imagens' :
-    enrich?.fase === 'descricoes' ? 'Fase 2: Descrições' :
+    enrich?.fase === 'imagens'  ? 'Fase 1: URLs de produto' :
+    enrich?.fase === 'galeria'  ? 'Fase 2: Galeria HD + Descrições' :
     enrich?.fase === 'concluido' ? 'Concluído' :
     enrich?.fase === 'erro'      ? 'Erro' : '';
 
@@ -344,7 +345,7 @@ export default function FornecedorCatalogo() {
           </div>
           <div className="flex gap-6 text-xs text-pink-700">
             <span>{enrich.feitos}/{enrich.total} produtos</span>
-            <span>{enrich.com_imagem} com foto</span>
+            <span>{enrich.com_galeria ?? enrich.com_imagem} com galeria HD</span>
             <span>{enrich.com_descricao} com descrição</span>
             {enrich.erros > 0 && <span className="text-red-600">{enrich.erros} erros</span>}
           </div>
@@ -364,7 +365,7 @@ export default function FornecedorCatalogo() {
           }
           <span>
             {enrich.fase === 'concluido'
-              ? `✓ ${enrich.com_imagem} fotos, ${enrich.com_descricao} descrições capturadas`
+              ? `✓ ${enrich.com_galeria ?? enrich.com_imagem} galerias HD, ${enrich.com_descricao} descrições capturadas`
               : `Enriquecimento encerrado com erro: ${enrich.mensagem}`
             }
           </span>

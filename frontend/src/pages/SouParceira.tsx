@@ -35,6 +35,7 @@ interface Produto {
   categoria: string;
   preco_final: string;
   imagem_url: string | null;
+  imagens_urls: string[] | null;
   descricao: string | null;
 }
 
@@ -953,26 +954,36 @@ function Catalogo({ rev }: { rev: Revendedora }) {
                          hover:shadow-md hover:border-[#fe68c4]/30
                          transition-all duration-200 group cursor-default"
             >
-              {/* Imagem do produto */}
-              {p.imagem_url ? (
-                <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden mb-3">
-                  <img
-                    src={p.imagem_url}
-                    alt={p.nome}
-                    loading="lazy"
-                    className="object-contain w-full h-full"
-                    onError={(e) => {
-                      const target = e.currentTarget;
-                      target.style.display = 'none';
-                      const placeholder = target.nextElementSibling as HTMLElement | null;
-                      if (placeholder) placeholder.style.display = 'flex';
-                    }}
-                  />
-                  <div className="hidden w-full h-full items-center justify-center bg-gray-100">
-                    <Package className="w-8 h-8 text-gray-300" />
+              {/* Imagem do produto — usa galeria HD se disponível, senão placeholder M_ */}
+              {(() => {
+                const imgSrc = (p.imagens_urls && p.imagens_urls.length > 0)
+                  ? p.imagens_urls[0]
+                  : p.imagem_url;
+                return imgSrc ? (
+                  <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden mb-3">
+                    <img
+                      src={imgSrc}
+                      alt={p.nome}
+                      loading="lazy"
+                      className="object-contain w-full h-full"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        // Fallback: tentar M_ se G_ falhar
+                        if (p.imagem_url && target.src !== p.imagem_url) {
+                          target.src = p.imagem_url;
+                          return;
+                        }
+                        target.style.display = 'none';
+                        const placeholder = target.nextElementSibling as HTMLElement | null;
+                        if (placeholder) placeholder.style.display = 'flex';
+                      }}
+                    />
+                    <div className="hidden w-full h-full items-center justify-center bg-gray-100">
+                      <Package className="w-8 h-8 text-gray-300" />
+                    </div>
                   </div>
-                </div>
-              ) : null}
+                ) : null;
+              })()}
 
               <span className="inline-flex items-center gap-1 text-[10px] font-semibold
                                text-[#fe68c4] bg-[#ffe5ec] px-2 py-0.5 rounded-full

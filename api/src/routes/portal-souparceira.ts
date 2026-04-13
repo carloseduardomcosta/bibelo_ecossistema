@@ -475,6 +475,9 @@ portalSouParceiraRouter.get(
         p.id,
         p.nome,
         COALESCE(p.slug_categoria, p.categoria, 'outros') AS categoria,
+        p.imagem_url,
+        p.imagens_urls,
+        p.descricao,
         ROUND(
           p.preco_custo
           * COALESCE(p.markup_override, m.markup, 2.00)

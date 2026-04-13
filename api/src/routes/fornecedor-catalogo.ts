@@ -49,10 +49,11 @@ const scraperState: ScraperState = {
 
 interface EnrichState {
   running: boolean;
-  fase: "idle" | "imagens" | "descricoes" | "concluido" | "erro";
+  fase: "idle" | "imagens" | "galeria" | "concluido" | "erro";
   total: number;
   feitos: number;
   com_imagem: number;
+  com_galeria: number;
   com_descricao: number;
   erros: number;
   iniciado_em: string | null;
@@ -65,6 +66,7 @@ const enrichState: EnrichState = {
   total: 0,
   feitos: 0,
   com_imagem: 0,
+  com_galeria: 0,
   com_descricao: 0,
   erros: 0,
   iniciado_em: null,
@@ -141,140 +143,183 @@ function extrairDescricao(html: string): string {
   return desc.slice(0, 1000); // max 1000 chars
 }
 
-/** Job de enriquecimento — roda em background */
+/**
+ * Extrai galeria de imagens de alta qualidade de uma página de produto.
+ * Filtra pelo item_id no path da URL para garantir que são fotos do produto correto.
+ * Converte M_ → G_ (grande, ~2× maior no CDN toplojas.com.br).
+ */
+function extrairGaleria(html: string, itemId: string): string[] {
+  // Somente imagens do CDN no path /Produtos/{itemId}/Fotos/
+  const regex = new RegExp(
+    `src="(https://cdn[^"]+/Produtos/${itemId}/Fotos/[^"]+\\.(?:jpg|jpeg|png))"`,
+    "gi"
+  );
+  const seen = new Set<string>();
+  const imgs: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(html)) !== null) {
+    // G_ = versão grande; se não houver, mantém M_ (mesmo arquivo sem prefix pode existir)
+    const url = m[1].replace(/\/M_/, "/G_").replace(/\/P_/, "/G_");
+    if (!seen.has(url)) {
+      seen.add(url);
+      imgs.push(url);
+    }
+  }
+  return imgs;
+}
+
+/**
+ * Job de enriquecimento — roda em background
+ *
+ * Fase 1: re-scraping das listagens para obter produto_url de produtos aprovados
+ *         que ainda não têm URL (caso haja; já foi executado na maioria dos produtos).
+ *
+ * Fase 2: visita página individual de cada produto aprovado sem galeria (imagens_urls IS NULL)
+ *         e captura:
+ *   - Galeria completa em alta qualidade (G_ no CDN, ~2× maior que M_)
+ *     Filtrada por /Produtos/{item_id}/Fotos/ → garante fotos do produto correto
+ *   - Descrição do produto
+ */
 async function executarEnriquecimento(): Promise<void> {
   try {
-    // ── Fase 1: imagens via re-scraping de listings ──────────────
+    // ── Fase 1: produto_url via listings (se ainda faltarem) ─────
     enrichState.fase = "imagens";
-    enrichState.mensagem = "Buscando categorias com produtos aprovados sem foto...";
 
-    // Categorias distintas dos aprovados sem imagem
     const cats = await query<{ slug: string; total: number }>(
       `SELECT COALESCE(slug_categoria, categoria) AS slug, COUNT(*)::int AS total
        FROM sync.fornecedor_catalogo_jc
-       WHERE status = 'aprovado' AND imagem_url IS NULL AND COALESCE(slug_categoria, categoria) IS NOT NULL
+       WHERE status = 'aprovado' AND produto_url IS NULL
+         AND COALESCE(slug_categoria, categoria) IS NOT NULL
        GROUP BY COALESCE(slug_categoria, categoria)
        ORDER BY slug`
     );
 
-    enrichState.total = cats.reduce((s, c) => s + c.total, 0);
-    enrichState.mensagem = `Fase 1/2: ${cats.length} categorias, ${enrichState.total} produtos sem foto`;
-    logger.info("Enriquecimento JC — fase imagens", { categorias: cats.length, produtos: enrichState.total });
+    if (cats.length > 0) {
+      enrichState.total    = cats.reduce((s, c) => s + c.total, 0);
+      enrichState.mensagem = `Fase 1/2: ${cats.length} categorias, ${enrichState.total} sem URL de produto`;
+      logger.info("Enriquecimento JC — fase 1 (produto_url)", { categorias: cats.length, produtos: enrichState.total });
 
-    for (const cat of cats) {
-      if (!enrichState.running) break;
-      const slug = cat.slug;
-
-      try {
-        // Pegar produto_ids aprovados sem imagem desta categoria
-        const prods = await query<{ item_id: string }>(
-          `SELECT item_id FROM sync.fornecedor_catalogo_jc
-           WHERE status = 'aprovado' AND imagem_url IS NULL
-             AND COALESCE(slug_categoria, categoria) = $1`,
-          [slug]
-        );
-        const pendingIds = new Set(prods.map(p => p.item_id));
-        if (pendingIds.size === 0) continue;
-
-        // Scrape páginas da categoria até encontrar todos os pendentes
-        const deptRes = await HTTP.get(`${BASE_URL}/${slug}/`);
-        await sleep(DELAY_MS);
-
-        let allFound = new Map<string, { imagem: string; url: string }>();
-        const found1 = extrairImagensEUrls(deptRes.data as string);
-        for (const [id, data] of found1) allFound.set(id, data);
-
-        const deptCode = extrairDeptCode(deptRes.data as string, slug);
-        let page = 2;
-        while (page <= 80 && enrichState.running) {
-          const url = urlPagina(slug, page, deptCode);
-          const res = await HTTP.get(url);
-          await sleep(DELAY_MS);
-          const found = extrairImagensEUrls(res.data as string);
-          if (found.size === 0) break;
-          for (const [id, data] of found) allFound.set(id, data);
-          page++;
-        }
-
-        // Atualizar DB para os pendentes desta categoria
-        let updated = 0;
-        for (const itemId of pendingIds) {
-          const data = allFound.get(itemId);
-          if (!data?.imagem) continue;
-          await queryOne(
-            `UPDATE sync.fornecedor_catalogo_jc
-             SET imagem_url = $1, produto_url = COALESCE(produto_url, $2), atualizado_em = NOW()
-             WHERE item_id = $3 AND imagem_url IS NULL`,
-            [data.imagem, data.url || null, itemId]
+      for (const cat of cats) {
+        if (!enrichState.running) break;
+        const slug = cat.slug;
+        try {
+          const prods = await query<{ item_id: string }>(
+            `SELECT item_id FROM sync.fornecedor_catalogo_jc
+             WHERE status = 'aprovado' AND produto_url IS NULL
+               AND COALESCE(slug_categoria, categoria) = $1`,
+            [slug]
           );
-          updated++;
-          enrichState.feitos++;
-          enrichState.com_imagem++;
+          const pendingIds = new Set(prods.map(p => p.item_id));
+          if (pendingIds.size === 0) continue;
+
+          const deptRes = await HTTP.get(`${BASE_URL}/${slug}/`);
+          await sleep(DELAY_MS);
+
+          const allFound = new Map<string, { imagem: string; url: string }>();
+          for (const [id, data] of extrairImagensEUrls(deptRes.data as string)) allFound.set(id, data);
+
+          const deptCode = extrairDeptCode(deptRes.data as string, slug);
+          let page = 2;
+          while (page <= 80 && enrichState.running) {
+            const res = await HTTP.get(urlPagina(slug, page, deptCode));
+            await sleep(DELAY_MS);
+            const found = extrairImagensEUrls(res.data as string);
+            if (found.size === 0) break;
+            for (const [id, data] of found) allFound.set(id, data);
+            if ([...pendingIds].filter(id => allFound.has(id)).length >= pendingIds.size) break;
+            page++;
+          }
+
+          let updated = 0;
+          for (const itemId of pendingIds) {
+            const data = allFound.get(itemId);
+            if (!data?.url) continue;
+            await queryOne(
+              `UPDATE sync.fornecedor_catalogo_jc
+               SET produto_url = $1, imagem_url = COALESCE(imagem_url, $2), atualizado_em = NOW()
+               WHERE item_id = $3 AND produto_url IS NULL`,
+              [data.url, data.imagem || null, itemId]
+            );
+            updated++;
+            enrichState.feitos++;
+            enrichState.com_imagem++;
+          }
+          logger.info(`Enriquecimento fase 1: ${slug} — ${updated}/${pendingIds.size} com URL`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.warn(`Enriquecimento fase 1 erro: ${slug} — ${msg}`);
+          enrichState.erros++;
+          await sleep(DELAY_MS * 2);
         }
-
-        logger.info(`Enriquecimento imagens: ${slug} — ${updated}/${pendingIds.size} atualizados`);
-
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        logger.warn(`Enriquecimento imagens erro: ${slug} — ${msg}`);
-        enrichState.erros++;
-        await sleep(DELAY_MS * 2);
       }
     }
 
-    enrichState.mensagem = `Fase 1 concluída: ${enrichState.com_imagem} fotos. Iniciando descrições...`;
+    // ── Fase 2: galeria HD (G_) + descrição via página individual ─
+    enrichState.fase   = "galeria";
+    enrichState.feitos = 0;
 
-    // ── Fase 2: descrições via página individual ─────────────────
-    enrichState.fase = "descricoes";
-
-    // Busca aprovados que têm produto_url mas não têm descrição
-    const semDesc = await query<{ id: string; item_id: string; produto_url: string }>(
+    // Aprovados com produto_url mas sem galeria ainda
+    const semGaleria = await query<{ id: string; item_id: string; produto_url: string }>(
       `SELECT id, item_id, produto_url FROM sync.fornecedor_catalogo_jc
-       WHERE status = 'aprovado' AND produto_url IS NOT NULL AND descricao IS NULL
+       WHERE status = 'aprovado' AND produto_url IS NOT NULL AND imagens_urls IS NULL
        ORDER BY slug_categoria, item_id
-       LIMIT 2000`
+       LIMIT 3000`
     );
 
-    enrichState.total = semDesc.length;
-    enrichState.mensagem = `Fase 2/2: ${semDesc.length} produtos sem descrição`;
-    logger.info("Enriquecimento JC — fase descrições", { produtos: semDesc.length });
+    enrichState.total    = semGaleria.length;
+    enrichState.mensagem = `Fase 2/2: ${semGaleria.length} produtos — galeria HD + descrição`;
+    logger.info("Enriquecimento JC — fase 2 (galeria HD + descrição)", { produtos: semGaleria.length });
 
-    for (const prod of semDesc) {
+    for (const prod of semGaleria) {
       if (!enrichState.running) break;
       enrichState.feitos++;
 
       try {
-        const url = `${BASE_URL}/${prod.produto_url}/`;
-        const res = await HTTP_BUFFER.get(url);
+        const pageUrl = `${BASE_URL}/${prod.produto_url}/`;
+        const res  = await HTTP_BUFFER.get(pageUrl);
         await sleep(DELAY_MS);
 
-        const html = decodeIso(res.data as Buffer);
-        const desc = extrairDescricao(html);
-        if (desc) {
-          await queryOne(
-            `UPDATE sync.fornecedor_catalogo_jc SET descricao = $1, atualizado_em = NOW() WHERE id = $2`,
-            [desc, prod.id]
-          );
-          enrichState.com_descricao++;
-        }
+        const html    = decodeIso(res.data as Buffer);
+        const galeria = extrairGaleria(html, prod.item_id);
+        const desc    = extrairDescricao(html);
+
+        // Sempre grava imagens_urls (mesmo vazio) para não reprocessar
+        await queryOne(
+          `UPDATE sync.fornecedor_catalogo_jc
+           SET imagens_urls  = $1,
+               imagem_url    = COALESCE($2, imagem_url),
+               descricao     = COALESCE($3, descricao),
+               atualizado_em = NOW()
+           WHERE id = $4`,
+          [
+            galeria.length > 0 ? galeria : [],  // array vazio = "processado, sem galeria"
+            galeria[0] ?? null,                  // 1ª foto G_ sobrescreve placeholder M_
+            desc || null,
+            prod.id,
+          ]
+        );
+
+        if (galeria.length > 0) enrichState.com_galeria++;
+        if (desc)               enrichState.com_descricao++;
+
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        logger.warn(`Enriquecimento descrição erro: ${prod.item_id} — ${msg}`);
+        logger.warn(`Enriquecimento galeria erro: ${prod.item_id} — ${msg}`);
         enrichState.erros++;
         await sleep(DELAY_MS * 2);
       }
 
       if (enrichState.feitos % 50 === 0) {
-        enrichState.mensagem = `Fase 2: ${enrichState.feitos}/${semDesc.length} processados (${enrichState.com_descricao} com desc)`;
+        enrichState.mensagem = `Fase 2: ${enrichState.feitos}/${semGaleria.length} | galeria: ${enrichState.com_galeria} | desc: ${enrichState.com_descricao}`;
       }
     }
 
     enrichState.fase     = "concluido";
-    enrichState.mensagem = `Concluído: ${enrichState.com_imagem} fotos, ${enrichState.com_descricao} descrições`;
+    enrichState.mensagem = `Concluído: ${enrichState.com_galeria} galerias HD, ${enrichState.com_descricao} descrições`;
     logger.info("Enriquecimento JC concluído", {
-      imagens: enrichState.com_imagem,
+      galerias:   enrichState.com_galeria,
       descricoes: enrichState.com_descricao,
-      erros: enrichState.erros,
+      erros:      enrichState.erros,
     });
 
   } catch (err) {
