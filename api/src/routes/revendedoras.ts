@@ -539,9 +539,9 @@ revendedorasRouter.put("/:id/status", async (req: Request, res: Response) => {
 
   const updated = await queryOne(
     `UPDATE crm.revendedoras
-     SET status = $1,
-         aprovada_em  = CASE WHEN $1 = 'ativa' AND aprovada_em IS NULL THEN NOW() ELSE aprovada_em END,
-         aprovada_por = CASE WHEN $1 = 'ativa' AND aprovada_por IS NULL THEN $2 ELSE aprovada_por END,
+     SET status = $1::text,
+         aprovada_em  = CASE WHEN $1::text = 'ativa' AND aprovada_em IS NULL THEN NOW() ELSE aprovada_em END,
+         aprovada_por = CASE WHEN $1::text = 'ativa' AND aprovada_por IS NULL THEN $2 ELSE aprovada_por END,
          atualizado_em = NOW()
      WHERE id = $3 RETURNING *`,
     [status, user, id]
