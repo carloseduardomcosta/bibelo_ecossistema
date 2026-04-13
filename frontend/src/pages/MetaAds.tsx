@@ -14,6 +14,27 @@ import {
 
 // ── Tipos ────────────────────────────────────────────────────
 
+interface AudienceInfo {
+  id: string;
+  name: string;
+  approximate_count_lower_bound?: number;
+  approximate_count_upper_bound?: number;
+  time_updated?: number;
+}
+
+interface SegmentCount {
+  nome: string;
+  total_crm: number;
+}
+
+interface AudienceSyncResult {
+  nome: string;
+  audienceId: string;
+  usuarios: number;
+  criada: boolean;
+  erro?: string;
+}
+
 interface ConnectionStatus {
   connected: boolean;
   account?: {
@@ -363,6 +384,10 @@ export default function MetaAds() {
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{ ultimo_sync: any; total_registros: number; total_campanhas: number } | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [audiences, setAudiences] = useState<AudienceInfo[]>([]);
+  const [segmentCounts, setSegmentCounts] = useState<SegmentCount[]>([]);
+  const [syncingAudiences, setSyncingAudiences] = useState(false);
+  const [audienceSyncResult, setAudienceSyncResult] = useState<AudienceSyncResult[] | null>(null);
 
   // Carregar status de conexão
   const loadStatus = useCallback(async () => {
@@ -383,6 +408,30 @@ export default function MetaAds() {
       setSyncStatus(data);
     } catch { /* ignore */ }
   }, []);
+
+  // Carregar audiências
+  const loadAudiences = useCallback(async () => {
+    try {
+      const { data } = await api.get('/meta-ads/audiences');
+      setAudiences(data.audiences || []);
+      setSegmentCounts(data.segmentCounts || []);
+    } catch { /* ignore */ }
+  }, []);
+
+  // Sincronizar audiências
+  const handleSyncAudiences = useCallback(async () => {
+    setSyncingAudiences(true);
+    setAudienceSyncResult(null);
+    try {
+      const { data } = await api.post('/meta-ads/audiences/sync');
+      setAudienceSyncResult(data.results || []);
+      await loadAudiences();
+    } catch (err) {
+      console.error('Erro ao sincronizar audiências:', err);
+    } finally {
+      setSyncingAudiences(false);
+    }
+  }, [loadAudiences]);
 
   // Sync manual
   const handleSync = useCallback(async () => {
@@ -430,8 +479,9 @@ export default function MetaAds() {
     if (status?.connected) {
       loadData();
       loadSyncStatus();
+      loadAudiences();
     }
-  }, [status?.connected, loadData, loadSyncStatus]);
+  }, [status?.connected, loadData, loadSyncStatus, loadAudiences]);
 
   // Loading inicial
   if (loading) {
@@ -863,16 +913,148 @@ export default function MetaAds() {
         </div>
       )}
 
-      {/* Dica estratégica */}
-      <div className="bg-pink-500/10 border border-pink-500/30 rounded-xl p-4 flex items-start gap-3">
-        <ArrowUpRight size={20} className="text-pink-400 mt-0.5 shrink-0" />
-        <div>
-          <p className="text-pink-300 font-medium text-sm">Dica: Público feminino Sul/Sudeste</p>
-          <p className="text-pink-400/80 text-xs mt-1">
-            Use os dados de Gênero e Região acima para identificar onde seu investimento rende mais.
-            Foque budget nos estados com melhor CTR e nas faixas etárias femininas com menor CPC.
-            Na Fase 2, poderemos exportar segmentos do CRM como Custom Audiences para retargeting.
+      {/* ── Audiências Personalizadas (Fase 2) ── */}
+      <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5 space-y-5">
+        {/* Header */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-bibelo-text flex items-center gap-2">
+              <Users size={16} className="text-violet-400" />
+              Audiências Personalizadas
+            </h3>
+            <p className="text-bibelo-muted text-xs mt-0.5">
+              Segmentos do CRM sincronizados com o Meta para retargeting e lookalike
+            </p>
+          </div>
+          <button
+            onClick={handleSyncAudiences}
+            disabled={syncingAudiences}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/20 border border-violet-500/30 text-violet-300 text-xs font-medium hover:bg-violet-500/30 transition-colors disabled:opacity-50"
+          >
+            <Zap size={13} className={syncingAudiences ? 'animate-pulse' : ''} />
+            {syncingAudiences ? 'Sincronizando...' : 'Sincronizar audiências'}
+          </button>
+        </div>
+
+        {/* Grid de segmentos */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            {
+              nome: 'Bibelô — Clientes',
+              descricao: 'Todos que já compraram',
+              icon: ShoppingCart,
+              color: 'text-emerald-400',
+              bg: 'bg-emerald-500/10 border-emerald-500/20',
+              uso: 'Lookalike de alta qualidade',
+            },
+            {
+              nome: 'Bibelô — Leads não convertidos',
+              descricao: 'Leads verificados sem compra',
+              icon: UserPlus,
+              color: 'text-blue-400',
+              bg: 'bg-blue-500/10 border-blue-500/20',
+              uso: 'Anúncio de 1ª compra + cupom',
+            },
+            {
+              nome: 'Bibelô — Inativos +90d',
+              descricao: 'Clientes que sumiram',
+              icon: AlertTriangle,
+              color: 'text-amber-400',
+              bg: 'bg-amber-500/10 border-amber-500/20',
+              uso: 'Campanha de reativação',
+            },
+            {
+              nome: 'Bibelô — Compradores Recentes',
+              descricao: 'Compraram nos últimos 30d',
+              icon: Zap,
+              color: 'text-pink-400',
+              bg: 'bg-pink-500/10 border-pink-500/20',
+              uso: 'Lookalike de top clientes',
+            },
+          ].map((seg) => {
+            const audienceMeta = audiences.find((a) => a.name === seg.nome);
+            const crmCount = segmentCounts.find((s) => s.nome === seg.nome)?.total_crm ?? 0;
+            const metaCount = audienceMeta?.approximate_count_lower_bound;
+            const syncResult = audienceSyncResult?.find((r) => r.nome === seg.nome);
+            const Icon = seg.icon;
+
+            return (
+              <div key={seg.nome} className={`rounded-lg border p-4 space-y-3 ${seg.bg}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <Icon size={16} className={seg.color} />
+                    <p className="text-bibelo-text text-xs font-semibold mt-1.5 leading-tight">{seg.descricao}</p>
+                  </div>
+                  {audienceMeta ? (
+                    <CheckCircle2 size={14} className="text-emerald-400 shrink-0 mt-0.5" />
+                  ) : (
+                    <div className="w-3.5 h-3.5 rounded-full border border-bibelo-muted/40 shrink-0 mt-0.5" />
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-bibelo-muted">No CRM</span>
+                    <span className={`font-bold ${seg.color}`}>{crmCount.toLocaleString('pt-BR')}</span>
+                  </div>
+                  {metaCount !== undefined && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-bibelo-muted">No Meta</span>
+                      <span className="text-bibelo-text font-medium">~{metaCount.toLocaleString('pt-BR')}+</span>
+                    </div>
+                  )}
+                  {syncResult && !syncResult.erro && (
+                    <p className="text-emerald-400 text-xs">✓ {syncResult.usuarios} enviados</p>
+                  )}
+                  {syncResult?.erro && (
+                    <p className="text-red-400 text-xs truncate" title={syncResult.erro}>Erro: {syncResult.erro}</p>
+                  )}
+                </div>
+
+                <p className="text-bibelo-muted text-xs border-t border-white/5 pt-2 italic">{seg.uso}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Guia rápido: como usar nas campanhas */}
+        <div className="border-t border-bibelo-border pt-4">
+          <p className="text-bibelo-muted text-xs font-semibold mb-3 flex items-center gap-1.5">
+            <ArrowUpRight size={13} />
+            Como usar essas audiências nas campanhas do Meta Ads Manager
           </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              {
+                passo: '1',
+                titulo: 'Crie um Conjunto de Anúncios',
+                detalhe: 'No Meta Ads Manager, ao configurar o público do conjunto de anúncios, clique em "Usar audiência salva" ou acesse a seção "Audiências personalizadas".',
+                color: 'text-violet-300',
+              },
+              {
+                passo: '2',
+                titulo: 'Selecione o segmento',
+                detalhe: 'As audiências "Bibelô —" aparecem na lista. Escolha conforme o objetivo: Clientes para lookalike, Leads para conversão, Inativos para reativação.',
+                color: 'text-blue-300',
+              },
+              {
+                passo: '3',
+                titulo: 'Crie um Lookalike (opcional)',
+                detalhe: 'Na seção Audiências do Meta, clique em "Criar audiência" > "Audiência semelhante", selecione "Bibelô — Clientes" como origem e defina 1–2% do Brasil.',
+                color: 'text-emerald-300',
+              },
+            ].map((item) => (
+              <div key={item.passo} className="bg-bibelo-bg rounded-lg p-3 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-bold ${item.color} w-5 h-5 rounded-full border border-current flex items-center justify-center shrink-0`}>
+                    {item.passo}
+                  </span>
+                  <span className="text-bibelo-text text-xs font-semibold">{item.titulo}</span>
+                </div>
+                <p className="text-bibelo-muted text-xs leading-relaxed pl-7">{item.detalhe}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

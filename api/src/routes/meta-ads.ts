@@ -14,6 +14,7 @@ import {
   metaGet,
 } from "../integrations/meta/client";
 import { syncMetaAds } from "../services/meta.service";
+import { syncAudiences, listAudiences, AUDIENCE_SEGMENTS } from "../integrations/meta/audiences";
 
 export const metaAdsRouter = Router();
 metaAdsRouter.use(authMiddleware);
@@ -370,6 +371,66 @@ metaAdsRouter.get("/historico/plataformas", async (req: Request, res: Response) 
     [dias]
   );
   res.json(data);
+});
+
+// ══════════════════════════════════════════════════════════════
+// CUSTOM AUDIENCES — Fase 2
+// ══════════════════════════════════════════════════════════════
+
+// ── Listar audiências ────────────────────────────────────────
+
+metaAdsRouter.get("/audiences", async (_req: Request, res: Response) => {
+  if (!isMetaConfigured()) {
+    res.status(503).json({ error: "Meta Ads não configurado" });
+    return;
+  }
+  try {
+    const audiences = await listAudiences();
+    // Enriquecer com contagem local de usuários por segmento
+    const segmentCounts = await Promise.all(
+      AUDIENCE_SEGMENTS.map(async (s) => {
+        const [row] = await query<{ total: string }>(
+          `SELECT COUNT(*)::text as total FROM (${
+            // Extrair a query do segmento via queryFn e contar
+            // Usa uma subquery wrapper para contar sem buscar os dados
+            s.nome.includes("Leads")
+              ? "SELECT email FROM marketing.leads WHERE email_verificado = true AND convertido = false"
+              : s.nome.includes("Inativos")
+              ? "SELECT c.email FROM crm.customers c INNER JOIN crm.customer_scores cs ON cs.customer_id = c.id WHERE c.email IS NOT NULL AND cs.total_pedidos > 0 AND cs.ultima_compra < NOW() - INTERVAL '90 days'"
+              : s.nome.includes("Recentes")
+              ? "SELECT c.email FROM crm.customers c INNER JOIN crm.customer_scores cs ON cs.customer_id = c.id WHERE c.email IS NOT NULL AND cs.ultima_compra >= NOW() - INTERVAL '30 days'"
+              : "SELECT c.email FROM crm.customers c INNER JOIN crm.customer_scores cs ON cs.customer_id = c.id WHERE c.email IS NOT NULL AND cs.total_pedidos > 0"
+          }) sub`,
+        );
+        return { nome: s.nome, total_crm: parseInt(row?.total || "0") };
+      }),
+    );
+    res.json({ audiences, segmentCounts });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Erro";
+    logger.error("Meta Audiences list erro", { error: msg });
+    res.status(500).json({ error: msg });
+  }
+});
+
+// ── Sincronizar audiências ───────────────────────────────────
+
+metaAdsRouter.post("/audiences/sync", async (_req: Request, res: Response) => {
+  if (!isMetaConfigured()) {
+    res.status(503).json({ error: "Meta Ads não configurado" });
+    return;
+  }
+  try {
+    logger.info("Meta Audiences: sync manual iniciado");
+    const results = await syncAudiences();
+    const ok = results.filter((r) => !r.erro).length;
+    const erros = results.filter((r) => r.erro).length;
+    res.json({ ok: true, sincronizados: ok, erros, results });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Erro";
+    logger.error("Meta Audiences sync erro", { error: msg });
+    res.status(500).json({ error: msg });
+  }
 });
 
 // ── Diagnóstico do Pixel ─────────────────────────────────────
