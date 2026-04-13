@@ -1161,3 +1161,8 @@ sync.category_sync_log         (auditoria)
   - Nginx: vhost HTTPS `souparceira.papelariabibelo.com.br` → frontend :3000 + `/api/` → API :4000
   - SSL: Let's Encrypt via certbot, renovação automática
   - DNS: registro A Cloudflare `souparceira → 187.77.254.241` (DNS-only) adicionado via API
+- **ad23b25** — test(portal): 44 testes automatizados do portal Sou Parceira + fixes de segurança (12/04/2026)
+  - Cria `api/src/routes/portal-souparceira.test.ts` (44 testes): solicitar OTP, entrar com código, /me, /categorias, /catalogo, paginação, filtros, segurança XSS/SQLi, isolamento CRM vs Portal
+  - `auth.ts`: rejeita tokens com `iss: 'souparceira'` no CRM (impede cross-portal token abuse)
+  - `portal-souparceira.ts`: skip de rate limit IP em modo VITEST (evita falsos 429 nos testes)
+  - `App.tsx`: ErrorBoundary ao redor do SouParceira (fix blank page em exceção React)
