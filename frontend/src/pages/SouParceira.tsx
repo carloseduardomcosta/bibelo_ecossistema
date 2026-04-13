@@ -4,6 +4,8 @@ import {
   Handshake, ShoppingBag, MessageCircle, ChevronLeft, ChevronRight,
   Tag, Search, Medal, Star, Crown, LogOut, Loader2,
   ArrowRight, CheckCircle2, Sparkles, TrendingUp, Package,
+  LayoutDashboard, BookOpen, Lock, Clock, Truck, CheckCircle,
+  XCircle, SortAsc,
 } from 'lucide-react';
 
 // Instância axios sem interceptors de auth do CRM
@@ -41,7 +43,37 @@ interface CatalogoPaginado {
   total_paginas: number;
 }
 
-type Tela = 'verificando' | 'login_cpf' | 'login_otp' | 'catalogo';
+interface DashboardData {
+  volume_mes_atual: number;
+  total_pedidos: number;
+  pontos: number;
+  nivel: 'bronze' | 'prata' | 'ouro';
+  percentual_desconto: number;
+  progresso_nivel: {
+    proximo: string | null;
+    meta: number;
+    faltam: number;
+    percentual: number;
+  };
+  ultimos_pedidos: Array<{
+    id: string;
+    status: string;
+    total: string;
+    criado_em: string;
+  }>;
+}
+
+interface Modulo {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  preco_mensal: string | null;
+  ativo: boolean;
+  tem_acesso: boolean;
+}
+
+type Tela   = 'verificando' | 'login_cpf' | 'login_otp' | 'logado';
+type Secao  = 'dashboard' | 'catalogo' | 'recursos';
 
 // ── Config visual por nível ──────────────────────────────────────
 
@@ -49,6 +81,14 @@ const NIVEL = {
   bronze: { label: 'Bronze', cor: 'bg-amber-100 text-amber-700 border-amber-300', icon: Medal },
   prata:  { label: 'Prata',  cor: 'bg-slate-100 text-slate-600 border-slate-300', icon: Star  },
   ouro:   { label: 'Ouro',   cor: 'bg-yellow-100 text-yellow-700 border-yellow-400', icon: Crown },
+};
+
+const STATUS_PEDIDO: Record<string, { label: string; cor: string; icon: typeof Clock }> = {
+  pendente:  { label: 'Pendente',  cor: 'text-amber-600 bg-amber-50',   icon: Clock       },
+  aprovado:  { label: 'Aprovado',  cor: 'text-blue-600 bg-blue-50',     icon: CheckCircle },
+  enviado:   { label: 'Enviado',   cor: 'text-violet-600 bg-violet-50', icon: Truck       },
+  entregue:  { label: 'Entregue',  cor: 'text-green-600 bg-green-50',   icon: CheckCircle2 },
+  cancelado: { label: 'Cancelado', cor: 'text-red-600 bg-red-50',       icon: XCircle     },
 };
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -69,25 +109,24 @@ function maskCPF(value: string): string {
   return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;
 }
 
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+}
+
 // ── Painel direito — hero imagem ─────────────────────────────────
 
 function HeroPanel() {
   return (
     <div className="hidden lg:flex relative overflow-hidden flex-col justify-end">
-      {/* Imagem de fundo */}
       <img
         src="/revendedoras.png"
         alt=""
         className="absolute inset-0 w-full h-full object-cover object-center"
         draggable={false}
       />
-
-      {/* Gradiente overlay — sutil no topo, denso na base */}
       <div className="absolute inset-0 bg-gradient-to-t from-[#1a1a1a]/85 via-[#1a1a1a]/20 to-transparent" />
-      {/* Toque de cor rosa no topo */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#fe68c4]/25 to-transparent" />
 
-      {/* Badge flutuante — canto superior direito */}
       <div
         className="absolute top-8 right-8 bg-white/15 backdrop-blur-md border border-white/30
                    rounded-2xl px-4 py-3 text-white shadow-lg"
@@ -100,7 +139,6 @@ function HeroPanel() {
         <p className="text-xs text-white/70 mt-0.5">Preços de revendedora</p>
       </div>
 
-      {/* Badge flutuante — centro esquerda */}
       <div
         className="absolute top-1/2 left-8 -translate-y-1/2 bg-white/15 backdrop-blur-md
                    border border-white/30 rounded-2xl px-4 py-3 text-white shadow-lg"
@@ -113,7 +151,6 @@ function HeroPanel() {
         <p className="text-xs text-white/70 mt-0.5">no preço de custo</p>
       </div>
 
-      {/* Conteúdo inferior */}
       <div className="relative z-10 p-10">
         <p className="text-[#fe68c4] text-sm font-semibold tracking-widest uppercase mb-3">
           Programa Parceiras
@@ -128,8 +165,6 @@ function HeroPanel() {
           Acesse preços exclusivos de revendedora, explore o catálogo completo
           e feche pedidos diretamente pelo WhatsApp.
         </p>
-
-        {/* Chips de benefícios */}
         <div className="flex flex-wrap gap-2">
           {[
             { icon: Package,    label: '+1.000 produtos' },
@@ -149,7 +184,6 @@ function HeroPanel() {
         </div>
       </div>
 
-      {/* Keyframes inline */}
       <style>{`
         @keyframes floatBadge {
           0%, 100% { transform: translateY(0px); }
@@ -165,9 +199,7 @@ function HeroPanel() {
 function AuthShell({ children, step }: { children: React.ReactNode; step: 1 | 2 }) {
   return (
     <div className="min-h-screen grid lg:grid-cols-2" style={{ fontFamily: 'Jost, sans-serif' }}>
-      {/* Esquerda — formulário */}
       <div className="flex flex-col items-center justify-center bg-white px-8 py-12 min-h-screen">
-        {/* Cabeçalho */}
         <div className="w-full max-w-sm mb-10">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-11 h-11 bg-[#fe68c4] rounded-xl flex items-center justify-center shadow-md">
@@ -179,7 +211,6 @@ function AuthShell({ children, step }: { children: React.ReactNode; step: 1 | 2 
             </div>
           </div>
 
-          {/* Indicador de etapa */}
           <div className="flex items-center gap-2 mb-8">
             {[1, 2].map(s => (
               <div key={s} className="flex items-center gap-2">
@@ -205,12 +236,10 @@ function AuthShell({ children, step }: { children: React.ReactNode; step: 1 | 2 
           </div>
         </div>
 
-        {/* Conteúdo do step */}
         <div className="w-full max-w-sm">
           {children}
         </div>
 
-        {/* Rodapé */}
         <p className="mt-10 text-xs text-gray-400 text-center">
           Ainda não é parceira?{' '}
           <a
@@ -222,8 +251,6 @@ function AuthShell({ children, step }: { children: React.ReactNode; step: 1 | 2 
           </a>
         </p>
       </div>
-
-      {/* Direita — hero */}
       <HeroPanel />
     </div>
   );
@@ -261,7 +288,6 @@ function LoginForm({ onCodigoEnviado }: LoginFormProps) {
     setLoading(true);
     try {
       const res = await api.post('/souparceira/solicitar', { cpf });
-      // CPF não cadastrado como revendedora ativa
       if (!res.data.ok || res.data.cadastrada === false) {
         setErro('nao_cadastrada');
         return;
@@ -288,10 +314,7 @@ function LoginForm({ onCodigoEnviado }: LoginFormProps) {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label
-              htmlFor="cpf"
-              className="block text-sm font-semibold text-gray-700 mb-2"
-            >
+            <label htmlFor="cpf" className="block text-sm font-semibold text-gray-700 mb-2">
               CPF
             </label>
             <input
@@ -368,14 +391,11 @@ interface OTPFormProps {
   onVoltar: () => void;
 }
 
-// 6 inputs individuais para o OTP
 function OTPBoxes({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const len  = 6;
 
-  function focus(i: number) {
-    refs.current[i]?.focus();
-  }
+  function focus(i: number) { refs.current[i]?.focus(); }
 
   function handleKey(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Backspace') {
@@ -396,13 +416,11 @@ function OTPBoxes({ value, onChange }: { value: string; onChange: (v: string) =>
   function handleInput(i: number, e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!raw) return;
-    // Colar múltiplos caracteres
-    const chars = raw.slice(0, len - i);
-    const next  = (value + '').slice(0, i) + chars + (value + '').slice(i + chars.length);
+    const chars  = raw.slice(0, len - i);
+    const next   = (value + '').slice(0, i) + chars + (value + '').slice(i + chars.length);
     const clipped = next.slice(0, len);
     onChange(clipped);
-    const nextFocus = Math.min(i + chars.length, len - 1);
-    focus(nextFocus);
+    focus(Math.min(i + chars.length, len - 1));
   }
 
   function handlePaste(e: React.ClipboardEvent) {
@@ -429,8 +447,7 @@ function OTPBoxes({ value, onChange }: { value: string; onChange: (v: string) =>
           autoFocus={i === 0}
           autoComplete={i === 0 ? 'one-time-code' : 'off'}
           className={`w-12 h-14 text-center text-2xl font-bold rounded-xl border-2
-                      text-gray-900 bg-gray-50 uppercase
-                      transition-all duration-200 focus:outline-none
+                      text-gray-900 bg-gray-50 uppercase transition-all duration-200 focus:outline-none
                       ${value[i]
                         ? 'border-[#fe68c4] bg-[#ffe5ec]/50 text-[#fe68c4]'
                         : 'border-gray-200 focus:border-[#fe68c4] focus:bg-white'
@@ -448,11 +465,8 @@ function OTPForm({ cpf, emailMasked, onLogado, onVoltar }: OTPFormProps) {
   const [reenvio, setReenvio] = useState(false);
   const [erro, setErro]       = useState<string | null>(null);
 
-  // Auto-submit quando todos os 6 caracteres preenchidos
   useEffect(() => {
-    if (codigo.length === 6) {
-      submitCodigo(codigo);
-    }
+    if (codigo.length === 6) submitCodigo(codigo);
   }, [codigo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function submitCodigo(cod: string) {
@@ -522,7 +536,6 @@ function OTPForm({ cpf, emailMasked, onLogado, onVoltar }: OTPFormProps) {
             </div>
           )}
 
-          {/* Reenvio */}
           <div className="text-center pt-2">
             {reenvio ? (
               <p className="text-sm text-green-600 flex items-center justify-center gap-1.5">
@@ -546,60 +559,29 @@ function OTPForm({ cpf, emailMasked, onLogado, onVoltar }: OTPFormProps) {
   );
 }
 
-// ── Tela: catálogo ────────────────────────────────────────────────
+// ── Header + nav (seções logadas) ────────────────────────────────
 
-interface CatalogoProps {
+interface HeaderLogadoProps {
   rev: Revendedora;
+  secao: Secao;
+  onSecao: (s: Secao) => void;
   onLogout: () => void;
 }
 
-function Catalogo({ rev, onLogout }: CatalogoProps) {
-  const [categorias, setCategorias]           = useState<Categoria[]>([]);
-  const [catalogo, setCatalogo]               = useState<CatalogoPaginado | null>(null);
-  const [loadingCat, setLoadingCat]           = useState(false);
-  const [searchInput, setSearchInput]         = useState('');
-  const [search, setSearch]                   = useState('');
-  const [categoriaFiltro, setCategoriaFiltro] = useState('');
-  const [pagina, setPagina]                   = useState(1);
-
-  useEffect(() => {
-    api.get('/souparceira/categorias').then(r => setCategorias(r.data)).catch(() => {});
-  }, []);
-
-  const fetchCatalogo = useCallback(async (pg: number, s: string, cat: string) => {
-    setLoadingCat(true);
-    try {
-      const params = new URLSearchParams({
-        page: String(pg), limit: '24',
-        ...(s && { search: s }), ...(cat && { categoria: cat }),
-      });
-      const res = await api.get(`/souparceira/catalogo?${params}`);
-      setCatalogo(res.data);
-    } catch { /* mantém estado */ } finally {
-      setLoadingCat(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchCatalogo(pagina, search, categoriaFiltro); },
-    [pagina, search, categoriaFiltro, fetchCatalogo]);
-
-  useEffect(() => {
-    const t = setTimeout(() => { setSearch(searchInput); setPagina(1); }, 350);
-    return () => clearTimeout(t);
-  }, [searchInput]);
-
+function HeaderLogado({ rev, secao, onSecao, onLogout }: HeaderLogadoProps) {
   const nivelCfg = NIVEL[rev.nivel] ?? NIVEL.bronze;
   const NivelIcon = nivelCfg.icon;
-  const msgWA = encodeURIComponent(
-    `Olá! Sou revendedora ${rev.nome} e gostaria de fazer um pedido pelo catálogo Bibelô.`
-  );
+
+  const NAV: { id: Secao; label: string; icon: typeof LayoutDashboard }[] = [
+    { id: 'dashboard', label: 'Início',   icon: LayoutDashboard },
+    { id: 'catalogo',  label: 'Catálogo', icon: BookOpen        },
+    { id: 'recursos',  label: 'Recursos', icon: Sparkles        },
+  ];
 
   return (
-    <div className="min-h-screen bg-[#fdf6f9]" style={{ fontFamily: 'Jost, sans-serif' }}>
-
-      {/* Header */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+    <header className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm">
+      <div className="max-w-5xl mx-auto px-4">
+        <div className="flex items-center justify-between gap-4 py-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-[#fe68c4] rounded-xl flex items-center justify-center shadow-sm">
               <Handshake className="w-4 h-4 text-white" />
@@ -629,148 +611,401 @@ function Catalogo({ rev, onLogout }: CatalogoProps) {
             </button>
           </div>
         </div>
-      </header>
 
-      {/* Hero mini — desconto do tier */}
-      <div className="bg-gradient-to-r from-[#fe68c4] to-[#fd4fb8] text-white">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-medium text-white/70 uppercase tracking-wider mb-0.5">
-              Seu desconto exclusivo
-            </p>
-            <p className="text-2xl font-bold leading-none">
-              {rev.percentual_desconto}% OFF{' '}
-              <span className="text-base font-normal text-white/80">em todo o catálogo</span>
-            </p>
-          </div>
-          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
-                          bg-white/20 border border-white/30 text-white text-sm font-semibold`}>
-            <NivelIcon className="w-4 h-4" />
-            Tier {nivelCfg.label}
-          </span>
+        {/* Nav tabs */}
+        <div className="flex gap-1 -mb-px">
+          {NAV.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => onSecao(id)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors
+                ${secao === id
+                  ? 'border-[#fe68c4] text-[#fe68c4]'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-200'
+                }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {label}
+            </button>
+          ))}
         </div>
       </div>
+    </header>
+  );
+}
 
-      <div className="max-w-5xl mx-auto px-4 py-5">
+// ── Seção: Dashboard ─────────────────────────────────────────────
 
-        {/* Busca + filtro */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-5">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar produto..."
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl
-                         text-gray-900 text-sm font-medium
-                         focus:outline-none focus:border-[#fe68c4] focus:ring-1 focus:ring-[#fe68c4]/30
-                         transition-all shadow-sm"
+function Dashboard({ rev, onIrCatalogo }: { rev: Revendedora; onIrCatalogo: () => void }) {
+  const [data, setData]   = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/souparceira/dashboard')
+      .then(r => setData(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 py-10 text-center">
+        <div className="w-8 h-8 border-2 border-[#fe68c4] border-t-transparent rounded-full animate-spin mx-auto" />
+      </div>
+    );
+  }
+
+  const nivel  = data?.nivel ?? rev.nivel;
+  const nivelCfg = NIVEL[nivel] ?? NIVEL.bronze;
+  const NivelIcon = nivelCfg.icon;
+  const pg = data?.progresso_nivel;
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+
+      {/* Saudação */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900">
+          Olá, {rev.nome.split(' ')[0]}! 👋
+        </h2>
+        <p className="text-sm text-gray-500 mt-0.5">Veja seu desempenho este mês</p>
+      </div>
+
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          {
+            label: 'Vendas este mês',
+            value: formatCurrency(data?.volume_mes_atual ?? 0),
+            sub: 'volume acumulado',
+            color: 'text-[#fe68c4]',
+          },
+          {
+            label: 'Pedidos',
+            value: String(data?.total_pedidos ?? 0),
+            sub: 'total realizados',
+            color: 'text-blue-600',
+          },
+          {
+            label: 'Pontos',
+            value: String(data?.pontos ?? 0),
+            sub: 'acumulados',
+            color: 'text-amber-500',
+          },
+          {
+            label: 'Desconto',
+            value: `${rev.percentual_desconto}%`,
+            sub: 'em todo catálogo',
+            color: 'text-green-600',
+          },
+        ].map(card => (
+          <div key={card.label}
+            className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+            <p className="text-xs text-gray-400 mb-1">{card.label}</p>
+            <p className={`text-xl font-bold ${card.color}`}>{card.value}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">{card.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Badge nível + barra progresso */}
+      <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full
+                          text-sm font-semibold border ${nivelCfg.cor}`}>
+            <NivelIcon className="w-3.5 h-3.5" />
+            Nível {nivelCfg.label}
+          </span>
+          {pg?.proximo && (
+            <p className="text-xs text-gray-400">
+              Faltam <span className="font-semibold text-gray-700">{formatCurrency(pg.faltam)}</span> para {pg.proximo}
+            </p>
+          )}
+        </div>
+        {pg && pg.proximo && (
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#fe68c4] rounded-full transition-all duration-700"
+              style={{ width: `${Math.min(100, pg.percentual)}%` }}
             />
           </div>
+        )}
+        {!pg?.proximo && (
+          <p className="text-xs text-gray-500">🏆 Você atingiu o nível máximo!</p>
+        )}
+      </div>
+
+      {/* Últimos pedidos */}
+      {data && data.ultimos_pedidos.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <p className="text-sm font-semibold text-gray-800">Últimos pedidos</p>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {data.ultimos_pedidos.map(p => {
+              const cfg = STATUS_PEDIDO[p.status] ?? STATUS_PEDIDO.pendente;
+              const Icon = cfg.icon;
+              return (
+                <div key={p.id} className="flex items-center gap-3 px-4 py-3">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+                                  text-xs font-medium ${cfg.cor}`}>
+                    <Icon className="w-3 h-3" />
+                    {cfg.label}
+                  </span>
+                  <span className="text-sm text-gray-500 flex-1">{formatDate(p.criado_em)}</span>
+                  <span className="text-sm font-semibold text-gray-800">{formatCurrency(p.total)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* CTA catálogo */}
+      <button
+        onClick={onIrCatalogo}
+        className="w-full bg-[#fe68c4] text-white py-3.5 rounded-xl font-semibold text-base
+                   hover:bg-[#fd4fb8] active:scale-[0.98] transition-all duration-150
+                   flex items-center justify-center gap-2 shadow-md shadow-[#fe68c4]/30"
+      >
+        <BookOpen className="w-5 h-5" />
+        Acessar catálogo →
+      </button>
+    </div>
+  );
+}
+
+// ── Seção: Catálogo ───────────────────────────────────────────────
+
+const LIMIT_OPTIONS = [8, 12, 24, 48] as const;
+type SortOption = 'nome_asc' | 'nome_desc' | 'preco_asc' | 'preco_desc';
+
+const SORT_LABELS: Record<SortOption, string> = {
+  nome_asc:   'Nome A–Z',
+  nome_desc:  'Nome Z–A',
+  preco_asc:  'Menor preço',
+  preco_desc: 'Maior preço',
+};
+
+function Catalogo({ rev }: { rev: Revendedora }) {
+  const [categorias, setCategorias]           = useState<Categoria[]>([]);
+  const [catalogo, setCatalogo]               = useState<CatalogoPaginado | null>(null);
+  const [loadingCat, setLoadingCat]           = useState(false);
+  const [searchInput, setSearchInput]         = useState('');
+  const [search, setSearch]                   = useState('');
+  const [categoriaFiltro, setCategoriaFiltro] = useState('');
+  const [pagina, setPagina]                   = useState(1);
+  const [sort, setSort]                       = useState<SortOption>(
+    () => (localStorage.getItem('souparceira_sort') as SortOption) ?? 'nome_asc'
+  );
+  const [limit, setLimit]                     = useState<number>(
+    () => Number(localStorage.getItem('souparceira_limit')) || 12
+  );
+
+  useEffect(() => {
+    api.get('/souparceira/categorias').then(r => setCategorias(r.data)).catch(() => {});
+  }, []);
+
+  const fetchCatalogo = useCallback(async (
+    pg: number, s: string, cat: string, srt: SortOption, lim: number
+  ) => {
+    setLoadingCat(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(pg), limit: String(lim), sort: srt,
+        ...(s && { search: s }), ...(cat && { categoria: cat }),
+      });
+      const res = await api.get(`/souparceira/catalogo?${params}`);
+      setCatalogo(res.data);
+    } catch { /* mantém estado */ } finally {
+      setLoadingCat(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCatalogo(pagina, search, categoriaFiltro, sort, limit);
+  }, [pagina, search, categoriaFiltro, sort, limit, fetchCatalogo]);
+
+  useEffect(() => {
+    const t = setTimeout(() => { setSearch(searchInput); setPagina(1); }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  function handleSort(v: SortOption) {
+    setSort(v);
+    localStorage.setItem('souparceira_sort', v);
+    setPagina(1);
+  }
+
+  function handleLimit(v: number) {
+    setLimit(v);
+    localStorage.setItem('souparceira_limit', String(v));
+    setPagina(1);
+  }
+
+  const msgWA = encodeURIComponent(
+    `Olá! Sou revendedora ${rev.nome} e gostaria de fazer um pedido pelo catálogo Bibelô.`
+  );
+
+  // "Mostrando X–Y de Z"
+  const inicio = catalogo ? (catalogo.pagina - 1) * limit + 1 : 0;
+  const fim    = catalogo ? Math.min(catalogo.pagina * limit, catalogo.total) : 0;
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-5">
+
+      {/* Barra de controles */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar produto..."
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl
+                       text-gray-900 text-sm font-medium
+                       focus:outline-none focus:border-[#fe68c4] focus:ring-1 focus:ring-[#fe68c4]/30
+                       transition-all shadow-sm"
+          />
+        </div>
+        <select
+          value={categoriaFiltro}
+          onChange={e => { setCategoriaFiltro(e.target.value); setPagina(1); }}
+          className="bg-white border border-gray-200 rounded-xl px-3 py-3 text-sm text-gray-700
+                     font-medium focus:outline-none focus:border-[#fe68c4] min-w-[180px]
+                     shadow-sm cursor-pointer"
+        >
+          <option value="">Todas as categorias</option>
+          {categorias.map(c => (
+            <option key={c.categoria} value={c.categoria}>
+              {formatCategoria(c.categoria)} ({c.total})
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Toolbar: ordenação + itens/página + totalizador */}
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="flex items-center gap-2">
+          <SortAsc className="w-4 h-4 text-gray-400" />
           <select
-            value={categoriaFiltro}
-            onChange={e => { setCategoriaFiltro(e.target.value); setPagina(1); }}
-            className="bg-white border border-gray-200 rounded-xl px-3 py-3 text-sm text-gray-700
-                       font-medium focus:outline-none focus:border-[#fe68c4] min-w-[200px]
-                       shadow-sm cursor-pointer"
+            value={sort}
+            onChange={e => handleSort(e.target.value as SortOption)}
+            className="bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-700
+                       font-medium focus:outline-none focus:border-[#fe68c4] shadow-sm cursor-pointer"
           >
-            <option value="">Todas as categorias</option>
-            {categorias.map(c => (
-              <option key={c.categoria} value={c.categoria}>
-                {formatCategoria(c.categoria)} ({c.total})
-              </option>
+            {(Object.entries(SORT_LABELS) as [SortOption, string][]).map(([v, label]) => (
+              <option key={v} value={v}>{label}</option>
             ))}
           </select>
         </div>
 
-        {/* Totalizador */}
-        {catalogo && (
-          <p className="text-xs text-gray-500 mb-4 font-medium">
-            <span className="text-[#fe68c4] font-bold">{catalogo.total}</span>{' '}
-            produto{catalogo.total !== 1 ? 's' : ''}
+        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg shadow-sm p-0.5">
+          {LIMIT_OPTIONS.map(n => (
+            <button
+              key={n}
+              onClick={() => handleLimit(n)}
+              className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors
+                ${limit === n
+                  ? 'bg-[#fe68c4] text-white'
+                  : 'text-gray-500 hover:text-gray-700'
+                }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+
+        {catalogo && catalogo.total > 0 && (
+          <p className="text-xs text-gray-500 ml-auto">
+            Mostrando{' '}
+            <span className="font-semibold text-gray-700">{inicio}–{fim}</span>
+            {' '}de{' '}
+            <span className="text-[#fe68c4] font-bold">{catalogo.total}</span>
+            {' '}produto{catalogo.total !== 1 ? 's' : ''}
             {categoriaFiltro ? ` em ${formatCategoria(categoriaFiltro)}` : ''}
             {search ? ` para "${search}"` : ''}
           </p>
         )}
-
-        {/* Grid de produtos */}
-        {loadingCat ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="bg-white rounded-xl p-4 animate-pulse border border-gray-100">
-                <div className="h-2.5 bg-gray-200 rounded-full mb-3 w-2/3" />
-                <div className="h-3 bg-gray-200 rounded mb-1.5 w-full" />
-                <div className="h-3 bg-gray-200 rounded mb-4 w-3/4" />
-                <div className="h-5 bg-[#ffe5ec] rounded w-1/2" />
-              </div>
-            ))}
-          </div>
-        ) : catalogo && catalogo.produtos.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {catalogo.produtos.map(p => (
-              <div
-                key={p.id}
-                className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm
-                           hover:shadow-md hover:border-[#fe68c4]/30
-                           transition-all duration-200 group cursor-default"
-              >
-                <span className="inline-flex items-center gap-1 text-[10px] font-semibold
-                                 text-[#fe68c4] bg-[#ffe5ec] px-2 py-0.5 rounded-full
-                                 leading-none mb-3 max-w-full truncate">
-                  <Tag className="w-2.5 h-2.5 flex-shrink-0" />
-                  <span className="truncate">{formatCategoria(p.categoria)}</span>
-                </span>
-                <p className="text-sm font-semibold text-gray-800 leading-snug mb-3 line-clamp-3
-                              group-hover:text-gray-900 transition-colors">
-                  {p.nome}
-                </p>
-                <p className="text-lg font-bold text-[#fe68c4] leading-none">
-                  {formatCurrency(p.preco_final)}
-                </p>
-                <p className="text-[10px] text-gray-400 mt-0.5 font-medium">preço de revenda</p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-20">
-            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <ShoppingBag className="w-7 h-7 text-gray-400" />
-            </div>
-            <p className="text-gray-600 font-semibold">Nenhum produto encontrado</p>
-            <p className="text-gray-400 text-sm mt-1">Tente ajustar os filtros de busca</p>
-          </div>
-        )}
-
-        {/* Paginação */}
-        {catalogo && catalogo.total_paginas > 1 && (
-          <div className="flex items-center justify-center gap-3 mt-8 pb-4">
-            <button
-              onClick={() => setPagina(p => Math.max(1, p - 1))}
-              disabled={pagina === 1}
-              className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200
-                         rounded-xl text-sm font-medium text-gray-600
-                         disabled:opacity-40 hover:border-[#fe68c4] hover:text-[#fe68c4]
-                         transition-colors shadow-sm"
-            >
-              <ChevronLeft className="w-4 h-4" /> Anterior
-            </button>
-            <span className="text-sm text-gray-500 font-medium px-2">
-              {pagina} de {catalogo.total_paginas}
-            </span>
-            <button
-              onClick={() => setPagina(p => Math.min(catalogo!.total_paginas, p + 1))}
-              disabled={pagina === catalogo.total_paginas}
-              className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200
-                         rounded-xl text-sm font-medium text-gray-600
-                         disabled:opacity-40 hover:border-[#fe68c4] hover:text-[#fe68c4]
-                         transition-colors shadow-sm"
-            >
-              Próxima <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        )}
       </div>
+
+      {/* Grid de produtos */}
+      {loadingCat ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {Array.from({ length: limit }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl p-4 animate-pulse border border-gray-100">
+              <div className="h-2.5 bg-gray-200 rounded-full mb-3 w-2/3" />
+              <div className="h-3 bg-gray-200 rounded mb-1.5 w-full" />
+              <div className="h-3 bg-gray-200 rounded mb-4 w-3/4" />
+              <div className="h-5 bg-[#ffe5ec] rounded w-1/2" />
+            </div>
+          ))}
+        </div>
+      ) : catalogo && catalogo.produtos.length > 0 ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {catalogo.produtos.map(p => (
+            <div
+              key={p.id}
+              className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm
+                         hover:shadow-md hover:border-[#fe68c4]/30
+                         transition-all duration-200 group cursor-default"
+            >
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold
+                               text-[#fe68c4] bg-[#ffe5ec] px-2 py-0.5 rounded-full
+                               leading-none mb-3 max-w-full truncate">
+                <Tag className="w-2.5 h-2.5 flex-shrink-0" />
+                <span className="truncate">{formatCategoria(p.categoria)}</span>
+              </span>
+              <p className="text-sm font-semibold text-gray-800 leading-snug mb-3 line-clamp-3
+                            group-hover:text-gray-900 transition-colors">
+                {p.nome}
+              </p>
+              <p className="text-lg font-bold text-[#fe68c4] leading-none">
+                {formatCurrency(p.preco_final)}
+              </p>
+              <p className="text-[10px] text-gray-400 mt-0.5 font-medium">preço de revenda</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-20">
+          <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <ShoppingBag className="w-7 h-7 text-gray-400" />
+          </div>
+          <p className="text-gray-600 font-semibold">Nenhum produto encontrado</p>
+          <p className="text-gray-400 text-sm mt-1">Tente ajustar os filtros de busca</p>
+        </div>
+      )}
+
+      {/* Paginação */}
+      {catalogo && catalogo.total_paginas > 1 && (
+        <div className="flex items-center justify-center gap-3 mt-8 pb-4">
+          <button
+            onClick={() => setPagina(p => Math.max(1, p - 1))}
+            disabled={pagina === 1}
+            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200
+                       rounded-xl text-sm font-medium text-gray-600
+                       disabled:opacity-40 hover:border-[#fe68c4] hover:text-[#fe68c4]
+                       transition-colors shadow-sm"
+          >
+            <ChevronLeft className="w-4 h-4" /> Anterior
+          </button>
+          <span className="text-sm text-gray-500 font-medium px-2">
+            {pagina} de {catalogo.total_paginas}
+          </span>
+          <button
+            onClick={() => setPagina(p => Math.min(catalogo!.total_paginas, p + 1))}
+            disabled={pagina === catalogo.total_paginas}
+            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200
+                       rounded-xl text-sm font-medium text-gray-600
+                       disabled:opacity-40 hover:border-[#fe68c4] hover:text-[#fe68c4]
+                       transition-colors shadow-sm"
+          >
+            Próxima <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* WhatsApp flutuante */}
       <a
@@ -788,10 +1023,106 @@ function Catalogo({ rev, onLogout }: CatalogoProps) {
   );
 }
 
+// ── Seção: Recursos (scaffold) ───────────────────────────────────
+
+function Recursos() {
+  const [modulos, setModulos] = useState<Modulo[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/souparceira/modulos')
+      .then(r => setModulos(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 py-10 text-center">
+        <div className="w-8 h-8 border-2 border-[#fe68c4] border-t-transparent rounded-full animate-spin mx-auto" />
+      </div>
+    );
+  }
+
+  const ativos   = modulos.filter(m => m.tem_acesso);
+  const disponiveis = modulos.filter(m => !m.tem_acesso);
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-gray-900">Recursos disponíveis</h2>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Módulos extras para potencializar sua revenda
+        </p>
+      </div>
+
+      {ativos.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            Seus módulos ativos
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {ativos.map(m => (
+              <div key={m.id}
+                className="bg-white rounded-xl p-4 border border-[#fe68c4]/30 shadow-sm
+                           flex items-start gap-3">
+                <div className="w-9 h-9 bg-[#ffe5ec] rounded-xl flex items-center justify-center flex-shrink-0">
+                  <CheckCircle2 className="w-5 h-5 text-[#fe68c4]" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">{m.nome}</p>
+                  {m.descricao && <p className="text-xs text-gray-500 mt-0.5">{m.descricao}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        {ativos.length > 0 && (
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            Em breve
+          </p>
+        )}
+        <div className="grid sm:grid-cols-2 gap-3">
+          {disponiveis.map(m => (
+            <div key={m.id}
+              className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm
+                         flex items-start gap-3 opacity-70">
+              <div className="w-9 h-9 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Lock className="w-4 h-4 text-gray-400" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-gray-700">{m.nome}</p>
+                  <span className="text-[10px] font-bold px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">
+                    Em breve
+                  </span>
+                </div>
+                {m.descricao && <p className="text-xs text-gray-400 mt-0.5">{m.descricao}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {modulos.length === 0 && (
+        <div className="text-center py-16">
+          <Sparkles className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+          <p className="text-gray-500 font-medium">Nenhum módulo disponível ainda</p>
+          <p className="text-gray-400 text-sm mt-1">Em breve novidades por aqui!</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Componente raiz ───────────────────────────────────────────────
 
 export default function SouParceira() {
   const [tela, setTela]               = useState<Tela>('verificando');
+  const [secao, setSecao]             = useState<Secao>('dashboard');
   const [cpf, setCpf]                 = useState('');
   const [emailMasked, setEmailMasked] = useState<string | null>(null);
   const [rev, setRev]                 = useState<Revendedora | null>(null);
@@ -800,7 +1131,7 @@ export default function SouParceira() {
     const token = localStorage.getItem('souparceira_token');
     if (!token) { setTela('login_cpf'); return; }
     api.get('/souparceira/me')
-      .then(r => { setRev(r.data); setTela('catalogo'); })
+      .then(r => { setRev(r.data); setTela('logado'); setSecao('dashboard'); })
       .catch(() => {
         localStorage.removeItem('souparceira_token');
         setTela('login_cpf');
@@ -812,7 +1143,7 @@ export default function SouParceira() {
   }
 
   function handleLogado(r: Revendedora) {
-    setRev(r); setTela('catalogo');
+    setRev(r); setTela('logado'); setSecao('dashboard');
   }
 
   function handleLogout() {
@@ -832,8 +1163,44 @@ export default function SouParceira() {
         onVoltar={() => setTela('login_cpf')}
       />
     );
-  if (tela === 'catalogo' && rev)
-    return <Catalogo rev={rev} onLogout={handleLogout} />;
+
+  if (tela === 'logado' && rev) {
+    return (
+      <div className="min-h-screen bg-[#fdf6f9]" style={{ fontFamily: 'Jost, sans-serif' }}>
+        <HeaderLogado
+          rev={rev}
+          secao={secao}
+          onSecao={setSecao}
+          onLogout={handleLogout}
+        />
+
+        {/* Hero strip tier — só no catálogo */}
+        {secao === 'catalogo' && (
+          <div className="bg-gradient-to-r from-[#fe68c4] to-[#fd4fb8] text-white">
+            <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-medium text-white/70 uppercase tracking-wider mb-0.5">
+                  Seu desconto exclusivo
+                </p>
+                <p className="text-xl font-bold leading-none">
+                  {rev.percentual_desconto}% OFF{' '}
+                  <span className="text-base font-normal text-white/80">em todo o catálogo</span>
+                </p>
+              </div>
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                              bg-white/20 border border-white/30 text-white text-sm font-semibold`}>
+                {(() => { const cfg = NIVEL[rev.nivel] ?? NIVEL.bronze; const Icon = cfg.icon; return <><Icon className="w-4 h-4" /> Tier {cfg.label}</>; })()}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {secao === 'dashboard' && <Dashboard rev={rev} onIrCatalogo={() => setSecao('catalogo')} />}
+        {secao === 'catalogo'  && <Catalogo  rev={rev} />}
+        {secao === 'recursos'  && <Recursos />}
+      </div>
+    );
+  }
 
   return null;
 }

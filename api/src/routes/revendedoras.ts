@@ -81,6 +81,11 @@ const createSchema = z.object({
   customer_id: z.string().uuid().optional(),
   percentual_desconto: z.number().min(0).max(50).optional(),
   pedido_minimo: z.number().min(0).optional(),
+  cep:         z.string().regex(/^\d{8}$/).optional(),
+  logradouro:  z.string().max(200).optional(),
+  numero:      z.string().max(20).optional(),
+  complemento: z.string().max(100).optional(),
+  bairro:      z.string().max(100).optional(),
 });
 
 const updateSchema = createSchema.partial();
@@ -218,12 +223,15 @@ revendedorasRouter.post("/", async (req: Request, res: Response) => {
   const rev = await queryOne(
     `INSERT INTO crm.revendedoras
        (nome, email, telefone, documento, cidade, estado, observacao,
-        customer_id, percentual_desconto, pedido_minimo)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        customer_id, percentual_desconto, pedido_minimo,
+        cep, logradouro, numero, complemento, bairro)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING *`,
     [d.nome, d.email, d.telefone ?? null, d.documento ?? null,
      d.cidade ?? null, d.estado ?? null, d.observacao ?? null,
-     d.customer_id ?? null, desconto, minimo]
+     d.customer_id ?? null, desconto, minimo,
+     d.cep ?? null, d.logradouro ?? null, d.numero ?? null,
+     d.complemento ?? null, d.bairro ?? null]
   );
 
   logger.info("Revendedora criada", { id: (rev as Record<string,unknown>).id, nome: d.nome });
@@ -267,6 +275,8 @@ revendedorasRouter.put("/:id", async (req: Request, res: Response) => {
     documento: "documento", cidade: "cidade", estado: "estado",
     observacao: "observacao", customer_id: "customer_id",
     percentual_desconto: "percentual_desconto", pedido_minimo: "pedido_minimo",
+    cep: "cep", logradouro: "logradouro", numero: "numero",
+    complemento: "complemento", bairro: "bairro",
   };
 
   const entries = Object.entries(parse.data).filter(([k, v]) => v !== undefined && k in COLS);

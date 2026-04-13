@@ -20,6 +20,11 @@ interface RevendedoraFull {
   documento: string | null;
   cidade: string | null;
   estado: string | null;
+  cep: string | null;
+  logradouro: string | null;
+  numero: string | null;
+  complemento: string | null;
+  bairro: string | null;
   observacao: string | null;
   nivel: 'bronze' | 'prata' | 'ouro';
   pontos: number;
@@ -509,6 +514,213 @@ function AbaConquistas({ revendedoraId, mesesConsecutivos }: { revendedoraId: st
 
 type Tab = 'visao' | 'estoque' | 'pedidos' | 'conquistas';
 
+// ── Endereço editável ──────────────────────────────────────────
+
+function AbaEndereco({ rev, onSave }: { rev: RevendedoraFull; onSave: () => void }) {
+  const toast    = useToast();
+  const [editing, setEditing] = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [cep,          setCep]         = useState(rev.cep ?? '');
+  const [logradouro,   setLogradouro]  = useState(rev.logradouro ?? '');
+  const [numero,       setNumero]      = useState(rev.numero ?? '');
+  const [complemento,  setComplemento] = useState(rev.complemento ?? '');
+  const [bairro,       setBairro]      = useState(rev.bairro ?? '');
+  const [cidadeLocal,  setCidadeLocal] = useState(rev.cidade ?? '');
+  const [estadoLocal,  setEstadoLocal] = useState(rev.estado ?? '');
+
+  async function buscarCep(raw: string) {
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length !== 8) return;
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const d = await res.json();
+      if (!d.erro) {
+        setLogradouro(d.logradouro || '');
+        setBairro(d.bairro || '');
+        setCidadeLocal(d.localidade || '');
+        setEstadoLocal(d.uf || '');
+      }
+    } catch { /* ignora */ }
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await api.put(`/revendedoras/${rev.id}`, {
+        cep:         cep.replace(/\D/g, '') || undefined,
+        logradouro:  logradouro || undefined,
+        numero:      numero || undefined,
+        complemento: complemento || undefined,
+        bairro:      bairro || undefined,
+        cidade:      cidadeLocal || undefined,
+        estado:      estadoLocal || undefined,
+      });
+      toast.success('Endereço atualizado');
+      setEditing(false);
+      onSave();
+    } catch {
+      toast.error('Erro ao salvar endereço');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const temEndereco = rev.logradouro || rev.bairro || rev.cep;
+
+  if (!editing) {
+    return (
+      <div className="mt-4 pt-4 border-t border-bibelo-border">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-bibelo-text">Endereço</h3>
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs text-bibelo-primary hover:underline flex items-center gap-1"
+          >
+            <Edit2 size={11} /> {temEndereco ? 'Editar' : 'Adicionar'}
+          </button>
+        </div>
+        {temEndereco ? (
+          <div className="text-sm text-bibelo-muted space-y-0.5">
+            {rev.logradouro && (
+              <p>{rev.logradouro}{rev.numero ? `, ${rev.numero}` : ''}{rev.complemento ? ` — ${rev.complemento}` : ''}</p>
+            )}
+            {rev.bairro && <p>{rev.bairro}</p>}
+            {(rev.cidade || rev.estado) && (
+              <p>{[rev.cidade, rev.estado].filter(Boolean).join('/')}{rev.cep ? ` — ${rev.cep}` : ''}</p>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs text-bibelo-muted/60 italic">Endereço não cadastrado</p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 pt-4 border-t border-bibelo-border space-y-2">
+      <h3 className="text-sm font-semibold text-bibelo-text">Endereço</h3>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-bibelo-muted mb-1 block">CEP</label>
+          <input
+            type="text"
+            value={cep}
+            maxLength={9}
+            placeholder="00000-000"
+            onChange={e => {
+              const raw = e.target.value.replace(/\D/g, '').slice(0, 8);
+              const fmt = raw.length > 5 ? `${raw.slice(0,5)}-${raw.slice(5)}` : raw;
+              setCep(fmt);
+              if (raw.length === 8) buscarCep(raw);
+            }}
+            className="w-full px-2.5 py-1.5 text-sm bg-bibelo-bg border border-bibelo-border rounded-lg
+                       text-bibelo-text focus:outline-none focus:border-bibelo-primary"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-bibelo-muted mb-1 block">Estado</label>
+          <input
+            type="text"
+            value={estadoLocal}
+            maxLength={2}
+            placeholder="SC"
+            onChange={e => setEstadoLocal(e.target.value.toUpperCase())}
+            className="w-full px-2.5 py-1.5 text-sm bg-bibelo-bg border border-bibelo-border rounded-lg
+                       text-bibelo-text focus:outline-none focus:border-bibelo-primary"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs text-bibelo-muted mb-1 block">Logradouro</label>
+        <input
+          type="text"
+          value={logradouro}
+          maxLength={200}
+          placeholder="Rua, Avenida..."
+          onChange={e => setLogradouro(e.target.value)}
+          className="w-full px-2.5 py-1.5 text-sm bg-bibelo-bg border border-bibelo-border rounded-lg
+                     text-bibelo-text focus:outline-none focus:border-bibelo-primary"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-bibelo-muted mb-1 block">Número</label>
+          <input
+            type="text"
+            value={numero}
+            maxLength={20}
+            placeholder="123"
+            onChange={e => setNumero(e.target.value)}
+            className="w-full px-2.5 py-1.5 text-sm bg-bibelo-bg border border-bibelo-border rounded-lg
+                       text-bibelo-text focus:outline-none focus:border-bibelo-primary"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-bibelo-muted mb-1 block">Complemento</label>
+          <input
+            type="text"
+            value={complemento}
+            maxLength={100}
+            placeholder="Apto, sala..."
+            onChange={e => setComplemento(e.target.value)}
+            className="w-full px-2.5 py-1.5 text-sm bg-bibelo-bg border border-bibelo-border rounded-lg
+                       text-bibelo-text focus:outline-none focus:border-bibelo-primary"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-bibelo-muted mb-1 block">Bairro</label>
+          <input
+            type="text"
+            value={bairro}
+            maxLength={100}
+            placeholder="Nome do bairro"
+            onChange={e => setBairro(e.target.value)}
+            className="w-full px-2.5 py-1.5 text-sm bg-bibelo-bg border border-bibelo-border rounded-lg
+                       text-bibelo-text focus:outline-none focus:border-bibelo-primary"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-bibelo-muted mb-1 block">Cidade</label>
+          <input
+            type="text"
+            value={cidadeLocal}
+            maxLength={100}
+            placeholder="Timbó"
+            onChange={e => setCidadeLocal(e.target.value)}
+            className="w-full px-2.5 py-1.5 text-sm bg-bibelo-bg border border-bibelo-border rounded-lg
+                       text-bibelo-text focus:outline-none focus:border-bibelo-primary"
+          />
+        </div>
+      </div>
+
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-bibelo-primary text-white
+                     rounded-lg text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
+        >
+          {saving ? <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> : <Check size={12} />}
+          Salvar
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-bibelo-bg border border-bibelo-border
+                     rounded-lg text-xs font-medium text-bibelo-muted hover:text-bibelo-text transition-colors"
+        >
+          <X size={12} /> Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function RevendedoraPerfil() {
   const { id } = useParams<{ id: string }>();
   const toast = useToast();
@@ -769,6 +981,9 @@ export default function RevendedoraPerfil() {
                     <span className="text-bibelo-text font-medium">{info.value}</span>
                   </div>
                 ))}
+
+                {/* Endereço editável */}
+                <AbaEndereco rev={rev} onSave={fetchRev} />
               </div>
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-bibelo-text">Atividade</h3>

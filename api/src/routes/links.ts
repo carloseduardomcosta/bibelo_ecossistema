@@ -1287,6 +1287,39 @@ linksRouter.get("/parcerias", (_req: Request, res: Response) => {
         </select>
       </div>
 
+      <div style="margin:4px 0 2px;border-top:2px solid #dbeafe;padding-top:12px;">
+        <p style="font-size:11px;font-weight:800;color:#6b4c6b;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;">Endereço (opcional)</p>
+        <div class="row">
+          <div class="field">
+            <label for="cep">CEP</label>
+            <input type="text" id="cep" name="cep" placeholder="00000-000" maxlength="9" inputmode="numeric">
+          </div>
+          <div class="field" style="display:flex;flex-direction:column;justify-content:flex-end;">
+            <span id="cep-status" style="font-size:11px;color:#60a5fa;margin-top:18px;"></span>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field" style="grid-column:span 2">
+            <label for="logradouro">Logradouro</label>
+            <input type="text" id="logradouro" name="logradouro" placeholder="Rua, Avenida..." maxlength="200">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="numero">Número</label>
+            <input type="text" id="numero" name="numero" placeholder="123" maxlength="20">
+          </div>
+          <div class="field">
+            <label for="complemento">Complemento</label>
+            <input type="text" id="complemento" name="complemento" placeholder="Apto, sala..." maxlength="100">
+          </div>
+        </div>
+        <div class="field">
+          <label for="bairro">Bairro</label>
+          <input type="text" id="bairro" name="bairro" placeholder="Nome do bairro" maxlength="100">
+        </div>
+      </div>
+
       <div class="field">
         <label for="mensagem">Mensagem</label>
         <textarea id="mensagem" name="mensagem" rows="3" placeholder="Conte-nos sobre sua necessidade..." maxlength="2000"></textarea>
@@ -1317,6 +1350,7 @@ linksRouter.get("/parcerias", (_req: Request, res: Response) => {
       msg.className = 'msg';
       msg.style.display = 'none';
 
+      var cepRaw = document.getElementById('cep').value.replace(/\D/g,'');
       var data = {
         nome: document.getElementById('nome').value.trim(),
         empresa: document.getElementById('empresa').value.trim() || undefined,
@@ -1324,7 +1358,12 @@ linksRouter.get("/parcerias", (_req: Request, res: Response) => {
         telefone: document.getElementById('telefone').value.trim() || undefined,
         email: document.getElementById('email').value.trim(),
         assunto: document.getElementById('assunto').value,
-        mensagem: document.getElementById('mensagem').value.trim() || undefined
+        mensagem: document.getElementById('mensagem').value.trim() || undefined,
+        cep: cepRaw.length === 8 ? cepRaw : undefined,
+        logradouro: document.getElementById('logradouro').value.trim() || undefined,
+        numero: document.getElementById('numero').value.trim() || undefined,
+        complemento: document.getElementById('complemento').value.trim() || undefined,
+        bairro: document.getElementById('bairro').value.trim() || undefined
       };
 
       fetch('/api/links/parcerias', {
@@ -1356,6 +1395,28 @@ linksRouter.get("/parcerias", (_req: Request, res: Response) => {
         btn.textContent = 'Enviar solicitação';
       });
     });
+
+    // ViaCEP auto-fill
+    document.getElementById('cep').addEventListener('input', function() {
+      var raw = this.value.replace(/\\D/g,'');
+      if (raw.length > 5) this.value = raw.slice(0,5) + '-' + raw.slice(5,8);
+      else this.value = raw;
+      if (raw.length === 8) {
+        document.getElementById('cep-status').textContent = 'Buscando...';
+        fetch('https://viacep.com.br/ws/' + raw + '/json/')
+          .then(function(r){ return r.json(); })
+          .then(function(d){
+            if (d.erro) { document.getElementById('cep-status').textContent = 'CEP não encontrado'; return; }
+            document.getElementById('logradouro').value = d.logradouro || '';
+            document.getElementById('bairro').value = d.bairro || '';
+            document.getElementById('cep-status').textContent = d.localidade + '/' + d.uf;
+            document.getElementById('numero').focus();
+          })
+          .catch(function(){ document.getElementById('cep-status').textContent = ''; });
+      } else {
+        document.getElementById('cep-status').textContent = '';
+      }
+    });
   </script>
 </body>
 </html>`);
@@ -1371,6 +1432,11 @@ const parceriasSchema = z.object({
   email: z.string().email().max(200),
   assunto: z.enum(["atacado", "revenda", "corporativo", "evento", "outro"]),
   mensagem: z.string().max(2000).optional(),
+  cep:         z.string().regex(/^\d{8}$/).optional(),
+  logradouro:  z.string().max(200).optional(),
+  numero:      z.string().max(20).optional(),
+  complemento: z.string().max(100).optional(),
+  bairro:      z.string().max(100).optional(),
 });
 
 const ASSUNTO_LABELS: Record<string, string> = {
@@ -1395,6 +1461,13 @@ linksRouter.post("/parcerias", limiter, async (req: Request, res: Response) => {
   const telefone = (parsed.data.telefone || "").replace(/[<>"'&]/g, "");
   const email = parsed.data.email.toLowerCase().trim();
   const msgClean = (mensagem || "").replace(/[<>"'&]/g, "");
+  const cep = (parsed.data.cep || "").replace(/\D/g, "");
+  const logradouro = (parsed.data.logradouro || "").replace(/[<>"'&]/g, "");
+  const numero = (parsed.data.numero || "").replace(/[<>"'&]/g, "");
+  const complemento = (parsed.data.complemento || "").replace(/[<>"'&]/g, "");
+  const bairro = (parsed.data.bairro || "").replace(/[<>"'&]/g, "");
+  const enderecoCompleto = [logradouro, numero, complemento, bairro, cep ? `CEP ${cep}` : ""]
+    .filter(Boolean).join(", ");
 
   // Cria/vincula customer no CRM
   const customer = await upsertCustomer({
@@ -1408,14 +1481,14 @@ linksRouter.post("/parcerias", limiter, async (req: Request, res: Response) => {
   await query(
     `INSERT INTO crm.interactions (customer_id, tipo, canal, descricao, metadata)
      VALUES ($1, 'parceria_b2b', 'email', $2, $3)`,
-    [customer.id, `Solicitação B2B: ${ASSUNTO_LABELS[assunto]}`, JSON.stringify({ nome, empresa, documento, telefone, email, assunto, mensagem: msgClean })]
+    [customer.id, `Solicitação B2B: ${ASSUNTO_LABELS[assunto]}`, JSON.stringify({ nome, empresa, documento, telefone, email, assunto, mensagem: msgClean, endereco: enderecoCompleto || undefined })]
   );
 
   // Cria deal B2B no pipeline
   await query(
     `INSERT INTO crm.deals (customer_id, titulo, valor, etapa, origem, probabilidade, notas)
      VALUES ($1, $2, 0, 'prospeccao', 'parcerias_b2b', 40, $3)`,
-    [customer.id, `B2B: ${empresa || nome} — ${ASSUNTO_LABELS[assunto]}`, `${empresa ? `Empresa: ${empresa}\\n` : ""}${documento ? `Doc: ${documento}\\n` : ""}${telefone ? `Tel: ${telefone}\\n` : ""}Assunto: ${ASSUNTO_LABELS[assunto]}\\n${msgClean ? `Mensagem: ${msgClean}` : ""}`]
+    [customer.id, `B2B: ${empresa || nome} — ${ASSUNTO_LABELS[assunto]}`, `${empresa ? `Empresa: ${empresa}\\n` : ""}${documento ? `Doc: ${documento}\\n` : ""}${telefone ? `Tel: ${telefone}\\n` : ""}${enderecoCompleto ? `Endereço: ${enderecoCompleto}\\n` : ""}Assunto: ${ASSUNTO_LABELS[assunto]}\\n${msgClean ? `Mensagem: ${msgClean}` : ""}`]
   );
 
   // Registra clique
@@ -1445,6 +1518,7 @@ linksRouter.post("/parcerias", limiter, async (req: Request, res: Response) => {
       ${documento ? `<p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>CPF/CNPJ:</strong> ${documento}</p>` : ""}
       ${telefone ? `<p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Telefone:</strong> ${telefone}</p>` : ""}
       <p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Email:</strong> <a href="mailto:${email}" style="color:#3b82f6;">${email}</a></p>
+      ${enderecoCompleto ? `<p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Endereço:</strong> ${enderecoCompleto}</p>` : ""}
       ${msgClean ? `<div style="margin:16px 0 0;padding:14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;"><p style="font-size:12px;color:#64748b;margin:0 0 6px;font-weight:700;">MENSAGEM:</p><p style="font-size:14px;color:#334155;margin:0;line-height:1.5;white-space:pre-wrap;">${msgClean}</p></div>` : ""}
       <p style="font-size:12px;color:#999;margin:16px 0 0;">Via formulário de parcerias (boasvindas.papelariabibelo.com.br)</p>
     </div>

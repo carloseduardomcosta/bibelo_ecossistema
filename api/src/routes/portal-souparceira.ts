@@ -426,18 +426,27 @@ portalSouParceiraRouter.get(
     );
     if (!rev) { res.status(401).json({ error: "Sessão inválida." }); return; }
 
+    const SORT_MAP: Record<string, string> = {
+      nome_asc:   "p.nome ASC",
+      nome_desc:  "p.nome DESC",
+      preco_asc:  "preco_final ASC",
+      preco_desc: "preco_final DESC",
+    };
+
     const schema = z.object({
       page:      z.coerce.number().int().min(1).default(1),
-      limit:     z.coerce.number().int().min(1).max(100).default(24),
+      limit:     z.coerce.number().int().min(1).max(100).default(12),
       search:    z.string().optional(),
       categoria: z.string().optional(),
+      sort:      z.enum(["nome_asc", "nome_desc", "preco_asc", "preco_desc"]).default("nome_asc"),
     });
     const parse = schema.safeParse(req.query);
     if (!parse.success) { res.status(400).json({ error: "Parâmetros inválidos." }); return; }
 
-    const { page, limit, search, categoria } = parse.data;
+    const { page, limit, search, categoria, sort } = parse.data;
     const offset  = (page - 1) * limit;
     const desconto = Number(rev.percentual_desconto);
+    const orderBy = SORT_MAP[sort];
 
     const conditions: string[] = ["p.status = 'aprovado'"];
     const params: unknown[] = [];
@@ -475,7 +484,7 @@ portalSouParceiraRouter.get(
       LEFT JOIN sync.fornecedor_markup_categorias m
         ON m.categoria = COALESCE(p.slug_categoria, p.categoria)
       ${where}
-      ORDER BY COALESCE(p.slug_categoria, p.categoria), p.nome
+      ORDER BY ${orderBy}
       LIMIT $${idx + 1} OFFSET $${idx + 2}
     `, params);
 
@@ -486,5 +495,89 @@ portalSouParceiraRouter.get(
       pagina:        page,
       total_paginas: Math.ceil(totalInt / limit),
     });
+  }
+);
+
+// ── GET /dashboard ───────────────────────────────────────────────
+
+portalSouParceiraRouter.get(
+  "/dashboard",
+  limiterCatalogo,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const id = (req as Request & { parceiraId?: string }).parceiraId!;
+
+    const rev = await queryOne<{
+      volume_mes_atual: string;
+      pontos: number;
+      nivel: string;
+      percentual_desconto: string;
+    }>(
+      `SELECT volume_mes_atual, pontos, nivel, percentual_desconto
+         FROM crm.revendedoras
+        WHERE id = $1 AND status = 'ativa'`,
+      [id]
+    );
+    if (!rev) { res.status(401).json({ error: "Sessão inválida." }); return; }
+
+    const totalPedidos = await queryOne<{ total: string }>(
+      "SELECT COUNT(*)::text AS total FROM crm.revendedora_pedidos WHERE revendedora_id = $1",
+      [id]
+    );
+
+    const ultimosPedidos = await query(
+      `SELECT id, status, total, criado_em
+         FROM crm.revendedora_pedidos
+        WHERE revendedora_id = $1
+        ORDER BY criado_em DESC
+        LIMIT 3`,
+      [id]
+    );
+
+    const vol = parseFloat(rev.volume_mes_atual || "0");
+    let progresso_nivel;
+    if (vol < 600) {
+      const faltam = Math.max(0, 600 - vol);
+      progresso_nivel = { proximo: "prata", meta: 600, faltam, percentual: Math.min(100, Math.max(0, ((vol - 300) / 300) * 100)) };
+    } else if (vol < 1200) {
+      const faltam = Math.max(0, 1200 - vol);
+      progresso_nivel = { proximo: "ouro", meta: 1200, faltam, percentual: Math.min(100, Math.max(0, ((vol - 600) / 600) * 100)) };
+    } else {
+      progresso_nivel = { proximo: null, meta: 1200, faltam: 0, percentual: 100 };
+    }
+
+    res.json({
+      volume_mes_atual:    Number(rev.volume_mes_atual),
+      total_pedidos:       parseInt(totalPedidos?.total || "0"),
+      pontos:              Number(rev.pontos),
+      nivel:               rev.nivel,
+      percentual_desconto: Number(rev.percentual_desconto),
+      progresso_nivel,
+      ultimos_pedidos:     ultimosPedidos,
+    });
+  }
+);
+
+// ── GET /modulos ─────────────────────────────────────────────────
+
+portalSouParceiraRouter.get(
+  "/modulos",
+  limiterCatalogo,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const id = (req as Request & { parceiraId?: string }).parceiraId!;
+
+    const modulos = await query(`
+      SELECT
+        m.id, m.nome, m.descricao, m.preco_mensal, m.ativo,
+        (rm.revendedora_id IS NOT NULL) AS tem_acesso
+      FROM crm.modulos m
+      LEFT JOIN crm.revendedora_modulos rm
+        ON rm.modulo_id = m.id AND rm.revendedora_id = $1
+        AND (rm.expira_em IS NULL OR rm.expira_em > NOW())
+      ORDER BY m.id
+    `, [id]);
+
+    res.json(modulos);
   }
 );
