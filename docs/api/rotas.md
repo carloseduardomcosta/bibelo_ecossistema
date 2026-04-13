@@ -232,6 +232,51 @@ Painel de mapeamento de categorias Bling → Medusa. Rota base: `/api/categorias
 - `DELETE /api/landing-pages/:id` — remover landing page
 - `POST /api/landing-pages/track/:id` — **(público)** incrementa capturas
 
+### Revendedoras — CRUD + Pedidos + Mensagens (protegidos)
+- `GET  /api/revendedoras` — lista paginada com filtros (search, nivel, status)
+- `POST /api/revendedoras` — criar revendedora
+- `GET  /api/revendedoras/pedidos-recentes` — últimos 10 pedidos (7 dias ou pendentes) com `pendentes` + `mensagens_nao_lidas` para sininho CRM
+- `GET  /api/revendedoras/:id` — perfil completo com KPIs
+- `PUT  /api/revendedoras/:id` — atualizar dados
+- `DELETE /api/revendedoras/:id` — remover
+- `GET  /api/revendedoras/:id/pedidos` — pedidos da revendedora com `mensagens_nao_lidas` por pedido
+- `POST /api/revendedoras/:id/pedidos` — criar pedido (preço calculado server-side: preco_custo × markup × desconto%)
+- `PUT  /api/revendedoras/:id/pedidos/:pedidoId/status` — alterar status (`pendente|aprovado|enviado|entregue|cancelado`). Body: `{ status, observacao_admin? }`. Se `observacao_admin`, cria mensagem automática no thread. Envia email para revendedora.
+- `GET  /api/revendedoras/:id/pedidos/:pedidoId/mensagens` — lista mensagens do thread; marca mensagens da revendedora como lidas
+- `POST /api/revendedoras/:id/pedidos/:pedidoId/mensagens` — admin envia mensagem; envia email para revendedora; cria notificação no sininho
+- `GET  /api/revendedoras/:id/catalogo` — catálogo com preços calculados
+- `GET  /api/revendedoras/:id/estoque` — estoque pessoal
+- `GET  /api/revendedoras/:id/conquistas` — conquistas desbloqueadas
+- `POST /api/revendedoras/:id/conquistas` — conceder conquista
+
+### Portal Sou Parceira (auth via `iss:"souparceira"`)
+- `POST /api/souparceira/login` — **(público)** login por CPF; retorna JWT com `iss:"souparceira"`
+- `GET  /api/souparceira/perfil` — dados da revendedora autenticada
+- `GET  /api/souparceira/catalogo` — catálogo com preços calculados (preco_custo × markup × desconto%)
+- `POST /api/souparceira/pedidos` — criar pedido; preços recalculados server-side (ignora `preco_unitario` do body). Envia email para admin + cria notificação sininho.
+- `GET  /api/souparceira/pedidos` — lista pedidos da parceira com `mensagens_nao_lidas` por pedido
+- `GET  /api/souparceira/pedidos/:id` — detalhe do pedido + itens; marca mensagens do admin como lidas
+- `GET  /api/souparceira/pedidos/:id/mensagens` — thread de mensagens; marca mensagens do admin como lidas
+- `POST /api/souparceira/pedidos/:id/mensagens` — revendedora envia mensagem; envia email para admin + cria notificação sininho
+
+### Notificações CRM — Sininho (protegidas)
+- `GET  /api/notificacoes` — lista notificações com `total_nao_lidas`. Retorna `{ data[], total_nao_lidas }`.
+- `PUT  /api/notificacoes/lida-tudo` — marca todas como lidas
+- `PUT  /api/notificacoes/:id/lida` — marca uma notificação específica como lida
+
+### Catálogo Fornecedor JC Atacado (protegidos)
+- `GET  /api/fornecedor-catalogo/stats` — totais por status + última sync
+- `GET  /api/fornecedor-catalogo/markup` — markups por categoria com contagens
+- `PUT  /api/fornecedor-catalogo/markup` — atualizar markups em lote
+- `GET  /api/fornecedor-catalogo/produtos` — listagem com filtros (page, limit, search, categoria, status)
+- `GET  /api/fornecedor-catalogo/produtos/por-categoria` — agrupado por categoria
+- `PUT  /api/fornecedor-catalogo/produtos/:id/status` — alterar status individual
+- `POST /api/fornecedor-catalogo/aprovar-lote` — aprovar lista de UUIDs
+- `POST /api/fornecedor-catalogo/scraper/iniciar` — iniciar scraper (body: `{ retomar?: true }`)
+- `POST /api/fornecedor-catalogo/scraper/parar` — interromper scraper
+- `GET  /api/fornecedor-catalogo/scraper/status` — progresso real-time (polling 3s)
+- `GET  /api/fornecedor-catalogo/scraper/historico` — últimas 20 execuções
+
 ### Webhooks (validação HMAC)
 - `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop + dispara fluxos automáticos
 - `POST /api/webhooks/bling` — recebe eventos do Bling: `contato.*` (upsert customer), `order.*` (salva pedido, busca detalhe para itens), `stock.*` (atualiza saldo), `product.*` (busca `GET /produtos/{id}` para imagens HD + propaga para Medusa)

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { query, queryOne } from "../db";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../integrations/resend/email";
+import { escHtml } from "../utils/sanitize";
 import rateLimit from "express-rate-limit";
 
 export const portalSouParceiraRouter = Router();
@@ -582,5 +583,487 @@ portalSouParceiraRouter.get(
     `, [id]);
 
     res.json(modulos);
+  }
+);
+
+// ── Rate limit para escrita (pedidos / mensagens) ───────────────
+const limiterEscrita = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Muitas requisições. Aguarde um momento." },
+  skip: () => process.env.VITEST === "true",
+});
+
+// ── Helpers de email ─────────────────────────────────────────────
+
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "contato@papelariabibelo.com.br";
+
+function buildEmailNovoPedido(
+  revNome: string,
+  numeroPedido: string,
+  total: string,
+  itens: Array<{ produto_nome: string; quantidade: number; preco_com_desconto: number }>,
+  observacao?: string | null
+): string {
+  const totalFmt = Number(total).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const itensHTML = itens.map(it => `
+    <tr>
+      <td style="padding:6px 8px;font-size:13px;color:#333;">${escHtml(it.produto_nome)}</td>
+      <td style="padding:6px 8px;font-size:13px;color:#555;text-align:center;">${it.quantidade}</td>
+      <td style="padding:6px 8px;font-size:13px;color:#fe68c4;text-align:right;font-weight:700;">
+        ${Number(it.preco_com_desconto).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+      </td>
+    </tr>`).join("");
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#ffe5ec;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#ffe5ec;padding:32px 16px;">
+<tr><td align="center">
+<table width="520" cellpadding="0" cellspacing="0"
+       style="background:#fff;border-radius:16px;overflow:hidden;max-width:520px;width:100%;">
+  <tr><td style="background:#fe68c4;padding:24px 32px;">
+    <p style="margin:0;color:#fff;font-size:20px;font-weight:700;">🎀 Papelaria Bibelô</p>
+    <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">Novo pedido recebido pelo Portal Sou Parceira</p>
+  </td></tr>
+  <tr><td style="padding:28px 32px;">
+    <p style="margin:0 0 4px;font-size:15px;color:#333;">Pedido de <strong>${escHtml(revNome)}</strong></p>
+    <p style="margin:0 0 20px;font-size:22px;font-weight:800;color:#fe68c4;">${escHtml(numeroPedido)}</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #f0e0e8;border-radius:8px;overflow:hidden;">
+      <thead><tr style="background:#ffe5ec;">
+        <th style="padding:8px;font-size:11px;font-weight:700;color:#888;text-align:left;text-transform:uppercase;">Produto</th>
+        <th style="padding:8px;font-size:11px;font-weight:700;color:#888;text-align:center;text-transform:uppercase;">Qtd</th>
+        <th style="padding:8px;font-size:11px;font-weight:700;color:#888;text-align:right;text-transform:uppercase;">Valor</th>
+      </tr></thead>
+      <tbody>${itensHTML}</tbody>
+      <tfoot><tr style="background:#fdf6f9;">
+        <td colspan="2" style="padding:10px 8px;font-size:14px;font-weight:700;color:#333;">Total</td>
+        <td style="padding:10px 8px;font-size:16px;font-weight:800;color:#fe68c4;text-align:right;">${escHtml(totalFmt)}</td>
+      </tr></tfoot>
+    </table>
+    ${observacao ? `<p style="margin:16px 0 0;font-size:13px;color:#555;"><strong>Observação:</strong> ${escHtml(observacao)}</p>` : ""}
+    <p style="margin:24px 0 0;font-size:13px;color:#888;">Acesse o CRM para aprovar e responder.</p>
+  </td></tr>
+  <tr><td style="background:#f9f9f9;padding:14px 32px;text-align:center;border-top:1px solid #f0e0e8;">
+    <p style="margin:0;color:#aaa;font-size:11px;">Papelaria Bibelô · Timbó/SC · <a href="https://papelariabibelo.com.br" style="color:#fe68c4;text-decoration:none;">papelariabibelo.com.br</a></p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+function buildEmailStatusPedido(
+  revNome: string,
+  numeroPedido: string,
+  status: string,
+  observacaoAdmin?: string | null
+): string {
+  const STATUS_LABELS: Record<string, string> = {
+    aprovado:  "✅ Aprovado",
+    enviado:   "🚚 Enviado",
+    entregue:  "📦 Entregue",
+    cancelado: "❌ Cancelado",
+  };
+  const label = STATUS_LABELS[status] ?? status;
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#ffe5ec;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#ffe5ec;padding:32px 16px;">
+<tr><td align="center">
+<table width="480" cellpadding="0" cellspacing="0"
+       style="background:#fff;border-radius:16px;overflow:hidden;max-width:480px;width:100%;">
+  <tr><td style="background:#fe68c4;padding:24px 32px;">
+    <p style="margin:0;color:#fff;font-size:20px;font-weight:700;">🎀 Papelaria Bibelô</p>
+    <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">Atualização do seu pedido</p>
+  </td></tr>
+  <tr><td style="padding:28px 32px;">
+    <p style="margin:0 0 4px;font-size:14px;color:#555;">Olá, <strong>${escHtml(revNome)}</strong>!</p>
+    <p style="margin:6px 0 16px;font-size:13px;color:#777;">Seu pedido <strong>${escHtml(numeroPedido)}</strong> foi atualizado:</p>
+    <div style="text-align:center;padding:20px;background:#fdf6f9;border-radius:12px;margin:0 0 16px;">
+      <p style="margin:0;font-size:24px;font-weight:800;color:#333;">${escHtml(label)}</p>
+    </div>
+    ${observacaoAdmin ? `<p style="font-size:13px;color:#555;background:#fff7c1;border-radius:8px;padding:12px 16px;margin:0;"><strong>Mensagem da Bibelô:</strong> ${escHtml(observacaoAdmin)}</p>` : ""}
+    <p style="margin:20px 0 0;font-size:13px;color:#888;">Acesse o portal Sou Parceira para mais detalhes.</p>
+  </td></tr>
+  <tr><td style="background:#f9f9f9;padding:14px 32px;text-align:center;border-top:1px solid #f0e0e8;">
+    <p style="margin:0;color:#aaa;font-size:11px;">Papelaria Bibelô · Timbó/SC</p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+function buildEmailNovaMensagem(
+  destinatarioNome: string,
+  remetente: string,
+  numeroPedido: string,
+  mensagem: string
+): string {
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#ffe5ec;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#ffe5ec;padding:32px 16px;">
+<tr><td align="center">
+<table width="480" cellpadding="0" cellspacing="0"
+       style="background:#fff;border-radius:16px;overflow:hidden;max-width:480px;width:100%;">
+  <tr><td style="background:#fe68c4;padding:24px 32px;">
+    <p style="margin:0;color:#fff;font-size:20px;font-weight:700;">🎀 Papelaria Bibelô</p>
+    <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">Nova mensagem no pedido ${escHtml(numeroPedido)}</p>
+  </td></tr>
+  <tr><td style="padding:28px 32px;">
+    <p style="margin:0 0 4px;font-size:14px;color:#555;">Olá, <strong>${escHtml(destinatarioNome)}</strong>!</p>
+    <p style="margin:6px 0 16px;font-size:13px;color:#777;"><strong>${escHtml(remetente)}</strong> enviou uma mensagem:</p>
+    <div style="background:#fdf6f9;border-left:4px solid #fe68c4;border-radius:0 8px 8px 0;padding:14px 16px;margin:0 0 16px;">
+      <p style="margin:0;font-size:14px;color:#333;line-height:1.6;">${escHtml(mensagem)}</p>
+    </div>
+    <p style="margin:0;font-size:12px;color:#aaa;">Acesse o portal para responder.</p>
+  </td></tr>
+  <tr><td style="background:#f9f9f9;padding:14px 32px;text-align:center;border-top:1px solid #f0e0e8;">
+    <p style="margin:0;color:#aaa;font-size:11px;">Papelaria Bibelô · Timbó/SC</p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+// ── Helper: criar notificação CRM ────────────────────────────────
+
+async function criarNotificacao(
+  tipo: string, titulo: string, corpo: string | null, link?: string | null
+): Promise<void> {
+  try {
+    await queryOne(
+      `INSERT INTO public.notificacoes (tipo, titulo, corpo, link)
+       VALUES ($1, $2, $3, $4)`,
+      [tipo, titulo, corpo ?? null, link ?? null]
+    );
+  } catch (err) {
+    logger.error("Erro ao criar notificação CRM", { error: (err as Error).message });
+  }
+}
+
+// ── Helper: gerar número de pedido ──────────────────────────────
+
+async function gerarNumeroPedidoPortal(): Promise<string> {
+  const now   = new Date();
+  const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+  for (let i = 0; i < 5; i++) {
+    const rand = crypto.randomBytes(3).toString("hex").toUpperCase();
+    const num  = `REV-${yyyymm}-${rand}`;
+    const exists = await queryOne("SELECT id FROM crm.revendedora_pedidos WHERE numero_pedido = $1", [num]);
+    if (!exists) return num;
+  }
+  throw new Error("Não foi possível gerar número de pedido único");
+}
+
+// ── POST /pedidos — revendedora faz pedido direto pelo portal ────
+
+portalSouParceiraRouter.post(
+  "/pedidos",
+  limiterEscrita,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const id = (req as Request & { parceiraId?: string }).parceiraId!;
+
+    const schema = z.object({
+      itens: z.array(z.object({
+        produto_id:   z.string().uuid(),
+        quantidade:   z.number().int().min(1).max(9999),
+      })).min(1).max(200),
+      observacao: z.string().max(1000).optional(),
+    });
+    const parse = schema.safeParse(req.body);
+    if (!parse.success) {
+      res.status(400).json({ error: "Dados inválidos.", detalhes: parse.error.errors });
+      return;
+    }
+
+    const rev = await queryOne<{
+      nome: string; email: string; nivel: string; percentual_desconto: string;
+    }>(
+      "SELECT nome, email, nivel, percentual_desconto FROM crm.revendedoras WHERE id = $1 AND status = 'ativa'",
+      [id]
+    );
+    if (!rev) { res.status(401).json({ error: "Sessão inválida." }); return; }
+
+    const descPct = Number(rev.percentual_desconto);
+    const { itens: itemsInput, observacao } = parse.data;
+
+    // Buscar preços server-side — nunca confiar em preços do cliente
+    const ids = itemsInput.map(i => i.produto_id);
+    const produtos = await query<{
+      id: string; nome: string; categoria: string;
+      preco_custo: string; markup_override: string | null; markup: string | null;
+    }>(`
+      SELECT
+        p.id,
+        p.nome,
+        COALESCE(p.slug_categoria, p.categoria, 'outros') AS categoria,
+        p.preco_custo,
+        p.markup_override,
+        m.markup
+      FROM sync.fornecedor_catalogo_jc p
+      LEFT JOIN sync.fornecedor_markup_categorias m
+        ON m.categoria = COALESCE(p.slug_categoria, p.categoria)
+      WHERE p.id = ANY($1::uuid[]) AND p.status = 'aprovado'
+    `, [ids]);
+
+    if (produtos.length !== ids.length) {
+      res.status(400).json({ error: "Um ou mais produtos não encontrados ou não disponíveis." });
+      return;
+    }
+
+    const prodMap = new Map(produtos.map(p => [p.id, p]));
+
+    const itensCalculados = itemsInput.map(item => {
+      const p     = prodMap.get(item.produto_id)!;
+      const markup = Number(p.markup_override ?? p.markup ?? 2.00);
+      const precoCusto = Number(p.preco_custo);
+      const precoRevenda = Math.round(precoCusto * markup * 100) / 100;
+      const precoComDesconto = Math.round(precoRevenda * (1 - descPct / 100) * 100) / 100;
+      return {
+        produto_id:         p.id,
+        produto_nome:       p.nome,
+        produto_sku:        "",
+        quantidade:         item.quantidade,
+        preco_unitario:     precoRevenda,
+        preco_com_desconto: precoComDesconto,
+      };
+    });
+
+    const subtotal = itensCalculados.reduce((s, i) => s + i.preco_unitario * i.quantidade, 0);
+    const total    = itensCalculados.reduce((s, i) => s + i.preco_com_desconto * i.quantidade, 0);
+    const descVal  = subtotal - total;
+
+    const numero = await gerarNumeroPedidoPortal();
+
+    const pedido = await queryOne(
+      `INSERT INTO crm.revendedora_pedidos
+         (revendedora_id, numero_pedido, subtotal, desconto_percentual,
+          desconto_valor, total, observacao, itens)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       RETURNING *`,
+      [id, numero, subtotal.toFixed(2), descPct, descVal.toFixed(2),
+       total.toFixed(2), observacao ?? null, JSON.stringify(itensCalculados)]
+    );
+
+    // Conquista: primeiro pedido
+    const totalPedidos = await queryOne<{ count: string }>(
+      "SELECT COUNT(*)::text AS count FROM crm.revendedora_pedidos WHERE revendedora_id = $1", [id]
+    );
+    if (parseInt(totalPedidos?.count || "0") === 1) {
+      await queryOne(
+        `INSERT INTO crm.revendedora_conquistas (revendedora_id, tipo, descricao, pontos)
+         VALUES ($1, 'primeiro_pedido', 'Primeira Compra — bem-vinda ao Clube Bibelô!', 10)
+         ON CONFLICT (revendedora_id, tipo) DO NOTHING`,
+        [id]
+      ).catch(() => {});
+    }
+
+    // Notificação CRM + email para Carlos
+    const totalFmt = Number(total.toFixed(2)).toLocaleString("pt-BR", {
+      style: "currency", currency: "BRL",
+    });
+    await criarNotificacao(
+      "novo_pedido",
+      `Novo pedido ${numero}`,
+      `${rev.nome} · ${totalFmt}`,
+      `/revendedoras`
+    );
+    sendEmail({
+      to:      ADMIN_EMAIL,
+      subject: `Novo pedido ${numero} — ${rev.nome}`,
+      html:    buildEmailNovoPedido(rev.nome, numero, total.toFixed(2), itensCalculados, observacao),
+      tags:    [{ name: "tipo", value: "pedido_parceira" }],
+    }).catch(err => logger.error("Erro ao enviar email novo pedido", { error: (err as Error).message }));
+
+    logger.info("Pedido portal criado", { revendedoraId: id, numero, total: total.toFixed(2) });
+    res.status(201).json(pedido);
+  }
+);
+
+// ── GET /pedidos — listar meus pedidos ───────────────────────────
+
+portalSouParceiraRouter.get(
+  "/pedidos",
+  limiterCatalogo,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const id = (req as Request & { parceiraId?: string }).parceiraId!;
+
+    const schema = z.object({
+      page:  z.coerce.number().int().min(1).default(1),
+      limit: z.coerce.number().int().min(1).max(50).default(10),
+    });
+    const parse = schema.safeParse(req.query);
+    if (!parse.success) { res.status(400).json({ error: "Parâmetros inválidos." }); return; }
+
+    const { page, limit } = parse.data;
+    const offset = (page - 1) * limit;
+
+    const total = await queryOne<{ total: string }>(
+      "SELECT COUNT(*)::text AS total FROM crm.revendedora_pedidos WHERE revendedora_id = $1",
+      [id]
+    );
+
+    const rows = await query(`
+      SELECT
+        p.id, p.numero_pedido, p.status, p.total, p.subtotal,
+        p.desconto_percentual, p.desconto_valor,
+        p.observacao, p.itens, p.criado_em, p.aprovado_em, p.enviado_em, p.entregue_em,
+        (SELECT COUNT(*)::int FROM crm.revendedora_pedido_mensagens m
+          WHERE m.pedido_id = p.id AND m.lida = FALSE AND m.autor_tipo = 'admin') AS mensagens_nao_lidas
+      FROM crm.revendedora_pedidos p
+      WHERE p.revendedora_id = $1
+      ORDER BY p.criado_em DESC
+      LIMIT $2 OFFSET $3
+    `, [id, limit, offset]);
+
+    const totalInt = parseInt(total?.total || "0");
+    res.json({
+      data:          rows,
+      total:         totalInt,
+      pagina:        page,
+      total_paginas: Math.ceil(totalInt / limit),
+    });
+  }
+);
+
+// ── GET /pedidos/:id — detalhe do pedido ─────────────────────────
+
+portalSouParceiraRouter.get(
+  "/pedidos/:id",
+  limiterCatalogo,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const parceiraId = (req as Request & { parceiraId?: string }).parceiraId!;
+    const { id } = req.params;
+    if (!/^[0-9a-f-]{36}$/.test(id)) {
+      res.status(400).json({ error: "ID inválido" }); return;
+    }
+
+    const pedido = await queryOne(
+      `SELECT * FROM crm.revendedora_pedidos
+       WHERE id = $1 AND revendedora_id = $2`,
+      [id, parceiraId]
+    );
+    if (!pedido) { res.status(404).json({ error: "Pedido não encontrado." }); return; }
+
+    // Marcar mensagens do admin como lidas
+    await query(
+      `UPDATE crm.revendedora_pedido_mensagens
+          SET lida = TRUE
+        WHERE pedido_id = $1 AND autor_tipo = 'admin' AND lida = FALSE`,
+      [id]
+    );
+
+    res.json(pedido);
+  }
+);
+
+// ── GET /pedidos/:id/mensagens ───────────────────────────────────
+
+portalSouParceiraRouter.get(
+  "/pedidos/:id/mensagens",
+  limiterCatalogo,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const parceiraId = (req as Request & { parceiraId?: string }).parceiraId!;
+    const { id } = req.params;
+    if (!/^[0-9a-f-]{36}$/.test(id)) {
+      res.status(400).json({ error: "ID inválido" }); return;
+    }
+
+    // Verificar que o pedido pertence à revendedora
+    const pedido = await queryOne<{ id: string; numero_pedido: string }>(
+      "SELECT id, numero_pedido FROM crm.revendedora_pedidos WHERE id = $1 AND revendedora_id = $2",
+      [id, parceiraId]
+    );
+    if (!pedido) { res.status(404).json({ error: "Pedido não encontrado." }); return; }
+
+    const mensagens = await query(
+      `SELECT id, autor_tipo, autor_nome, conteudo, lida, criado_em
+         FROM crm.revendedora_pedido_mensagens
+        WHERE pedido_id = $1
+        ORDER BY criado_em ASC`,
+      [id]
+    );
+
+    // Marcar mensagens do admin como lidas
+    await query(
+      `UPDATE crm.revendedora_pedido_mensagens
+          SET lida = TRUE
+        WHERE pedido_id = $1 AND autor_tipo = 'admin' AND lida = FALSE`,
+      [id]
+    );
+
+    res.json({ data: mensagens });
+  }
+);
+
+// ── POST /pedidos/:id/mensagens — revendedora envia mensagem ─────
+
+portalSouParceiraRouter.post(
+  "/pedidos/:id/mensagens",
+  limiterEscrita,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const parceiraId = (req as Request & { parceiraId?: string }).parceiraId!;
+    const { id } = req.params;
+    if (!/^[0-9a-f-]{36}$/.test(id)) {
+      res.status(400).json({ error: "ID inválido" }); return;
+    }
+
+    const schema = z.object({
+      conteudo: z.string().trim().min(1).max(2000),
+    });
+    const parse = schema.safeParse(req.body);
+    if (!parse.success) {
+      res.status(400).json({ error: "Conteúdo inválido.", detalhes: parse.error.errors });
+      return;
+    }
+
+    // Verificar que o pedido pertence à revendedora
+    const pedido = await queryOne<{ id: string; numero_pedido: string }>(
+      `SELECT p.id, p.numero_pedido
+         FROM crm.revendedora_pedidos p
+        WHERE p.id = $1 AND p.revendedora_id = $2`,
+      [id, parceiraId]
+    );
+    if (!pedido) { res.status(404).json({ error: "Pedido não encontrado." }); return; }
+
+    const rev = await queryOne<{ nome: string; email: string }>(
+      "SELECT nome, email FROM crm.revendedoras WHERE id = $1", [parceiraId]
+    );
+    if (!rev) { res.status(401).json({ error: "Sessão inválida." }); return; }
+
+    const { conteudo } = parse.data;
+
+    const msg = await queryOne(
+      `INSERT INTO crm.revendedora_pedido_mensagens
+         (pedido_id, autor_tipo, autor_nome, conteudo, lida)
+       VALUES ($1, 'revendedora', $2, $3, FALSE)
+       RETURNING *`,
+      [id, rev.nome, conteudo]
+    );
+
+    // Notificação CRM + email para Carlos
+    await criarNotificacao(
+      "nova_mensagem_revendedora",
+      `Mensagem de ${rev.nome}`,
+      `Pedido ${pedido.numero_pedido}: ${conteudo.slice(0, 80)}${conteudo.length > 80 ? "…" : ""}`,
+      `/revendedoras`
+    );
+    sendEmail({
+      to:      ADMIN_EMAIL,
+      subject: `Nova mensagem de ${rev.nome} — Pedido ${pedido.numero_pedido}`,
+      html:    buildEmailNovaMensagem("Bibelô", rev.nome, pedido.numero_pedido, conteudo),
+      tags:    [{ name: "tipo", value: "mensagem_parceira" }],
+    }).catch(err => logger.error("Erro ao enviar email nova mensagem", { error: (err as Error).message }));
+
+    logger.info("Mensagem portal enviada", { parceiraId, pedidoId: id });
+    res.status(201).json(msg);
   }
 );

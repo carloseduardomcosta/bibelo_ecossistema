@@ -1178,3 +1178,50 @@ sync.category_sync_log         (auditoria)
   - Ícone ShoppingBag → Handshake (rosa) no header do login e do catálogo
 - **docs** — levantamento 4 evoluções portal Sou Parceira salvo em `docs/projeto/souparceira-evolucoes.md` (12/04/2026)
   - Endereço no cadastro B2B (ViaCEP), Dashboard KPIs revendedora, Módulos/assinaturas, Catálogo configurável
+
+### Sessão 13/04/2026 — Pedidos + Mensagens + Notificações (Sou Parceira ↔ CRM)
+
+- **[próximo commit]** — feat: pedidos portal + thread de mensagens + notificações sininho (13/04/2026)
+
+  #### Portal Sou Parceira — Carrinho e Pedidos
+  - `SouParceira.tsx`: carrinho com Map persistido em localStorage (`JSON.stringify([...entries()])`)
+  - `CartDrawer`: drawer lateral com itens, controles de qtd, campo observação, checkout. Estado "sucesso" limpa carrinho e redireciona para Meus Pedidos
+  - `MeusPedidos`: lista de pedidos com badges de status + thread de mensagens com UI de chat (mensagens da parceira à direita, admin à esquerda)
+  - `HeaderLogado`: botão carrinho rosa com badge numérico
+  - `POST /api/souparceira/pedidos`: preço calculado 100% server-side (`preco_custo × markup × (1 - desconto%)`), `preco_unitario` do body ignorado (segurança). Envia email para admin + cria notificação sininho
+  - `GET /api/souparceira/pedidos`: lista com `mensagens_nao_lidas` por pedido (subquery)
+  - `GET /api/souparceira/pedidos/:id`: detalhe + marca mensagens do admin como lidas automaticamente
+  - `GET /api/souparceira/pedidos/:id/mensagens`: thread de mensagens, marca admins como lidas
+  - `POST /api/souparceira/pedidos/:id/mensagens`: revendedora envia, email para admin + notificação sininho
+
+  #### CRM — Mensagens nas Revendedoras
+  - `PUT /api/revendedoras/:id/pedidos/:pedidoId/status`: aceita `observacao_admin`, cria mensagem automática no thread se preenchida, envia email de status para revendedora
+  - `GET /api/revendedoras/:id/pedidos/:pedidoId/mensagens`: lista mensagens, marca mensagens da revendedora como lidas
+  - `POST /api/revendedoras/:id/pedidos/:pedidoId/mensagens`: admin envia mensagem, email para revendedora
+  - `GET /api/revendedoras/pedidos-recentes`: 10 últimos pedidos (7 dias ou pendentes) com contadores `pendentes` + `mensagens_nao_lidas` — rota registrada ANTES de `/:id` (fix conflito de rota)
+  - Fix `$1::text` no `UPDATE status` CASE WHEN — resolvia "inconsistent types deduced for parameter $1"
+
+  #### Notificações — Sininho do CRM
+  - Nova tabela `public.notificacoes` — tipo, título, corpo, link, lida, criado_em
+  - `GET /api/notificacoes` — lista com `total_nao_lidas`
+  - `PUT /api/notificacoes/lida-tudo` — marca todas lidas (antes de `/:id`)
+  - `PUT /api/notificacoes/:id/lida` — marca uma lida
+  - `Layout.tsx`: busca `/revendedoras/pedidos-recentes` em paralelo com outras fontes do sininho; seção "Pedidos Revendedoras" com contadores pendentes + mensagens; badge urgentes inclui pedidos B2B
+
+  #### Banco e Segurança
+  - Migration `038_revendedora_mensagens_notificacoes.sql`: tabelas `crm.revendedora_pedido_mensagens` + `public.notificacoes`
+  - `escHtml()` em todos os emails das novas rotas (XSS prevention)
+  - Emails não bloqueantes: `sendEmail(...).catch()` — criação de pedido nunca trava por email
+  - `lida` semântica: admin acessa → marca mensagens da revendedora como lidas; revendedora acessa → marca mensagens do admin como lidas
+
+  #### Testes
+  - `api/src/routes/pedidos-mensagens.test.ts`: 39 testes de integração
+    - POST pedidos (auth, validação, preço server-side, isolamento)
+    - GET pedidos portal (auth, isolamento)
+    - GET pedido por ID (auth, UUID, isolamento)
+    - Mensagens portal: auth, validação, XSS, isolamento, lida-marking
+    - Mensagens CRM: auth, validação, lida-marking, resposta admin
+    - GET /pedidos-recentes: estrutura, contadores
+    - PUT status com observacao_admin e mensagem automática
+    - Notificações: GET, lida-tudo, :id/lida, 404
+  - Suite total: **651/651** (antes 612)

@@ -5,7 +5,8 @@ import {
   Tag, Search, Medal, Star, Crown, LogOut, Loader2,
   ArrowRight, CheckCircle2, Sparkles, TrendingUp, Package,
   LayoutDashboard, BookOpen, Lock, Clock, Truck, CheckCircle,
-  XCircle, SortAsc,
+  XCircle, SortAsc, ShoppingCart, Plus, Minus, Trash2, Send, X,
+  ClipboardList,
 } from 'lucide-react';
 
 // Instância axios sem interceptors de auth do CRM
@@ -46,6 +47,42 @@ interface CatalogoPaginado {
   total_paginas: number;
 }
 
+interface CartItem {
+  produto: Produto;
+  quantidade: number;
+}
+
+interface Pedido {
+  id: string;
+  numero_pedido: string;
+  status: string;
+  total: string;
+  subtotal: string;
+  desconto_percentual: string;
+  desconto_valor: string;
+  observacao: string | null;
+  itens: Array<{
+    produto_nome: string;
+    quantidade: number;
+    preco_unitario: number;
+    preco_com_desconto: number;
+  }>;
+  criado_em: string;
+  aprovado_em: string | null;
+  enviado_em: string | null;
+  entregue_em: string | null;
+  mensagens_nao_lidas: number;
+}
+
+interface Mensagem {
+  id: string;
+  autor_tipo: 'admin' | 'revendedora';
+  autor_nome: string;
+  conteudo: string;
+  lida: boolean;
+  criado_em: string;
+}
+
 interface DashboardData {
   volume_mes_atual: number;
   total_pedidos: number;
@@ -76,7 +113,7 @@ interface Modulo {
 }
 
 type Tela   = 'verificando' | 'login_cpf' | 'login_otp' | 'logado';
-type Secao  = 'dashboard' | 'catalogo' | 'recursos';
+type Secao  = 'dashboard' | 'catalogo' | 'pedidos' | 'recursos';
 
 // ── Config visual por nível ──────────────────────────────────────
 
@@ -562,6 +599,22 @@ function OTPForm({ cpf, emailMasked, onLogado, onVoltar }: OTPFormProps) {
   );
 }
 
+// ── Cart helpers ─────────────────────────────────────────────────
+
+const CART_KEY = 'souparceira_cart';
+
+function loadCart(): Map<string, CartItem> {
+  try {
+    const raw = localStorage.getItem(CART_KEY);
+    if (!raw) return new Map();
+    return new Map(JSON.parse(raw) as [string, CartItem][]);
+  } catch { return new Map(); }
+}
+
+function saveCart(cart: Map<string, CartItem>): void {
+  localStorage.setItem(CART_KEY, JSON.stringify([...cart.entries()]));
+}
+
 // ── Header + nav (seções logadas) ────────────────────────────────
 
 interface HeaderLogadoProps {
@@ -569,15 +622,18 @@ interface HeaderLogadoProps {
   secao: Secao;
   onSecao: (s: Secao) => void;
   onLogout: () => void;
+  cartCount: number;
+  onOpenCart: () => void;
 }
 
-function HeaderLogado({ rev, secao, onSecao, onLogout }: HeaderLogadoProps) {
+function HeaderLogado({ rev, secao, onSecao, onLogout, cartCount, onOpenCart }: HeaderLogadoProps) {
   const nivelCfg = NIVEL[rev.nivel] ?? NIVEL.bronze;
   const NivelIcon = nivelCfg.icon;
 
   const NAV: { id: Secao; label: string; icon: typeof LayoutDashboard }[] = [
     { id: 'dashboard', label: 'Início',   icon: LayoutDashboard },
     { id: 'catalogo',  label: 'Catálogo', icon: BookOpen        },
+    { id: 'pedidos',   label: 'Pedidos',  icon: ClipboardList   },
     { id: 'recursos',  label: 'Recursos', icon: Sparkles        },
   ];
 
@@ -595,15 +651,30 @@ function HeaderLogado({ rev, secao, onSecao, onLogout }: HeaderLogadoProps) {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <span className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
                             text-xs font-semibold border ${nivelCfg.cor}`}>
               <NivelIcon className="w-3 h-3" />
               {nivelCfg.label} · {rev.percentual_desconto}% off
             </span>
-            <p className="text-sm font-semibold text-gray-800 hidden md:block max-w-[140px] truncate">
+            <p className="text-sm font-semibold text-gray-800 hidden md:block max-w-[120px] truncate">
               {rev.nome}
             </p>
+            {/* Botão carrinho */}
+            <button
+              onClick={onOpenCart}
+              title="Carrinho"
+              className="relative p-2 text-gray-500 hover:text-[#fe68c4] hover:bg-[#ffe5ec]
+                         rounded-lg transition-colors"
+            >
+              <ShoppingCart className="w-5 h-5" />
+              {cartCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#fe68c4] text-white
+                                 text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {cartCount > 9 ? '9+' : cartCount}
+                </span>
+              )}
+            </button>
             <button
               onClick={onLogout}
               title="Sair"
@@ -790,7 +861,14 @@ const SORT_LABELS: Record<SortOption, string> = {
   preco_desc: 'Maior preço',
 };
 
-function Catalogo({ rev }: { rev: Revendedora }) {
+interface CatalogoProps {
+  rev: Revendedora;
+  cart: Map<string, CartItem>;
+  onCartChange: (cart: Map<string, CartItem>) => void;
+  onOpenCart: () => void;
+}
+
+function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
   const [categorias, setCategorias]           = useState<Categoria[]>([]);
   const [catalogo, setCatalogo]               = useState<CatalogoPaginado | null>(null);
   const [loadingCat, setLoadingCat]           = useState(false);
@@ -804,6 +882,18 @@ function Catalogo({ rev }: { rev: Revendedora }) {
   const [limit, setLimit]                     = useState<number>(
     () => Number(localStorage.getItem('souparceira_limit')) || 12
   );
+
+  function addToCart(p: Produto) {
+    const next = new Map(cart);
+    const existing = next.get(p.id);
+    if (existing) {
+      next.set(p.id, { ...existing, quantidade: existing.quantidade + 1 });
+    } else {
+      next.set(p.id, { produto: p, quantidade: 1 });
+    }
+    onCartChange(next);
+    saveCart(next);
+  }
 
   useEffect(() => {
     api.get('/souparceira/categorias').then(r => setCategorias(r.data)).catch(() => {});
@@ -845,10 +935,6 @@ function Catalogo({ rev }: { rev: Revendedora }) {
     localStorage.setItem('souparceira_limit', String(v));
     setPagina(1);
   }
-
-  const msgWA = encodeURIComponent(
-    `Olá! Sou revendedora ${rev.nome} e gostaria de fazer um pedido pelo catálogo Bibelô.`
-  );
 
   // "Mostrando X–Y de Z"
   const inicio = catalogo ? (catalogo.pagina - 1) * limit + 1 : 0;
@@ -952,9 +1038,9 @@ function Catalogo({ rev }: { rev: Revendedora }) {
               key={p.id}
               className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm
                          hover:shadow-md hover:border-[#fe68c4]/30
-                         transition-all duration-200 group cursor-default"
+                         transition-all duration-200 group flex flex-col"
             >
-              {/* Imagem do produto — usa galeria HD se disponível, senão placeholder M_ */}
+              {/* Imagem do produto */}
               {(() => {
                 const imgSrc = (p.imagens_urls && p.imagens_urls.length > 0)
                   ? p.imagens_urls[0]
@@ -968,7 +1054,6 @@ function Catalogo({ rev }: { rev: Revendedora }) {
                       className="object-contain w-full h-full"
                       onError={(e) => {
                         const target = e.currentTarget;
-                        // Fallback: tentar M_ se G_ falhar
                         if (p.imagem_url && target.src !== p.imagem_url) {
                           target.src = p.imagem_url;
                           return;
@@ -987,23 +1072,62 @@ function Catalogo({ rev }: { rev: Revendedora }) {
 
               <span className="inline-flex items-center gap-1 text-[10px] font-semibold
                                text-[#fe68c4] bg-[#ffe5ec] px-2 py-0.5 rounded-full
-                               leading-none mb-3 max-w-full truncate">
+                               leading-none mb-2 max-w-full truncate">
                 <Tag className="w-2.5 h-2.5 flex-shrink-0" />
                 <span className="truncate">{formatCategoria(p.categoria)}</span>
               </span>
-              <p className="text-sm font-semibold text-gray-800 leading-snug mb-1.5 line-clamp-3
-                            group-hover:text-gray-900 transition-colors">
+              <p className="text-sm font-semibold text-gray-800 leading-snug mb-1 line-clamp-2
+                            group-hover:text-gray-900 transition-colors flex-1">
                 {p.nome}
               </p>
               {p.descricao && (
-                <p className="text-xs text-gray-500 leading-snug mb-2 line-clamp-2">
+                <p className="text-xs text-gray-500 leading-snug mb-2 line-clamp-1">
                   {p.descricao}
                 </p>
               )}
-              <p className="text-lg font-bold text-[#fe68c4] leading-none">
-                {formatCurrency(p.preco_final)}
-              </p>
-              <p className="text-[10px] text-gray-400 mt-0.5 font-medium">preço de revenda</p>
+              <div className="flex items-end justify-between mt-1 gap-2">
+                <div>
+                  <p className="text-base font-bold text-[#fe68c4] leading-none">
+                    {formatCurrency(p.preco_final)}
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">preço de revenda</p>
+                </div>
+                {cart.has(p.id) ? (
+                  <div className="flex items-center gap-1.5 bg-[#ffe5ec] rounded-lg px-2 py-1">
+                    <button
+                      onClick={() => {
+                        const next = new Map(cart);
+                        const item = next.get(p.id)!;
+                        if (item.quantidade <= 1) { next.delete(p.id); }
+                        else { next.set(p.id, { ...item, quantidade: item.quantidade - 1 }); }
+                        onCartChange(next); saveCart(next);
+                      }}
+                      className="text-[#fe68c4] hover:text-[#fd4fb8] transition-colors"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <span className="text-xs font-bold text-[#fe68c4] min-w-[16px] text-center">
+                      {cart.get(p.id)!.quantidade}
+                    </span>
+                    <button
+                      onClick={() => addToCart(p)}
+                      className="text-[#fe68c4] hover:text-[#fd4fb8] transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => addToCart(p)}
+                    className="flex items-center gap-1 bg-[#fe68c4] text-white
+                               text-[11px] font-semibold px-2.5 py-1.5 rounded-lg
+                               hover:bg-[#fd4fb8] active:scale-95 transition-all"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Adicionar
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -1046,18 +1170,454 @@ function Catalogo({ rev }: { rev: Revendedora }) {
         </div>
       )}
 
-      {/* WhatsApp flutuante */}
-      <a
-        href={`https://wa.me/5547933862514?text=${msgWA}`}
-        target="_blank" rel="noreferrer"
-        className="fixed bottom-6 right-6 bg-[#25d366] text-white px-5 py-3.5 rounded-2xl
-                   shadow-xl hover:bg-[#1fba57] active:scale-95 transition-all
-                   flex items-center gap-2 font-semibold text-sm z-50
-                   shadow-[#25d366]/40"
-      >
-        <MessageCircle className="w-5 h-5" />
-        <span>Fazer pedido</span>
-      </a>
+      {/* Botão flutuante — carrinho ou WhatsApp */}
+      {cart.size > 0 ? (
+        <button
+          onClick={onOpenCart}
+          className="fixed bottom-6 right-6 bg-[#fe68c4] text-white px-5 py-3.5 rounded-2xl
+                     shadow-xl hover:bg-[#fd4fb8] active:scale-95 transition-all
+                     flex items-center gap-2 font-semibold text-sm z-50 shadow-[#fe68c4]/40"
+        >
+          <ShoppingCart className="w-5 h-5" />
+          <span>Ver carrinho ({cart.size})</span>
+        </button>
+      ) : (
+        <a
+          href={`https://wa.me/5547933862514?text=${encodeURIComponent(`Olá! Sou revendedora ${rev.nome} e gostaria de fazer um pedido pelo catálogo Bibelô.`)}`}
+          target="_blank" rel="noreferrer"
+          className="fixed bottom-6 right-6 bg-[#25d366] text-white px-5 py-3.5 rounded-2xl
+                     shadow-xl hover:bg-[#1fba57] active:scale-95 transition-all
+                     flex items-center gap-2 font-semibold text-sm z-50 shadow-[#25d366]/40"
+        >
+          <MessageCircle className="w-5 h-5" />
+          <span>Dúvidas</span>
+        </a>
+      )}
+    </div>
+  );
+}
+
+// ── Drawer: Carrinho ─────────────────────────────────────────────
+
+interface CartDrawerProps {
+  rev: Revendedora;
+  cart: Map<string, CartItem>;
+  onCartChange: (cart: Map<string, CartItem>) => void;
+  onClose: () => void;
+  onPedidoCriado: () => void;
+}
+
+function CartDrawer({ rev, cart, onCartChange, onClose, onPedidoCriado }: CartDrawerProps) {
+  const [obs, setObs]           = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [sucesso, setSucesso]   = useState(false);
+  const [erro, setErro]         = useState<string | null>(null);
+
+  const items = [...cart.values()];
+  const total = items.reduce((s, i) => s + Number(i.produto.preco_final) * i.quantidade, 0);
+
+  async function handleFazerPedido() {
+    setLoading(true);
+    setErro(null);
+    try {
+      await api.post('/souparceira/pedidos', {
+        itens: items.map(i => ({ produto_id: i.produto.id, quantidade: i.quantidade })),
+        observacao: obs.trim() || undefined,
+      });
+      setSucesso(true);
+      const empty = new Map<string, CartItem>();
+      onCartChange(empty);
+      saveCart(empty);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setErro(msg || 'Erro ao criar pedido. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (sucesso) {
+    return (
+      <div className="fixed inset-0 z-50 flex justify-end" style={{ fontFamily: 'Jost, sans-serif' }}>
+        <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+        <div className="relative bg-white w-full max-w-sm h-full flex flex-col items-center
+                        justify-center text-center p-8 shadow-2xl">
+          <CheckCircle2 className="w-16 h-16 text-green-500 mb-4" />
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Pedido enviado!</h3>
+          <p className="text-gray-500 text-sm mb-6">
+            Seu pedido foi recebido e será analisado pela Bibelô em breve.
+          </p>
+          <button
+            onClick={() => { onClose(); onPedidoCriado(); }}
+            className="bg-[#fe68c4] text-white px-6 py-3 rounded-xl font-semibold text-sm
+                       hover:bg-[#fd4fb8] transition-colors"
+          >
+            Ver Meus Pedidos
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" style={{ fontFamily: 'Jost, sans-serif' }}>
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white w-full max-w-sm h-full flex flex-col shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <ShoppingCart className="w-5 h-5 text-[#fe68c4]" />
+            <span className="font-bold text-gray-900">Carrinho</span>
+            {items.length > 0 && (
+              <span className="text-xs text-gray-400">({items.length} produto{items.length > 1 ? 's' : ''})</span>
+            )}
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Itens */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+          {items.length === 0 && (
+            <div className="text-center py-16 text-gray-400">
+              <ShoppingCart className="w-10 h-10 mx-auto mb-3 text-gray-200" />
+              <p className="text-sm font-medium">Carrinho vazio</p>
+              <p className="text-xs mt-1">Adicione produtos do catálogo</p>
+            </div>
+          )}
+          {items.map(({ produto: p, quantidade }) => (
+            <div key={p.id} className="flex items-start gap-3 bg-gray-50 rounded-xl p-3">
+              {(() => {
+                const img = (p.imagens_urls && p.imagens_urls.length > 0) ? p.imagens_urls[0] : p.imagem_url;
+                return img
+                  ? <img src={img} alt={p.nome} className="w-12 h-12 object-contain rounded-lg bg-white border border-gray-100 flex-shrink-0" />
+                  : <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Package className="w-5 h-5 text-gray-300" />
+                    </div>;
+              })()}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-800 line-clamp-2 leading-snug">{p.nome}</p>
+                <p className="text-xs text-[#fe68c4] font-bold mt-0.5">{formatCurrency(p.preco_final)}</p>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => {
+                    const next = new Map(cart);
+                    if (quantidade <= 1) { next.delete(p.id); }
+                    else { next.set(p.id, { produto: p, quantidade: quantidade - 1 }); }
+                    onCartChange(next); saveCart(next);
+                  }}
+                  className="w-6 h-6 flex items-center justify-center rounded-full bg-white border
+                             border-gray-200 text-gray-500 hover:border-[#fe68c4] hover:text-[#fe68c4]
+                             transition-colors"
+                >
+                  <Minus className="w-3 h-3" />
+                </button>
+                <span className="text-sm font-bold text-gray-800 min-w-[20px] text-center">{quantidade}</span>
+                <button
+                  onClick={() => {
+                    const next = new Map(cart);
+                    next.set(p.id, { produto: p, quantidade: quantidade + 1 });
+                    onCartChange(next); saveCart(next);
+                  }}
+                  className="w-6 h-6 flex items-center justify-center rounded-full bg-white border
+                             border-gray-200 text-gray-500 hover:border-[#fe68c4] hover:text-[#fe68c4]
+                             transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={() => {
+                    const next = new Map(cart);
+                    next.delete(p.id);
+                    onCartChange(next); saveCart(next);
+                  }}
+                  className="w-6 h-6 flex items-center justify-center rounded-full text-gray-300
+                             hover:text-red-400 transition-colors ml-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        {items.length > 0 && (
+          <div className="border-t border-gray-100 px-5 py-4 space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">Desconto aplicado:</span>
+              <span className="text-sm font-semibold text-green-600">{rev.percentual_desconto}% off</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-base font-bold text-gray-800">Total estimado:</span>
+              <span className="text-xl font-bold text-[#fe68c4]">{formatCurrency(total)}</span>
+            </div>
+            <p className="text-[10px] text-gray-400 text-center">
+              * Preços calculados com desconto {rev.nivel}. O total final é confirmado pela Bibelô.
+            </p>
+            <textarea
+              placeholder="Observação (opcional)..."
+              value={obs}
+              onChange={e => setObs(e.target.value)}
+              rows={2}
+              maxLength={500}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700
+                         focus:outline-none focus:border-[#fe68c4] resize-none"
+            />
+            {erro && (
+              <p className="text-xs text-red-500 text-center">{erro}</p>
+            )}
+            <button
+              onClick={handleFazerPedido}
+              disabled={loading}
+              className="w-full bg-[#fe68c4] text-white py-3.5 rounded-xl font-bold text-base
+                         hover:bg-[#fd4fb8] active:scale-[0.98] transition-all
+                         disabled:opacity-40 flex items-center justify-center gap-2
+                         shadow-md shadow-[#fe68c4]/30"
+            >
+              {loading
+                ? <><Loader2 className="w-5 h-5 animate-spin" /> Enviando…</>
+                : <><Send className="w-5 h-5" /> Fazer Pedido</>
+              }
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Seção: Meus Pedidos ──────────────────────────────────────────
+
+function MeusPedidos({ rev: _rev }: { rev: Revendedora }) {
+  const [pedidos, setPedidos]       = useState<Pedido[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [pedidoAberto, setPedidoAberto] = useState<Pedido | null>(null);
+  const [mensagens, setMensagens]   = useState<Mensagem[]>([]);
+  const [loadMsg, setLoadMsg]       = useState(false);
+  const [novaMsg, setNovaMsg]       = useState('');
+  const [enviando, setEnviando]     = useState(false);
+  const msgEndRef                   = useRef<HTMLDivElement>(null);
+
+  const fetchPedidos = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/souparceira/pedidos?limit=20');
+      setPedidos(res.data.data);
+    } catch { /* manter estado */ } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchPedidos(); }, [fetchPedidos]);
+
+  async function abrirPedido(p: Pedido) {
+    setPedidoAberto(p);
+    setLoadMsg(true);
+    try {
+      const res = await api.get(`/souparceira/pedidos/${p.id}/mensagens`);
+      setMensagens(res.data.data);
+      // atualizar badge local
+      setPedidos(prev => prev.map(pp => pp.id === p.id ? { ...pp, mensagens_nao_lidas: 0 } : pp));
+    } catch { /* manter estado */ } finally {
+      setLoadMsg(false);
+      setTimeout(() => msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    }
+  }
+
+  async function enviarMensagem() {
+    if (!novaMsg.trim() || !pedidoAberto) return;
+    setEnviando(true);
+    try {
+      const res = await api.post(`/souparceira/pedidos/${pedidoAberto.id}/mensagens`, {
+        conteudo: novaMsg.trim(),
+      });
+      setMensagens(prev => [...prev, res.data]);
+      setNovaMsg('');
+      setTimeout(() => msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    } catch { /* manter estado */ } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (pedidoAberto) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-5">
+        <button
+          onClick={() => { setPedidoAberto(null); fetchPedidos(); }}
+          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700
+                     transition-colors mb-4"
+        >
+          <ChevronLeft className="w-4 h-4" /> Voltar aos pedidos
+        </button>
+
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+            <div>
+              <p className="text-xs text-gray-400 mb-0.5">Pedido</p>
+              <p className="font-bold text-gray-900">{pedidoAberto.numero_pedido}</p>
+            </div>
+            {(() => {
+              const cfg = STATUS_PEDIDO[pedidoAberto.status] ?? STATUS_PEDIDO.pendente;
+              const Icon = cfg.icon;
+              return (
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full
+                                  text-xs font-semibold ${cfg.cor}`}>
+                  <Icon className="w-3 h-3" />{cfg.label}
+                </span>
+              );
+            })()}
+          </div>
+          <div className="px-5 py-3 space-y-1">
+            {(pedidoAberto.itens ?? []).map((it, i) => (
+              <div key={i} className="flex justify-between text-sm text-gray-600">
+                <span className="flex-1 truncate pr-2">{it.produto_nome} × {it.quantidade}</span>
+                <span className="font-semibold text-gray-800 flex-shrink-0">
+                  {formatCurrency(it.preco_com_desconto * it.quantidade)}
+                </span>
+              </div>
+            ))}
+            <div className="flex justify-between text-sm font-bold text-gray-900 pt-1 border-t border-gray-100 mt-1">
+              <span>Total</span>
+              <span className="text-[#fe68c4]">{formatCurrency(pedidoAberto.total)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Thread mensagens */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col"
+             style={{ minHeight: '300px' }}>
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+            <MessageCircle className="w-4 h-4 text-[#fe68c4]" />
+            <span className="text-sm font-semibold text-gray-800">Mensagens</span>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3" style={{ maxHeight: '320px' }}>
+            {loadMsg && (
+              <div className="text-center py-8 text-gray-400">
+                <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+              </div>
+            )}
+            {!loadMsg && mensagens.length === 0 && (
+              <div className="text-center py-10 text-gray-400">
+                <MessageCircle className="w-8 h-8 mx-auto mb-2 text-gray-200" />
+                <p className="text-sm">Nenhuma mensagem ainda. Envie uma mensagem abaixo.</p>
+              </div>
+            )}
+            {mensagens.map(m => (
+              <div
+                key={m.id}
+                className={`flex ${m.autor_tipo === 'revendedora' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div className={`max-w-[75%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed
+                  ${m.autor_tipo === 'revendedora'
+                    ? 'bg-[#fe68c4] text-white rounded-br-sm'
+                    : 'bg-gray-100 text-gray-800 rounded-bl-sm'
+                  }`}
+                >
+                  <p>{m.conteudo}</p>
+                  <p className={`text-[10px] mt-1 ${
+                    m.autor_tipo === 'revendedora' ? 'text-white/70' : 'text-gray-400'
+                  }`}>
+                    {m.autor_nome} · {new Date(m.criado_em).toLocaleString('pt-BR', {
+                      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+              </div>
+            ))}
+            <div ref={msgEndRef} />
+          </div>
+          <div className="border-t border-gray-100 px-4 py-3 flex gap-2">
+            <textarea
+              placeholder="Escreva uma mensagem…"
+              value={novaMsg}
+              onChange={e => setNovaMsg(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMensagem(); }
+              }}
+              rows={2}
+              maxLength={2000}
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm
+                         focus:outline-none focus:border-[#fe68c4] resize-none"
+            />
+            <button
+              onClick={enviarMensagem}
+              disabled={!novaMsg.trim() || enviando}
+              className="self-end bg-[#fe68c4] text-white px-4 py-2.5 rounded-xl font-semibold text-sm
+                         hover:bg-[#fd4fb8] active:scale-95 transition-all
+                         disabled:opacity-40 flex items-center gap-1.5"
+            >
+              {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Enviar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
+      <div>
+        <h2 className="text-xl font-bold text-gray-900">Meus pedidos</h2>
+        <p className="text-sm text-gray-500 mt-0.5">Histórico e status dos seus pedidos</p>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-16">
+          <div className="w-8 h-8 border-2 border-[#fe68c4] border-t-transparent rounded-full animate-spin mx-auto" />
+        </div>
+      ) : pedidos.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-xl border border-gray-100">
+          <ClipboardList className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+          <p className="text-gray-500 font-medium">Nenhum pedido ainda</p>
+          <p className="text-gray-400 text-sm mt-1">Adicione produtos ao carrinho e faça seu primeiro pedido!</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {pedidos.map(p => {
+            const cfg = STATUS_PEDIDO[p.status] ?? STATUS_PEDIDO.pendente;
+            const Icon = cfg.icon;
+            return (
+              <button
+                key={p.id}
+                onClick={() => abrirPedido(p)}
+                className="w-full bg-white rounded-xl border border-gray-100 shadow-sm
+                           hover:border-[#fe68c4]/30 hover:shadow-md
+                           transition-all text-left px-5 py-4"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-gray-800">{p.numero_pedido}</span>
+                    {p.mensagens_nao_lidas > 0 && (
+                      <span className="w-4 h-4 bg-[#fe68c4] text-white text-[9px] font-bold
+                                       rounded-full flex items-center justify-center">
+                        {p.mensagens_nao_lidas}
+                      </span>
+                    )}
+                  </div>
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full
+                                    text-xs font-semibold ${cfg.cor}`}>
+                    <Icon className="w-3 h-3" />
+                    {cfg.label}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400">{formatDate(p.criado_em)}</span>
+                  <span className="font-bold text-gray-800">{formatCurrency(p.total)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <MessageCircle className="w-3.5 h-3.5 text-gray-300" />
+                  <span className="text-xs text-gray-400">Toque para ver mensagens</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-gray-300 ml-auto" />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1165,6 +1725,8 @@ export default function SouParceira() {
   const [cpf, setCpf]                 = useState('');
   const [emailMasked, setEmailMasked] = useState<string | null>(null);
   const [rev, setRev]                 = useState<Revendedora | null>(null);
+  const [cart, setCart]               = useState<Map<string, CartItem>>(() => loadCart());
+  const [cartOpen, setCartOpen]       = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('souparceira_token');
@@ -1191,6 +1753,8 @@ export default function SouParceira() {
     setTela('login_cpf');
   }
 
+  const cartCount = [...cart.values()].reduce((s, i) => s + i.quantidade, 0);
+
   if (tela === 'verificando')  return <VerificandoSessao />;
   if (tela === 'login_cpf')    return <LoginForm onCodigoEnviado={handleCodigoEnviado} />;
   if (tela === 'login_otp')
@@ -1211,6 +1775,8 @@ export default function SouParceira() {
           secao={secao}
           onSecao={setSecao}
           onLogout={handleLogout}
+          cartCount={cartCount}
+          onOpenCart={() => setCartOpen(true)}
         />
 
         {/* Hero strip tier — só no catálogo */}
@@ -1226,8 +1792,8 @@ export default function SouParceira() {
                   <span className="text-base font-normal text-white/80">em todo o catálogo</span>
                 </p>
               </div>
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
-                              bg-white/20 border border-white/30 text-white text-sm font-semibold`}>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                              bg-white/20 border border-white/30 text-white text-sm font-semibold">
                 {(() => { const cfg = NIVEL[rev.nivel] ?? NIVEL.bronze; const Icon = cfg.icon; return <><Icon className="w-4 h-4" /> Tier {cfg.label}</>; })()}
               </span>
             </div>
@@ -1235,8 +1801,27 @@ export default function SouParceira() {
         )}
 
         {secao === 'dashboard' && <Dashboard rev={rev} onIrCatalogo={() => setSecao('catalogo')} />}
-        {secao === 'catalogo'  && <Catalogo  rev={rev} />}
+        {secao === 'catalogo'  && (
+          <Catalogo
+            rev={rev}
+            cart={cart}
+            onCartChange={setCart}
+            onOpenCart={() => setCartOpen(true)}
+          />
+        )}
+        {secao === 'pedidos'   && <MeusPedidos rev={rev} />}
         {secao === 'recursos'  && <Recursos />}
+
+        {/* Cart Drawer */}
+        {cartOpen && rev && (
+          <CartDrawer
+            rev={rev}
+            cart={cart}
+            onCartChange={setCart}
+            onClose={() => setCartOpen(false)}
+            onPedidoCriado={() => { setCartOpen(false); setSecao('pedidos'); }}
+          />
+        )}
       </div>
     );
   }

@@ -4,6 +4,8 @@ import { z } from "zod";
 import { query, queryOne } from "../db";
 import { logger } from "../utils/logger";
 import { authMiddleware } from "../middleware/auth";
+import { sendEmail } from "../integrations/resend/email";
+import { escHtml } from "../utils/sanitize";
 
 export const revendedorasRouter = Router();
 revendedorasRouter.use(authMiddleware);
@@ -238,6 +240,34 @@ revendedorasRouter.post("/", async (req: Request, res: Response) => {
   res.status(201).json(rev);
 });
 
+// ── GET /pedidos-recentes — para o sininho do CRM ─────────────────
+// IMPORTANTE: deve vir antes de /:id para não ser tratado como UUID
+
+revendedorasRouter.get("/pedidos-recentes", async (_req: Request, res: Response) => {
+  const rows = await query(`
+    SELECT
+      p.id, p.numero_pedido, p.status, p.total, p.criado_em,
+      r.nome AS revendedora_nome,
+      (SELECT COUNT(*)::int FROM crm.revendedora_pedido_mensagens m
+        WHERE m.pedido_id = p.id AND m.lida = FALSE AND m.autor_tipo = 'revendedora') AS mensagens_nao_lidas
+    FROM crm.revendedora_pedidos p
+    JOIN crm.revendedoras r ON r.id = p.revendedora_id
+    WHERE p.criado_em > NOW() - INTERVAL '7 days'
+       OR p.status = 'pendente'
+    ORDER BY p.criado_em DESC
+    LIMIT 10
+  `);
+
+  const pendentes = rows.filter(
+    (r: Record<string, unknown>) => r.status === "pendente"
+  ).length;
+  const mensagens_nao_lidas = rows.reduce(
+    (s: number, r: Record<string, unknown>) => s + Number(r.mensagens_nao_lidas || 0), 0
+  );
+
+  res.json({ data: rows, pendentes, mensagens_nao_lidas });
+});
+
 // ── GET /:id ──────────────────────────────────────────────────
 
 revendedorasRouter.get("/:id", async (req: Request, res: Response) => {
@@ -470,18 +500,19 @@ revendedorasRouter.post("/:id/pedidos", async (req: Request, res: Response) => {
 revendedorasRouter.put("/:id/pedidos/:pedidoId/status", async (req: Request, res: Response) => {
   const { id, pedidoId } = req.params;
   const parse = z.object({
-    status: z.enum(["pendente", "aprovado", "enviado", "entregue", "cancelado"]),
+    status:            z.enum(["pendente", "aprovado", "enviado", "entregue", "cancelado"]),
+    observacao_admin:  z.string().max(1000).optional(),
   }).safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: "Status inválido" }); return; }
 
-  const { status } = parse.data;
+  const { status, observacao_admin } = parse.data;
 
   const updated = await queryOne(`
     UPDATE crm.revendedora_pedidos SET
-      status = $1,
-      aprovado_em = CASE WHEN $1 = 'aprovado' AND aprovado_em IS NULL THEN NOW() ELSE aprovado_em END,
-      enviado_em  = CASE WHEN $1 = 'enviado'  AND enviado_em  IS NULL THEN NOW() ELSE enviado_em  END,
-      entregue_em = CASE WHEN $1 = 'entregue' AND entregue_em IS NULL THEN NOW() ELSE entregue_em END,
+      status = $1::text,
+      aprovado_em = CASE WHEN $1::text = 'aprovado' AND aprovado_em IS NULL THEN NOW() ELSE aprovado_em END,
+      enviado_em  = CASE WHEN $1::text = 'enviado'  AND enviado_em  IS NULL THEN NOW() ELSE enviado_em  END,
+      entregue_em = CASE WHEN $1::text = 'entregue' AND entregue_em IS NULL THEN NOW() ELSE entregue_em END,
       atualizado_em = NOW()
     WHERE id = $2 AND revendedora_id = $3
     RETURNING *
@@ -489,12 +520,39 @@ revendedorasRouter.put("/:id/pedidos/:pedidoId/status", async (req: Request, res
 
   if (!updated) { res.status(404).json({ error: "Pedido não encontrado" }); return; }
 
+  // Enviar email para revendedora e se necessário adicionar mensagem automática
+  const pedidoData = updated as Record<string, unknown>;
+  const numPedido  = String(pedidoData.numero_pedido ?? "");
+
+  const rev = await queryOne<{ nome: string; email: string; nivel: string; volume_mes_atual: string }>(
+    "SELECT nome, email, nivel, volume_mes_atual FROM crm.revendedoras WHERE id = $1", [id]
+  );
+
+  if (rev && status !== "pendente") {
+    // Email de atualização de status para a revendedora
+    sendEmail({
+      to:      rev.email,
+      subject: `Pedido ${numPedido} — status atualizado: ${status}`,
+      html:    buildStatusEmail(rev.nome, numPedido, status, observacao_admin),
+      tags:    [{ name: "tipo", value: "status_pedido" }],
+    }).catch(err => logger.error("Erro ao enviar email status pedido", { error: (err as Error).message }));
+
+    // Se admin enviou observação, criar mensagem no thread
+    if (observacao_admin) {
+      await queryOne(
+        `INSERT INTO crm.revendedora_pedido_mensagens
+           (pedido_id, autor_tipo, autor_nome, conteudo, lida)
+         VALUES ($1, 'admin', 'Papelaria Bibelô', $2, FALSE)`,
+        [pedidoId, observacao_admin]
+      ).catch(() => {});
+    }
+  }
+
   // Se entregue: atualizar volume e verificar nível
   if (status === "entregue") {
-    const p = updated as Record<string, unknown>;
-    const total = parseFloat(p.total as string || "0");
+    const total = parseFloat(pedidoData.total as string || "0");
 
-    const rev = await queryOne<{
+    const revAtualizada = await queryOne<{
       id: string; nivel: string; volume_mes_atual: string; total_vendido: string;
     }>(
       `UPDATE crm.revendedoras
@@ -505,29 +563,186 @@ revendedorasRouter.put("/:id/pedidos/:pedidoId/status", async (req: Request, res
       [total, id]
     );
 
-    if (rev) {
-      const novoVol   = parseFloat(rev.volume_mes_atual);
+    if (revAtualizada) {
+      const novoVol   = parseFloat(revAtualizada.volume_mes_atual);
       const { nivel: novoNivel, desconto: novoDesc } = calcularNivel(novoVol);
 
-      if (novoNivel !== rev.nivel) {
+      if (novoNivel !== revAtualizada.nivel) {
         await queryOne(
           "UPDATE crm.revendedoras SET nivel = $1, percentual_desconto = $2 WHERE id = $3",
           [novoNivel, novoDesc, id]
         );
-        // Conquista de nível
         if (novoNivel === "prata") {
           await concederConquista(id, "nivel_prata", "Subiu para Prata! 🥈 Parabéns!", 50);
         }
         if (novoNivel === "ouro") {
           await concederConquista(id, "nivel_ouro", "Chegou ao Ouro! 🥇 Você é incrível!", 100);
         }
-        logger.info("Revendedora subiu de nível", { id, de: rev.nivel, para: novoNivel });
+        logger.info("Revendedora subiu de nível", { id, de: revAtualizada.nivel, para: novoNivel });
       }
     }
   }
 
   res.json(updated);
 });
+
+// ── GET /:id/pedidos/:pedidoId/mensagens ──────────────────────────
+
+revendedorasRouter.get("/:id/pedidos/:pedidoId/mensagens", async (req: Request, res: Response) => {
+  const { id, pedidoId } = req.params;
+  if (!/^[0-9a-f-]{36}$/.test(pedidoId)) {
+    res.status(400).json({ error: "ID inválido" }); return;
+  }
+
+  const pedido = await queryOne<{ id: string; numero_pedido: string }>(
+    "SELECT id, numero_pedido FROM crm.revendedora_pedidos WHERE id = $1 AND revendedora_id = $2",
+    [pedidoId, id]
+  );
+  if (!pedido) { res.status(404).json({ error: "Pedido não encontrado" }); return; }
+
+  const mensagens = await query(
+    `SELECT id, autor_tipo, autor_nome, conteudo, lida, criado_em
+       FROM crm.revendedora_pedido_mensagens
+      WHERE pedido_id = $1
+      ORDER BY criado_em ASC`,
+    [pedidoId]
+  );
+
+  // Marcar mensagens da revendedora como lidas pelo admin
+  await query(
+    `UPDATE crm.revendedora_pedido_mensagens
+        SET lida = TRUE
+      WHERE pedido_id = $1 AND autor_tipo = 'revendedora' AND lida = FALSE`,
+    [pedidoId]
+  );
+
+  res.json({ data: mensagens });
+});
+
+// ── POST /:id/pedidos/:pedidoId/mensagens — admin envia mensagem ──
+
+revendedorasRouter.post("/:id/pedidos/:pedidoId/mensagens", async (req: Request, res: Response) => {
+  const { id, pedidoId } = req.params;
+  if (!/^[0-9a-f-]{36}$/.test(pedidoId)) {
+    res.status(400).json({ error: "ID inválido" }); return;
+  }
+
+  const parse = z.object({
+    conteudo: z.string().trim().min(1).max(2000),
+  }).safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: "Conteúdo inválido", detalhes: parse.error.errors }); return;
+  }
+
+  const pedido = await queryOne<{ id: string; numero_pedido: string }>(
+    "SELECT id, numero_pedido FROM crm.revendedora_pedidos WHERE id = $1 AND revendedora_id = $2",
+    [pedidoId, id]
+  );
+  if (!pedido) { res.status(404).json({ error: "Pedido não encontrado" }); return; }
+
+  const rev = await queryOne<{ nome: string; email: string }>(
+    "SELECT nome, email FROM crm.revendedoras WHERE id = $1", [id]
+  );
+  if (!rev) { res.status(404).json({ error: "Revendedora não encontrada" }); return; }
+
+  const user = (req as Request & { user?: { nome: string; email: string } }).user;
+  const autorNome = user?.nome || "Papelaria Bibelô";
+
+  const { conteudo } = parse.data;
+
+  const msg = await queryOne(
+    `INSERT INTO crm.revendedora_pedido_mensagens
+       (pedido_id, autor_tipo, autor_nome, conteudo, lida)
+     VALUES ($1, 'admin', $2, $3, FALSE)
+     RETURNING *`,
+    [pedidoId, autorNome, conteudo]
+  );
+
+  // Email para a revendedora
+  sendEmail({
+    to:      rev.email,
+    subject: `Nova mensagem no pedido ${pedido.numero_pedido} — Papelaria Bibelô`,
+    html:    buildMensagemEmail(rev.nome, "Papelaria Bibelô", pedido.numero_pedido, conteudo),
+    tags:    [{ name: "tipo", value: "mensagem_admin" }],
+  }).catch(err => logger.error("Erro ao enviar email mensagem admin", { error: (err as Error).message }));
+
+  logger.info("Mensagem admin enviada", { revendedoraId: id, pedidoId });
+  res.status(201).json(msg);
+});
+
+// ── Email builders para revendedoras ────────────────────────────
+
+function buildStatusEmail(
+  revNome: string,
+  numeroPedido: string,
+  status: string,
+  observacao?: string | null
+): string {
+  const STATUS_LABELS: Record<string, string> = {
+    aprovado:  "✅ Aprovado",
+    enviado:   "🚚 Enviado",
+    entregue:  "📦 Entregue",
+    cancelado: "❌ Cancelado",
+  };
+  const label = STATUS_LABELS[status] ?? status;
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#ffe5ec;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#ffe5ec;padding:32px 16px;">
+<tr><td align="center">
+<table width="480" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;max-width:480px;width:100%;">
+  <tr><td style="background:#fe68c4;padding:24px 32px;">
+    <p style="margin:0;color:#fff;font-size:20px;font-weight:700;">🎀 Papelaria Bibelô</p>
+    <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">Atualização do seu pedido</p>
+  </td></tr>
+  <tr><td style="padding:28px 32px;">
+    <p style="margin:0 0 6px;font-size:14px;color:#555;">Olá, <strong>${escHtml(revNome)}</strong>!</p>
+    <p style="margin:0 0 16px;font-size:13px;color:#777;">Seu pedido <strong>${escHtml(numeroPedido)}</strong> foi atualizado:</p>
+    <div style="text-align:center;padding:20px;background:#fdf6f9;border-radius:12px;margin:0 0 16px;">
+      <p style="margin:0;font-size:24px;font-weight:800;color:#333;">${escHtml(label)}</p>
+    </div>
+    ${observacao ? `<p style="font-size:13px;color:#555;background:#fff7c1;border-radius:8px;padding:12px 16px;margin:0;"><strong>Mensagem:</strong> ${escHtml(observacao)}</p>` : ""}
+    <p style="margin:20px 0 0;font-size:12px;color:#aaa;">Acesse o portal Sou Parceira para mais detalhes.</p>
+  </td></tr>
+  <tr><td style="background:#f9f9f9;padding:14px 32px;text-align:center;border-top:1px solid #f0e0e8;">
+    <p style="margin:0;color:#aaa;font-size:11px;">Papelaria Bibelô · Timbó/SC</p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+function buildMensagemEmail(
+  destinatario: string,
+  remetente: string,
+  numeroPedido: string,
+  conteudo: string
+): string {
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#ffe5ec;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#ffe5ec;padding:32px 16px;">
+<tr><td align="center">
+<table width="480" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;max-width:480px;width:100%;">
+  <tr><td style="background:#fe68c4;padding:24px 32px;">
+    <p style="margin:0;color:#fff;font-size:20px;font-weight:700;">🎀 Papelaria Bibelô</p>
+    <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">Nova mensagem — Pedido ${escHtml(numeroPedido)}</p>
+  </td></tr>
+  <tr><td style="padding:28px 32px;">
+    <p style="margin:0 0 4px;font-size:14px;color:#555;">Olá, <strong>${escHtml(destinatario)}</strong>!</p>
+    <p style="margin:6px 0 16px;font-size:13px;color:#777;"><strong>${escHtml(remetente)}</strong> enviou uma mensagem:</p>
+    <div style="background:#fdf6f9;border-left:4px solid #fe68c4;border-radius:0 8px 8px 0;padding:14px 16px;">
+      <p style="margin:0;font-size:14px;color:#333;line-height:1.6;">${escHtml(conteudo)}</p>
+    </div>
+    <p style="margin:16px 0 0;font-size:12px;color:#aaa;">Acesse o portal para responder.</p>
+  </td></tr>
+  <tr><td style="background:#f9f9f9;padding:14px 32px;text-align:center;border-top:1px solid #f0e0e8;">
+    <p style="margin:0;color:#aaa;font-size:11px;">Papelaria Bibelô · Timbó/SC</p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
 
 // ── GET /:id/conquistas ───────────────────────────────────────
 

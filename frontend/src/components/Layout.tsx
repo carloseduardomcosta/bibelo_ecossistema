@@ -260,6 +260,16 @@ interface BoasvindasDeal {
   cliente_telefone: string | null;
 }
 
+interface PedidoRevNotif {
+  id: string;
+  numero_pedido: string;
+  status: string;
+  total: string;
+  criado_em: string;
+  revendedora_nome: string;
+  mensagens_nao_lidas: number;
+}
+
 const ORIGEM_LABELS: Record<string, string> = {
   parcerias_b2b: 'Parceria B2B',
   grupo_vip: 'Grupo VIP',
@@ -276,16 +286,19 @@ function NotificationBell() {
   const [vendas, setVendas] = useState<VendaNotif[]>([]);
   const [resumo, setResumo] = useState({ atrasados: 0, vence_em_breve: 0, pagos: 0, pendentes: 0, total: 0 });
   const [boasvindasDeals, setBoasvindasDeals] = useState<BoasvindasDeal[]>([]);
+  const [pedidosRev, setPedidosRev] = useState<PedidoRevNotif[]>([]);
+  const [pedidosRevResumo, setPedidosRevResumo] = useState({ pendentes: 0, mensagens_nao_lidas: 0 });
   const ref = useRef<HTMLDivElement>(null);
 
   const fetchAlertas = useCallback(async (signal?: AbortSignal) => {
     try {
-      const [finResp, leadsResp, emailResp, vendasResp, boasvindasResp] = await Promise.all([
+      const [finResp, leadsResp, emailResp, vendasResp, boasvindasResp, pedidosRevResp] = await Promise.all([
         api.get('/financeiro/despesas-fixas/alertas', { signal }),
         api.get('/leads?limit=5', { signal }),
         api.get('/campaigns/email-events?hours=48', { signal }),
         api.get('/tracking/vendas-recentes?horas=48', { signal }),
         api.get('/deals/boasvindas-recentes', { signal }),
+        api.get('/revendedoras/pedidos-recentes', { signal }),
       ]);
       setAlertas(finResp.data.data.filter((d: Notificacao) => d.alerta !== 'pago'));
       setResumo(finResp.data.resumo);
@@ -299,6 +312,11 @@ function NotificationBell() {
       setEmailResumo(emailResp.data.resumo || { abertos: 0, clicados: 0, bounces: 0, spam: 0 });
       setVendas(vendasResp.data.vendas || []);
       setBoasvindasDeals(boasvindasResp.data.deals || []);
+      setPedidosRev(pedidosRevResp.data.data || []);
+      setPedidosRevResumo({
+        pendentes: pedidosRevResp.data.pendentes || 0,
+        mensagens_nao_lidas: pedidosRevResp.data.mensagens_nao_lidas || 0,
+      });
     } catch (err) {
       if ((err as Error).name !== 'AbortError' && (err as Error).name !== 'CanceledError') {
         console.error('Erro ao buscar notificações:', err);
@@ -331,7 +349,7 @@ function NotificationBell() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const urgentes = vendas.length + resumo.atrasados + resumo.vence_em_breve + leads.length + emailEvents.length + boasvindasDeals.length;
+  const urgentes = vendas.length + resumo.atrasados + resumo.vence_em_breve + leads.length + emailEvents.length + boasvindasDeals.length + pedidosRevResumo.pendentes + pedidosRevResumo.mensagens_nao_lidas;
 
   return (
     <div ref={ref} className="relative">
@@ -382,6 +400,12 @@ function NotificationBell() {
                   {boasvindasDeals.length} contato{boasvindasDeals.length > 1 ? 's' : ''} boasvindas
                 </span>
               )}
+              {(pedidosRevResumo.pendentes > 0 || pedidosRevResumo.mensagens_nao_lidas > 0) && (
+                <span className="text-[10px] px-2 py-0.5 bg-[#fe68c4]/10 text-[#fe68c4] rounded-full font-medium animate-pulse">
+                  {pedidosRevResumo.pendentes > 0 ? `${pedidosRevResumo.pendentes} pedido${pedidosRevResumo.pendentes > 1 ? 's' : ''}` : ''}
+                  {pedidosRevResumo.mensagens_nao_lidas > 0 ? ` ${pedidosRevResumo.mensagens_nao_lidas} msg` : ''}
+                </span>
+              )}
             </div>
           </div>
 
@@ -420,6 +444,54 @@ function NotificationBell() {
                       </p>
                     </div>
                     <span className="text-[10px] text-emerald-400 font-medium shrink-0">{timeAgo(v.webhook_em)}</span>
+                  </button>
+                ))}
+              </>
+            )}
+
+            {/* ── Pedidos Revendedoras ── */}
+            {(pedidosRevResumo.pendentes > 0 || pedidosRevResumo.mensagens_nao_lidas > 0) && (
+              <>
+                <div className="px-4 py-2 bg-[#ffe5ec]/60 border-b border-bibelo-border/50">
+                  <p className="text-[10px] font-bold text-[#fe68c4] uppercase tracking-wider">
+                    Pedidos Revendedoras
+                    {pedidosRevResumo.pendentes > 0 && (
+                      <span className="ml-2 text-amber-500">{pedidosRevResumo.pendentes} pendente{pedidosRevResumo.pendentes > 1 ? 's' : ''}</span>
+                    )}
+                    {pedidosRevResumo.mensagens_nao_lidas > 0 && (
+                      <span className="ml-2 text-blue-400">{pedidosRevResumo.mensagens_nao_lidas} msg não lida{pedidosRevResumo.mensagens_nao_lidas > 1 ? 's' : ''}</span>
+                    )}
+                  </p>
+                </div>
+                {pedidosRev.filter(p => p.status === 'pendente' || p.mensagens_nao_lidas > 0).slice(0, 4).map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => { setOpen(false); navigate('/revendedoras'); }}
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bibelo-border/30 transition-colors text-left border-b border-bibelo-border/50"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-[#ffe5ec] flex items-center justify-center shrink-0">
+                      <Handshake size={14} className="text-[#fe68c4]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-bibelo-text truncate">
+                        {p.revendedora_nome}
+                        <span className="font-normal text-bibelo-muted ml-1">
+                          · {p.numero_pedido}
+                        </span>
+                      </p>
+                      <p className="text-xs text-bibelo-muted">
+                        <span className={p.status === 'pendente' ? 'text-amber-500 font-medium' : 'text-bibelo-muted'}>
+                          {p.status}
+                        </span>
+                        {p.mensagens_nao_lidas > 0 && (
+                          <span className="ml-2 text-blue-400 font-medium">
+                            {p.mensagens_nao_lidas} msg nova{p.mensagens_nao_lidas > 1 ? 's' : ''}
+                          </span>
+                        )}
+                        <span className="ml-1">· {parseFloat(p.total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-[#fe68c4] font-medium shrink-0">{timeAgo(p.criado_em)}</span>
                   </button>
                 ))}
               </>
@@ -571,16 +643,24 @@ function NotificationBell() {
               </>
             )}
 
-            {alertas.length === 0 && leads.length === 0 && emailEvents.length === 0 && vendas.length === 0 && boasvindasDeals.length === 0 && (
+            {alertas.length === 0 && leads.length === 0 && emailEvents.length === 0 && vendas.length === 0 && boasvindasDeals.length === 0 && pedidosRevResumo.pendentes === 0 && pedidosRevResumo.mensagens_nao_lidas === 0 && (
               <div className="px-4 py-8 text-center">
                 <CheckCircle2 size={24} className="mx-auto mb-2 text-emerald-400" />
                 <p className="text-sm text-bibelo-muted">Tudo em dia!</p>
-                <p className="text-xs text-bibelo-muted/60 mt-1">Nenhuma venda, lead, email ou despesa pendente</p>
+                <p className="text-xs text-bibelo-muted/60 mt-1">Nenhuma venda, lead, pedido ou despesa pendente</p>
               </div>
             )}
           </div>
 
-          <div className="px-4 py-2.5 border-t border-bibelo-border flex gap-2">
+          <div className="px-4 py-2.5 border-t border-bibelo-border flex gap-2 flex-wrap">
+            {(pedidosRevResumo.pendentes > 0 || pedidosRevResumo.mensagens_nao_lidas > 0) && (
+              <button
+                onClick={() => { setOpen(false); navigate('/revendedoras'); }}
+                className="flex-1 text-center text-xs text-[#fe68c4] hover:text-[#fd4fb8] font-medium transition-colors"
+              >
+                Ver revendedoras
+              </button>
+            )}
             {vendas.length > 0 && (
               <button
                 onClick={() => { setOpen(false); navigate('/pedidos'); }}
