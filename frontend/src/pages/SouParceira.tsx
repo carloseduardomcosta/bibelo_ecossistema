@@ -885,7 +885,7 @@ function ProdutoDetalheModal({ produto: p, cart, onAddToCart, onClose }: Produto
   if (p.imagens_urls && p.imagens_urls.length > 0) imagens.push(...p.imagens_urls);
   else if (p.imagem_url) imagens.push(p.imagem_url);
 
-  const [imgIdx, setImgIdx]   = useState(0);
+  const [imgIdx, setImgIdx]     = useState(0);
   const [imgError, setImgError] = useState(false);
   const currentQty = cart.get(p.id)?.quantidade ?? 0;
   const [qty, setQty] = useState(Math.max(1, currentQty));
@@ -895,6 +895,13 @@ function ProdutoDetalheModal({ produto: p, cart, onAddToCart, onClose }: Produto
     onClose();
   }
 
+  // Trava scroll do body enquanto modal está aberto
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
   // Fechar no Escape
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
@@ -902,18 +909,25 @@ function ProdutoDetalheModal({ produto: p, cart, onAddToCart, onClose }: Produto
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const desconto = p.preco_sem_desconto && Number(p.preco_sem_desconto) > Number(p.preco_final)
+    ? Math.round((1 - Number(p.preco_final) / Number(p.preco_sem_desconto)) * 100)
+    : 0;
+
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center sm:justify-center sm:p-4">
+      {/* Backdrop — clique fecha */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+      {/* Sheet: bottom sheet no mobile, dialog centralizado no desktop */}
+      <div className="relative bg-white w-full sm:max-w-xl rounded-t-3xl sm:rounded-2xl
+                      shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[90vh]">
 
-        {/* Botão fechar */}
+        {/* Drag handle — visível só no mobile */}
+        <div className="sm:hidden flex justify-center pt-3 pb-0 flex-shrink-0">
+          <div className="w-10 h-1 bg-gray-300 rounded-full" />
+        </div>
+
+        {/* Botão fechar — canto superior direito */}
         <button
           onClick={onClose}
           className="absolute top-3 right-3 z-10 bg-white/90 backdrop-blur-sm rounded-full p-1.5
@@ -922,117 +936,121 @@ function ProdutoDetalheModal({ produto: p, cart, onAddToCart, onClose }: Produto
           <X className="w-5 h-5" />
         </button>
 
-        {/* Galeria de imagens */}
-        {imagens.length > 0 && !imgError ? (
-          <div className="relative bg-gray-50 rounded-t-2xl overflow-hidden">
-            <div className="aspect-square">
-              <img
-                src={imagens[imgIdx]}
-                alt={p.nome}
-                className="w-full h-full object-contain"
-                onError={() => setImgError(true)}
-              />
+        {/* Área rolável */}
+        <div className="overflow-y-auto flex-1 overscroll-contain">
+
+          {/* Galeria de imagens */}
+          {imagens.length > 0 && !imgError ? (
+            <div className="relative bg-gray-50 rounded-t-3xl sm:rounded-t-2xl overflow-hidden">
+              {/* Altura menor no mobile para não dominar a tela */}
+              <div className="aspect-[4/3] sm:aspect-square">
+                <img
+                  src={imagens[imgIdx]}
+                  alt={p.nome}
+                  className="w-full h-full object-contain"
+                  onError={() => setImgError(true)}
+                />
+              </div>
+              {imagens.length > 1 && (
+                <>
+                  <button
+                    onClick={() => setImgIdx(i => (i - 1 + imagens.length) % imagens.length)}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-1.5
+                               shadow-md hover:bg-white transition-colors"
+                  >
+                    <ChevronLeft className="w-5 h-5 text-gray-700" />
+                  </button>
+                  <button
+                    onClick={() => setImgIdx(i => (i + 1) % imagens.length)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-1.5
+                               shadow-md hover:bg-white transition-colors"
+                  >
+                    <ChevronRight className="w-5 h-5 text-gray-700" />
+                  </button>
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+                    {imagens.map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setImgIdx(i)}
+                        className={`w-2 h-2 rounded-full transition-colors ${
+                          i === imgIdx ? 'bg-[#fe68c4]' : 'bg-white/70'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
-            {/* Setas de navegação */}
-            {imagens.length > 1 && (
-              <>
-                <button
-                  onClick={() => setImgIdx(i => (i - 1 + imagens.length) % imagens.length)}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-1.5
-                             shadow-md hover:bg-white transition-colors"
-                >
-                  <ChevronLeft className="w-5 h-5 text-gray-700" />
-                </button>
-                <button
-                  onClick={() => setImgIdx(i => (i + 1) % imagens.length)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-1.5
-                             shadow-md hover:bg-white transition-colors"
-                >
-                  <ChevronRight className="w-5 h-5 text-gray-700" />
-                </button>
-                {/* Indicadores */}
-                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
-                  {imagens.map((_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setImgIdx(i)}
-                      className={`w-2 h-2 rounded-full transition-colors ${
-                        i === imgIdx ? 'bg-[#fe68c4]' : 'bg-gray-300'
-                      }`}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="aspect-square bg-gray-100 rounded-t-2xl flex items-center justify-center">
-            <ImageOff className="w-12 h-12 text-gray-300" />
-          </div>
-        )}
-
-        {/* Thumbnails da galeria */}
-        {imagens.length > 1 && !imgError && (
-          <div className="flex gap-2 px-4 pt-3 overflow-x-auto">
-            {imagens.map((src, i) => (
-              <button
-                key={i}
-                onClick={() => setImgIdx(i)}
-                className={`flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${
-                  i === imgIdx ? 'border-[#fe68c4]' : 'border-gray-200 hover:border-[#fe68c4]/50'
-                }`}
-              >
-                <img src={src} alt="" className="w-full h-full object-contain" />
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Conteúdo */}
-        <div className="p-5">
-          {/* Categoria */}
-          <span className="inline-flex items-center gap-1 text-[11px] font-semibold
-                           text-[#fe68c4] bg-[#ffe5ec] px-2.5 py-1 rounded-full mb-3">
-            <Tag className="w-3 h-3" />
-            {formatCategoria(p.categoria)}
-          </span>
-
-          {/* Nome */}
-          <h2 className="text-base font-bold text-gray-900 leading-snug mb-3">{p.nome}</h2>
-
-          {/* Descrição */}
-          {p.descricao ? (
-            <p className="text-sm text-gray-600 leading-relaxed mb-4 whitespace-pre-line">
-              {p.descricao}
-            </p>
           ) : (
-            <p className="text-sm text-gray-400 italic mb-4">Sem descrição cadastrada.</p>
+            <div className="aspect-[4/3] sm:aspect-square bg-gray-100 rounded-t-3xl sm:rounded-t-2xl
+                            flex items-center justify-center">
+              <ImageOff className="w-12 h-12 text-gray-300" />
+            </div>
           )}
 
-          {/* Preço */}
-          <div className="bg-[#ffe5ec]/50 rounded-xl px-4 py-3 mb-5">
-            <p className="text-[11px] text-gray-500 font-medium mb-1">Seu preço de revendedora</p>
-            {p.preco_sem_desconto && Number(p.preco_sem_desconto) > Number(p.preco_final) && (
-              <div className="flex items-center gap-2 mb-1">
-                <p className="text-sm text-gray-400 line-through">
-                  {formatCurrency(p.preco_sem_desconto)}
-                </p>
-                <span className="text-[11px] font-bold text-white bg-[#fe68c4] px-2 py-0.5 rounded-full leading-none">
-                  -{Math.round((1 - Number(p.preco_final) / Number(p.preco_sem_desconto)) * 100)}%
-                </span>
-              </div>
-            )}
-            <p className="text-2xl font-bold text-[#fe68c4] leading-none">
-              {formatCurrency(p.preco_final)}
-            </p>
-          </div>
+          {/* Thumbnails */}
+          {imagens.length > 1 && !imgError && (
+            <div className="flex gap-2 px-4 pt-3 overflow-x-auto pb-1">
+              {imagens.map((src, i) => (
+                <button
+                  key={i}
+                  onClick={() => setImgIdx(i)}
+                  className={`flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${
+                    i === imgIdx ? 'border-[#fe68c4]' : 'border-gray-200 hover:border-[#fe68c4]/50'
+                  }`}
+                >
+                  <img src={src} alt="" className="w-full h-full object-contain" />
+                </button>
+              ))}
+            </div>
+          )}
 
-          {/* Controle de quantidade + botão */}
+          {/* Conteúdo texto */}
+          <div className="px-5 pt-4 pb-2">
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold
+                             text-[#fe68c4] bg-[#ffe5ec] px-2.5 py-1 rounded-full mb-3">
+              <Tag className="w-3 h-3" />
+              {formatCategoria(p.categoria)}
+            </span>
+
+            <h2 className="text-base font-bold text-gray-900 leading-snug mb-3">{p.nome}</h2>
+
+            {p.descricao ? (
+              <p className="text-sm text-gray-600 leading-relaxed mb-4 whitespace-pre-line">
+                {p.descricao}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-400 italic mb-4">Sem descrição cadastrada.</p>
+            )}
+
+            {/* Preço */}
+            <div className="bg-[#ffe5ec]/50 rounded-xl px-4 py-3 mb-4">
+              <p className="text-[11px] text-gray-500 font-medium mb-1">Seu preço de revendedora</p>
+              {desconto > 0 && (
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-sm text-gray-400 line-through">
+                    {formatCurrency(p.preco_sem_desconto)}
+                  </p>
+                  <span className="text-[11px] font-bold text-white bg-[#fe68c4] px-2 py-0.5 rounded-full leading-none">
+                    -{desconto}%
+                  </span>
+                </div>
+              )}
+              <p className="text-2xl font-bold text-[#fe68c4] leading-none">
+                {formatCurrency(p.preco_final)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Barra de ação — sticky na base, sempre acessível com o polegar */}
+        <div className="flex-shrink-0 border-t border-gray-100 bg-white px-5 pt-3 pb-5 sm:pb-5
+                        rounded-b-none sm:rounded-b-2xl">
           <div className="flex items-center gap-3">
             <div className="flex items-center bg-gray-100 rounded-xl">
               <button
                 onClick={() => setQty(q => Math.max(1, q - 1))}
-                className="px-3 py-2.5 text-gray-600 hover:text-gray-900 transition-colors"
+                className="px-3 py-3 text-gray-600 hover:text-gray-900 transition-colors"
               >
                 <Minus className="w-4 h-4" />
               </button>
@@ -1041,7 +1059,7 @@ function ProdutoDetalheModal({ produto: p, cart, onAddToCart, onClose }: Produto
               </span>
               <button
                 onClick={() => setQty(q => q + 1)}
-                className="px-3 py-2.5 text-gray-600 hover:text-gray-900 transition-colors"
+                className="px-3 py-3 text-gray-600 hover:text-gray-900 transition-colors"
               >
                 <Plus className="w-4 h-4" />
               </button>
@@ -1057,7 +1075,7 @@ function ProdutoDetalheModal({ produto: p, cart, onAddToCart, onClose }: Produto
               <ShoppingCart className="w-4 h-4" />
               {currentQty > 0
                 ? `Atualizar (${qty} ${qty === 1 ? 'unid.' : 'unids.'})`
-                : `Adicionar ao carrinho`
+                : 'Adicionar ao carrinho'
               }
             </button>
           </div>
@@ -1454,7 +1472,9 @@ function CartDrawer({ rev, cart, onCartChange, onClose, onPedidoCriado }: CartDr
   const [erro, setErro]         = useState<string | null>(null);
 
   const items = [...cart.values()];
-  const total = items.reduce((s, i) => s + Number(i.produto.preco_final) * i.quantidade, 0);
+  const total       = items.reduce((s, i) => s + Number(i.produto.preco_final)        * i.quantidade, 0);
+  const totalCheio  = items.reduce((s, i) => s + Number(i.produto.preco_sem_desconto) * i.quantidade, 0);
+  const economia    = totalCheio - total;
 
   async function handleFazerPedido() {
     setLoading(true);
@@ -1538,7 +1558,17 @@ function CartDrawer({ rev, cart, onCartChange, onClose, onPedidoCriado }: CartDr
               })()}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-800 line-clamp-2 leading-snug">{p.nome}</p>
-                <p className="text-xs text-[#fe68c4] font-bold mt-0.5">{formatCurrency(p.preco_final)}</p>
+                <div className="flex items-baseline gap-1.5 mt-0.5 flex-wrap">
+                  {Number(p.preco_sem_desconto) > Number(p.preco_final) && (
+                    <p className="text-[10px] text-gray-400 line-through leading-none">
+                      {formatCurrency(Number(p.preco_sem_desconto) * quantidade)}
+                    </p>
+                  )}
+                  <p className="text-xs text-[#fe68c4] font-bold leading-none">
+                    {formatCurrency(Number(p.preco_final) * quantidade)}
+                  </p>
+                  <span className="text-[10px] text-gray-400">({quantidade}×)</span>
+                </div>
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <button
@@ -1586,13 +1616,29 @@ function CartDrawer({ rev, cart, onCartChange, onClose, onPedidoCriado }: CartDr
         {/* Footer */}
         {items.length > 0 && (
           <div className="border-t border-gray-100 px-5 py-4 space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">Desconto aplicado:</span>
-              <span className="text-sm font-semibold text-green-600">{rev.percentual_desconto}% off</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-base font-bold text-gray-800">Total estimado:</span>
-              <span className="text-xl font-bold text-[#fe68c4]">{formatCurrency(total)}</span>
+            {/* Totais com resumo de economia */}
+            <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-1.5">
+              {economia > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-gray-400">Preço cheio:</span>
+                  <span className="text-xs text-gray-400 line-through">{formatCurrency(totalCheio)}</span>
+                </div>
+              )}
+              {economia > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-semibold text-green-600 flex items-center gap-1">
+                    <Tag className="w-3 h-3" />
+                    Sua economia ({rev.percentual_desconto}% off):
+                  </span>
+                  <span className="text-xs font-bold text-green-600">
+                    − {formatCurrency(economia)}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between items-center pt-1 border-t border-gray-200">
+                <span className="text-base font-bold text-gray-800">Total estimado:</span>
+                <span className="text-xl font-bold text-[#fe68c4]">{formatCurrency(total)}</span>
+              </div>
             </div>
             <p className="text-[10px] text-gray-400 text-center">
               * Preços calculados com desconto {rev.nivel}. O total final é confirmado pela Bibelô.

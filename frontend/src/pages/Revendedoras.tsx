@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, TrendingUp, Package, Clock, Search, Plus, ChevronRight,
-  AlertTriangle, Medal, Star, Crown, X, Filter,
+  AlertTriangle, Medal, Star, Crown, X, Filter, Sparkles,
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
@@ -13,7 +13,7 @@ import { formatCurrency } from '../lib/format';
 interface Stats {
   total: string; ativas: string; pendentes: string;
   volume_mes: string; pedidos_pendentes: string;
-  nivel_bronze: string; nivel_prata: string; nivel_ouro: string;
+  nivel_iniciante: string; nivel_bronze: string; nivel_prata: string; nivel_ouro: string;
 }
 
 interface Revendedora {
@@ -24,7 +24,7 @@ interface Revendedora {
   documento: string | null;
   cidade: string | null;
   estado: string | null;
-  nivel: 'bronze' | 'prata' | 'ouro';
+  nivel: 'iniciante' | 'bronze' | 'prata' | 'ouro';
   pontos: number;
   volume_mes_atual: string;
   total_vendido: string;
@@ -40,9 +40,10 @@ interface Revendedora {
 // ── Helpers visuais ────────────────────────────────────────────
 
 const NIVEL_CONFIG = {
-  bronze: { label: 'Bronze', icon: Medal,  color: 'text-amber-400',  bg: 'bg-amber-400/10',  border: 'border-amber-400/30' },
-  prata:  { label: 'Prata',  icon: Star,   color: 'text-slate-300',  bg: 'bg-slate-300/10',  border: 'border-slate-300/30' },
-  ouro:   { label: 'Ouro',   icon: Crown,  color: 'text-yellow-400', bg: 'bg-yellow-400/10', border: 'border-yellow-400/30' },
+  iniciante: { label: 'Iniciante', icon: Sparkles, color: 'text-pink-400',   bg: 'bg-pink-400/10',   border: 'border-pink-400/30'   },
+  bronze:    { label: 'Bronze',    icon: Medal,    color: 'text-amber-400',  bg: 'bg-amber-400/10',  border: 'border-amber-400/30'  },
+  prata:     { label: 'Prata',     icon: Star,     color: 'text-slate-300',  bg: 'bg-slate-300/10',  border: 'border-slate-300/30'  },
+  ouro:      { label: 'Ouro',      icon: Crown,    color: 'text-yellow-400', bg: 'bg-yellow-400/10', border: 'border-yellow-400/30' },
 } as const;
 
 const STATUS_CONFIG = {
@@ -52,7 +53,7 @@ const STATUS_CONFIG = {
   suspensa:  { label: 'Suspensa',  color: 'text-red-400',    bg: 'bg-red-400/10'    },
 } as const;
 
-function NivelBadge({ nivel }: { nivel: 'bronze' | 'prata' | 'ouro' }) {
+function NivelBadge({ nivel }: { nivel: 'iniciante' | 'bronze' | 'prata' | 'ouro' }) {
   const cfg = NIVEL_CONFIG[nivel];
   const Icon = cfg.icon;
   return (
@@ -332,7 +333,7 @@ export default function Revendedoras() {
         <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
           <h3 className="text-sm font-semibold text-bibelo-text mb-4">Distribuição de Níveis</h3>
           <div className="grid grid-cols-3 gap-4">
-            {(['bronze', 'prata', 'ouro'] as const).map(nivel => {
+            {(['iniciante', 'bronze', 'prata', 'ouro'] as const).map(nivel => {
               const cfg = NIVEL_CONFIG[nivel];
               const Icon = cfg.icon;
               const count = stats[`nivel_${nivel}` as keyof Stats];

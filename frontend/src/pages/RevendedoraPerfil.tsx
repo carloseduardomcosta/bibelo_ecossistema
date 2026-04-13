@@ -4,7 +4,7 @@ import {
   ArrowLeft, Mail, Phone, MapPin, Medal, Star, Crown, Package,
   ShoppingCart, Trophy, TrendingUp, AlertTriangle, Edit2, Check,
   X, ChevronDown, Clock, Truck, CheckCircle2, XCircle,
-  Lock, Flame, Link2, Copy, ExternalLink,
+  Lock, Flame, Link2, Copy, ExternalLink, Sparkles,
 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
@@ -26,7 +26,7 @@ interface RevendedoraFull {
   complemento: string | null;
   bairro: string | null;
   observacao: string | null;
-  nivel: 'bronze' | 'prata' | 'ouro';
+  nivel: 'iniciante' | 'bronze' | 'prata' | 'ouro';
   pontos: number;
   volume_mes_atual: string;
   volume_mes_anterior: string;
@@ -89,9 +89,10 @@ interface Conquista {
 // ── Configs visuais ────────────────────────────────────────────
 
 const NIVEL_CONFIG = {
-  bronze: { label: 'Bronze', icon: Medal,  color: 'text-amber-400',  bg: 'bg-amber-400/10',  bar: 'bg-amber-400',  border: 'border-amber-400/30' },
-  prata:  { label: 'Prata',  icon: Star,   color: 'text-slate-300',  bg: 'bg-slate-300/10',  bar: 'bg-slate-300',  border: 'border-slate-300/30' },
-  ouro:   { label: 'Ouro',   icon: Crown,  color: 'text-yellow-400', bg: 'bg-yellow-400/10', bar: 'bg-yellow-400', border: 'border-yellow-400/30' },
+  iniciante: { label: 'Iniciante', icon: Sparkles, color: 'text-pink-400',   bg: 'bg-pink-400/10',   bar: 'bg-pink-400',   border: 'border-pink-400/30'   },
+  bronze:    { label: 'Bronze',    icon: Medal,    color: 'text-amber-400',  bg: 'bg-amber-400/10',  bar: 'bg-amber-400',  border: 'border-amber-400/30'  },
+  prata:     { label: 'Prata',     icon: Star,     color: 'text-slate-300',  bg: 'bg-slate-300/10',  bar: 'bg-slate-300',  border: 'border-slate-300/30'  },
+  ouro:      { label: 'Ouro',      icon: Crown,    color: 'text-yellow-400', bg: 'bg-yellow-400/10', bar: 'bg-yellow-400', border: 'border-yellow-400/30' },
 } as const;
 
 const PEDIDO_STATUS = {
@@ -117,7 +118,7 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function NivelBadge({ nivel }: { nivel: 'bronze' | 'prata' | 'ouro' }) {
+function NivelBadge({ nivel }: { nivel: 'iniciante' | 'bronze' | 'prata' | 'ouro' }) {
   const cfg = NIVEL_CONFIG[nivel];
   const Icon = cfg.icon;
   return (
@@ -147,7 +148,7 @@ function ProgressoNivel({ rev }: { rev: RevendedoraFull }) {
     );
   }
 
-  const nextCfg = NIVEL_CONFIG[pg.proximo as 'bronze' | 'prata' | 'ouro'];
+  const nextCfg = NIVEL_CONFIG[pg.proximo as 'iniciante' | 'bronze' | 'prata' | 'ouro'];
   const NextIcon = nextCfg.icon;
 
   return (
