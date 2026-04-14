@@ -41,6 +41,7 @@ import CategoriasSync from './pages/CategoriasSync';
 import CatalogoWhatsApp from './pages/CatalogoWhatsApp';
 import Revendedoras from './pages/Revendedoras';
 import RevendedoraPerfil from './pages/RevendedoraPerfil';
+import DashboardRevendedoras from './pages/DashboardRevendedoras';
 import FornecedorCatalogo from './pages/FornecedorCatalogo';
 import PortalRevendedora from './pages/PortalRevendedora';
 import SouParceira from './pages/SouParceira';
@@ -131,6 +132,7 @@ export default function App() {
               <Route path="/catalogo-whatsapp" element={<CatalogoWhatsApp />} />
               <Route path="/revendedoras" element={<Revendedoras />} />
               <Route path="/revendedoras/:id" element={<RevendedoraPerfil />} />
+              <Route path="/dashboard-revendedoras" element={<DashboardRevendedoras />} />
               <Route path="/fornecedor-catalogo" element={<FornecedorCatalogo />} />
             </Route>
           </Routes>

@@ -46,6 +46,7 @@ import {
   KeyRound,
   BarChart2,
   Settings,
+  PieChart,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -97,6 +98,7 @@ const navMainGroups: NavMainGroup[] = [
           { to: '/clientes', label: 'Clientes', icon: Users },
           { to: '/segmentos', label: 'Segmentos', icon: Target },
           { to: '/revendedoras', label: 'Revendedoras', icon: Handshake },
+          { to: '/dashboard-revendedoras', label: 'Dashboard B2B', icon: PieChart },
         ],
       },
       {
