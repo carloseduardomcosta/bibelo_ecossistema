@@ -20,14 +20,33 @@ interface AuthState {
   logout: () => void
 }
 
+const AUTH_KEY = "bibelo-auth-token"
+
+function loadStoredToken(): string | null {
+  if (typeof window === "undefined") return null
+  try {
+    const token = localStorage.getItem(AUTH_KEY)
+    if (!token) return null
+    // Verificar expiração do JWT antes de restaurar
+    const payload = JSON.parse(atob(token.split(".")[1]))
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      localStorage.removeItem(AUTH_KEY)
+      return null
+    }
+    return token
+  } catch {
+    return null
+  }
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
-  // sessionStorage: token não persiste entre abas (mitigação XSS)
-  token: typeof window !== "undefined" ? sessionStorage.getItem("bibelo-auth-token") : null,
+  // localStorage: persiste entre abas e sessões. Expiração verificada no load.
+  token: loadStoredToken(),
   customer: null,
   loading: false,
 
   setToken: (token: string) => {
-    sessionStorage.setItem("bibelo-auth-token", token)
+    localStorage.setItem(AUTH_KEY, token)
     set({ token })
   },
 
@@ -42,7 +61,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ customer: customer as unknown as Customer, loading: false })
       } else {
         // Token inválido ou expirado
-        sessionStorage.removeItem("bibelo-auth-token")
+        localStorage.removeItem(AUTH_KEY)
         set({ token: null, customer: null, loading: false })
       }
     } catch {
@@ -51,7 +70,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
-    sessionStorage.removeItem("bibelo-auth-token")
+    localStorage.removeItem(AUTH_KEY)
     set({ token: null, customer: null })
   },
 }))

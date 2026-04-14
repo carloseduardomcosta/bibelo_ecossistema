@@ -198,7 +198,7 @@ export function getTokenMetadata(token: string) {
 // ── Logout ────────────────────────────────────────────────────
 export function logout() {
   if (typeof window !== "undefined") {
-    sessionStorage.removeItem("bibelo-auth-token")
+    localStorage.removeItem("bibelo-auth-token")
     window.location.href = "/"
   }
 }
