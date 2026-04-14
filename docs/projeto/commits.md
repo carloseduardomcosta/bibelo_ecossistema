@@ -1287,6 +1287,32 @@ sync.category_sync_log         (auditoria)
 - `.claude/skills/verification-loop.md`: protocolo pré-PR (typecheck → vitest baseline 717 → health check → scans de segurança → migrations)
 - `CLAUDE.md`: removidas 4 referências mortas para `/mnt/skills/` (path inexistente), substituídas pelos caminhos reais das 5 skills ativas
 
+### feat(souparceira): busca por descrição + pills de categoria + markup 2.5x — `c23efa8` (14/04/2026)
+- `portal-souparceira.ts`: busca estendida cobre nome OR descrição (ILIKE OR)
+- `SouParceira.tsx`: pills de categoria com scroll horizontal para filtragem rápida
+- Botão X para limpar busca + "Limpar filtros" quando filtros ativos; placeholder atualizado
+- Markup de 174 categorias do catálogo JC atualizado de 2.00→2.50 (floor 2.50×); categorias premium mantidas (cola-escolar 2.93, caneta-esferografica 2.55)
+- Testes ajustados: assertiva busca nome OR descrição, `pedido_minimo=10` nos fixtures, `DO UPDATE` no markup, `afterAll` cleanup
+
+### feat(parceiras): desconto do tier melhor aplicado no pedido que cruza o threshold — `345d2b0` (14/04/2026)
+- **Mudança de negócio**: o desconto do tier superior agora é aplicado no próprio pedido que cruza o volume (não só no próximo)
+- `portal-souparceira.ts` + `revendedoras.ts`: consulta volume acumulado do mês, projeta total provisório, se `volumeAcumulado + totalProvisório` cruzar faixa superior → recalcula itens com novo desconto
+- Resposta inclui `nivel_upgrade: { de, para }` quando há salto de tier
+- `SouParceira.tsx`: banner "🎉 Você subiu de nível!" na tela de sucesso exibe de/para com emoji e desconto já aplicado
+- `portal-souparceira.ts`: adicionado `pedido_minimo` ao SELECT da revendedora + validação mínimo R$300 (que estava faltando na rota do portal)
+- Testes: 66/66 revendedoras + 44/44 portal-souparceira passando
+
+### fix(parceiras): corrige texto da política — nível cumulativo e em tempo real — `23c6d79` (14/04/2026)
+- `public-politica-parceira.ts`: texto corrigido de "nível atualizado no início do ciclo" para "recalculado a cada pedido aprovado — desconto maior vale no próximo pedido"
+- Esclarece que o volume é acumulado no mês vigente e recálculo é automático
+
+### chore(claude): hooks de qualidade + skills de segurança — `14d2163` (14/04/2026)
+- `~/.claude/settings.json`: hook `block-no-verify` inserido antes do RTK (bloqueia `--no-verify` antes do auto-approve RTK)
+- `~/.claude/settings.json`: hook `stop:check-console-log` (Stop event) — varre arquivos `.ts/.tsx` editados na resposta, avisa se houver `console.log`
+- `.claude/skills/security-review.md`: checklist de segurança específico ao stack (SQL parameterizado, `esc()` em emails, HMAC `timingSafeEqual`, Zod, `publicLimiter`, proteção Bling)
+- `.claude/skills/verification-loop.md`: protocolo pré-PR (typecheck → vitest baseline 717 → health check → scans de segurança → migrations)
+- `CLAUDE.md`: removidas 4 referências mortas para `/mnt/skills/` (path inexistente), substituídas pelos caminhos reais das 5 skills ativas
+
 ### feat(revendedoras): editor de emails Sou Parceira via frontend — `61dda0a` (13/04/2026)
 - Botão "✉ Editar emails" na página Revendedoras abre modal com editor HTML
 - 3 templates editáveis: boas-vindas, status do pedido, nova mensagem
