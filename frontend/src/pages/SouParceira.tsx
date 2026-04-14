@@ -635,6 +635,7 @@ interface HeaderLogadoProps {
 
 function HeaderLogado({ rev, secao, onSecao, onLogout, cartCount, onOpenCart }: HeaderLogadoProps) {
   const nivelCfg = NIVEL[rev.nivel] ?? NIVEL.bronze;
+  const [trackingOpen, setTrackingOpen] = useState(false);
   const NivelIcon = nivelCfg.icon;
 
   const NAV: { id: Secao; label: string; icon: typeof LayoutDashboard }[] = [
@@ -667,6 +668,15 @@ function HeaderLogado({ rev, secao, onSecao, onLogout, cartCount, onOpenCart }: 
             <p className="text-base font-semibold text-gray-800 hidden md:block max-w-[160px] truncate">
               {rev.nome}
             </p>
+            {/* Botão rastrear */}
+            <button
+              onClick={() => setTrackingOpen(true)}
+              title="Rastrear envio"
+              className="p-2 text-gray-500 hover:text-[#fe68c4] hover:bg-[#ffe5ec]
+                         rounded-lg transition-colors"
+            >
+              <Package className="w-5 h-5" />
+            </button>
             {/* Botão carrinho */}
             <button
               onClick={onOpenCart}
@@ -690,6 +700,34 @@ function HeaderLogado({ rev, secao, onSecao, onLogout, cartCount, onOpenCart }: 
             >
               <LogOut className="w-4 h-4" />
             </button>
+
+            {/* Modal de rastreio */}
+            {trackingOpen && (
+              <>
+                <div
+                  className="fixed inset-0 bg-black/50 z-[200]"
+                  onClick={() => setTrackingOpen(false)}
+                />
+                <div className="fixed right-0 top-0 h-full w-full max-w-sm bg-white z-[201]
+                                flex flex-col shadow-2xl">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                    <div className="flex items-center gap-2">
+                      <Package className="w-5 h-5 text-[#fe68c4]" />
+                      <h2 className="font-semibold text-gray-800">Rastrear envio</h2>
+                    </div>
+                    <button
+                      onClick={() => setTrackingOpen(false)}
+                      className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+                    >
+                      <X className="w-4 h-4 text-gray-500" />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-5">
+                    <TrackingWidget showTitle={false} />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

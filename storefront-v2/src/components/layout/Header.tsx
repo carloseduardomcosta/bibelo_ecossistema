@@ -5,6 +5,7 @@ import Image from "next/image"
 import { useState, useEffect, useRef } from "react"
 import { useCartStore } from "@/store/cart"
 import { useMenuStore } from "@/store/menu"
+import { useTrackingStore } from "@/store/tracking"
 import TopBar from "./TopBar"
 import PromoBanner from "./PromoBanner"
 import { listProducts } from "@/lib/medusa/products"
@@ -119,6 +120,7 @@ export default function Header() {
   const mobileRef = useRef<HTMLDivElement>(null)
   const { itemCount, openCart } = useCartStore()
   const { openMenu } = useMenuStore()
+  const { openTracking } = useTrackingStore()
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10)
@@ -258,6 +260,18 @@ export default function Header() {
                 <span className="text-[10px] font-medium leading-none">Minha conta</span>
               </Link>
 
+              {/* Rastrear */}
+              <button
+                onClick={() => openTracking()}
+                className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg text-gray-600 hover:text-bibelo-pink hover:bg-bibelo-pink/10 transition-colors"
+                aria-label="Rastrear pedido"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+                </svg>
+                <span className="text-[10px] font-medium leading-none">Rastrear</span>
+              </button>
+
               {/* Carrinho */}
               <button
                 onClick={openCart}
@@ -300,6 +314,17 @@ export default function Header() {
                 />
               </Link>
             </div>
+            {/* Mobile: rastrear */}
+            <button
+              onClick={() => openTracking()}
+              className="md:hidden p-2 text-gray-600 hover:text-bibelo-pink transition-colors"
+              aria-label="Rastrear pedido"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+              </svg>
+            </button>
+
             <button
               onClick={openCart}
               className="md:hidden relative p-2 text-bibelo-pink hover:text-bibelo-pink-dark transition-colors"
