@@ -205,33 +205,33 @@ politicaParceiraRouter.get("/", (_req: Request, res: Response) => {
         <tbody>
           <tr>
             <td><span class="badge iniciante">✨ Iniciante</span></td>
-            <td>Até R$&nbsp;149/mês</td>
-            <td><span class="desconto">5% OFF</span></td>
+            <td>1º pedido ≥ R$&nbsp;300</td>
+            <td><span class="desconto">— sem desconto</span></td>
             <td><span class="frete-proprio">📦 Por sua conta</span></td>
           </tr>
           <tr>
             <td><span class="badge bronze">🥉 Bronze</span></td>
-            <td>R$&nbsp;150 a R$&nbsp;599/mês</td>
-            <td><span class="desconto">25% OFF</span></td>
+            <td>R$&nbsp;300 a R$&nbsp;599/mês</td>
+            <td><span class="desconto">15% OFF</span></td>
             <td><span class="frete-proprio">📦 Por sua conta</span></td>
           </tr>
           <tr>
             <td><span class="badge prata">🥈 Prata</span></td>
             <td>R$&nbsp;600 a R$&nbsp;1.199/mês</td>
-            <td><span class="desconto">35% OFF</span></td>
+            <td><span class="desconto">20% OFF</span></td>
             <td><span class="frete-proprio">📦 Por sua conta</span></td>
           </tr>
           <tr class="destaque">
             <td><span class="badge ouro">🥇 Ouro</span></td>
             <td>R$&nbsp;1.200 a R$&nbsp;2.999/mês</td>
-            <td><span class="desconto">45% OFF</span></td>
-            <td><span class="frete-gratis">✅ Frete grátis</span></td>
+            <td><span class="desconto">25% OFF</span></td>
+            <td><span class="frete-gratis">🤝 Frete 50/50</span></td>
           </tr>
           <tr class="destaque">
             <td><span class="badge diamante">💎 Diamante</span></td>
             <td>R$&nbsp;3.000+/mês</td>
-            <td><span class="desconto">45% OFF</span></td>
-            <td><span class="frete-gratis">✅ Frete grátis + benefícios exclusivos</span></td>
+            <td><span class="desconto">30% OFF</span></td>
+            <td><span class="frete-gratis">✅ Frete grátis</span></td>
           </tr>
         </tbody>
       </table>
@@ -252,7 +252,7 @@ politicaParceiraRouter.get("/", (_req: Request, res: Response) => {
         <li>Acompanhe seus pedidos na aba <strong>Meus Pedidos</strong> do portal.</li>
       </ol>
       <p style="margin-top:10px;">
-        O pedido mínimo padrão é de <strong>R$&nbsp;150,00</strong> (valor líquido após desconto).
+        O pedido mínimo é de <strong>R$&nbsp;300,00</strong> por pedido.
       </p>
     </div>
 
@@ -273,8 +273,9 @@ politicaParceiraRouter.get("/", (_req: Request, res: Response) => {
     <div class="card">
       <h2><span class="emoji">🚚</span> 6. Frete e entrega</h2>
       <ul>
-        <li>Parceiras nos níveis <strong>Iniciante, Bronze e Prata</strong> são responsáveis pelo custo do frete.</li>
-        <li>Parceiras nos níveis <strong>Ouro e Diamante</strong> têm frete grátis (Bibelô arca com o envio).</li>
+        <li>Parceiras nos níveis <strong>Iniciante, Bronze e Prata</strong> são responsáveis pelo custo integral do frete.</li>
+        <li>Parceiras no nível <strong>Ouro</strong> dividem o frete com a Bibelô (50% cada parte).</li>
+        <li>Parceiras no nível <strong>Diamante</strong> têm frete grátis (Bibelô arca 100% com o envio).</li>
         <li>O frete é calculado com base no CEP de destino e peso do pedido.</li>
         <li>O prazo de entrega varia conforme a transportadora e a região.</li>
         <li>Bibelô utiliza transportadoras parceiras e Correios (PAC/SEDEX).</li>

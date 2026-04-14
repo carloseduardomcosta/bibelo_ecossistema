@@ -15,17 +15,17 @@ revendedorasRouter.use(authMiddleware);
 // ── Helpers ──────────────────────────────────────────────────
 
 // Estrutura de níveis:
-//   iniciante : volume < 150     → 5%, frete por conta da revendedora (induz a subir de nível)
-//   bronze    : 150–599          → 25%, frete por conta da revendedora
-//   prata     : 600–1199         → 35%, frete por conta da revendedora
-//   ouro      : 1200–2999        → 45%, frete GRÁTIS (Bibelô arca)
-//   diamante  : 3000+            → 45%, frete GRÁTIS + benefícios exclusivos (topo)
+//   iniciante : volume < 300     → 0%, frete por conta da revendedora (transitório — sem compra mínima ainda)
+//   bronze    : 300–599          → 15%, frete por conta da revendedora (pedido mínimo R$300)
+//   prata     : 600–1199         → 20%, frete por conta da revendedora
+//   ouro      : 1200–2999        → 25%, frete 50/50 (Bibelô arca metade)
+//   diamante  : 3000+            → 30%, frete GRÁTIS (Bibelô arca 100%)
 function calcularNivel(volume: number): { nivel: string; desconto: number } {
-  if (volume >= 3000) return { nivel: "diamante",  desconto: 45 };
-  if (volume >= 1200) return { nivel: "ouro",      desconto: 45 };
-  if (volume >= 600)  return { nivel: "prata",     desconto: 35 };
-  if (volume >= 150)  return { nivel: "bronze",    desconto: 25 };
-  return                    { nivel: "iniciante",  desconto: 5  };
+  if (volume >= 3000) return { nivel: "diamante",  desconto: 30 };
+  if (volume >= 1200) return { nivel: "ouro",      desconto: 25 };
+  if (volume >= 600)  return { nivel: "prata",     desconto: 20 };
+  if (volume >= 300)  return { nivel: "bronze",    desconto: 15 };
+  return                    { nivel: "iniciante",  desconto: 0  };
 }
 
 function calcularProgresso(volume: number): {
@@ -50,9 +50,9 @@ function calcularProgresso(volume: number): {
     const percentual = Math.min(100, Math.max(0, ((volume - 150) / 450) * 100));
     return { proximo: "prata",    meta: 600,  faltam, percentual };
   }
-  const faltam = Math.max(0, 150 - volume);
-  const percentual = Math.min(100, Math.max(0, (volume / 150) * 100));
-  return { proximo: "bronze",   meta: 150,  faltam, percentual };
+  const faltam = Math.max(0, 300 - volume);
+  const percentual = Math.min(100, Math.max(0, (volume / 300) * 100));
+  return { proximo: "bronze",   meta: 300,  faltam, percentual };
 }
 
 // ── E-mail de boas-vindas — disparado ao cadastrar revendedora ────
@@ -163,11 +163,11 @@ function buildBoasVindasParceira(nome: string, cpf: string, desconto: number, ni
                 </tr>
               </thead>
               <tbody>
-                ${nivelRow("✨", "Iniciante", 5,  "até R$149/mês",          "Por sua conta", nivel === "iniciante")}
-                ${nivelRow("🥉", "Bronze",    25, "R$150 a R$599/mês",      "Por sua conta", nivel === "bronze")}
-                ${nivelRow("🥈", "Prata",     35, "R$600 a R$1.199/mês",    "Por sua conta", nivel === "prata")}
-                ${nivelRow("🥇", "Ouro",      45, "R$1.200 a R$2.999/mês",  "Frete grátis",  nivel === "ouro")}
-                ${nivelRow("💎", "Diamante",  45, "R$3.000+/mês",           "Frete grátis",  nivel === "diamante")}
+                ${nivelRow("✨", "Iniciante", 0,  "1º pedido ≥ R$300",       "Por sua conta",  nivel === "iniciante")}
+                ${nivelRow("🥉", "Bronze",    15, "R$300 a R$599/mês",       "Por sua conta",  nivel === "bronze")}
+                ${nivelRow("🥈", "Prata",     20, "R$600 a R$1.199/mês",     "Por sua conta",  nivel === "prata")}
+                ${nivelRow("🥇", "Ouro",      25, "R$1.200 a R$2.999/mês",   "Frete 50/50",    nivel === "ouro")}
+                ${nivelRow("💎", "Diamante",  30, "R$3.000+/mês",            "Frete grátis",   nivel === "diamante")}
               </tbody>
             </table>
             <p style="margin:0 0 24px;font-size:11px;color:#aaa;line-height:1.5;">
@@ -569,8 +569,8 @@ revendedorasRouter.post("/", async (req: Request, res: Response) => {
     return;
   }
 
-  const desconto = d.percentual_desconto ?? 5; // novas revendedoras entram como Iniciante
-  const minimo   = d.pedido_minimo ?? 150;
+  const desconto = d.percentual_desconto ?? 0; // novas revendedoras entram como Iniciante (sem desconto até 1º pedido ≥ R$300)
+  const minimo   = d.pedido_minimo ?? 300;
   const criador  = (req as Request & { user?: { email: string } }).user?.email ?? "sistema";
 
   const rev = await queryOne(
@@ -1144,16 +1144,16 @@ revendedorasRouter.post("/:id/pedidos/:pedidoId/mensagens", async (req: Request,
  *  Usado como valor da variável {{tabela_niveis}} no template do banco. */
 function buildTabelaNiveis(descontoAtual: number): string {
   const niveis = [
-    { emoji: "✨", label: "Iniciante", desc: 5,   meta: "< R$150/mês",    frete: "Por conta da revendedora" },
-    { emoji: "🥉", label: "Bronze",    desc: 25,  meta: "R$150–599/mês",  frete: "Por conta da revendedora" },
-    { emoji: "🥈", label: "Prata",     desc: 35,  meta: "R$600–1199/mês", frete: "Por conta da revendedora" },
-    { emoji: "🥇", label: "Ouro",      desc: 45,  meta: "R$1200–2999/mês",frete: "Frete grátis" },
-    { emoji: "💎", label: "Diamante",  desc: 45,  meta: "R$3000+/mês",    frete: "Frete grátis + benefícios exclusivos" },
+    { emoji: "✨", label: "Iniciante", desc: 0,   meta: "1º pedido ≥ R$300",  frete: "Por conta da revendedora" },
+    { emoji: "🥉", label: "Bronze",    desc: 15,  meta: "R$300–599/mês",      frete: "Por conta da revendedora" },
+    { emoji: "🥈", label: "Prata",     desc: 20,  meta: "R$600–1199/mês",     frete: "Por conta da revendedora" },
+    { emoji: "🥇", label: "Ouro",      desc: 25,  meta: "R$1200–2999/mês",    frete: "Frete 50/50" },
+    { emoji: "💎", label: "Diamante",  desc: 30,  meta: "R$3000+/mês",        frete: "Frete grátis" },
   ];
   const rows = niveis.map(n => {
     const destaque = n.desc === descontoAtual;
-    const freteColor = n.frete === "Frete grátis" || n.frete.startsWith("Frete grátis") ? "#16a34a" : "#888";
-    const freteEmoji = n.frete.startsWith("Frete grátis") ? "✅" : "📦";
+    const freteColor = n.frete === "Frete grátis" ? "#16a34a" : n.frete === "Frete 50/50" ? "#d97706" : "#888";
+    const freteEmoji = n.frete === "Frete grátis" ? "✅" : n.frete === "Frete 50/50" ? "🤝" : "📦";
     return `<tr style="${destaque ? "background:#ffe5ec;" : ""}">
       <td style="padding:9px 12px;border-bottom:1px solid #fce8f0;font-size:16px;">${n.emoji}</td>
       <td style="padding:9px 0;border-bottom:1px solid #fce8f0;">

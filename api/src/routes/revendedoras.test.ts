@@ -265,7 +265,7 @@ describe("POST /api/revendedoras", () => {
     expect(res.body.nome).toBe("Nova Vitest");
     expect(res.body.email).toBe("vitest-nova@test.bibelo.internal");
     expect(res.body.nivel).toBe("iniciante");
-    expect(Number(res.body.percentual_desconto)).toBe(5);
+    expect(Number(res.body.percentual_desconto)).toBe(0);
   });
 
   it("409 e-mail duplicado", async () => {
@@ -531,9 +531,9 @@ describe("Lógica de cálculo de níveis (via GET /:id)", () => {
   });
 
   const casos = [
-    { volume: 0,    proximo: "bronze",   meta: 150,  faltam: 150 },
-    { volume: 100,  proximo: "bronze",   meta: 150,  faltam: 50  },
-    { volume: 150,  proximo: "prata",    meta: 600,  faltam: 450 },
+    { volume: 0,    proximo: "bronze",   meta: 300,  faltam: 300 },
+    { volume: 100,  proximo: "bronze",   meta: 300,  faltam: 200 },
+    { volume: 300,  proximo: "prata",    meta: 600,  faltam: 300 },
     { volume: 600,  proximo: "ouro",     meta: 1200, faltam: 600 },
     { volume: 1200, proximo: "diamante", meta: 3000, faltam: 1800},
     { volume: 3000, proximo: null,       meta: 3000, faltam: 0   },

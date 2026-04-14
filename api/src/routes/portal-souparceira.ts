@@ -588,12 +588,12 @@ portalSouParceiraRouter.get(
     } else if (vol >= 600) {
       const faltam = Math.max(0, 1200 - vol);
       progresso_nivel = { proximo: "ouro", meta: 1200, faltam, percentual: Math.min(100, Math.max(0, ((vol - 600) / 600) * 100)) };
-    } else if (vol >= 150) {
+    } else if (vol >= 300) {
       const faltam = Math.max(0, 600 - vol);
-      progresso_nivel = { proximo: "prata", meta: 600, faltam, percentual: Math.min(100, Math.max(0, ((vol - 150) / 450) * 100)) };
+      progresso_nivel = { proximo: "prata", meta: 600, faltam, percentual: Math.min(100, Math.max(0, ((vol - 300) / 300) * 100)) };
     } else {
-      const faltam = Math.max(0, 150 - vol);
-      progresso_nivel = { proximo: "bronze", meta: 150, faltam, percentual: Math.min(100, Math.max(0, (vol / 150) * 100)) };
+      const faltam = Math.max(0, 300 - vol);
+      progresso_nivel = { proximo: "bronze", meta: 300, faltam, percentual: Math.min(100, Math.max(0, (vol / 300) * 100)) };
     }
 
     res.json({

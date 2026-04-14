@@ -120,12 +120,13 @@ type Secao  = 'dashboard' | 'catalogo' | 'pedidos' | 'recursos';
 
 // ── Config visual por nível ──────────────────────────────────────
 
+// frete: 'proprio' = revendedora paga tudo | 'meio' = 50/50 | 'gratis' = Bibelô arca 100%
 const NIVEL = {
-  iniciante: { label: 'Iniciante', cor: 'bg-gray-100 text-gray-600 border-gray-300',         icon: Sparkles, desconto: 5,  freteGratis: false, meta: 150  },
-  bronze:    { label: 'Bronze',    cor: 'bg-amber-100 text-amber-700 border-amber-300',       icon: Medal,    desconto: 25, freteGratis: false, meta: 600  },
-  prata:     { label: 'Prata',     cor: 'bg-slate-100 text-slate-600 border-slate-300',       icon: Star,     desconto: 35, freteGratis: false, meta: 1200 },
-  ouro:      { label: 'Ouro',      cor: 'bg-yellow-100 text-yellow-700 border-yellow-400',    icon: Crown,    desconto: 45, freteGratis: true,  meta: 3000 },
-  diamante:  { label: 'Diamante',  cor: 'bg-cyan-100 text-cyan-700 border-cyan-400',          icon: Gem,      desconto: 45, freteGratis: true,  meta: null },
+  iniciante: { label: 'Iniciante', cor: 'bg-gray-100 text-gray-600 border-gray-300',         icon: Sparkles, desconto: 0,  frete: 'proprio' as const, meta: 300  },
+  bronze:    { label: 'Bronze',    cor: 'bg-amber-100 text-amber-700 border-amber-300',       icon: Medal,    desconto: 15, frete: 'proprio' as const, meta: 600  },
+  prata:     { label: 'Prata',     cor: 'bg-slate-100 text-slate-600 border-slate-300',       icon: Star,     desconto: 20, frete: 'proprio' as const, meta: 1200 },
+  ouro:      { label: 'Ouro',      cor: 'bg-yellow-100 text-yellow-700 border-yellow-400',    icon: Crown,    desconto: 25, frete: 'meio'    as const, meta: 3000 },
+  diamante:  { label: 'Diamante',  cor: 'bg-cyan-100 text-cyan-700 border-cyan-400',          icon: Gem,      desconto: 30, frete: 'gratis'  as const, meta: null },
 };
 
 const STATUS_PEDIDO: Record<string, { label: string; cor: string; icon: typeof Clock }> = {
@@ -802,12 +803,14 @@ function Dashboard({ rev, onIrCatalogo }: { rev: Revendedora; onIrCatalogo: () =
           )}
         </div>
         {/* Frete info */}
-        <p className={`text-sm font-medium mb-3 flex items-center gap-1.5 ${nivelCfg.freteGratis ? 'text-green-600' : 'text-gray-400'}`}>
+        <p className={`text-sm font-medium mb-3 flex items-center gap-1.5 ${
+          nivelCfg.frete === 'gratis' ? 'text-green-600' :
+          nivelCfg.frete === 'meio'   ? 'text-amber-600' : 'text-gray-400'
+        }`}>
           <Truck className="w-4 h-4" />
-          {nivelCfg.freteGratis
-            ? 'Frete grátis — a Bibelô arca pelo envio 🎉'
-            : 'Frete por sua conta · chegue ao Ouro para frete grátis!'
-          }
+          {nivelCfg.frete === 'gratis' ? 'Frete grátis — a Bibelô arca pelo envio 🎉' :
+           nivelCfg.frete === 'meio'   ? 'Frete 50/50 — você e a Bibelô dividem o custo 🤝' :
+                                         'Frete por sua conta · chegue ao Diamante para frete grátis!'}
         </p>
         {pg && pg.proximo && (
           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -2111,12 +2114,12 @@ export default function SouParceira() {
                 <div className="flex items-center gap-2">
                   {/* Frete info */}
                   <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold
-                    ${cfg.freteGratis
-                      ? 'bg-green-400/30 border border-green-300/50 text-white'
-                      : 'bg-white/15 border border-white/25 text-white/80'
-                    }`}>
+                    ${cfg.frete === 'gratis' ? 'bg-green-400/30 border border-green-300/50 text-white' :
+                      cfg.frete === 'meio'   ? 'bg-amber-400/30 border border-amber-300/50 text-white' :
+                                               'bg-white/15 border border-white/25 text-white/80'}`}>
                     <Truck className="w-3.5 h-3.5" />
-                    {cfg.freteGratis ? 'Frete grátis' : 'Frete por sua conta'}
+                    {cfg.frete === 'gratis' ? 'Frete grátis' :
+                     cfg.frete === 'meio'   ? 'Frete 50/50'  : 'Frete por sua conta'}
                   </span>
                   {/* Tier badge */}
                   <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
