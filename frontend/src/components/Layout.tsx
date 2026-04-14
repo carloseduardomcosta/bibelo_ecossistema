@@ -27,7 +27,7 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronDown,
+  ChevronRight,
   Bell,
   AlertTriangle,
   Clock,
@@ -38,14 +38,14 @@ import {
   MailX,
   Radar,
   Globe,
-  Instagram,
   Layers,
   Store,
-  GitMerge,
   Server,
   Handshake,
   BookImage,
   KeyRound,
+  BarChart2,
+  Settings,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -56,155 +56,181 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-interface NavGroup {
+interface NavSubGroup {
   label: string;
   items: NavItem[];
 }
 
-const navGroups: NavGroup[] = [
+interface NavMainGroup {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  subGroups: NavSubGroup[];
+}
+
+const navMainGroups: NavMainGroup[] = [
   {
-    label: '',
-    items: [
-      { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-      { to: '/briefing', label: 'Briefing', icon: Newspaper },
+    key: 'estrategico',
+    label: 'Estratégico',
+    icon: BarChart2,
+    subGroups: [
+      {
+        label: '',
+        items: [
+          { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+          { to: '/briefing', label: 'Briefing', icon: Newspaper },
+          { to: '/pipeline', label: 'Pipeline', icon: Kanban },
+          { to: '/inteligencia', label: 'Inteligência', icon: Target },
+          { to: '/relatorios', label: 'Relatórios', icon: BarChart3 },
+        ],
+      },
     ],
   },
   {
-    label: 'CRM',
-    items: [
-      { to: '/clientes',     label: 'Clientes',     icon: Users },
-      { to: '/segmentos',    label: 'Segmentos',     icon: Target },
-      { to: '/pipeline',     label: 'Pipeline',      icon: Kanban },
-      { to: '/revendedoras', label: 'Revendedoras',  icon: Handshake },
+    key: 'operacional',
+    label: 'Operacional',
+    icon: Layers,
+    subGroups: [
+      {
+        label: 'CRM',
+        items: [
+          { to: '/clientes', label: 'Clientes', icon: Users },
+          { to: '/segmentos', label: 'Segmentos', icon: Target },
+          { to: '/revendedoras', label: 'Revendedoras', icon: Handshake },
+        ],
+      },
+      {
+        label: 'Produtos',
+        items: [
+          { to: '/produtos', label: 'Catálogo', icon: Package },
+          { to: '/pedidos', label: 'Pedidos', icon: ShoppingCart },
+          { to: '/estoque', label: 'Estoque', icon: Warehouse },
+          { to: '/lucratividade', label: 'Lucratividade', icon: TrendingUp },
+          { to: '/vendas', label: 'Vendas', icon: ShoppingBag },
+        ],
+      },
+      {
+        label: 'Financeiro',
+        items: [
+          { to: '/financeiro', label: 'Fluxo de Caixa', icon: Wallet },
+          { to: '/contas-pagar', label: 'Contas a Pagar', icon: Banknote },
+          { to: '/despesas-fixas', label: 'Despesas Fixas', icon: CalendarClock },
+          { to: '/nf-entrada', label: 'NF Entrada', icon: FileText },
+          { to: '/simulador', label: 'Simulador', icon: Calculator },
+        ],
+      },
+      {
+        label: 'Marketing',
+        items: [
+          { to: '/marketing', label: 'Automações', icon: Sparkles },
+          { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
+          { to: '/landing-pages', label: 'Landing Pages', icon: Layers },
+          { to: '/meta-ads', label: 'Meta Ads', icon: Radar },
+        ],
+      },
     ],
   },
   {
-    label: 'Produtos',
-    items: [
-      { to: '/produtos', label: 'Catálogo', icon: Package },
-      { to: '/estoque', label: 'Estoque', icon: Warehouse },
-      { to: '/lucratividade', label: 'Lucratividade', icon: TrendingUp },
-      { to: '/pedidos', label: 'Pedidos', icon: ShoppingCart },
-      { to: '/vendas', label: 'Vendas', icon: ShoppingBag },
-      { to: '/editor-imagens', label: 'Editor Imagens', icon: ImagePlus },
-      { to: '/seo', label: 'SEO', icon: Globe },
-      { to: '/fornecedor-catalogo', label: 'Catálogo Fornecedor', icon: Package },
-    ],
-  },
-  {
-    label: 'Financeiro',
-    items: [
-      { to: '/financeiro', label: 'Fluxo de Caixa', icon: Wallet },
-      { to: '/despesas-fixas', label: 'Despesas Fixas', icon: CalendarClock },
-      { to: '/simulador', label: 'Simulador', icon: Calculator },
-      { to: '/nf-entrada', label: 'NF Entrada', icon: FileText },
-      { to: '/contas-pagar', label: 'Contas a Pagar', icon: Banknote },
-      { to: '/relatorios', label: 'Relatórios', icon: BarChart3 },
-    ],
-  },
-  {
-    label: 'Loja Online',
-    items: [
-      { to: '/loja-online',      label: 'Configurações',    icon: Store    },
-      { to: '/categorias-sync',  label: 'Categorias Sync',  icon: GitMerge },
-    ],
-  },
-  {
-    label: 'Marketing',
-    items: [
-      { to: '/marketing', label: 'Automações', icon: Sparkles },
-      { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
-      { to: '/consumo-email', label: 'Consumo Email', icon: Mail },
-      { to: '/inteligencia', label: 'Inteligência', icon: Target },
-      { to: '/meta-ads', label: 'Meta Ads', icon: Radar },
-      { to: '/instagram', label: 'Instagram', icon: Instagram },
-      { to: '/landing-pages', label: 'Landing Pages', icon: Layers },
-      { to: '/catalogo-whatsapp', label: 'Catálogo WhatsApp', icon: BookImage },
-    ],
-  },
-  {
-    label: 'Sistema',
-    items: [
-      { to: '/sistema', label: 'Sistema', icon: Server },
-      { to: '/sync', label: 'Sync', icon: RefreshCw },
-      { to: '/filas', label: 'Filas', icon: Clock },
+    key: 'ferramentas',
+    label: 'Ferramentas',
+    icon: Settings,
+    subGroups: [
+      {
+        label: '',
+        items: [
+          { to: '/loja-online', label: 'Loja Online', icon: Store },
+          { to: '/fornecedor-catalogo', label: 'Catálogo Fornecedor', icon: Package },
+          { to: '/editor-imagens', label: 'Editor Imagens', icon: ImagePlus },
+          { to: '/seo', label: 'SEO', icon: Globe },
+          { to: '/catalogo-whatsapp', label: 'Catálogo WhatsApp', icon: BookImage },
+          { to: '/sync', label: 'Sync', icon: RefreshCw },
+          { to: '/sistema', label: 'Sistema', icon: Server },
+          { to: '/filas', label: 'Filas', icon: Clock },
+          { to: '/consumo-email', label: 'Consumo Email', icon: Mail },
+        ],
+      },
     ],
   },
 ];
 
-function NavSection({ group, onNavigate }: { group: NavGroup; onNavigate: () => void }) {
+function NavMainSection({
+  group,
+  isOpen,
+  onToggle,
+  onNavigate,
+}: {
+  group: NavMainGroup;
+  isOpen: boolean;
+  onToggle: () => void;
+  onNavigate: () => void;
+}) {
   const location = useLocation();
-  const isActive = group.items.some(
-    (item) => item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)
+  const GroupIcon = group.icon;
+
+  // Auto-expand if any item in this group is active
+  const allItems = group.subGroups.flatMap((sg) => sg.items);
+  const hasActiveItem = allItems.some((item) =>
+    item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)
   );
 
-  // Grupos sem label (Dashboard) sempre abertos
-  const [open, setOpen] = useState(group.label === '' || isActive);
-
-  // Abrir automaticamente quando navegar para um item do grupo
   useEffect(() => {
-    if (isActive) setOpen(true);
-  }, [isActive]);
-
-  if (group.label === '') {
-    // Dashboard sem header de grupo
-    return (
-      <div className="space-y-0.5">
-        {group.items.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            onClick={onNavigate}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-bibelo-primary/20 text-bibelo-primary'
-                  : 'text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50'
-              }`
-            }
-            end={to === '/'}
-          >
-            <Icon size={18} />
-            {label}
-          </NavLink>
-        ))}
-      </div>
-    );
-  }
+    if (hasActiveItem && !isOpen) {
+      onToggle();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasActiveItem]);
 
   return (
     <div>
       <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center justify-between w-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-bibelo-muted/60 hover:text-bibelo-muted transition-colors"
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold tracking-wider text-gray-400 uppercase hover:text-gray-300 transition-colors"
       >
-        {group.label}
-        <ChevronDown
-          size={14}
-          className={`transition-transform ${open ? '' : '-rotate-90'}`}
+        <GroupIcon size={14} />
+        <span>{group.label}</span>
+        <ChevronRight
+          size={12}
+          className={`ml-auto transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}
         />
       </button>
-      {open && (
-        <div className="space-y-0.5 mt-0.5">
-          {group.items.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-bibelo-primary/20 text-bibelo-primary'
-                    : 'text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50'
-                }`
-              }
-            >
-              <Icon size={16} />
-              {label}
-            </NavLink>
-          ))}
-        </div>
-      )}
+
+      <div
+        className={`overflow-hidden transition-all duration-200 ${
+          isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
+        }`}
+      >
+        {group.subGroups.map((subGroup) => (
+          <div key={subGroup.label || `${group.key}-root`}>
+            {subGroup.label !== '' && (
+              <div className="px-3 pt-3 pb-1">
+                <span className="text-[10px] font-medium tracking-widest text-gray-500 uppercase">
+                  {subGroup.label}
+                </span>
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {subGroup.items.map(({ to, label, icon: Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  onClick={onNavigate}
+                  end={to === '/'}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 pl-4 pr-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'bg-bibelo-primary/20 text-bibelo-primary'
+                        : 'text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-border/50'
+                    }`
+                  }
+                >
+                  <Icon size={16} />
+                  {label}
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -793,6 +819,25 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const [gruposAbertos, setGruposAbertos] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('crm-sidebar-grupos');
+      return saved
+        ? JSON.parse(saved)
+        : { estrategico: true, operacional: true, ferramentas: false };
+    } catch {
+      return { estrategico: true, operacional: true, ferramentas: false };
+    }
+  });
+
+  const toggleGrupo = (grupo: string) => {
+    setGruposAbertos((prev) => {
+      const novo = { ...prev, [grupo]: !prev[grupo] };
+      localStorage.setItem('crm-sidebar-grupos', JSON.stringify(novo));
+      return novo;
+    });
+  };
+
   return (
     <div className="flex min-h-screen bg-bibelo-bg">
       {/* Overlay mobile */}
@@ -825,13 +870,17 @@ export default function Layout() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-2.5 py-3 space-y-3 overflow-y-auto">
-          {navGroups.map((group) => (
-            <NavSection
-              key={group.label || 'root'}
-              group={group}
-              onNavigate={() => setSidebarOpen(false)}
-            />
+        <nav className="flex-1 px-2.5 py-3 overflow-y-auto">
+          {navMainGroups.map((group, index) => (
+            <div key={group.key}>
+              {index > 0 && <div className="border-t border-gray-700/50 my-1" />}
+              <NavMainSection
+                group={group}
+                isOpen={!!gruposAbertos[group.key]}
+                onToggle={() => toggleGrupo(group.key)}
+                onNavigate={() => setSidebarOpen(false)}
+              />
+            </div>
           ))}
         </nav>
 

@@ -56,6 +56,26 @@ interface GeoData {
   byCountry: Array<{ country: string; visitors: number }>;
 }
 
+interface FunilEtapa { nome: string; valor: number; icone: string }
+interface FunilConversao { de: string; para: string; taxa: number }
+interface FunilData {
+  periodo_dias: number;
+  etapas: FunilEtapa[];
+  conversoes: FunilConversao[];
+}
+
+interface ForecastData {
+  mes_atual: { receita_ate_hoje: number; projetado_fim_mes: number };
+  media_3_meses: number;
+  tendencia: 'alta' | 'estavel' | 'queda';
+  confianca: 'baixa' | 'media' | 'alta';
+}
+
+interface AlertasFlowsData {
+  flows_sem_atividade: Array<{ id: string; nome: string; gatilho: string; execucoes_7d: number; total_execucoes: number }>;
+  total: number;
+}
+
 interface FlowActivity {
   recentSends: Array<{
     customer_nome: string; customer_email: string;
@@ -249,6 +269,185 @@ function UpcomingEmailsCard() {
         </div>
       )}
     </>
+  );
+}
+
+// ── Componente: Seção CEO View ──────────────────────────────────
+
+const FUNIL_CORES: Record<string, string> = {
+  "Visitantes únicos":     "bg-gray-400",
+  "Visualizações produto": "bg-blue-400",
+  "Add to cart":           "bg-[#fe68c4]",
+  "Checkout iniciado":     "bg-orange-400",
+  "Compras realizadas":    "bg-green-500",
+  "Leads capturados":      "bg-purple-400",
+};
+
+function CeoViewSection() {
+  const [funil, setFunil] = useState<FunilData | null>(null);
+  const [forecast, setForecast] = useState<ForecastData | null>(null);
+  const [alertas, setAlertas] = useState<AlertasFlowsData | null>(null);
+  const [ceoLoading, setCeoLoading] = useState(true);
+
+  useEffect(() => {
+    setCeoLoading(true);
+    Promise.all([
+      api.get('/analytics/funil?dias=30'),
+      api.get('/analytics/forecast'),
+      api.get('/analytics/alertas-flows'),
+    ])
+      .then(([funilRes, forecastRes, alertasRes]) => {
+        setFunil(funilRes.data);
+        setForecast(forecastRes.data);
+        setAlertas(alertasRes.data);
+      })
+      .catch(() => { /* falha silenciosa — seção apenas não renderiza */ })
+      .finally(() => setCeoLoading(false));
+  }, []);
+
+  const maxFunil = funil ? Math.max(...funil.etapas.map((e) => e.valor), 1) : 1;
+  const todosZero = funil ? funil.etapas.every((e) => e.valor === 0) : true;
+
+  const tendenciaCfg = forecast ? {
+    alta:   { label: 'Alta', cls: 'bg-green-500/20 text-green-400' },
+    estavel:{ label: 'Estável', cls: 'bg-gray-500/20 text-gray-400' },
+    queda:  { label: 'Queda', cls: 'bg-red-500/20 text-red-400' },
+  }[forecast.tendencia] : null;
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-base font-semibold text-bibelo-text flex items-center gap-2" style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}>
+          <TrendingUp size={16} className="text-bibelo-primary" />
+          Visão Executiva
+        </h2>
+        <span className="text-xs text-bibelo-muted">Últimos 30 dias</span>
+      </div>
+
+      {ceoLoading ? (
+        <div className="grid grid-cols-4 gap-4">
+          <div className="col-span-2 bg-bibelo-card border border-bibelo-border rounded-xl p-5 animate-pulse h-44" />
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5 animate-pulse h-44" />
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5 animate-pulse h-44" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-4 gap-4">
+          {/* Sub-seção A — Funil de Conversão (col-span-2) */}
+          <div className="col-span-2 bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+            <h3 className="text-sm font-medium text-bibelo-muted mb-4 flex items-center gap-2">
+              <Eye size={14} className="text-blue-400" /> Funil de Conversão
+            </h3>
+            {todosZero ? (
+              <p className="text-sm text-bibelo-muted py-6 text-center leading-relaxed">
+                Dados de rastreamento insuficientes — instale o script de tracking na loja
+              </p>
+            ) : funil ? (
+              <div className="space-y-2.5">
+                {funil.etapas.map((etapa, idx) => {
+                  const conversao = funil.conversoes.find((c) => c.de === etapa.nome);
+                  const barW = maxFunil > 0 ? Math.round((etapa.valor / maxFunil) * 100) : 0;
+                  const bgCls = FUNIL_CORES[etapa.nome] || "bg-bibelo-primary";
+                  return (
+                    <div key={etapa.nome}>
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <span>{etapa.icone}</span>
+                          <span className="text-bibelo-text">{etapa.nome}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-bibelo-text">{etapa.valor.toLocaleString('pt-BR')}</span>
+                          {conversao && conversao.taxa > 0 && (
+                            <span className="text-bibelo-muted text-[10px]">→ {conversao.taxa}%</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="h-2 bg-bibelo-border rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${bgCls} rounded-full transition-all`}
+                          style={{ width: `${barW}%` }}
+                        />
+                      </div>
+                      {idx < funil.etapas.length - 1 && (
+                        <div className="border-b border-bibelo-border/30 mt-2.5" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Sub-seção B — Forecast 30 dias (col-span-1) */}
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+            <h3 className="text-sm font-medium text-bibelo-muted mb-4 flex items-center gap-2">
+              <DollarSign size={14} className="text-amber-400" /> Projeção do Mês
+            </h3>
+            {forecast ? (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <p className="text-2xl font-bold text-bibelo-text leading-none">
+                    {formatCurrency(forecast.mes_atual.projetado_fim_mes)}
+                  </p>
+                  {tendenciaCfg && (
+                    <span className={`inline-block mt-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full ${tendenciaCfg.cls}`}>
+                      {tendenciaCfg.label}
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-bibelo-muted space-y-1">
+                  <p>Realizado: <span className="text-bibelo-text font-medium">{formatCurrency(forecast.mes_atual.receita_ate_hoje)}</span></p>
+                  <p>Média 3m: <span className="text-bibelo-text font-medium">{formatCurrency(forecast.media_3_meses)}</span></p>
+                </div>
+                <p className="text-[10px] text-bibelo-muted/70 border-t border-bibelo-border pt-2">
+                  Confiança: {forecast.confianca === 'alta' ? '⬆ alta' : forecast.confianca === 'media' ? '~ média' : '⬇ baixa'}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-bibelo-muted py-6 text-center">Sem dados de histórico</p>
+            )}
+          </div>
+
+          {/* Sub-seção C — Alertas de Flows (col-span-1) */}
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+            <h3 className="text-sm font-medium text-bibelo-muted mb-4 flex items-center gap-2">
+              <Zap size={14} className="text-amber-400" /> Alertas de Flows
+            </h3>
+            {alertas ? (
+              alertas.total === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-4">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-500/15 text-green-400 px-3 py-1.5 rounded-full">
+                    Todos os flows ativos
+                  </span>
+                  <p className="text-[10px] text-bibelo-muted text-center">Nenhum flow sem atividade nos últimos 7 dias</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs font-bold text-red-400 bg-red-400/15 px-2 py-0.5 rounded-full">
+                      {alertas.total} sem atividade
+                    </span>
+                    <span className="text-[10px] text-bibelo-muted">em 7 dias</span>
+                  </div>
+                  {alertas.flows_sem_atividade.slice(0, 3).map((f) => (
+                    <div key={f.id} className="py-1.5 border-b border-bibelo-border/50 last:border-0">
+                      <p className="text-xs text-bibelo-text truncate">{f.nome}</p>
+                      <p className="text-[10px] text-bibelo-muted truncate">{f.gatilho}</p>
+                    </div>
+                  ))}
+                  {alertas.total > 3 && (
+                    <a href="/marketing" className="text-[10px] text-bibelo-primary hover:underline block mt-1">
+                      e mais {alertas.total - 3} flows → ver Marketing
+                    </a>
+                  )}
+                </div>
+              )
+            ) : (
+              <p className="text-sm text-bibelo-muted py-6 text-center">Carregando...</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -468,6 +667,9 @@ export default function Dashboard() {
               )}
             </div>
           )}
+
+          {/* Visão Executiva (CEO View) */}
+          <CeoViewSection />
 
           {/* Gráficos */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">

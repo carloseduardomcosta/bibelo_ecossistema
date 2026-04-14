@@ -3,6 +3,7 @@ import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { getCachedReviews, refreshReviewsCache } from "../integrations/google/reviews";
 import { cached } from "../utils/cache";
+import { logger } from "../utils/logger";
 
 export const analyticsRouter = Router();
 analyticsRouter.use(authMiddleware);
@@ -574,6 +575,179 @@ analyticsRouter.post("/reviews/refresh", async (_req: Request, res: Response) =>
     return;
   }
   res.json(data);
+});
+
+// ── GET /api/analytics/funil — Funil de conversão ────────────────
+
+analyticsRouter.get("/funil", async (req: Request, res: Response) => {
+  try {
+    const diasRaw = parseInt(req.query.dias as string, 10);
+    const dias = (!isNaN(diasRaw) && diasRaw > 0 && diasRaw <= 365) ? diasRaw : 30;
+
+    const [visitantes, produtos, carrinho, checkout, compras, leads] = await Promise.all([
+      queryOne<{ total: string }>(
+        `SELECT COUNT(DISTINCT visitor_id)::text AS total FROM crm.tracking_events WHERE criado_em >= NOW() - make_interval(days => $1)`,
+        [dias]
+      ),
+      queryOne<{ total: string }>(
+        `SELECT COUNT(DISTINCT visitor_id)::text AS total FROM crm.tracking_events WHERE evento = 'product_view' AND criado_em >= NOW() - make_interval(days => $1)`,
+        [dias]
+      ),
+      queryOne<{ total: string }>(
+        `SELECT COUNT(DISTINCT visitor_id)::text AS total FROM crm.tracking_events WHERE evento = 'add_to_cart' AND criado_em >= NOW() - make_interval(days => $1)`,
+        [dias]
+      ),
+      queryOne<{ total: string }>(
+        `SELECT COUNT(DISTINCT visitor_id)::text AS total FROM crm.tracking_events WHERE evento = 'checkout' AND criado_em >= NOW() - make_interval(days => $1)`,
+        [dias]
+      ),
+      queryOne<{ total: string }>(
+        `SELECT COUNT(DISTINCT visitor_id)::text AS total FROM crm.tracking_events WHERE evento = 'purchase' AND criado_em >= NOW() - make_interval(days => $1)`,
+        [dias]
+      ),
+      queryOne<{ total: string }>(
+        `SELECT COUNT(*)::text AS total FROM marketing.leads WHERE criado_em >= NOW() - make_interval(days => $1)`,
+        [dias]
+      ),
+    ]);
+
+    const v = parseInt(visitantes?.total || "0", 10);
+    const p = parseInt(produtos?.total || "0", 10);
+    const c = parseInt(carrinho?.total || "0", 10);
+    const ch = parseInt(checkout?.total || "0", 10);
+    const co = parseInt(compras?.total || "0", 10);
+    const l = parseInt(leads?.total || "0", 10);
+
+    function taxa(numerador: number, denominador: number): number {
+      if (denominador === 0) return 0;
+      return Math.round((numerador / denominador) * 1000) / 10;
+    }
+
+    res.json({
+      periodo_dias: dias,
+      etapas: [
+        { nome: "Visitantes únicos",     valor: v,  icone: "👁" },
+        { nome: "Visualizações produto", valor: p,  icone: "📦" },
+        { nome: "Add to cart",           valor: c,  icone: "🛒" },
+        { nome: "Checkout iniciado",     valor: ch, icone: "💳" },
+        { nome: "Compras realizadas",    valor: co, icone: "✅" },
+        { nome: "Leads capturados",      valor: l,  icone: "📧" },
+      ],
+      conversoes: [
+        { de: "Visitantes únicos",     para: "Visualizações produto", taxa: taxa(p, v) },
+        { de: "Visualizações produto", para: "Add to cart",           taxa: taxa(c, p) },
+        { de: "Add to cart",           para: "Checkout iniciado",     taxa: taxa(ch, c) },
+        { de: "Checkout iniciado",     para: "Compras realizadas",    taxa: taxa(co, ch) },
+        { de: "Visitantes únicos",     para: "Leads capturados",      taxa: taxa(l, v) },
+      ],
+    });
+  } catch (err) {
+    logger.error("Erro ao carregar funil de conversão", { err });
+    res.status(500).json({ error: "Erro interno. Tente novamente." });
+  }
+});
+
+// ── GET /api/analytics/alertas-flows — Flows sem atividade ───────
+
+analyticsRouter.get("/alertas-flows", async (_req: Request, res: Response) => {
+  try {
+    const rows = await query<{
+      id: string; nome: string; gatilho: string;
+      execucoes_7d: string; total_execucoes: string;
+    }>(`
+      SELECT f.id, f.nome, f.gatilho,
+        COUNT(fe.id) FILTER (WHERE fe.iniciado_em >= NOW() - INTERVAL '7 days')::text AS execucoes_7d,
+        COUNT(fe.id)::text AS total_execucoes
+      FROM marketing.flows f
+      LEFT JOIN marketing.flow_executions fe ON fe.flow_id = f.id
+      WHERE f.ativo = true AND f.nome NOT ILIKE 'vitest%'
+      GROUP BY f.id, f.nome, f.gatilho
+      HAVING COUNT(fe.id) FILTER (WHERE fe.iniciado_em >= NOW() - INTERVAL '7 days') = 0
+      ORDER BY f.nome
+    `);
+
+    res.json({
+      flows_sem_atividade: rows.map((r) => ({
+        id: r.id,
+        nome: r.nome,
+        gatilho: r.gatilho,
+        execucoes_7d: parseInt(r.execucoes_7d, 10),
+        total_execucoes: parseInt(r.total_execucoes, 10),
+      })),
+      total: rows.length,
+    });
+  } catch (err) {
+    logger.error("Erro ao carregar alertas de flows", { err });
+    res.status(500).json({ error: "Erro interno. Tente novamente." });
+  }
+});
+
+// ── GET /api/analytics/forecast — Previsão de receita ────────────
+
+analyticsRouter.get("/forecast", async (_req: Request, res: Response) => {
+  try {
+    const [stats3meses, mesAtualRow] = await Promise.all([
+      queryOne<{ media_mensal: string | null; desvio_mensal: string | null }>(`
+        SELECT
+          AVG(receita_mes)::text AS media_mensal,
+          STDDEV(receita_mes)::text AS desvio_mensal
+        FROM (
+          SELECT
+            DATE_TRUNC('month', criado_bling) AS mes,
+            SUM(valor) AS receita_mes
+          FROM sync.bling_orders
+          WHERE criado_bling >= DATE_TRUNC('month', NOW()) - INTERVAL '3 months'
+            AND criado_bling < DATE_TRUNC('month', NOW())
+            AND status NOT IN ('cancelado', 'devolvido')
+          GROUP BY mes
+        ) meses
+      `),
+      queryOne<{ receita_mes_atual: string }>(`
+        SELECT COALESCE(SUM(valor), 0)::text AS receita_mes_atual
+        FROM sync.bling_orders
+        WHERE criado_bling >= DATE_TRUNC('month', NOW())
+          AND status NOT IN ('cancelado', 'devolvido')
+      `),
+    ]);
+
+    const mediaMensal = parseFloat(stats3meses?.media_mensal || "0");
+    const desvioMensal = parseFloat(stats3meses?.desvio_mensal || "0");
+    const receitaAteHoje = parseFloat(mesAtualRow?.receita_mes_atual || "0");
+
+    // Projeção: extrapola receita atual para o fim do mês com base nos dias corridos
+    const hoje = new Date();
+    const diaDoMes = hoje.getDate();
+    const diasNoMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
+    const projetado = diaDoMes > 0 ? Math.round((receitaAteHoje / diaDoMes) * diasNoMes * 100) / 100 : 0;
+
+    // Tendência: compara projetado com média dos últimos 3 meses
+    let tendencia: "alta" | "estavel" | "queda" = "estavel";
+    if (mediaMensal > 0) {
+      const diff = (projetado - mediaMensal) / mediaMensal;
+      if (diff > 0.1) tendencia = "alta";
+      else if (diff < -0.1) tendencia = "queda";
+    }
+
+    // Confiança: depende de quantos meses têm dados e variabilidade
+    const temHistorico = mediaMensal > 0;
+    const desvioRelativo = mediaMensal > 0 ? desvioMensal / mediaMensal : 1;
+    let confianca: "baixa" | "media" | "alta" = "baixa";
+    if (temHistorico && desvioRelativo <= 0.2) confianca = "alta";
+    else if (temHistorico && desvioRelativo <= 0.5) confianca = "media";
+
+    res.json({
+      mes_atual: {
+        receita_ate_hoje: receitaAteHoje,
+        projetado_fim_mes: projetado,
+      },
+      media_3_meses: mediaMensal,
+      tendencia,
+      confianca,
+    });
+  } catch (err) {
+    logger.error("Erro ao calcular forecast", { err });
+    res.status(500).json({ error: "Erro interno. Tente novamente." });
+  }
 });
 
 // ══════════════════════════════════════════════════════════════════
