@@ -1280,6 +1280,13 @@ sync.category_sync_log         (auditoria)
 - GET /pedidos-recentes: estrutura `{ data, pendentes, mensagens_nao_lidas }`
 - GET /acessos-portal-recentes: array de acessos recentes
 
+### chore(claude): hooks de qualidade + skills de segurança — (14/04/2026)
+- `~/.claude/settings.json`: hook `block-no-verify` inserido antes do RTK (bloqueia `--no-verify` antes do auto-approve RTK)
+- `~/.claude/settings.json`: hook `stop:check-console-log` (Stop event) — varre arquivos `.ts/.tsx` editados na resposta, avisa se houver `console.log`
+- `.claude/skills/security-review.md`: checklist de segurança específico ao stack (SQL parameterizado, `esc()` em emails, HMAC `timingSafeEqual`, Zod, `publicLimiter`, proteção Bling)
+- `.claude/skills/verification-loop.md`: protocolo pré-PR (typecheck → vitest baseline 717 → health check → scans de segurança → migrations)
+- `CLAUDE.md`: removidas 4 referências mortas para `/mnt/skills/` (path inexistente), substituídas pelos caminhos reais das 5 skills ativas
+
 ### feat(revendedoras): editor de emails Sou Parceira via frontend — `61dda0a` (13/04/2026)
 - Botão "✉ Editar emails" na página Revendedoras abre modal com editor HTML
 - 3 templates editáveis: boas-vindas, status do pedido, nova mensagem
