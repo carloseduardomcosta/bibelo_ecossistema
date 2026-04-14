@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Package, RefreshCw, Play, StopCircle, CheckCircle, Clock,
   Tag, BarChart2, AlertCircle, ChevronDown, ChevronUp,
@@ -7,6 +7,38 @@ import {
 import api from '../lib/api';
 import { useToast } from '../components/Toast';
 import { formatCurrency } from '../lib/format';
+
+// ── Tooltip ───────────────────────────────────────────────────
+function Tooltip({ children, lines }: { children: React.ReactNode; lines: string[] }) {
+  const [visible, setVisible] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  return (
+    <div
+      ref={ref}
+      className="relative inline-flex"
+      onMouseEnter={() => setVisible(true)}
+      onMouseLeave={() => setVisible(false)}
+    >
+      {children}
+      {visible && (
+        <div
+          className="absolute z-50 bottom-full mb-2 left-1/2 -translate-x-1/2
+                     w-72 bg-gray-900 text-white text-xs rounded-xl shadow-xl p-3 space-y-1.5
+                     pointer-events-none"
+        >
+          {lines.map((line, i) => (
+            <p key={i} className={line.startsWith('⚠') ? 'text-yellow-300' : line.startsWith('✅') ? 'text-green-300' : 'leading-snug text-gray-100'}>
+              {line}
+            </p>
+          ))}
+          {/* Seta */}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Tipos ────────────────────────────────────────────────────
 interface Stats {
@@ -247,77 +279,122 @@ export default function FornecedorCatalogo() {
         <div className="flex gap-2 flex-wrap">
           {/* Botões de enriquecimento */}
           {enrich?.running ? (
-            <button
-              onClick={pararEnriquecimento}
-              className="flex items-center gap-2 px-4 py-2 bg-pink-100 text-pink-700 rounded-lg hover:bg-pink-200 text-sm font-medium"
-            >
-              <StopCircle className="w-4 h-4" /> Parar enriquecimento
-            </button>
+            <Tooltip lines={['Clique para interromper o enriquecimento em andamento.', 'Produtos já processados são salvos normalmente.']}>
+              <button
+                onClick={pararEnriquecimento}
+                className="flex items-center gap-2 px-4 py-2 bg-pink-100 text-pink-700 rounded-lg hover:bg-pink-200 text-sm font-medium"
+              >
+                <StopCircle className="w-4 h-4" /> Parar enriquecimento
+              </button>
+            </Tooltip>
           ) : (
             <div className="flex gap-2">
-              <button
-                onClick={() => iniciarEnriquecimento()}
-                disabled={scraper?.running}
-                className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-medium
-                           disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                style={{ backgroundColor: scraper?.running ? '#d1d5db' : '#fe68c4' }}
-                title="Busca fotos e descrições dos produtos aprovados"
-              >
-                <Camera className="w-4 h-4" /> Enriquecer aprovados
-              </button>
-              <button
-                onClick={() => iniciarEnriquecimento({ incluir_rascunho: true })}
-                disabled={scraper?.running}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium
-                           disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700 transition-colors"
-                title="Busca fotos e descrições dos produtos em curadoria (rascunho)"
-              >
-                <Camera className="w-4 h-4" /> Enriquecer rascunhos
-              </button>
+              <Tooltip lines={[
+                '📸 Enriquecer aprovados',
+                'Acessa cada produto já APROVADO no site da JC Atacado e baixa:',
+                '• Foto de alta qualidade (galeria HD)',
+                '• Descrição técnica do produto',
+                'Pula produtos que já têm foto. Demora ~5s por produto.',
+                '✅ Não altera preços nem status.',
+              ]}>
+                <button
+                  onClick={() => iniciarEnriquecimento()}
+                  disabled={scraper?.running}
+                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-medium
+                             disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  style={{ backgroundColor: scraper?.running ? '#d1d5db' : '#fe68c4' }}
+                >
+                  <Camera className="w-4 h-4" /> Enriquecer aprovados
+                </button>
+              </Tooltip>
+              <Tooltip lines={[
+                '📷 Enriquecer rascunhos',
+                'Igual ao "Enriquecer aprovados", mas age sobre produtos em CURADORIA (rascunho).',
+                'Use após "Atualizar preços JC" para ver as fotos dos novos produtos antes de aprovar.',
+                '• Baixa foto + descrição dos rascunhos sem imagem',
+                '✅ Não aprova nem altera status.',
+                '⚠ Pode demorar bastante se houver muitos rascunhos.',
+              ]}>
+                <button
+                  onClick={() => iniciarEnriquecimento({ incluir_rascunho: true })}
+                  disabled={scraper?.running}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium
+                             disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700 transition-colors"
+                >
+                  <Camera className="w-4 h-4" /> Enriquecer rascunhos
+                </button>
+              </Tooltip>
             </div>
           )}
 
           {/* Botões de importação */}
           {scraper?.running ? (
-            <button
-              onClick={pararScraper}
-              className="flex items-center gap-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 text-sm font-medium"
-            >
-              <StopCircle className="w-4 h-4" /> Parar importação
-            </button>
+            <Tooltip lines={['Clique para interromper a importação em andamento.', 'Produtos já salvos são preservados. Use "Retomar" para continuar depois.']}>
+              <button
+                onClick={pararScraper}
+                className="flex items-center gap-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 text-sm font-medium"
+              >
+                <StopCircle className="w-4 h-4" /> Parar importação
+              </button>
+            </Tooltip>
           ) : (
             <div className="flex gap-2">
               {stats && stats.total > 0 && (
-                <button
-                  onClick={() => iniciarScraper(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
-                  title="Pula categorias que já foram importadas"
-                >
-                  <Play className="w-4 h-4" /> Retomar
-                </button>
+                <Tooltip lines={[
+                  '▶ Retomar importação',
+                  'Continua de onde parou — pula categorias já concluídas.',
+                  'Use quando a importação foi interrompida (parada manual ou reinício do servidor).',
+                  '✅ Preserva todos os status (aprovado/rascunho/pausado).',
+                ]}>
+                  <button
+                    onClick={() => iniciarScraper(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                  >
+                    <Play className="w-4 h-4" /> Retomar
+                  </button>
+                </Tooltip>
               )}
               {stats && stats.total > 0 && (
+                <Tooltip lines={[
+                  '🔄 Atualizar preços JC — use periodicamente',
+                  'Re-escaneia todas as categorias do JC Atacado.',
+                  '• Atualiza o preço de custo dos produtos existentes',
+                  '• Adiciona produtos novos como RASCUNHO',
+                  '• Remove produtos extintos (marca como pausado)',
+                  '✅ Status aprovado/rascunho/pausado é PRESERVADO.',
+                  '⚠ Dura ≈ 90 minutos. Use fora do horário de pico.',
+                  'Fluxo recomendado: 1️⃣ Atualizar preços  2️⃣ Enriquecer rascunhos  3️⃣ Aprovar na Curadoria',
+                ]}>
+                  <button
+                    onClick={() => {
+                      if (confirm('Atualizar preços não muda status dos produtos aprovados. Status e markups são preservados. Continuar?'))
+                        iniciarScraper(false);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
+                  >
+                    <RefreshCw className="w-4 h-4" /> Atualizar preços JC
+                  </button>
+                </Tooltip>
+              )}
+              <Tooltip lines={[
+                '▶ Importar tudo — primeira importação ou reset',
+                'Reimporta todas as 172 categorias do JC Atacado do zero.',
+                '• Use na PRIMEIRA VEZ para popular o catálogo',
+                '• Ou quando quiser forçar uma reimportação completa',
+                '✅ Produtos aprovados mantêm o status.',
+                '⚠ Dura ≈ 90 minutos.',
+                'Para atualizações periódicas, prefira "Atualizar preços JC".',
+              ]}>
                 <button
                   onClick={() => {
-                    if (confirm('Atualizar preços não muda status dos produtos aprovados. Status e markups são preservados. Continuar?'))
+                    if (confirm('Importar tudo reimporta todas as 172 categorias (≈90 min). Produtos aprovados mantêm o status. Confirmar?'))
                       iniciarScraper(false);
                   }}
-                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
-                  title="Reescaneia o JC Atacado atualizando preços — aprovados continuam aprovados"
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 text-sm font-medium"
                 >
-                  <RefreshCw className="w-4 h-4" /> Atualizar preços JC
+                  <Play className="w-4 h-4" /> Importar tudo
                 </button>
-              )}
-              <button
-                onClick={() => {
-                  if (confirm('Importar tudo reimporta todas as 172 categorias (≈90 min). Produtos aprovados mantêm o status. Confirmar?'))
-                    iniciarScraper(false);
-                }}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 text-sm font-medium"
-                title="Reimporta todas as categorias do zero"
-              >
-                <Play className="w-4 h-4" /> Importar tudo
-              </button>
+              </Tooltip>
             </div>
           )}
           <button
