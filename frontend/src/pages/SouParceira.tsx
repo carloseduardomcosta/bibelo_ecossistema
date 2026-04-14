@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import TrackingWidget from '../components/TrackingWidget';
 import axios from 'axios';
 import {
   Handshake, ShoppingBag, MessageCircle, ChevronLeft, ChevronRight,
@@ -1844,18 +1845,11 @@ function MeusPedidos({ rev: _rev }: { rev: Revendedora }) {
             </div>
           </div>
           {pedidoAberto.codigo_rastreio && (
-            <div className="px-5 pb-4">
-              <a
-                href={pedidoAberto.url_rastreio ?? `https://melhorrastreio.com.br/rastreio/${pedidoAberto.codigo_rastreio}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg
-                           bg-green-50 border border-green-200 text-green-700
-                           text-sm font-semibold hover:bg-green-100 transition-colors"
-              >
-                <Truck className="w-4 h-4" />
-                Rastrear envio — {pedidoAberto.codigo_rastreio}
-              </a>
+            <div className="px-5 pb-5">
+              <TrackingWidget
+                codigoInicial={pedidoAberto.codigo_rastreio}
+                showTitle={false}
+              />
             </div>
           )}
         </div>

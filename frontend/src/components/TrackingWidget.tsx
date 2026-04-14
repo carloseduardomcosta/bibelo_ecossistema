@@ -9,7 +9,6 @@
 
 import { useState, useEffect } from "react"
 import { Package, Search, Truck, CheckCircle, AlertCircle, Clock, ExternalLink, RefreshCw } from "lucide-react"
-import api from "../lib/api"
 
 interface TrackingResult {
   tracking_code: string
@@ -89,25 +88,15 @@ export default function TrackingWidget({ codigoInicial, apiBase, showTitle = tru
     setResultado(null)
 
     try {
-      const endpoint = apiBase
-        ? `${apiBase}/api/public/rastreio`
-        : "/api/public/rastreio"
-
-      // Se apiBase definido (uso externo), usa fetch nativo; caso contrário usa api axios do CRM
-      let data: TrackingResult
-      if (apiBase) {
-        const res = await fetch(`${endpoint}?codigo=${encodeURIComponent(codigo.trim().toUpperCase())}`)
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          throw new Error(err.error || `Erro ${res.status}`)
-        }
-        data = await res.json()
-      } else {
-        const res = await api.get(endpoint, {
-          params: { codigo: codigo.trim().toUpperCase() },
-        })
-        data = res.data
+      // fetch puro — endpoint público, sem auth necessária
+      const base = apiBase || ""
+      const url = `${base}/api/public/rastreio?codigo=${encodeURIComponent(codigo.trim().toUpperCase())}`
+      const res = await fetch(url)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `Erro ${res.status}`)
       }
+      const data: TrackingResult = await res.json()
 
       setResultado(data)
     } catch (err: any) {
