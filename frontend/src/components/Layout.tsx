@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import GlobalSearch from './GlobalSearch';
+import TrackingWidget from './TrackingWidget';
 import api from '../lib/api';
 import { timeAgo, formatCurrency } from '../lib/format';
 import {
@@ -311,6 +312,49 @@ const ORIGEM_LABELS: Record<string, string> = {
   grupo_vip: 'Grupo VIP',
   formulario: 'Formulário',
 };
+
+function TrackingButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        title="Rastrear envio"
+        className="relative p-2 text-bibelo-muted hover:text-bibelo-text hover:bg-bibelo-hover
+                   rounded-lg transition-colors"
+      >
+        <Package size={20} />
+      </button>
+
+      {open && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-[200]"
+            onClick={() => setOpen(false)}
+          />
+          <div className="fixed right-0 top-0 h-full w-full max-w-sm bg-bibelo-card z-[201]
+                          flex flex-col shadow-2xl border-l border-bibelo-border">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-bibelo-border">
+              <div className="flex items-center gap-2">
+                <Package size={18} className="text-pink-500" />
+                <h2 className="font-semibold text-bibelo-text">Rastrear envio</h2>
+              </div>
+              <button
+                onClick={() => setOpen(false)}
+                className="p-2 rounded-full hover:bg-bibelo-hover transition-colors text-bibelo-muted"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              <TrackingWidget showTitle={false} />
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
 
 function NotificationBell() {
   const navigate = useNavigate();
@@ -923,6 +967,7 @@ export default function Layout() {
               <GlobalSearch />
             </div>
           </div>
+          <TrackingButton />
           <NotificationBell />
         </header>
 
