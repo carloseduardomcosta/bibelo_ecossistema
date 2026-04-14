@@ -1185,38 +1185,78 @@ function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
   const inicio = catalogo ? (catalogo.pagina - 1) * limit + 1 : 0;
   const fim    = catalogo ? Math.min(catalogo.pagina * limit, catalogo.total) : 0;
 
+  const filtrosAtivos = !!(search || categoriaFiltro);
+
+  function limparFiltros() {
+    setSearchInput('');
+    setSearch('');
+    setCategoriaFiltro('');
+    setPagina(1);
+  }
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-5">
 
-      {/* Barra de controles */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-3">
+      {/* Barra de busca */}
+      <div className="flex gap-3 mb-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           <input
             type="text"
-            placeholder="Buscar produto..."
+            placeholder="Buscar produto ou descrição..."
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl
+            className="w-full pl-10 pr-10 py-3 bg-white border border-gray-200 rounded-xl
                        text-gray-900 text-sm font-medium
                        focus:outline-none focus:border-[#fe68c4] focus:ring-1 focus:ring-[#fe68c4]/30
                        transition-all shadow-sm"
           />
+          {searchInput && (
+            <button
+              onClick={() => { setSearchInput(''); setSearch(''); setPagina(1); }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
-        <select
-          value={categoriaFiltro}
-          onChange={e => { setCategoriaFiltro(e.target.value); setPagina(1); }}
-          className="bg-white border border-gray-200 rounded-xl px-3 py-3 text-sm text-gray-700
-                     font-medium focus:outline-none focus:border-[#fe68c4] min-w-[180px]
-                     shadow-sm cursor-pointer"
+        {filtrosAtivos && (
+          <button
+            onClick={limparFiltros}
+            className="flex items-center gap-1.5 px-3 py-2 bg-[#ffe5ec] text-[#fe68c4]
+                       text-sm font-semibold rounded-xl hover:bg-[#ffd6e8] transition-colors
+                       whitespace-nowrap shadow-sm"
+          >
+            <X className="w-3.5 h-3.5" /> Limpar
+          </button>
+        )}
+      </div>
+
+      {/* Pills de categoria */}
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-3 scrollbar-hide">
+        <button
+          onClick={() => { setCategoriaFiltro(''); setPagina(1); }}
+          className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all
+            ${!categoriaFiltro
+              ? 'bg-[#fe68c4] text-white shadow-sm'
+              : 'bg-white border border-gray-200 text-gray-600 hover:border-[#fe68c4] hover:text-[#fe68c4]'
+            }`}
         >
-          <option value="">Todas as categorias</option>
-          {categorias.map(c => (
-            <option key={c.categoria} value={c.categoria}>
-              {formatCategoria(c.categoria)} ({c.total})
-            </option>
-          ))}
-        </select>
+          Todas
+        </button>
+        {categorias.map(c => (
+          <button
+            key={c.categoria}
+            onClick={() => { setCategoriaFiltro(c.categoria); setPagina(1); }}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap
+              ${categoriaFiltro === c.categoria
+                ? 'bg-[#fe68c4] text-white shadow-sm'
+                : 'bg-white border border-gray-200 text-gray-600 hover:border-[#fe68c4] hover:text-[#fe68c4]'
+              }`}
+          >
+            {formatCategoria(c.categoria)} <span className="opacity-70">({c.total})</span>
+          </button>
+        ))}
       </div>
 
       {/* Toolbar: ordenação + itens/página + totalizador */}
@@ -1476,6 +1516,7 @@ function CartDrawer({ rev, cart, onCartChange, onClose, onPedidoCriado }: CartDr
   const [loading, setLoading]   = useState(false);
   const [sucesso, setSucesso]   = useState(false);
   const [erro, setErro]         = useState<string | null>(null);
+  const [nivelUpgrade, setNivelUpgrade] = useState<{ de: string; para: string } | null>(null);
 
   const items = [...cart.values()];
   const total       = items.reduce((s, i) => s + Number(i.produto.preco_final)        * i.quantidade, 0);
@@ -1486,10 +1527,11 @@ function CartDrawer({ rev, cart, onCartChange, onClose, onPedidoCriado }: CartDr
     setLoading(true);
     setErro(null);
     try {
-      await api.post('/souparceira/pedidos', {
+      const { data } = await api.post('/souparceira/pedidos', {
         itens: items.map(i => ({ produto_id: i.produto.id, quantidade: i.quantidade })),
         observacao: obs.trim() || undefined,
       });
+      if (data?.nivel_upgrade) setNivelUpgrade(data.nivel_upgrade);
       setSucesso(true);
       const empty = new Map<string, CartItem>();
       onCartChange(empty);
@@ -1502,6 +1544,13 @@ function CartDrawer({ rev, cart, onCartChange, onClose, onPedidoCriado }: CartDr
     }
   }
 
+  const NIVEL_EMOJI: Record<string, string> = {
+    iniciante: '✨', bronze: '🥉', prata: '🥈', ouro: '🥇', diamante: '💎',
+  };
+  const NIVEL_LABEL: Record<string, string> = {
+    iniciante: 'Iniciante', bronze: 'Bronze', prata: 'Prata', ouro: 'Ouro', diamante: 'Diamante',
+  };
+
   if (sucesso) {
     return (
       <div className="fixed inset-0 z-50 flex justify-end" style={{ fontFamily: 'Jost, sans-serif' }}>
@@ -1513,6 +1562,24 @@ function CartDrawer({ rev, cart, onCartChange, onClose, onPedidoCriado }: CartDr
           <p className="text-gray-500 text-sm mb-6">
             Seu pedido foi recebido e será analisado pela Bibelô em breve.
           </p>
+          {nivelUpgrade && (
+            <div className="w-full bg-[#ffe5ec] border border-[#fe68c4]/30 rounded-2xl p-4 mb-6 text-left">
+              <p className="text-xs font-semibold text-[#fe68c4] uppercase tracking-wide mb-1">
+                🎉 Você subiu de nível!
+              </p>
+              <p className="text-sm text-gray-700">
+                Este pedido te levou de{' '}
+                <span className="font-semibold">
+                  {NIVEL_EMOJI[nivelUpgrade.de]} {NIVEL_LABEL[nivelUpgrade.de]}
+                </span>{' '}
+                para{' '}
+                <span className="font-bold text-[#fe68c4]">
+                  {NIVEL_EMOJI[nivelUpgrade.para]} {NIVEL_LABEL[nivelUpgrade.para]}
+                </span>
+                {' '}— o desconto maior já foi aplicado aqui!
+              </p>
+            </div>
+          )}
           <button
             onClick={() => { onClose(); onPedidoCriado(); }}
             className="bg-[#fe68c4] text-white px-6 py-3 rounded-xl font-semibold text-sm

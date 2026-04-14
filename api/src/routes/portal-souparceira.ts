@@ -489,8 +489,9 @@ portalSouParceiraRouter.get(
     let idx = 1;
 
     if (search) {
-      conditions.push(`p.nome ILIKE $${idx++}`);
+      conditions.push(`(p.nome ILIKE $${idx} OR p.descricao ILIKE $${idx})`);
       params.push(`%${search}%`);
+      idx++;
     }
     if (categoria) {
       conditions.push(`COALESCE(p.slug_categoria, p.categoria) = $${idx++}`);
@@ -641,6 +642,16 @@ const limiterEscrita = rateLimit({
   message: { error: "Muitas requisições. Aguarde um momento." },
   skip: () => process.env.VITEST === "true",
 });
+
+// ── Helpers de nível ─────────────────────────────────────────────
+
+function calcularNivelPortal(volume: number): { nivel: string; desconto: number } {
+  if (volume >= 3000) return { nivel: "diamante", desconto: 30 };
+  if (volume >= 1200) return { nivel: "ouro",     desconto: 25 };
+  if (volume >= 600)  return { nivel: "prata",    desconto: 20 };
+  if (volume >= 300)  return { nivel: "bronze",   desconto: 15 };
+  return                    { nivel: "iniciante", desconto: 0  };
+}
 
 // ── Helpers de email ─────────────────────────────────────────────
 
@@ -831,14 +842,15 @@ portalSouParceiraRouter.post(
     }
 
     const rev = await queryOne<{
-      nome: string; email: string; nivel: string; percentual_desconto: string;
+      nome: string; email: string; nivel: string; percentual_desconto: string; pedido_minimo: string;
     }>(
-      "SELECT nome, email, nivel, percentual_desconto FROM crm.revendedoras WHERE id = $1 AND status = 'ativa'",
+      "SELECT nome, email, nivel, percentual_desconto, pedido_minimo FROM crm.revendedoras WHERE id = $1 AND status = 'ativa'",
       [id]
     );
     if (!rev) { res.status(401).json({ error: "Sessão inválida." }); return; }
 
     const descPct = Number(rev.percentual_desconto);
+    const minimo  = parseFloat(rev.pedido_minimo ?? "300");
     const { itens: itemsInput, observacao } = parse.data;
 
     // Buscar preços server-side — nunca confiar em preços do cliente
@@ -867,7 +879,8 @@ portalSouParceiraRouter.post(
 
     const prodMap = new Map(produtos.map(p => [p.id, p]));
 
-    const itensCalculados = itemsInput.map(item => {
+    // Calcular itens com o desconto atual (provisório)
+    let itensCalculados = itemsInput.map(item => {
       const p     = prodMap.get(item.produto_id)!;
       const markup = Number(p.markup_override ?? p.markup ?? 2.00);
       const precoCusto = Number(p.preco_custo);
@@ -883,9 +896,53 @@ portalSouParceiraRouter.post(
       };
     });
 
+    // ── Projeção de nível ──────────────────────────────────────────
+    // Se este pedido (somado ao volume aprovado do mês) cruzar um threshold,
+    // aplica o desconto melhor já neste pedido — não no próximo.
+    //
+    // Nota: o total armazenado será o valor com o desconto melhorado. Após
+    // aprovação, recalcularVolume somará esse total, que pode ficar abaixo
+    // do threshold Diamante (ex.: 30% reduz R$3.216→R$2.649 → Ouro no recalc).
+    // A parceira recebeu o benefício neste pedido; os próximos usam o tier
+    // recalculado sobre o valor real pago.
+    const volumeRow = await queryOne<{ volume: string }>(
+      `SELECT COALESCE(SUM(total), 0)::text AS volume
+         FROM crm.revendedora_pedidos
+        WHERE revendedora_id = $1
+          AND status IN ('aprovado', 'enviado', 'entregue')
+          AND DATE_TRUNC('month', criado_em) = DATE_TRUNC('month', NOW())`,
+      [id]
+    );
+    const volumeAcumulado  = parseFloat(volumeRow?.volume || "0");
+    const totalProvisorio  = itensCalculados.reduce((s, i) => s + i.preco_com_desconto * i.quantidade, 0);
+    const volumeProjetado  = volumeAcumulado + totalProvisorio;
+    const { nivel: nivelProjetado, desconto: descontoProjetado } = calcularNivelPortal(volumeProjetado);
+
+    let descPctFinal = descPct;
+    let nivelUpgrade: { de: string; para: string } | null = null;
+
+    if (descontoProjetado > descPct) {
+      descPctFinal = descontoProjetado;
+      nivelUpgrade = { de: rev.nivel, para: nivelProjetado };
+      itensCalculados = itensCalculados.map(i => ({
+        ...i,
+        preco_com_desconto: Math.round(i.preco_unitario * (1 - descPctFinal / 100) * 100) / 100,
+      }));
+    }
+    // ──────────────────────────────────────────────────────────────
+
     const subtotal = itensCalculados.reduce((s, i) => s + i.preco_unitario * i.quantidade, 0);
     const total    = itensCalculados.reduce((s, i) => s + i.preco_com_desconto * i.quantidade, 0);
     const descVal  = subtotal - total;
+
+    if (total < minimo) {
+      res.status(400).json({
+        error: `Pedido mínimo é R$ ${minimo.toFixed(2).replace(".", ",")}. Total atual: R$ ${total.toFixed(2).replace(".", ",")}`,
+        pedido_minimo: minimo,
+        total_atual: total,
+      });
+      return;
+    }
 
     const numero = await gerarNumeroPedidoPortal();
 
@@ -895,7 +952,7 @@ portalSouParceiraRouter.post(
           desconto_valor, total, observacao, itens)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING *`,
-      [id, numero, subtotal.toFixed(2), descPct, descVal.toFixed(2),
+      [id, numero, subtotal.toFixed(2), descPctFinal, descVal.toFixed(2),
        total.toFixed(2), observacao ?? null, JSON.stringify(itensCalculados)]
     );
 
@@ -929,8 +986,8 @@ portalSouParceiraRouter.post(
       tags:    [{ name: "tipo", value: "pedido_parceira" }],
     }).catch(err => logger.error("Erro ao enviar email novo pedido", { error: (err as Error).message }));
 
-    logger.info("Pedido portal criado", { revendedoraId: id, numero, total: total.toFixed(2) });
-    res.status(201).json(pedido);
+    logger.info("Pedido portal criado", { revendedoraId: id, numero, total: total.toFixed(2), nivelUpgrade });
+    res.status(201).json({ ...pedido, nivel_upgrade: nivelUpgrade });
   }
 );
 

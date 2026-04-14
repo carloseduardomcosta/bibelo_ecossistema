@@ -920,8 +920,42 @@ revendedorasRouter.post("/:id/pedidos", async (req: Request, res: Response) => {
   const { itens, observacao } = parse.data;
 
   const subtotal = itens.reduce((s, i) => s + i.preco_unitario * i.quantidade, 0);
-  const total    = itens.reduce((s, i) => s + i.preco_com_desconto * i.quantidade, 0);
-  const descVal  = subtotal - total;
+
+  // ── Projeção de nível ──────────────────────────────────────────
+  // Se o volume acumulado do mês + este pedido cruzar um threshold,
+  // aplica o desconto melhor já neste pedido.
+  const volumeRow = await queryOne<{ volume: string }>(
+    `SELECT COALESCE(SUM(total), 0)::text AS volume
+       FROM crm.revendedora_pedidos
+      WHERE revendedora_id = $1
+        AND status IN ('aprovado', 'enviado', 'entregue')
+        AND DATE_TRUNC('month', criado_em) = DATE_TRUNC('month', NOW())`,
+    [id]
+  );
+  const volumeAcumulado = parseFloat(volumeRow?.volume || "0");
+  const totalProvisorio = itens.reduce((s, i) => s + i.preco_com_desconto * i.quantidade, 0);
+  const volumeProjetado = volumeAcumulado + totalProvisorio;
+  const { nivel: nivelProjetado, desconto: descontoProjetado } = calcularNivel(volumeProjetado);
+
+  let descPctFinal = descPct;
+  let nivelUpgrade: { de: string; para: string } | null = null;
+  let itensFinais = itens;
+
+  if (descontoProjetado > descPct) {
+    descPctFinal = descontoProjetado;
+    const nivelAtual = await queryOne<{ nivel: string }>(
+      "SELECT nivel FROM crm.revendedoras WHERE id = $1", [id]
+    );
+    nivelUpgrade = { de: nivelAtual?.nivel ?? "iniciante", para: nivelProjetado };
+    itensFinais = itens.map(i => ({
+      ...i,
+      preco_com_desconto: Math.round(i.preco_unitario * (1 - descPctFinal / 100) * 100) / 100,
+    }));
+  }
+  // ──────────────────────────────────────────────────────────────
+
+  const total  = itensFinais.reduce((s, i) => s + i.preco_com_desconto * i.quantidade, 0);
+  const descVal = subtotal - total;
 
   if (total < minimo) {
     res.status(400).json({
@@ -940,8 +974,8 @@ revendedorasRouter.post("/:id/pedidos", async (req: Request, res: Response) => {
         desconto_valor, total, observacao, itens)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      RETURNING *`,
-    [id, numero, subtotal.toFixed(2), descPct, descVal.toFixed(2),
-     total.toFixed(2), observacao ?? null, JSON.stringify(itens)]
+    [id, numero, subtotal.toFixed(2), descPctFinal, descVal.toFixed(2),
+     total.toFixed(2), observacao ?? null, JSON.stringify(itensFinais)]
   );
 
   // Conquista: primeiro pedido
@@ -952,8 +986,8 @@ revendedorasRouter.post("/:id/pedidos", async (req: Request, res: Response) => {
     await concederConquista(id, "primeiro_pedido", "Primeira Compra — bem-vinda ao Clube Bibelô!", 10);
   }
 
-  logger.info("Pedido revendedora criado", { id, numero, total: total.toFixed(2) });
-  res.status(201).json(pedido);
+  logger.info("Pedido revendedora criado", { id, numero, total: total.toFixed(2), nivelUpgrade });
+  res.status(201).json({ ...pedido, nivel_upgrade: nivelUpgrade });
 });
 
 // ── PUT /:id/pedidos/:pedidoId/status ─────────────────────────
