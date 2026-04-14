@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useStoreSettings } from "@/hooks/useStoreSettings"
 
 const API_BASE = process.env.NEXT_PUBLIC_LEADS_API_URL || "https://webhook.papelariabibelo.com.br"
 const POPUP_COOKIE = "_bibelo_popup"
@@ -27,6 +28,7 @@ function trySet(k: string, v: string) {
 }
 
 export default function DiscountPopup() {
+  const { settings, loading } = useStoreSettings()
   const [show, setShow] = useState(false)
   const [nome, setNome] = useState("")
   const [email, setEmail] = useState("")
@@ -34,14 +36,20 @@ export default function DiscountPopup() {
   const [done, setDone] = useState(false)
   const [message, setMessage] = useState("")
 
+  // Não mostrar enquanto carrega (evita flash com defaults)
+  const popupAtivo = loading ? false : settings.popup_ativo
+  const desconto = settings.popup_desconto
+
   useEffect(() => {
     // Abertura manual via BenefitsStrip (ignora cookie — usuário clicou intencionalmente)
-    const handleManualOpen = () => setShow(true)
+    const handleManualOpen = () => {
+      if (settings.popup_ativo) setShow(true)
+    }
     window.addEventListener("bibelo:open-popup", handleManualOpen)
 
-    // Abertura automática após delay — só se ainda não viu
+    // Abertura automática após delay — só se popup_ativo e ainda não viu
     let timer: ReturnType<typeof setTimeout>
-    if (!getCookie(LEAD_COOKIE) && !tryGet(LEAD_COOKIE) &&
+    if (popupAtivo && !getCookie(LEAD_COOKIE) && !tryGet(LEAD_COOKIE) &&
         !getCookie(POPUP_COOKIE) && !tryGet(POPUP_COOKIE)) {
       timer = setTimeout(() => setShow(true), DELAY_SECONDS * 1000)
     }
@@ -50,7 +58,7 @@ export default function DiscountPopup() {
       window.removeEventListener("bibelo:open-popup", handleManualOpen)
       clearTimeout(timer)
     }
-  }, [])
+  }, [popupAtivo, settings.popup_ativo])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -72,11 +80,11 @@ export default function DiscountPopup() {
 
       setDone(true)
       if (data.verificacao === "ja_verificado") {
-        setMessage("Seu desconto de 10% já está ativo!")
+        setMessage(`Seu desconto de ${desconto}% já está ativo!`)
       } else if (data.verificacao === "cliente_existente") {
         setMessage("Você já faz parte da família Bibelô!")
       } else {
-        setMessage("Verifique seu e-mail para ativar o desconto de 10%!")
+        setMessage(`Verifique seu e-mail para ativar o desconto de ${desconto}%!`)
       }
 
       setCookie(POPUP_COOKIE, "1", 30)
@@ -94,7 +102,8 @@ export default function DiscountPopup() {
     trySet(POPUP_COOKIE, "1")
   }
 
-  if (!show) return null
+  // Não renderizar se popup desativado no admin ou ainda carregando
+  if (!popupAtivo || !show) return null
 
   return (
     <div
@@ -120,14 +129,14 @@ export default function DiscountPopup() {
 
           {/* Badge pulsante */}
           <div className="inline-block bg-gradient-to-r from-bibelo-pink to-pink-500 text-white px-7 py-2.5 rounded-full text-xl font-bold tracking-wide mb-4 shadow-lg animate-pulse">
-            10% OFF
+            {desconto}% OFF
           </div>
 
           <h2 className="font-heading text-2xl font-bold text-bibelo-dark leading-tight mb-1.5">
             Faça parte do Clube Bibelô!
           </h2>
           <p className="text-gray-500 text-sm leading-relaxed max-w-[340px] mx-auto">
-            10% OFF na 1ª compra · frete grátis · mimo surpresa · novidades em primeira mão
+            {desconto}% OFF na 1ª compra · frete grátis · mimo surpresa · novidades em primeira mão
           </p>
         </div>
 
@@ -172,7 +181,7 @@ export default function DiscountPopup() {
               </button>
 
               <div className="flex justify-center gap-3 pt-2 text-[11px] text-gray-400">
-                <span>🏷️ 10% OFF</span>
+                <span>🏷️ {desconto}% OFF</span>
                 <span>🚚 Frete grátis*</span>
                 <span>🎁 Mimo surpresa</span>
               </div>
