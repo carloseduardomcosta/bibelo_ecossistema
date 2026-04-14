@@ -16,13 +16,58 @@ export const metadata: Metadata = {
     template: "%s | Papelaria Bibelô",
   },
   description:
-    "Papelaria artesanal com curadoria especial. Cadernos, canetas, agendas e muito mais. Frete grátis acima de R$ 199.",
-  keywords: ["papelaria", "caderno", "caneta", "agenda", "Bibelô", "Timbó SC"],
+    "Papelaria artesanal com curadoria especial em Timbó/SC. Cadernos, canetas, agendas e muito mais. Frete grátis para Sul e Sudeste acima de R$ 79.",
+  keywords: [
+    "papelaria",
+    "caderno",
+    "caneta",
+    "agenda",
+    "Bibelô",
+    "Timbó SC",
+    "papelaria online",
+    "artigos de papelaria",
+    "material escolar",
+  ],
+  authors: [{ name: "Papelaria Bibelô" }],
+  creator: "Papelaria Bibelô",
+  publisher: "Papelaria Bibelô",
+  metadataBase: new URL("https://homolog.papelariabibelo.com.br"),
   openGraph: {
     type: "website",
     locale: "pt_BR",
-    url: "https://papelariabibelo.com.br",
+    url: "https://homolog.papelariabibelo.com.br",
     siteName: "Papelaria Bibelô",
+    title: "Papelaria Bibelô — Papelaria Artesanal com Curadoria Especial",
+    description:
+      "Papelaria artesanal com curadoria especial em Timbó/SC. Cadernos, canetas, agendas e muito mais.",
+    images: [
+      {
+        url: "/og-image.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Papelaria Bibelô",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@papelariabibelo",
+    creator: "@papelariabibelo",
+    title: "Papelaria Bibelô — Papelaria Artesanal com Curadoria Especial",
+    description:
+      "Papelaria artesanal com curadoria especial em Timbó/SC. Cadernos, canetas, agendas e muito mais.",
+    images: ["/og-image.jpg"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
   },
 }
 

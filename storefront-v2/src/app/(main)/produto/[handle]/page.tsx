@@ -18,10 +18,29 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { handle } = await params
   const product = await getProductByHandle(handle)
   if (!product) return { title: "Produto não encontrado" }
+
+  const description = product.description
+    ? product.description.replace(/<[^>]*>/g, "").slice(0, 160)
+    : `Compre ${product.title} na Papelaria Bibelô — papelaria artesanal em Timbó/SC.`
+
+  const images = product.thumbnail
+    ? [{ url: product.thumbnail, width: 800, height: 800, alt: product.title }]
+    : []
+
   return {
     title: product.title,
-    description: product.description || `Compre ${product.title} na Papelaria Bibelô`,
+    description,
     openGraph: {
+      title: `${product.title} | Papelaria Bibelô`,
+      description,
+      url: `https://homolog.papelariabibelo.com.br/produto/${handle}`,
+      type: "website",
+      images,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${product.title} | Papelaria Bibelô`,
+      description,
       images: product.thumbnail ? [product.thumbnail] : [],
     },
   }

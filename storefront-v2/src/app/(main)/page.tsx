@@ -7,8 +7,8 @@ import LeadCapture from "@/components/home/LeadCapture"
 import { listProducts } from "@/lib/medusa/products"
 import { getNovidadesBling } from "@/lib/api/novidades"
 
-// SSR dinâmico — produtos sempre atualizados a cada request
-export const dynamic = "force-dynamic"
+// ISR: revalida a cada 3 minutos (balanceia frescor com performance)
+export const revalidate = 180
 
 export default async function HomePage() {
   const [promoProducts, novidadesResult] = await Promise.allSettled([

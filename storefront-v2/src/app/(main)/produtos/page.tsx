@@ -6,7 +6,20 @@ import type { Metadata } from "next"
 
 export const metadata: Metadata = {
   title: "Todos os Produtos",
-  description: "Explore toda a linha de produtos da Papelaria Bibelô — cadernos, canetas, agendas e muito mais.",
+  description:
+    "Explore toda a linha de produtos da Papelaria Bibelô — cadernos, canetas, agendas, estojos e muito mais. Frete grátis para Sul e Sudeste acima de R$ 79.",
+  openGraph: {
+    title: "Todos os Produtos | Papelaria Bibelô",
+    description:
+      "Explore toda a linha de produtos da Papelaria Bibelô — cadernos, canetas, agendas, estojos e muito mais.",
+    url: "https://homolog.papelariabibelo.com.br/produtos",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "Todos os Produtos | Papelaria Bibelô",
+    description: "Explore toda a linha de produtos da Papelaria Bibelô.",
+  },
 }
 
 export const revalidate = 300
