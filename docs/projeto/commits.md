@@ -1250,6 +1250,36 @@ sync.category_sync_log         (auditoria)
 - Tabela `public.notificacoes` + endpoints GET/PUT lida-tudo/:id/lida
 - `GET /api/revendedoras/pedidos-recentes` registrado ANTES de `/:id` (fix conflito rota UUID)
 
+### feat(revendedoras): reestrutura programa com descontos sustentáveis e pedido mínimo R$300 — `289e865` (14/04/2026)
+- Análise real de margens via API Bling: markup médio 2.10× (não 2.3×), variando de 1.27× (cadernos) a 3.48× (canetas baratas)
+- Programa redesenhado: Iniciante (0%, 1º pedido ≥ R$300), Bronze (15%), Prata (20%), Ouro (25% + frete 50/50), Diamante (30% + frete grátis)
+- Pedido mínimo R$300 com validação server-side (`POST /:id/pedidos`) — erro 400 com `pedido_minimo` + `total_atual`
+- Frete 3 estados: `proprio` / `meio` (50/50) / `gratis` — substituiu flag booleana anterior
+- `calcularNivel()`, `calcularProgresso()`, `buildTabelaNiveis()`, `buildBoasVindasParceira()` atualizados
+- `SouParceira.tsx`: NIVEL config com `frete: 'proprio'|'meio'|'gratis'`, cores amber para Ouro
+- `public-politica-parceira.ts`: tabela de níveis e seção de frete atualizadas
+- Migration `db/migrations/042_pedido_rastreio_bling.sql`: colunas `codigo_rastreio`, `url_rastreio`, `bling_pedido_id` em `crm.revendedora_pedidos`
+
+### feat(revendedoras): integração Bling B2B + rastreio + ajustes programa — `0d89e65` (14/04/2026)
+- `sincronizarPedidoBling()`: ao aprovar pedido, cria pedido de venda no Bling automaticamente (não-bloqueante)
+- `RevendedoraPerfil.tsx`: exibe `bling_pedido_id` (Bling #) e `codigo_rastreio` como link MelhorRastreio clicável
+- Campo de rastreio exibido ao avançar para status `enviado`
+- `GET /api/revendedoras/acessos-portal-recentes`: parceiras que acessaram o portal nas últimas 6h (para sininho CRM)
+- `Layout.tsx` sininho: nova seção "Acessos ao Portal" com ícone 🔑 indigo, inclui na contagem `urgentes`
+- OTP login do portal registra interação na timeline CRM + notificação no sininho
+
+### test: ajusta testes para desconto Iniciante 5% e dedup de fluxo — `72b9ed1` (14/04/2026)
+- `flows-audit.test.ts`: LGPD check exclui templates `%Sou Parceira%` (transacionais B2B, sem link de descadastro)
+- Dedup 72h: step `concluido` com `resultado.waited = true` tratado como caso esperado (não exige `messageId`)
+
+### test(revendedoras): cobertura completa do fluxo de pedidos B2B — `2ea6923` (14/04/2026)
+- 66 novos testes cobrindo fluxo completo de pedido B2B (total 717 passed, 0 failed)
+- POST pedidos: validação body, mínimo R$300 (400 com campos `pedido_minimo`+`total_atual`), 201 success, 404
+- GET pedidos: listagem, campos essenciais
+- PUT status: aprovado+aprovado_em, recalcularVolume (iniciante→bronze), rastreio+url_rastreio, entregue, 404, cancelamento
+- GET /pedidos-recentes: estrutura `{ data, pendentes, mensagens_nao_lidas }`
+- GET /acessos-portal-recentes: array de acessos recentes
+
 ### feat(revendedoras): editor de emails Sou Parceira via frontend — `61dda0a` (13/04/2026)
 - Botão "✉ Editar emails" na página Revendedoras abre modal com editor HTML
 - 3 templates editáveis: boas-vindas, status do pedido, nova mensagem

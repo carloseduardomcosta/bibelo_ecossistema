@@ -235,15 +235,16 @@ Painel de mapeamento de categorias Bling → Medusa. Rota base: `/api/categorias
 ### Revendedoras — CRUD + Pedidos + Mensagens (protegidos)
 - `GET  /api/revendedoras` — lista paginada com filtros (search, nivel, status)
 - `POST /api/revendedoras` — criar revendedora
-- `GET  /api/revendedoras/pedidos-recentes` — últimos 10 pedidos (7 dias ou pendentes) com `pendentes` + `mensagens_nao_lidas` para sininho CRM
+- `GET  /api/revendedoras/pedidos-recentes` — últimos 10 pedidos (7 dias ou pendentes) com `pendentes` + `mensagens_nao_lidas` para sininho CRM. Retorna `{ data[], pendentes, mensagens_nao_lidas }`.
+- `GET  /api/revendedoras/acessos-portal-recentes` — parceiras que fizeram OTP login nas últimas 6h. Usado pelo sininho CRM (seção "Acessos ao Portal", ícone 🔑, contagem urgentes).
 - `GET  /api/revendedoras/email-templates` — lista os 3 templates editáveis (`revendedoras_boas_vindas`, `revendedoras_status_pedido`, `revendedoras_nova_mensagem`) com assunto, html e variáveis disponíveis
 - `PUT  /api/revendedoras/email-templates/:slug` — atualiza assunto e HTML de um template. Body: `{ assunto, html }`. Persiste em `marketing.templates`. Próximos envios usam o template salvo; fallback para HTML hardcoded se removido do banco.
 - `GET  /api/revendedoras/:id` — perfil completo com KPIs
 - `PUT  /api/revendedoras/:id` — atualizar dados
 - `DELETE /api/revendedoras/:id` — remover
 - `GET  /api/revendedoras/:id/pedidos` — pedidos da revendedora com `mensagens_nao_lidas` por pedido
-- `POST /api/revendedoras/:id/pedidos` — criar pedido (preço calculado server-side: preco_custo × markup × desconto%)
-- `PUT  /api/revendedoras/:id/pedidos/:pedidoId/status` — alterar status (`pendente|aprovado|enviado|entregue|cancelado`). Body: `{ status, observacao_admin? }`. Se `observacao_admin`, cria mensagem automática no thread. Envia email para revendedora.
+- `POST /api/revendedoras/:id/pedidos` — criar pedido (preço calculado server-side: preco_custo × markup × desconto%). Valida pedido mínimo (default R$300) — 400 com `{ error, pedido_minimo, total_atual }` se abaixo.
+- `PUT  /api/revendedoras/:id/pedidos/:pedidoId/status` — alterar status (`pendente|aprovado|enviado|entregue|cancelado`). Body: `{ status, codigo_rastreio?, url_rastreio?, observacao_admin? }`. Ao `aprovado`: sincroniza pedido no Bling (não-bloqueante) e salva `bling_pedido_id`. Ao `enviado`: aceita `codigo_rastreio` + `url_rastreio` (MelhorRastreio). Se `observacao_admin`, cria mensagem automática no thread. Envia email para revendedora.
 - `GET  /api/revendedoras/:id/pedidos/:pedidoId/mensagens` — lista mensagens do thread; marca mensagens da revendedora como lidas
 - `POST /api/revendedoras/:id/pedidos/:pedidoId/mensagens` — admin envia mensagem; envia email para revendedora; cria notificação no sininho
 - `GET  /api/revendedoras/:id/catalogo` — catálogo com preços calculados

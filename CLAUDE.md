@@ -228,13 +228,13 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 
 ## Skills ativas
 
-@/mnt/skills/organization/secure-dev/SKILL.md
-@/mnt/skills/public/frontend-design/SKILL.md
-@/mnt/skills/public/docx/SKILL.md
-@/mnt/skills/public/pptx/SKILL.md
 @.claude/skills/bibelo-design.md
+@.claude/skills/bibelo-storefront.md
+@.claude/skills/security-review.md
+@.claude/skills/verification-loop.md
+@.claude/skills/briefing/SKILL.md
 
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 9 de Abril de 2026 — reorganização CLAUDE.md com referências externas em docs/claude/*
+*Última atualização: 14 de Abril de 2026 — skills ativas corrigidas, security-review e verification-loop adicionadas*
