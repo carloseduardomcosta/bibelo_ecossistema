@@ -180,7 +180,13 @@ function extrairGaleria(html: string, itemId: string): string[] {
  *     Filtrada por /Produtos/{item_id}/Fotos/ → garante fotos do produto correto
  *   - Descrição do produto
  */
-async function executarEnriquecimento(): Promise<void> {
+async function executarEnriquecimento(opts?: { categorias?: string[]; incluirRascunho?: boolean }): Promise<void> {
+  const statusFiltro = opts?.incluirRascunho ? `status IN ('aprovado','rascunho')` : `status = 'aprovado'`;
+  const catFiltro = opts?.categorias && opts.categorias.length > 0
+    ? `AND COALESCE(slug_categoria, categoria) = ANY($1::text[])`
+    : "";
+  const catParams = opts?.categorias && opts.categorias.length > 0 ? [opts.categorias] : [];
+
   try {
     // ── Fase 1: produto_url via listings (se ainda faltarem) ─────
     enrichState.fase = "imagens";
@@ -188,10 +194,12 @@ async function executarEnriquecimento(): Promise<void> {
     const cats = await query<{ slug: string; total: number }>(
       `SELECT COALESCE(slug_categoria, categoria) AS slug, COUNT(*)::int AS total
        FROM sync.fornecedor_catalogo_jc
-       WHERE status = 'aprovado' AND produto_url IS NULL
+       WHERE ${statusFiltro} AND produto_url IS NULL
          AND COALESCE(slug_categoria, categoria) IS NOT NULL
+         ${catFiltro}
        GROUP BY COALESCE(slug_categoria, categoria)
-       ORDER BY slug`
+       ORDER BY slug`,
+      catParams
     );
 
     if (cats.length > 0) {
@@ -205,7 +213,7 @@ async function executarEnriquecimento(): Promise<void> {
         try {
           const prods = await query<{ item_id: string }>(
             `SELECT item_id FROM sync.fornecedor_catalogo_jc
-             WHERE status = 'aprovado' AND produto_url IS NULL
+             WHERE ${statusFiltro} AND produto_url IS NULL
                AND COALESCE(slug_categoria, categoria) = $1`,
             [slug]
           );
@@ -258,12 +266,14 @@ async function executarEnriquecimento(): Promise<void> {
     enrichState.fase   = "galeria";
     enrichState.feitos = 0;
 
-    // Aprovados com produto_url mas sem galeria ainda
+    // Produtos com produto_url mas sem galeria ainda (aprovados ou rascunho por filtro)
     const semGaleria = await query<{ id: string; item_id: string; produto_url: string }>(
       `SELECT id, item_id, produto_url FROM sync.fornecedor_catalogo_jc
-       WHERE status = 'aprovado' AND produto_url IS NOT NULL AND imagens_urls IS NULL
+       WHERE ${statusFiltro} AND produto_url IS NOT NULL AND imagens_urls IS NULL
+         ${catFiltro}
        ORDER BY slug_categoria, item_id
-       LIMIT 3000`
+       LIMIT 3000`,
+      catParams
     );
 
     enrichState.total    = semGaleria.length;
@@ -989,7 +999,9 @@ fornecedorCatalogoRouter.get("/scraper/historico", async (_req: Request, res: Re
   res.json(rows);
 });
 
-/** POST /scraper/enriquecer — captura fotos + descrições dos produtos aprovados */
+/** POST /scraper/enriquecer — captura fotos + descrições dos produtos
+ *  Body opcional: { categorias?: string[], incluir_rascunho?: boolean }
+ */
 fornecedorCatalogoRouter.post("/scraper/enriquecer", async (req: Request, res: Response) => {
   if (scraperState.running) {
     res.status(409).json({ error: "Scraper principal está em execução — aguarde" });
@@ -1000,26 +1012,49 @@ fornecedorCatalogoRouter.post("/scraper/enriquecer", async (req: Request, res: R
     return;
   }
 
+  const schema = z.object({
+    categorias:       z.array(z.string().min(1)).optional(),
+    incluir_rascunho: z.boolean().optional(),
+  });
+  const parse = schema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: "Parâmetros inválidos", detalhes: parse.error.flatten() });
+    return;
+  }
+  const { categorias, incluir_rascunho } = parse.data;
+
   Object.assign(enrichState, {
     running: true,
     fase: "imagens",
     total: 0,
     feitos: 0,
     com_imagem: 0,
+    com_galeria: 0,
     com_descricao: 0,
     erros: 0,
     iniciado_em: new Date().toISOString(),
-    mensagem: "Iniciando enriquecimento...",
+    mensagem: categorias?.length
+      ? `Iniciando enriquecimento de ${categorias.length} categoria(s)${incluir_rascunho ? " (inclui rascunhos)" : ""}...`
+      : "Iniciando enriquecimento...",
   });
 
-  logger.info("Enriquecimento JC iniciado", { user: (req as Request & { user?: { email: string } }).user?.email });
-  setImmediate(() => executarEnriquecimento().catch(e => {
+  logger.info("Enriquecimento JC iniciado", {
+    user: (req as Request & { user?: { email: string } }).user?.email,
+    categorias,
+    incluir_rascunho,
+  });
+  setImmediate(() => executarEnriquecimento({ categorias, incluirRascunho: incluir_rascunho }).catch(e => {
     logger.error("Enriquecimento erro", { error: e.message });
     enrichState.running = false;
     enrichState.fase = "erro";
   }));
 
-  res.json({ ok: true, mensagem: "Enriquecimento iniciado em background — acompanhe em /scraper/enriquecer/status" });
+  res.json({
+    ok: true,
+    mensagem: "Enriquecimento iniciado em background — acompanhe em /scraper/enriquecer/status",
+    categorias: categorias ?? "todas",
+    incluir_rascunho: incluir_rascunho ?? false,
+  });
 });
 
 /** POST /scraper/enriquecer/parar — para o enriquecimento */
