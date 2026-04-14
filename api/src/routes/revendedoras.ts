@@ -910,17 +910,27 @@ revendedorasRouter.post("/:id/pedidos", async (req: Request, res: Response) => {
     return;
   }
 
-  const rev = await queryOne<{ percentual_desconto: string }>(
-    "SELECT percentual_desconto FROM crm.revendedoras WHERE id = $1", [id]
+  const rev = await queryOne<{ percentual_desconto: string; pedido_minimo: string }>(
+    "SELECT percentual_desconto, pedido_minimo FROM crm.revendedoras WHERE id = $1", [id]
   );
   if (!rev) { res.status(404).json({ error: "Revendedora não encontrada" }); return; }
 
   const descPct  = parseFloat(rev.percentual_desconto);
+  const minimo   = parseFloat(rev.pedido_minimo ?? "300");
   const { itens, observacao } = parse.data;
 
   const subtotal = itens.reduce((s, i) => s + i.preco_unitario * i.quantidade, 0);
   const total    = itens.reduce((s, i) => s + i.preco_com_desconto * i.quantidade, 0);
   const descVal  = subtotal - total;
+
+  if (total < minimo) {
+    res.status(400).json({
+      error: `Pedido mínimo é R$ ${minimo.toFixed(2).replace(".", ",")}. Total atual: R$ ${total.toFixed(2).replace(".", ",")}`,
+      pedido_minimo: minimo,
+      total_atual: total,
+    });
+    return;
+  }
 
   const numero = await gerarNumeroPedido();
 

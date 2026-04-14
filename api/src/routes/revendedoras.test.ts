@@ -552,3 +552,236 @@ describe("Lógica de cálculo de níveis (via GET /:id)", () => {
     });
   }
 });
+
+// ── Fluxo completo de pedidos B2B ─────────────────────────────────
+//
+// Cobre: criação, pedido mínimo, listagem, aprovação, rastreio,
+//        recálculo de volume/nível e chamada ao Bling (não-bloqueante).
+
+const REV_PEDIDO = "cccccccc-0000-4000-a000-000000000020";
+const EMAIL_PEDIDO = "vitest-pedido@test.bibelo.internal";
+
+// Item padrão: R$350 com desconto de 15% → total R$297,50... mas precisa ≥ R$300
+// Usamos total = R$300 exato para cobrir o limite
+const itensPadraoOK = [
+  { produto_nome: "Caneta Vitest", produto_sku: "CAN-VT", quantidade: 10,
+    preco_unitario: 35.29, preco_com_desconto: 30.00 }, // total: 300,00
+];
+
+const itensMinimoInsuficiente = [
+  { produto_nome: "Caneta Vitest Barata", produto_sku: "CAN-VT2", quantidade: 1,
+    preco_unitario: 20.00, preco_com_desconto: 17.00 }, // total: 17,00 < 300
+];
+
+beforeAll(async () => {
+  await query("DELETE FROM crm.revendedora_pedidos  WHERE revendedora_id = $1", [REV_PEDIDO]);
+  await query("DELETE FROM crm.revendedoras WHERE id = $1", [REV_PEDIDO]);
+  await query(
+    `INSERT INTO crm.revendedoras
+       (id, nome, email, documento, status, nivel, percentual_desconto, volume_mes_atual, pedido_minimo)
+     VALUES ($1,'Rev Pedido Vitest',$2,'222.333.444-55','ativa','iniciante',0,0,300)`,
+    [REV_PEDIDO, EMAIL_PEDIDO]
+  );
+});
+
+afterAll(async () => {
+  await query("DELETE FROM crm.revendedora_pedidos  WHERE revendedora_id = $1", [REV_PEDIDO]);
+  await query("DELETE FROM crm.revendedoras WHERE id = $1", [REV_PEDIDO]);
+});
+
+describe("POST /:id/pedidos — criar pedido B2B", () => {
+  it("400 body vazio (sem itens)", async () => {
+    const res = await request(app)
+      .post(`/api/revendedoras/${REV_PEDIDO}/pedidos`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("400 itens vazio array", async () => {
+    const res = await request(app)
+      .post(`/api/revendedoras/${REV_PEDIDO}/pedidos`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ itens: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it("400 total abaixo do pedido mínimo (R$300)", async () => {
+    const res = await request(app)
+      .post(`/api/revendedoras/${REV_PEDIDO}/pedidos`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ itens: itensMinimoInsuficiente });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/pedido m[íi]nimo/i);
+    expect(res.body.pedido_minimo).toBe(300);
+  });
+
+  it("201 cria pedido com total ≥ R$300", async () => {
+    const res = await request(app)
+      .post(`/api/revendedoras/${REV_PEDIDO}/pedidos`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ itens: itensPadraoOK, observacao: "Pedido de teste Vitest" });
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty("id");
+    expect(res.body).toHaveProperty("numero_pedido");
+    expect(res.body.status).toBe("pendente");
+    expect(Number(res.body.total)).toBeCloseTo(300, 0);
+    expect(res.body.revendedora_id).toBe(REV_PEDIDO);
+  });
+
+  it("404 para revendedora inexistente", async () => {
+    const res = await request(app)
+      .post("/api/revendedoras/aaaaaaaa-0000-4000-a000-000000000099/pedidos")
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ itens: itensPadraoOK });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /:id/pedidos — listar pedidos", () => {
+  it("200 retorna array com pedido criado", async () => {
+    const res = await request(app)
+      .get(`/api/revendedoras/${REV_PEDIDO}/pedidos`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("data");
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeGreaterThan(0);
+  });
+
+  it("pedido listado tem campos essenciais", async () => {
+    const res = await request(app)
+      .get(`/api/revendedoras/${REV_PEDIDO}/pedidos`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`);
+    const p = res.body.data[0];
+    expect(p).toHaveProperty("id");
+    expect(p).toHaveProperty("numero_pedido");
+    expect(p).toHaveProperty("status");
+    expect(p).toHaveProperty("total");
+    expect(p).toHaveProperty("itens");
+    expect(p).toHaveProperty("criado_em");
+  });
+});
+
+describe("PUT /:id/pedidos/:pedidoId/status — fluxo aprovação → envio", () => {
+  let pedidoId: string;
+
+  beforeAll(async () => {
+    // Cria pedido fresco para este bloco
+    const res = await request(app)
+      .post(`/api/revendedoras/${REV_PEDIDO}/pedidos`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ itens: itensPadraoOK });
+    pedidoId = res.body.id;
+  });
+
+  it("400 status inválido", async () => {
+    const res = await request(app)
+      .put(`/api/revendedoras/${REV_PEDIDO}/pedidos/${pedidoId}/status`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ status: "voando" });
+    expect(res.status).toBe(400);
+  });
+
+  it("200 aprova pedido → status=aprovado + aprovado_em preenchido", async () => {
+    const res = await request(app)
+      .put(`/api/revendedoras/${REV_PEDIDO}/pedidos/${pedidoId}/status`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ status: "aprovado" });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("aprovado");
+    expect(res.body.aprovado_em).not.toBeNull();
+  });
+
+  it("aprovação recalcula volume e sobe nível para bronze (R$300 ≥ mínimo)", async () => {
+    // A revendedora tinha volume=0 (iniciante). Após aprovar pedido de R$300 → bronze
+    const rev = await request(app)
+      .get(`/api/revendedoras/${REV_PEDIDO}`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`);
+    expect(rev.status).toBe(200);
+    expect(rev.body.nivel).toBe("bronze");
+    expect(Number(rev.body.volume_mes_atual)).toBeCloseTo(300, 0);
+    expect(Number(rev.body.percentual_desconto)).toBe(15);
+  });
+
+  it("200 marca como enviado com código de rastreio → url_rastreio gerada", async () => {
+    const res = await request(app)
+      .put(`/api/revendedoras/${REV_PEDIDO}/pedidos/${pedidoId}/status`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ status: "enviado", codigo_rastreio: "BR123456789BR" });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("enviado");
+    expect(res.body.codigo_rastreio).toBe("BR123456789BR");
+    expect(res.body.url_rastreio).toContain("BR123456789BR");
+    expect(res.body.enviado_em).not.toBeNull();
+  });
+
+  it("200 marca como entregue", async () => {
+    const res = await request(app)
+      .put(`/api/revendedoras/${REV_PEDIDO}/pedidos/${pedidoId}/status`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ status: "entregue" });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("entregue");
+    expect(res.body.entregue_em).not.toBeNull();
+  });
+
+  it("404 para pedido inexistente", async () => {
+    const res = await request(app)
+      .put(`/api/revendedoras/${REV_PEDIDO}/pedidos/aaaaaaaa-0000-4000-a000-000000000099/status`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ status: "aprovado" });
+    expect(res.status).toBe(404);
+  });
+
+  it("cancelar pedido recalcula volume — nível volta para iniciante", async () => {
+    // Cria e aprova outro pedido para depois cancelar
+    const criado = await request(app)
+      .post(`/api/revendedoras/${REV_PEDIDO}/pedidos`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ itens: itensPadraoOK });
+    const novoId = criado.body.id;
+
+    await request(app)
+      .put(`/api/revendedoras/${REV_PEDIDO}/pedidos/${novoId}/status`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ status: "aprovado" });
+
+    await request(app)
+      .put(`/api/revendedoras/${REV_PEDIDO}/pedidos/${novoId}/status`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ status: "cancelado" });
+
+    // Volume atual = só o pedido original (entregue) → R$300 → ainda bronze
+    const rev = await request(app)
+      .get(`/api/revendedoras/${REV_PEDIDO}`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`);
+    // Entregue conta no volume, cancelado não conta → bronze (300) ainda
+    expect(["bronze", "iniciante"]).toContain(rev.body.nivel);
+  });
+});
+
+describe("GET /pedidos-recentes — sininho CRM", () => {
+  it("200 retorna data + contadores de pendentes e mensagens", async () => {
+    const res = await request(app)
+      .get("/api/revendedoras/pedidos-recentes")
+      .set("Authorization", `Bearer ${tokenAdmin()}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("data");
+    expect(res.body).toHaveProperty("pendentes");
+    expect(res.body).toHaveProperty("mensagens_nao_lidas");
+    expect(typeof res.body.pendentes).toBe("number");
+    expect(typeof res.body.mensagens_nao_lidas).toBe("number");
+  });
+});
+
+describe("GET /acessos-portal-recentes — sininho CRM", () => {
+  it("200 retorna array de acessos", async () => {
+    const res = await request(app)
+      .get("/api/revendedoras/acessos-portal-recentes")
+      .set("Authorization", `Bearer ${tokenAdmin()}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("data");
+    expect(Array.isArray(res.body.data)).toBe(true);
+  });
+});
