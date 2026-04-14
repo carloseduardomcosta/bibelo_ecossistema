@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Search, ChevronLeft, ChevronRight, Users, Download, Mail,
   Phone, TrendingUp, UserCheck, AlertTriangle, ArrowUpDown,
-  Filter, RefreshCw, Star,
+  Filter, RefreshCw, Star, UserPlus, Pencil, X,
 } from 'lucide-react';
 import api from '../lib/api';
 import { exportCsv } from '../lib/export';
@@ -104,6 +104,243 @@ function isRecent(dateStr: string): boolean {
   return Date.now() - new Date(dateStr).getTime() < 7 * 24 * 3600 * 1000;
 }
 
+// ── Formulário de cliente (criar / editar) ─────────────────────
+
+interface CustomerForm {
+  nome: string;
+  email: string;
+  telefone: string;
+  cpf: string;
+  data_nasc: string;
+  instagram: string;
+  logradouro: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  cep: string;
+}
+
+const FORM_EMPTY: CustomerForm = {
+  nome: '', email: '', telefone: '', cpf: '', data_nasc: '',
+  instagram: '', logradouro: '', numero: '', complemento: '',
+  bairro: '', cidade: '', estado: '', cep: '',
+};
+
+const UF_LIST = [
+  'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',
+  'PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO',
+];
+
+interface CustomerModalProps {
+  editando: Customer | null;
+  onClose: () => void;
+  onSaved: (c: Customer) => void;
+}
+
+function CustomerModal({ editando, onClose, onSaved }: CustomerModalProps) {
+  const [form, setForm] = useState<CustomerForm>(() =>
+    editando
+      ? {
+          nome: editando.nome || '',
+          email: editando.email || '',
+          telefone: editando.telefone || '',
+          cpf: (editando as any).cpf || '',
+          data_nasc: (editando as any).data_nasc?.slice(0, 10) || '',
+          instagram: (editando as any).instagram || '',
+          logradouro: (editando as any).logradouro || '',
+          numero: (editando as any).numero || '',
+          complemento: (editando as any).complemento || '',
+          bairro: (editando as any).bairro || '',
+          cidade: editando.cidade || '',
+          estado: editando.estado || '',
+          cep: (editando as any).cep || '',
+        }
+      : FORM_EMPTY
+  );
+  const [saving, setSaving] = useState(false);
+  const [erro, setErro] = useState('');
+  const [buscandoCep, setBuscandoCep] = useState(false);
+
+  const set = (k: keyof CustomerForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm(f => ({ ...f, [k]: e.target.value }));
+
+  async function buscarCep(cep: string) {
+    const digits = cep.replace(/\D/g, '');
+    if (digits.length !== 8) return;
+    setBuscandoCep(true);
+    try {
+      const r = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const d = await r.json();
+      if (!d.erro) {
+        setForm(f => ({
+          ...f,
+          logradouro: d.logradouro || f.logradouro,
+          bairro: d.bairro || f.bairro,
+          cidade: d.localidade || f.cidade,
+          estado: d.uf || f.estado,
+        }));
+      }
+    } catch { /* ignora */ } finally {
+      setBuscandoCep(false);
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.nome.trim()) { setErro('Nome é obrigatório'); return; }
+    setSaving(true);
+    setErro('');
+    try {
+      const payload: Record<string, string> = {};
+      (Object.keys(form) as Array<keyof CustomerForm>).forEach(k => {
+        if (form[k].trim()) payload[k] = form[k].trim();
+      });
+      let resp;
+      if (editando) {
+        resp = await api.put(`/customers/${editando.id}`, payload);
+      } else {
+        resp = await api.post('/customers', { ...payload, canal_origem: 'manual' });
+      }
+      onSaved(resp.data);
+    } catch (err: any) {
+      setErro(err?.response?.data?.error || 'Erro ao salvar cliente');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const input = 'w-full px-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text placeholder:text-bibelo-muted/40 focus:outline-none focus:border-pink-400/50 transition-colors';
+  const label = 'block text-[11px] font-medium text-bibelo-muted mb-1';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-bibelo-card border border-bibelo-border rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-bibelo-border sticky top-0 bg-bibelo-card z-10">
+          <h2 className="text-base font-semibold text-bibelo-text">
+            {editando ? 'Editar cliente' : 'Novo cliente'}
+          </h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-bibelo-muted hover:text-pink-400 hover:bg-pink-400/10 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-5">
+          {/* Dados principais */}
+          <div>
+            <p className="text-[10px] font-bold text-bibelo-muted/60 uppercase tracking-wider mb-3">Dados principais</p>
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className={label}>Nome <span className="text-pink-400">*</span></label>
+                <input value={form.nome} onChange={set('nome')} placeholder="Nome completo" className={input} autoFocus />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={label}>E-mail</label>
+                  <input type="email" value={form.email} onChange={set('email')} placeholder="email@exemplo.com" className={input} />
+                </div>
+                <div>
+                  <label className={label}>Telefone / WhatsApp</label>
+                  <input value={form.telefone} onChange={set('telefone')} placeholder="(47) 9 9999-9999" className={input} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={label}>CPF</label>
+                  <input value={form.cpf} onChange={set('cpf')} placeholder="000.000.000-00" className={input} />
+                </div>
+                <div>
+                  <label className={label}>Data de nascimento</label>
+                  <input type="date" value={form.data_nasc} onChange={set('data_nasc')} className={input} />
+                </div>
+              </div>
+              <div>
+                <label className={label}>Instagram</label>
+                <input value={form.instagram} onChange={set('instagram')} placeholder="@usuario" className={input} />
+              </div>
+            </div>
+          </div>
+
+          {/* Endereço */}
+          <div>
+            <p className="text-[10px] font-bold text-bibelo-muted/60 uppercase tracking-wider mb-3">Endereço</p>
+            <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className={label}>CEP</label>
+                  <input
+                    value={form.cep}
+                    onChange={e => { set('cep')(e); buscarCep(e.target.value); }}
+                    placeholder="00000-000"
+                    className={input + (buscandoCep ? ' opacity-60' : '')}
+                    maxLength={9}
+                  />
+                </div>
+                <div>
+                  <label className={label}>Estado</label>
+                  <select value={form.estado} onChange={set('estado')} className={input + ' cursor-pointer'}>
+                    <option value="">UF</option>
+                    {UF_LIST.map(uf => <option key={uf} value={uf}>{uf}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className={label}>Logradouro</label>
+                  <input value={form.logradouro} onChange={set('logradouro')} placeholder="Rua, Avenida..." className={input} />
+                </div>
+                <div>
+                  <label className={label}>Número</label>
+                  <input value={form.numero} onChange={set('numero')} placeholder="123" className={input} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={label}>Complemento</label>
+                  <input value={form.complemento} onChange={set('complemento')} placeholder="Apto, Sala..." className={input} />
+                </div>
+                <div>
+                  <label className={label}>Bairro</label>
+                  <input value={form.bairro} onChange={set('bairro')} placeholder="Bairro" className={input} />
+                </div>
+              </div>
+              <div>
+                <label className={label}>Cidade</label>
+                <input value={form.cidade} onChange={set('cidade')} placeholder="Cidade" className={input} />
+              </div>
+            </div>
+          </div>
+
+          {/* Aviso fluxo — só na criação */}
+          {!editando && (
+            <div className="flex gap-2 p-3 bg-pink-400/8 border border-pink-400/20 rounded-xl text-[11px] text-bibelo-muted">
+              <span className="text-pink-400 shrink-0">✦</span>
+              <span>Se o e-mail for informado, este cliente entrará automaticamente no fluxo <strong className="text-bibelo-text">Clube Bibelô</strong> (boas-vindas + cupom BIBELO10), igual ao popup do site.</span>
+            </div>
+          )}
+
+          {erro && <p className="text-xs text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">{erro}</p>}
+
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 py-2 rounded-xl border border-bibelo-border text-sm text-bibelo-muted hover:text-bibelo-text transition-colors">
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 py-2 rounded-xl bg-pink-400 hover:bg-pink-500 disabled:opacity-50 text-white text-sm font-semibold transition-colors"
+            >
+              {saving ? 'Salvando...' : editando ? 'Salvar alterações' : 'Criar cliente'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function scoreBar(score?: number) {
   if (score == null) return <span className="text-xs text-bibelo-muted/40">--</span>;
   const color = score >= 70 ? 'bg-emerald-400' : score >= 40 ? 'bg-amber-400' : 'bg-red-400';
@@ -136,6 +373,8 @@ export default function Clientes() {
   const [tipo, setTipo] = useState<'cliente' | 'b2b' | 'todos'>('cliente');
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [modalAberto, setModalAberto] = useState(false);
+  const [editandoCliente, setEditandoCliente] = useState<Customer | null>(null);
 
   const fetchClientes = useCallback(async (page: number) => {
     setLoading(true);
@@ -234,6 +473,12 @@ export default function Clientes() {
             title="Exportar CSV"
           >
             <Download size={14} /> CSV
+          </button>
+          <button
+            onClick={() => { setEditandoCliente(null); setModalAberto(true); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-pink-400 hover:bg-pink-500 rounded-lg text-xs text-white font-semibold transition-colors"
+          >
+            <UserPlus size={14} /> Novo cliente
           </button>
         </div>
       </div>
@@ -476,7 +721,18 @@ export default function Clientes() {
                         ? <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/20 text-blue-400">B2B</span>
                         : segmentBadge(c.segmento)}
                     </td>
-                    <td className="px-4 py-3 text-right">{scoreBar(c.score)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        {scoreBar(c.score)}
+                        <button
+                          onClick={() => { setEditandoCliente(c); setModalAberto(true); }}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded text-bibelo-muted hover:text-pink-400 hover:bg-pink-400/10 transition-all"
+                          title="Editar cliente"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -509,6 +765,19 @@ export default function Clientes() {
           </div>
         )}
       </div>
+
+      {modalAberto && (
+        <CustomerModal
+          editando={editandoCliente}
+          onClose={() => { setModalAberto(false); setEditandoCliente(null); }}
+          onSaved={() => {
+            setModalAberto(false);
+            setEditandoCliente(null);
+            fetchClientes(editandoCliente ? pagination.page : 1);
+            fetchStats();
+          }}
+        />
+      )}
     </div>
   );
 }

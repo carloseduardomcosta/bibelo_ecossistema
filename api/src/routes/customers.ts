@@ -3,6 +3,7 @@ import { z } from "zod";
 import { query, queryOne } from "../db";
 import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
+import { triggerFlow } from "../services/flow.service";
 import {
   upsertCustomer,
   getTimeline,
@@ -25,6 +26,10 @@ const createCustomerSchema = z.object({
   bling_id: z.string().max(50).optional(),
   nuvemshop_id: z.string().max(50).optional(),
   instagram: z.string().max(100).optional(),
+  logradouro: z.string().max(255).optional(),
+  numero: z.string().max(20).optional(),
+  complemento: z.string().max(100).optional(),
+  bairro: z.string().max(100).optional(),
   cidade: z.string().max(100).optional(),
   estado: z.string().max(2).optional(),
   cep: z.string().max(10).optional(),
@@ -202,8 +207,34 @@ customersRouter.post("/", async (req: Request, res: Response) => {
   }
 
   try {
-    const customer = await upsertCustomer(parse.data);
+    const { dispararFluxo: _df, ...dadosCustomer } = { dispararFluxo: true, ...parse.data };
+    const ehManual = !dadosCustomer.canal_origem || dadosCustomer.canal_origem === "manual";
+    const customerData = ehManual
+      ? { ...dadosCustomer, canal_origem: "manual" as const }
+      : dadosCustomer;
+
+    const customer = await upsertCustomer(customerData);
     logger.info("Cliente criado/atualizado via API", { id: customer.id, user: req.user?.email });
+
+    // Dispara fluxo Clube Bibelô para clientes criados manualmente com email
+    if (ehManual && customer.email) {
+      // Cria lead verificado (sem necessidade de confirmação por email)
+      await query(
+        `INSERT INTO marketing.leads
+           (email, nome, telefone, fonte, cupom, customer_id, email_verificado, email_verificado_em)
+         VALUES ($1, $2, $3, 'manual', 'BIBELO10', $4, true, NOW())
+         ON CONFLICT (email) DO NOTHING`,
+        [customer.email.toLowerCase(), customer.nome, customer.telefone || null, customer.id]
+      );
+
+      triggerFlow("lead.captured", customer.id, {
+        email: customer.email,
+        nome: customer.nome,
+        cupom: "BIBELO10",
+        fonte: "manual",
+      }).catch((err) => logger.warn("Falha ao disparar fluxo para cliente manual", { error: String(err) }));
+    }
+
     res.status(201).json(customer);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro ao criar cliente";
@@ -234,7 +265,7 @@ customersRouter.put("/:id", async (req: Request, res: Response) => {
   }
 
   // Whitelist de colunas permitidas — previne SQL column injection
-  const ALLOWED_COLS = new Set(["nome","email","telefone","cpf","data_nasc","canal_origem","bling_id","nuvemshop_id","instagram","cidade","estado","cep"]);
+  const ALLOWED_COLS = new Set(["nome","email","telefone","cpf","data_nasc","canal_origem","bling_id","nuvemshop_id","instagram","logradouro","numero","complemento","bairro","cidade","estado","cep"]);
   const entries = Object.entries(parse.data).filter(([k, v]) => v !== undefined && ALLOWED_COLS.has(k));
   if (entries.length === 0) {
     res.status(400).json({ error: "Nenhum campo para atualizar" });

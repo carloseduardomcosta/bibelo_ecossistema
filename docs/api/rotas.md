@@ -23,8 +23,8 @@ Referência completa de todos os endpoints.
 - `GET  /api/customers/stats` — KPIs: total, com email, com WhatsApp, novos 30d, inativos, score
 - `GET  /api/customers/cidades` — lista cidades com contagem para filtro
 - `GET  /api/customers/:id` — perfil completo + score
-- `POST /api/customers` — criar/atualizar (upsert por email)
-- `PUT  /api/customers/:id` — atualizar dados
+- `POST /api/customers` — criar/atualizar (upsert por email). `canal_origem=manual` dispara fluxo Clube Bibelô automaticamente se email informado (lead verificado + triggerFlow lead.captured). Campos de endereço: `logradouro`, `numero`, `complemento`, `bairro`, `cidade`, `estado`, `cep`.
+- `PUT  /api/customers/:id` — atualizar dados (inclui campos de endereço completo)
 - `POST /api/customers/:id/reativar-email` — reverter opt-out (LGPD) com auditoria na timeline
 - `GET  /api/customers/:id/timeline` — histórico unificado (interações + pedidos + tracking)
 - `GET  /api/customers/:id/tracking` — histórico comportamental no site (eventos + stats)

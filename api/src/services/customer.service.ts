@@ -13,6 +13,10 @@ export interface CustomerData {
   bling_id?: string;
   nuvemshop_id?: string;
   instagram?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
   cidade?: string;
   estado?: string;
   cep?: string;
