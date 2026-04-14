@@ -190,8 +190,10 @@ politicaParceiraRouter.get("/", (_req: Request, res: Response) => {
     <div class="card">
       <h2><span class="emoji">📊</span> 3. Níveis e descontos</h2>
       <p>
-        O desconto é calculado com base no <strong>volume total de compras no mês vigente</strong>.
-        O nível é atualizado automaticamente no início de cada ciclo mensal.
+        O desconto é calculado com base no <strong>volume acumulado de compras aprovadas no mês vigente</strong> —
+        cada pedido aprovado soma ao total do mês.
+        O nível é recalculado automaticamente a cada pedido aprovado pela Bibelô:
+        assim que seu volume acumulado atingir a faixa seguinte, o desconto maior já vale no próximo pedido.
       </p>
       <table class="nivel-table">
         <thead>
