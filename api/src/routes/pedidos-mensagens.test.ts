@@ -39,19 +39,19 @@ function tokenCRM(): string {
 // ── Setup ─────────────────────────────────────────────────────────
 
 beforeAll(async () => {
-  // Revendedora A (ativa, prata)
+  // Revendedora A (ativa, prata) — pedido_minimo=10 para testes de criação
   await query(
-    `INSERT INTO crm.revendedoras (id, nome, email, documento, status, nivel, percentual_desconto)
-     VALUES ($1,'Parceira A Pedido','revA-pedidos@vitest.bibelo.internal','111.444.777-35','ativa','prata',20)
-     ON CONFLICT (id) DO UPDATE SET status='ativa', nome='Parceira A Pedido', email='revA-pedidos@vitest.bibelo.internal', percentual_desconto=20`,
+    `INSERT INTO crm.revendedoras (id, nome, email, documento, status, nivel, percentual_desconto, pedido_minimo)
+     VALUES ($1,'Parceira A Pedido','revA-pedidos@vitest.bibelo.internal','111.444.777-35','ativa','prata',20,10.00)
+     ON CONFLICT (id) DO UPDATE SET status='ativa', nome='Parceira A Pedido', email='revA-pedidos@vitest.bibelo.internal', percentual_desconto=20, pedido_minimo=10.00`,
     [REV_ID_A]
   );
 
-  // Revendedora B (ativa)
+  // Revendedora B (ativa) — pedido_minimo=10 para testes de criação
   await query(
-    `INSERT INTO crm.revendedoras (id, nome, email, documento, status, nivel, percentual_desconto)
-     VALUES ($1,'Parceira B Pedido','revB-pedidos@vitest.bibelo.internal','321.654.987-91','ativa','bronze',10)
-     ON CONFLICT (id) DO UPDATE SET status='ativa', nome='Parceira B Pedido', email='revB-pedidos@vitest.bibelo.internal', percentual_desconto=10`,
+    `INSERT INTO crm.revendedoras (id, nome, email, documento, status, nivel, percentual_desconto, pedido_minimo)
+     VALUES ($1,'Parceira B Pedido','revB-pedidos@vitest.bibelo.internal','321.654.987-91','ativa','bronze',10,10.00)
+     ON CONFLICT (id) DO UPDATE SET status='ativa', nome='Parceira B Pedido', email='revB-pedidos@vitest.bibelo.internal', percentual_desconto=10, pedido_minimo=10.00`,
     [REV_ID_B]
   );
 
@@ -71,11 +71,11 @@ beforeAll(async () => {
     [PROD_ID_2]
   );
 
-  // Markup padrão para categorias de teste
+  // Markup fixo para categorias de teste (DO UPDATE garante 2.00 sempre)
   await query(
     `INSERT INTO sync.fornecedor_markup_categorias (categoria, markup)
      VALUES ('canetas', 2.00), ('cadernos', 2.00)
-     ON CONFLICT (categoria) DO NOTHING`
+     ON CONFLICT (categoria) DO UPDATE SET markup = 2.00`
   );
 });
 
@@ -85,6 +85,7 @@ afterAll(async () => {
   await query("DELETE FROM crm.revendedora_pedidos WHERE revendedora_id IN ($1,$2)", [REV_ID_A, REV_ID_B]);
   await query("DELETE FROM public.notificacoes WHERE tipo IN ('novo_pedido','nova_mensagem_revendedora') AND titulo LIKE 'REV-%'", []);
   await query("DELETE FROM sync.fornecedor_catalogo_jc WHERE id IN ($1,$2)", [PROD_ID_1, PROD_ID_2]);
+  await query("DELETE FROM sync.fornecedor_markup_categorias WHERE categoria IN ('canetas','cadernos')");
   await query("DELETE FROM crm.revendedoras WHERE id IN ($1,$2)", [REV_ID_A, REV_ID_B]);
 });
 

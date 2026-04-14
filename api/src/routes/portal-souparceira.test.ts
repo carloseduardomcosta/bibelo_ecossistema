@@ -528,7 +528,7 @@ describe("GET /api/souparceira/catalogo", () => {
     expect(res.body.produtos.every((p: { categoria: string }) => p.categoria === cat)).toBe(true);
   });
 
-  it("busca por nome retorna produtos filtrados", async () => {
+  it("busca por nome ou descrição retorna produtos filtrados", async () => {
     const token = gerarTokenParceira();
     const res = await request(app)
       .get("/api/souparceira/catalogo?search=caneta&limit=10")
@@ -536,8 +536,12 @@ describe("GET /api/souparceira/catalogo", () => {
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.produtos)).toBe(true);
+    // busca cobre nome E descrição — cada resultado deve conter o termo em pelo menos um dos dois
     for (const p of res.body.produtos) {
-      expect(p.nome.toLowerCase()).toContain("caneta");
+      const matches =
+        p.nome.toLowerCase().includes("caneta") ||
+        (p.descricao ?? "").toLowerCase().includes("caneta");
+      expect(matches).toBe(true);
     }
   });
 
