@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useCartStore } from "@/store/cart"
 import { trackAddToCart } from "@/lib/meta-pixel"
+import { trackAddToCart as crmTrackAddToCart } from "@/lib/crm-tracker"
 
 interface AddToCartButtonProps {
   variantId: string
@@ -22,6 +23,7 @@ export default function AddToCartButton({ variantId, productName, price }: AddTo
     await addItem(variantId, quantity)
     if (productName && price) {
       trackAddToCart({ contentId: variantId, contentName: productName, value: price * quantity })
+      crmTrackAddToCart({ productId: variantId, productName, price: price * quantity })
     }
     setIsAdding(false)
     setAdded(true)

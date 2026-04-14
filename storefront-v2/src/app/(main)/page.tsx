@@ -3,7 +3,7 @@ import BenefitsStrip from "@/components/home/BenefitsStrip"
 import NovidadesSection from "@/components/home/NovidadesSection"
 import ProductSection from "@/components/home/ProductSection"
 import CategoriesSection from "@/components/home/CategoriesSection"
-import InstagramPlaceholder from "@/components/home/InstagramPlaceholder"
+import LeadCapture from "@/components/home/LeadCapture"
 import { listProducts } from "@/lib/medusa/products"
 import { getNovidadesBling } from "@/lib/api/novidades"
 
@@ -58,8 +58,8 @@ export default async function HomePage() {
       {/* 5. Categorias */}
       <CategoriesSection />
 
-      {/* 6. Instagram — placeholder */}
-      <InstagramPlaceholder />
+      {/* 6. Clube Bibelô — captura de leads */}
+      <LeadCapture />
     </>
   )
 }

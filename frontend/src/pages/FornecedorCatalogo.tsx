@@ -194,10 +194,15 @@ export default function FornecedorCatalogo() {
   }
 
   // ── Controle do enriquecimento ───────────────────────────
-  async function iniciarEnriquecimento() {
+  async function iniciarEnriquecimento(opts?: { categorias?: string[]; incluir_rascunho?: boolean }) {
     try {
-      await api.post('/fornecedor-catalogo/scraper/enriquecer');
-      toast.success('Enriquecimento iniciado — buscando fotos e descrições');
+      await api.post('/fornecedor-catalogo/scraper/enriquecer', opts || {});
+      const msg = opts?.categorias?.length
+        ? `Enriquecendo ${opts.categorias.length} categoria(s)${opts.incluir_rascunho ? ' (rascunhos)' : ''}`
+        : opts?.incluir_rascunho
+          ? 'Enriquecimento de rascunhos iniciado'
+          : 'Enriquecimento iniciado — buscando fotos e descrições';
+      toast.success(msg);
       await fetchEnrichStatus();
     } catch (e: any) {
       toast.error(e.response?.data?.error || 'Erro ao iniciar enriquecimento');
@@ -249,16 +254,27 @@ export default function FornecedorCatalogo() {
               <StopCircle className="w-4 h-4" /> Parar enriquecimento
             </button>
           ) : (
-            <button
-              onClick={iniciarEnriquecimento}
-              disabled={scraper?.running}
-              className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-medium
-                         disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              style={{ backgroundColor: scraper?.running ? '#d1d5db' : '#fe68c4' }}
-              title={scraper?.running ? 'Aguarde o fim da importação' : 'Busca fotos e descrições dos produtos'}
-            >
-              <Camera className="w-4 h-4" /> Enriquecer fotos e descrições
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => iniciarEnriquecimento()}
+                disabled={scraper?.running}
+                className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-medium
+                           disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                style={{ backgroundColor: scraper?.running ? '#d1d5db' : '#fe68c4' }}
+                title="Busca fotos e descrições dos produtos aprovados"
+              >
+                <Camera className="w-4 h-4" /> Enriquecer aprovados
+              </button>
+              <button
+                onClick={() => iniciarEnriquecimento({ incluir_rascunho: true })}
+                disabled={scraper?.running}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium
+                           disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700 transition-colors"
+                title="Busca fotos e descrições dos produtos em curadoria (rascunho)"
+              >
+                <Camera className="w-4 h-4" /> Enriquecer rascunhos
+              </button>
+            </div>
           )}
 
           {/* Botões de importação */}
@@ -280,10 +296,25 @@ export default function FornecedorCatalogo() {
                   <Play className="w-4 h-4" /> Retomar
                 </button>
               )}
+              {stats && stats.total > 0 && (
+                <button
+                  onClick={() => {
+                    if (confirm('Atualizar preços não muda status dos produtos aprovados. Status e markups são preservados. Continuar?'))
+                      iniciarScraper(false);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
+                  title="Reescaneia o JC Atacado atualizando preços — aprovados continuam aprovados"
+                >
+                  <RefreshCw className="w-4 h-4" /> Atualizar preços JC
+                </button>
+              )}
               <button
-                onClick={() => iniciarScraper(false)}
+                onClick={() => {
+                  if (confirm('Importar tudo reimporta todas as 172 categorias (≈90 min). Produtos aprovados mantêm o status. Confirmar?'))
+                    iniciarScraper(false);
+                }}
                 className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 text-sm font-medium"
-                title="Reimporta tudo do zero"
+                title="Reimporta todas as categorias do zero"
               >
                 <Play className="w-4 h-4" /> Importar tudo
               </button>
@@ -426,7 +457,7 @@ export default function FornecedorCatalogo() {
       </div>
 
       {/* Conteúdo das tabs */}
-      {tab === 'curadoria' && <TabCuradoria onStatsChange={fetchStats} />}
+      {tab === 'curadoria' && <TabCuradoria onStatsChange={fetchStats} onEnriquecerCategoria={(cats) => iniciarEnriquecimento({ categorias: cats, incluir_rascunho: true })} />}
       {tab === 'markups'   && <TabMarkups />}
       {tab === 'historico' && <TabHistorico />}
     </div>
@@ -447,7 +478,13 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
 }
 
 // ── Tab Curadoria ────────────────────────────────────────────
-function TabCuradoria({ onStatsChange }: { onStatsChange: () => void }) {
+function TabCuradoria({
+  onStatsChange,
+  onEnriquecerCategoria,
+}: {
+  onStatsChange: () => void;
+  onEnriquecerCategoria: (cats: string[]) => void;
+}) {
   const toast = useToast();
 
   const [categorias, setCategorias]   = useState<PorCategoria[]>([]);
@@ -457,6 +494,7 @@ function TabCuradoria({ onStatsChange }: { onStatsChange: () => void }) {
   const [loadingCats, setLoadingCats] = useState(true);
   const [loadingProds, setLoadingProds] = useState(false);
   const [aprovando, setAprovando]     = useState<string | null>(null);
+  const [enriquecendo, setEnriquecendo] = useState<string | null>(null);
 
   const [search, setSearch]       = useState('');
   const [filterStatus, setFilter] = useState<'todos' | 'rascunho' | 'aprovado'>('todos');
@@ -608,19 +646,35 @@ function TabCuradoria({ onStatsChange }: { onStatsChange: () => void }) {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-3 mr-2">
+              <div className="flex items-center gap-2 mr-2">
                 <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">
                   ×{markup.toFixed(2)}
                 </span>
                 {isOpen && cat.rascunho > 0 && (
-                  <button
-                    onClick={e => { e.stopPropagation(); aprovarLote(cat.categoria); }}
-                    disabled={aprovando === cat.categoria}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50"
-                  >
-                    <CheckCircle className="w-3 h-3" />
-                    {aprovando === cat.categoria ? 'Aprovando…' : `Aprovar ${cat.rascunho}`}
-                  </button>
+                  <>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        setEnriquecendo(cat.categoria);
+                        onEnriquecerCategoria([cat.categoria]);
+                        setTimeout(() => setEnriquecendo(null), 3000);
+                      }}
+                      disabled={enriquecendo === cat.categoria}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                      title="Busca fotos e descrições dos rascunhos desta categoria"
+                    >
+                      <Camera className="w-3 h-3" />
+                      {enriquecendo === cat.categoria ? 'Iniciando…' : 'Enriquecer'}
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); aprovarLote(cat.categoria); }}
+                      disabled={aprovando === cat.categoria}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50"
+                    >
+                      <CheckCircle className="w-3 h-3" />
+                      {aprovando === cat.categoria ? 'Aprovando…' : `Aprovar ${cat.rascunho}`}
+                    </button>
+                  </>
                 )}
               </div>
               {isOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}

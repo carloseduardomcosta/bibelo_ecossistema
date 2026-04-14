@@ -69,6 +69,8 @@ export default function CheckoutPage() {
     postal_code: "",
     neighborhood: "",
   })
+  const [cepLoading, setCepLoading] = useState(false)
+  const [cepError, setCepError] = useState("")
 
   // Pre-fill from customer data
   useEffect(() => {
@@ -81,6 +83,38 @@ export default function CheckoutPage() {
       }))
     }
   }, [customer])
+
+  // Auto-fill address from CEP via ViaCEP
+  const fetchAddressByCep = useCallback(async (cep: string) => {
+    const digits = cep.replace(/\D/g, "")
+    if (digits.length !== 8) return
+    setCepLoading(true)
+    setCepError("")
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`)
+      const data = await res.json()
+      if (data.erro) {
+        setCepError("CEP não encontrado")
+        return
+      }
+      setAddress((prev) => ({
+        ...prev,
+        city: data.localidade || prev.city,
+        province: data.uf || prev.province,
+        neighborhood: data.bairro || prev.neighborhood,
+        address_1: prev.address_1 || (data.logradouro ? `${data.logradouro}, ` : ""),
+      }))
+      // Foca no campo número após auto-preenchimento
+      setTimeout(() => {
+        const el = document.getElementById("address-number")
+        el?.focus()
+      }, 100)
+    } catch {
+      setCepError("Erro ao buscar CEP. Preencha manualmente.")
+    } finally {
+      setCepLoading(false)
+    }
+  }, [])
 
   // Meta Pixel: InitiateCheckout ao entrar na página
   useEffect(() => {
@@ -371,13 +405,55 @@ export default function CheckoutPage() {
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">CEP *</label>
-                  <input type="text" className="input-base" placeholder="00000-000" maxLength={9}
-                    value={address.postal_code} onChange={(e) => setAddress({ ...address, postal_code: formatCep(e.target.value) })} required />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      className={`input-base pr-10 ${cepError ? "border-red-400" : ""}`}
+                      placeholder="00000-000"
+                      maxLength={9}
+                      value={address.postal_code}
+                      onChange={(e) => {
+                        const formatted = formatCep(e.target.value)
+                        setAddress({ ...address, postal_code: formatted })
+                        setCepError("")
+                        if (formatted.replace(/\D/g, "").length === 8) {
+                          fetchAddressByCep(formatted)
+                        }
+                      }}
+                      required
+                    />
+                    {cepLoading && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="w-4 h-4 border-2 border-bibelo-pink border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                  {cepError && <p className="text-xs text-red-500 mt-1">{cepError}</p>}
+                  <a
+                    href="https://buscacepinter.correios.com.br/app/endereco/index.php"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-bibelo-pink hover:underline mt-1 inline-block"
+                  >
+                    Não sei meu CEP
+                  </a>
                 </div>
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Endereço *</label>
-                  <input type="text" className="input-base" placeholder="Rua, número"
-                    value={address.address_1} onChange={(e) => setAddress({ ...address, address_1: e.target.value })} required />
+                  <input
+                    id="address-number"
+                    type="text"
+                    className="input-base"
+                    placeholder="Rua, número"
+                    value={address.address_1}
+                    onChange={(e) => setAddress({ ...address, address_1: e.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Bairro</label>
+                  <input type="text" className="input-base" placeholder="Bairro"
+                    value={address.neighborhood} onChange={(e) => setAddress({ ...address, neighborhood: e.target.value })} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Complemento</label>
