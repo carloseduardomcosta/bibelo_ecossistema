@@ -388,6 +388,18 @@ portalSouParceiraRouter.post(
 
     const token = gerarJWT(rev.id, rev.nivel);
 
+    // Conta novos produtos desde a última visita ao catálogo
+    const novosRow = await queryOne<{ total: string; catalogo_visitado_em: string | null }>(
+      `SELECT COUNT(p.*)::text AS total, r.catalogo_visitado_em
+         FROM crm.revendedoras r
+         LEFT JOIN sync.fornecedor_catalogo_jc p
+           ON p.status = 'aprovado'
+          AND p.atualizado_em > COALESCE(r.catalogo_visitado_em, '1970-01-01'::timestamptz)
+        WHERE r.id = $1
+        GROUP BY r.catalogo_visitado_em`,
+      [rev.id]
+    );
+
     logger.info("Login parceira via OTP", { revendedoraId: rev.id, nivel: rev.nivel });
 
     res.json({
@@ -396,6 +408,7 @@ portalSouParceiraRouter.post(
         nome:                rev.nome,
         nivel:               rev.nivel,
         percentual_desconto: Number(rev.percentual_desconto),
+        novos_produtos:      parseInt(novosRow?.total || "0"),
       },
     });
   }
@@ -409,8 +422,11 @@ portalSouParceiraRouter.get(
   (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
   async (req: Request, res: Response) => {
     const id = (req as Request & { parceiraId?: string }).parceiraId!;
-    const rev = await queryOne<{ nome: string; nivel: string; percentual_desconto: string }>(
-      `SELECT nome, nivel, percentual_desconto
+    const rev = await queryOne<{
+      nome: string; nivel: string; percentual_desconto: string;
+      catalogo_visitado_em: string | null;
+    }>(
+      `SELECT nome, nivel, percentual_desconto, catalogo_visitado_em
          FROM crm.revendedoras
         WHERE id = $1 AND status = 'ativa'`,
       [id]
@@ -419,11 +435,38 @@ portalSouParceiraRouter.get(
       res.status(401).json({ error: "Revendedora não encontrada ou inativa." });
       return;
     }
+
+    // Conta produtos aprovados desde a última visita ao catálogo
+    const novosRow = await queryOne<{ total: string }>(
+      `SELECT COUNT(*)::text AS total
+         FROM sync.fornecedor_catalogo_jc
+        WHERE status = 'aprovado'
+          AND atualizado_em > COALESCE($1, '1970-01-01'::timestamptz)`,
+      [rev.catalogo_visitado_em]
+    );
+
     res.json({
       nome:                rev.nome,
       nivel:               rev.nivel,
       percentual_desconto: Number(rev.percentual_desconto),
+      novos_produtos:      parseInt(novosRow?.total || "0"),
     });
+  }
+);
+
+// ── POST /catalogo/visita — registra visita ao catálogo ──────────
+
+portalSouParceiraRouter.post(
+  "/catalogo/visita",
+  limiterCatalogo,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const id = (req as Request & { parceiraId?: string }).parceiraId!;
+    await queryOne(
+      "UPDATE crm.revendedoras SET catalogo_visitado_em = NOW() WHERE id = $1",
+      [id]
+    );
+    res.json({ ok: true });
   }
 );
 

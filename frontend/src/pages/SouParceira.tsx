@@ -24,6 +24,7 @@ interface Revendedora {
   nome: string;
   nivel: 'iniciante' | 'bronze' | 'prata' | 'ouro' | 'diamante';
   percentual_desconto: number;
+  novos_produtos?: number;
 }
 
 interface Categoria {
@@ -631,9 +632,10 @@ interface HeaderLogadoProps {
   onLogout: () => void;
   cartCount: number;
   onOpenCart: () => void;
+  novosProdutos: number;
 }
 
-function HeaderLogado({ rev, secao, onSecao, onLogout, cartCount, onOpenCart }: HeaderLogadoProps) {
+function HeaderLogado({ rev, secao, onSecao, onLogout, cartCount, onOpenCart, novosProdutos }: HeaderLogadoProps) {
   const nivelCfg = NIVEL[rev.nivel] ?? NIVEL.bronze;
   const [trackingOpen, setTrackingOpen] = useState(false);
   const NivelIcon = nivelCfg.icon;
@@ -737,7 +739,7 @@ function HeaderLogado({ rev, secao, onSecao, onLogout, cartCount, onOpenCart }: 
             <button
               key={id}
               onClick={() => onSecao(id)}
-              className={`flex items-center gap-2 px-5 py-3 text-base font-medium border-b-2 transition-colors
+              className={`relative flex items-center gap-2 px-5 py-3 text-base font-medium border-b-2 transition-colors
                 ${secao === id
                   ? 'border-[#fe68c4] text-[#fe68c4]'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-200'
@@ -745,6 +747,12 @@ function HeaderLogado({ rev, secao, onSecao, onLogout, cartCount, onOpenCart }: 
             >
               <Icon className="w-4 h-4" />
               {label}
+              {id === 'catalogo' && novosProdutos > 0 && secao !== 'catalogo' && (
+                <span className="absolute -top-0.5 right-1 min-w-[16px] h-4 bg-red-500 text-white
+                                 text-[9px] font-bold rounded-full flex items-center justify-center px-1">
+                  {novosProdutos > 99 ? '99+' : novosProdutos}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -1141,9 +1149,11 @@ interface CatalogoProps {
   cart: Map<string, CartItem>;
   onCartChange: (cart: Map<string, CartItem>) => void;
   onOpenCart: () => void;
+  novosProdutos: number;
+  onVisitaRegistrada: () => void;
 }
 
-function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
+function Catalogo({ rev, cart, onCartChange, onOpenCart, novosProdutos, onVisitaRegistrada }: CatalogoProps) {
   const [categorias, setCategorias]           = useState<Categoria[]>([]);
   const [catalogo, setCatalogo]               = useState<CatalogoPaginado | null>(null);
   const [loadingCat, setLoadingCat]           = useState(false);
@@ -1181,6 +1191,13 @@ function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
 
   useEffect(() => {
     api.get('/souparceira/categorias').then(r => setCategorias(r.data)).catch(() => {});
+  }, []);
+
+  // Registra visita ao catálogo para zerar o contador de novos produtos
+  useEffect(() => {
+    api.post('/souparceira/catalogo/visita').then(() => onVisitaRegistrada()).catch(() => {});
+  // Executa apenas uma vez ao montar o componente
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchCatalogo = useCallback(async (
@@ -1235,6 +1252,18 @@ function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-5">
+
+      {/* Banner de novos produtos */}
+      {novosProdutos > 0 && (
+        <div className="flex items-center gap-3 bg-[#ffe5ec] border border-[#fe68c4]/30
+                        rounded-xl px-4 py-3 mb-4 text-sm text-[#c0357a]">
+          <Sparkles className="w-4 h-4 flex-shrink-0 text-[#fe68c4]" />
+          <span>
+            <span className="font-bold">{novosProdutos} novo{novosProdutos !== 1 ? 's' : ''} produto{novosProdutos !== 1 ? 's' : ''}</span>
+            {' '}adicionado{novosProdutos !== 1 ? 's' : ''} desde sua última visita
+          </span>
+        </div>
+      )}
 
       {/* Barra de busca */}
       <div className="flex gap-3 mb-3">
@@ -2142,12 +2171,18 @@ export default function SouParceira() {
   const [rev, setRev]                 = useState<Revendedora | null>(null);
   const [cart, setCart]               = useState<Map<string, CartItem>>(() => loadCart());
   const [cartOpen, setCartOpen]       = useState(false);
+  const [novosProdutos, setNovosProdutos] = useState(0);
 
   useEffect(() => {
     const token = localStorage.getItem('souparceira_token');
     if (!token) { setTela('login_cpf'); return; }
     api.get('/souparceira/me')
-      .then(r => { setRev(r.data); setTela('logado'); setSecao('dashboard'); })
+      .then(r => {
+        setRev(r.data);
+        setNovosProdutos(r.data.novos_produtos ?? 0);
+        setTela('logado');
+        setSecao('dashboard');
+      })
       .catch(() => {
         localStorage.removeItem('souparceira_token');
         setTela('login_cpf');
@@ -2159,7 +2194,10 @@ export default function SouParceira() {
   }
 
   function handleLogado(r: Revendedora) {
-    setRev(r); setTela('logado'); setSecao('dashboard');
+    setRev(r);
+    setNovosProdutos(r.novos_produtos ?? 0);
+    setTela('logado');
+    setSecao('dashboard');
   }
 
   function handleLogout() {
@@ -2192,6 +2230,7 @@ export default function SouParceira() {
           onLogout={handleLogout}
           cartCount={cartCount}
           onOpenCart={() => setCartOpen(true)}
+          novosProdutos={novosProdutos}
         />
 
         {/* Hero strip tier — só no catálogo */}
@@ -2238,6 +2277,8 @@ export default function SouParceira() {
             cart={cart}
             onCartChange={setCart}
             onOpenCart={() => setCartOpen(true)}
+            novosProdutos={novosProdutos}
+            onVisitaRegistrada={() => setNovosProdutos(0)}
           />
         )}
         {secao === 'pedidos'   && <MeusPedidos rev={rev} />}
