@@ -1306,6 +1306,23 @@ sync.category_sync_log         (auditoria)
 - `public-politica-parceira.ts`: texto corrigido de "nível atualizado no início do ciclo" para "recalculado a cada pedido aprovado — desconto maior vale no próximo pedido"
 - Esclarece que o volume é acumulado no mês vigente e recálculo é automático
 
+### feat(crm): visão executiva — funil, forecast, alertas e sidebar estratégica — `b0363ee` (14/04/2026)
+- **Dashboard CEO View**: nova seção "Visão Executiva" no Dashboard com 3 painéis em grid 4 colunas
+  - Funil de Conversão: 6 etapas visitor→produto→carrinho→checkout→compra→lead com taxas entre etapas
+  - Forecast 30 dias: projeção de receita baseada em média histórica 3 meses, badge tendência (alta/estável/queda), nível de confiança
+  - Alertas de Flows: lista compacta de flows ativos sem atividade em 7 dias com link para `/marketing`
+- **Novos endpoints** em `api/src/routes/analytics.ts`:
+  - `GET /api/analytics/funil?dias=30` — etapas do funil com taxas de conversão (queries paralelas via Promise.all)
+  - `GET /api/analytics/alertas-flows` — flows ativos sem execução em 7 dias
+  - `GET /api/analytics/forecast` — projeção mensal com tendência e confiança
+- **Refatoração Marketing.tsx**: 2134 → 396 linhas, dividido em 2 componentes separados:
+  - `frontend/src/components/marketing/FlowsManager.tsx` (621 linhas) — flows, toggle ativo/inativo, execuções, timeline
+  - `frontend/src/components/marketing/CampaignStats.tsx` (1296 linhas) — campanhas, atividade de email, leads, carrinhos
+- **Sidebar reorganizada** em `Layout.tsx`: 3 grupos recolhíveis (Estratégico/Operacional/Ferramentas) com estado persistido em localStorage, auto-expand na rota ativa, separadores visuais, sub-grupos CRM/Produtos/Financeiro/Marketing
+- **Limpeza banco**: 34 flows `vitest-proto-pollution` removidos — 12 flows legítimos mantidos
+- Backup Google Drive executado antes das mudanças (1.8MB snapshot)
+- 717/717 testes passando, TypeScript sem erros
+
 ### chore(claude): hooks de qualidade + skills de segurança — `14d2163` (14/04/2026)
 - `~/.claude/settings.json`: hook `block-no-verify` inserido antes do RTK (bloqueia `--no-verify` antes do auto-approve RTK)
 - `~/.claude/settings.json`: hook `stop:check-console-log` (Stop event) — varre arquivos `.ts/.tsx` editados na resposta, avisa se houver `console.log`
