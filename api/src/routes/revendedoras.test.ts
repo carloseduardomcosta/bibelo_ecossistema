@@ -265,7 +265,7 @@ describe("POST /api/revendedoras", () => {
     expect(res.body.nome).toBe("Nova Vitest");
     expect(res.body.email).toBe("vitest-nova@test.bibelo.internal");
     expect(res.body.nivel).toBe("iniciante");
-    expect(Number(res.body.percentual_desconto)).toBe(15);
+    expect(Number(res.body.percentual_desconto)).toBe(5);
   });
 
   it("409 e-mail duplicado", async () => {

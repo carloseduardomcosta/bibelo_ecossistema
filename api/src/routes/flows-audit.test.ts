@@ -112,8 +112,13 @@ describe("unsub_link nos emails de fluxo", () => {
     expect(step).not.toBeNull();
     // O step pode estar concluido (email enviado) ou pendente (rate limit 12h de outro teste)
     if (step!.status === "concluido") {
-      expect(step!.resultado).toHaveProperty("messageId");
-      expect(step!.resultado.sent).toBe(true);
+      if (step!.resultado?.waited) {
+        // Dedup 72h: template enviado recentemente, fluxo avançou corretamente
+        expect(step!.resultado.waited).toBe(true);
+      } else {
+        expect(step!.resultado).toHaveProperty("messageId");
+        expect(step!.resultado.sent).toBe(true);
+      }
     } else {
       // Mesmo pendente, o flow foi criado corretamente
       expect(["pendente", "executando"]).toContain(step!.status);
@@ -136,8 +141,8 @@ describe("unsub_link nos emails de fluxo", () => {
     // O link gerado deve conter /api/email/unsubscribe
     // Verificamos via a função gerarLinkDescadastro (testada indiretamente)
     const step = await getStepResultado(executionId, 0);
-    // Se email foi enviado, messageId existe; se rate-limited, pode não ter
-    if (step?.status === "concluido") {
+    // Se email foi enviado (sem dedup), messageId existe; se rate-limited ou dedup, não tem
+    if (step?.status === "concluido" && !step!.resultado?.waited) {
       expect(step!.resultado.messageId).toBeTruthy();
     }
   });
@@ -434,7 +439,8 @@ describe("Templates referenciados por fluxos ativos existem e estão ativos", ()
 describe("Templates ativos contêm {{unsub_link}} (LGPD)", () => {
   it("TODOS os templates ativos têm {{unsub_link}} no HTML", async () => {
     const templates = await query<{ nome: string; html: string }>(
-      "SELECT nome, html FROM marketing.templates WHERE ativo = true ORDER BY nome",
+      // Exclui templates B2B transacionais do portal Sou Parceira — não são marketing ao consumidor
+      "SELECT nome, html FROM marketing.templates WHERE ativo = true AND nome NOT ILIKE '%Sou Parceira%' ORDER BY nome",
     );
 
     expect(templates.length).toBeGreaterThan(0);
