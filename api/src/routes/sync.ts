@@ -5,6 +5,7 @@ import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { getAuthUrl, exchangeCode } from "../integrations/bling/auth";
 import { syncCustomers, syncOrders, syncProducts, syncStock, syncNfEntrada, syncContasPagar, incrementalSync, syncProductCategories, fetchCategoryMap, syncProductImages, syncProductGtins } from "../integrations/bling/sync";
+import { syncLogisticaObjetos } from "../integrations/bling/logistica";
 import { getNuvemShopAuthUrl, exchangeNuvemShopCode, getNuvemShopToken } from "../integrations/nuvemshop/auth";
 import { syncNuvemShop, registerNsWebhooks } from "../integrations/nuvemshop/sync";
 import { sendOrderConfirmationEmail, sendPaymentApprovedEmail, sendShippingEmail } from "../services/storefront-email.service";
@@ -191,6 +192,21 @@ syncRouter.post("/bling/gtins", authMiddleware, async (req: Request, res: Respon
 // ══════════════════════════════════════════════════════════════
 // NUVEMSHOP
 // ══════════════════════════════════════════════════════════════
+
+// ── POST /api/sync/bling/logistica — sync remessas e objetos logísticos ──
+
+syncRouter.post("/bling/logistica", authMiddleware, async (req: Request, res: Response) => {
+  const { logisticaId } = req.body as { logisticaId?: number };
+  logger.info("Sync logística Bling iniciado", { user: (req as any).user?.email, logisticaId });
+  res.json({ message: "Sync de objetos logísticos iniciado em background." });
+
+  try {
+    const result = await syncLogisticaObjetos(logisticaId);
+    logger.info("Sync logística concluído", result);
+  } catch (err: any) {
+    logger.error("Erro no sync de logística", { error: err.message });
+  }
+});
 
 // ── GET /api/auth/nuvemshop — URL de autorização ──────────────
 

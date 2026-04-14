@@ -44,6 +44,7 @@
 | Melhor Envio | ✅ produção | OAuth2 conectado, fulfillment provider Medusa v2, PAC+SEDEX calculados via API, token via CRM |
 | Medusa → Bling pedidos | ✅ produção | Subscriber order.placed → CRM → Bling API (busca/cria contato + cria pedido), webhook bidirecional confirmado |
 | Melhor Envio etiquetas | ✅ produção | Geração automática via CRM para pedidos Medusa (cart→checkout→generate→print), NuvemShop mantém fluxo Bling |
+| Portal de Rastreio | ✅ produção (PoC) | `GET /api/public/rastreio?codigo=` — sync via Bling API `GET /logisticas/objetos/{id}`, tabela `sync.logistica_objetos`, widget `TrackingWidget` reutilizável. Sync manual: `POST /api/sync/bling/logistica`. |
 | Uptime Kuma | ✅ produção | status.papelariabibelo.com.br — 11 monitores, 2 canais alerta |
 | Monitoramento VPS | ✅ produção | página /sistema no CRM: disco, RAM, containers, SSL, código, alertas (cron 1min + auto-refresh 30s) |
 | Edrone | ❌ removido | DNS Cloudflare limpo em 09/04/2026 — 5 registros removidos (DKIM, mail, click, sms, sparkpost) |

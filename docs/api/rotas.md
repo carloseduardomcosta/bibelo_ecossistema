@@ -10,6 +10,7 @@ Referência completa de todos os endpoints.
 - `GET  /api/images/serve/:id` — serve imagem temporária convertida (público, sem auth — usado pelo Bling para puxar imagens)
 - `GET  /api/public/novidades?limit=20` — produtos da NF de entrada mais recente com foto + preço + descrição + estoque válidos. `limit` clamp 1-50 (NaN/negativo → 20). Retorna `{ novidades[], total, nf_numero, atualizado_em }`. Cache 5 min.
 - `GET  /api/public/frete?cep=XXXXXXXX` — calcula frete PAC + SEDEX via Melhor Envio. CEP deve ter 8 dígitos. Retorna `{ cep, options: [{ id, name, price (centavos), delivery_days }] }`. Origem: CEP 89093880 (Timbó/SC). Pacote padrão: 0,5kg 10×15×20cm. Rate limit: 30 req/min. Cache 5 min. Proxy Next.js disponível em `/api/frete?cep=` (uso client-side).
+- `GET  /api/public/rastreio?codigo=AN817294331BR` — rastreio de envio por código da transportadora. Também aceita `?pedido=265` (nº do pedido Bling). Retorna `{ tracking_code, servico, status: { codigo, label, cor, entregue }, ultima_atualizacao, previsao_entrega, prazo_entrega_dias, url_rastreio, pedido }`. Dados do Bling via `sync.logistica_objetos`. Refresh automático em background se dados > 1h. Rate limit: 30 req/min.
 
 ## Protegidas (Bearer JWT obrigatório)
 

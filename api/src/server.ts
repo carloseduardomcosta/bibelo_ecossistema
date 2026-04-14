@@ -45,6 +45,7 @@ import { storeSettingsRouter } from "./routes/store-settings";
 import { categoriaSyncRouter } from "./routes/categorias-sync";
 import { publicNovidadesRouter } from "./routes/public-novidades";
 import { publicFreteRouter }    from "./routes/public-frete";
+import { publicRastreioRouter }  from "./routes/public-rastreio";
 import { politicaParceiraRouter } from "./routes/public-politica-parceira";
 import { systemRouter } from "./routes/system";
 import { firewallRouter } from "./routes/firewall";
@@ -155,6 +156,7 @@ app.use("/api", storeSettingsRouter);              // GET público + PUT autenti
 app.use("/api/categorias-sync", categoriaSyncRouter); // painel sync categorias Bling↔Medusa
 app.use("/api/public/novidades",          publicNovidadesRouter);   // público: novidades via NF Bling (sem auth)
 app.use("/api/public/frete",             publicFreteRouter);        // público: cálculo de frete Melhor Envio (sem auth)
+app.use("/api/public/rastreio",          publicRastreioRouter);     // público: rastreio de envios por código ou pedido
 app.use("/api/public/politica-parceira", politicaParceiraRouter);   // público: regulamento Sou Parceira
 app.use("/api/system", systemRouter);              // status VPS + code stats
 app.use("/api/firewall", firewallRouter);
