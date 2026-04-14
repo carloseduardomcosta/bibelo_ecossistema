@@ -206,7 +206,7 @@ politicaParceiraRouter.get("/", (_req: Request, res: Response) => {
           <tr>
             <td><span class="badge iniciante">✨ Iniciante</span></td>
             <td>Até R$&nbsp;149/mês</td>
-            <td><span class="desconto">15% OFF</span></td>
+            <td><span class="desconto">5% OFF</span></td>
             <td><span class="frete-proprio">📦 Por sua conta</span></td>
           </tr>
           <tr>

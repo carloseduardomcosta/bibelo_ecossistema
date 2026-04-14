@@ -73,6 +73,8 @@ interface Pedido {
   enviado_em: string | null;
   entregue_em: string | null;
   mensagens_nao_lidas: number;
+  codigo_rastreio: string | null;
+  url_rastreio: string | null;
 }
 
 interface Mensagem {
@@ -119,7 +121,7 @@ type Secao  = 'dashboard' | 'catalogo' | 'pedidos' | 'recursos';
 // ── Config visual por nível ──────────────────────────────────────
 
 const NIVEL = {
-  iniciante: { label: 'Iniciante', cor: 'bg-gray-100 text-gray-600 border-gray-300',         icon: Sparkles, desconto: 15, freteGratis: false, meta: 150  },
+  iniciante: { label: 'Iniciante', cor: 'bg-gray-100 text-gray-600 border-gray-300',         icon: Sparkles, desconto: 5,  freteGratis: false, meta: 150  },
   bronze:    { label: 'Bronze',    cor: 'bg-amber-100 text-amber-700 border-amber-300',       icon: Medal,    desconto: 25, freteGratis: false, meta: 600  },
   prata:     { label: 'Prata',     cor: 'bg-slate-100 text-slate-600 border-slate-300',       icon: Star,     desconto: 35, freteGratis: false, meta: 1200 },
   ouro:      { label: 'Ouro',      cor: 'bg-yellow-100 text-yellow-700 border-yellow-400',    icon: Crown,    desconto: 45, freteGratis: true,  meta: 3000 },
@@ -642,25 +644,25 @@ function HeaderLogado({ rev, secao, onSecao, onLogout, cartCount, onOpenCart }: 
 
   return (
     <header className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm">
-      <div className="max-w-5xl mx-auto px-4">
-        <div className="flex items-center justify-between gap-4 py-3">
+      <div className="max-w-6xl mx-auto px-6">
+        <div className="flex items-center justify-between gap-4 py-4">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-[#fe68c4] rounded-xl flex items-center justify-center shadow-sm">
-              <Handshake className="w-4 h-4 text-white" />
+            <div className="w-11 h-11 bg-[#fe68c4] rounded-xl flex items-center justify-center shadow-sm">
+              <Handshake className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="text-[10px] text-gray-400 uppercase tracking-widest leading-none">Sou Parceira</p>
-              <p className="font-bold text-gray-900 text-sm leading-tight">Papelaria Bibelô</p>
+              <p className="text-xs text-gray-400 uppercase tracking-widest leading-none">Sou Parceira</p>
+              <p className="font-bold text-gray-900 text-base leading-tight">Papelaria Bibelô</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
-                            text-xs font-semibold border ${nivelCfg.cor}`}>
-              <NivelIcon className="w-3 h-3" />
+          <div className="flex items-center gap-3">
+            <span className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                            text-sm font-semibold border ${nivelCfg.cor}`}>
+              <NivelIcon className="w-3.5 h-3.5" />
               {nivelCfg.label} · {rev.percentual_desconto}% off
             </span>
-            <p className="text-sm font-semibold text-gray-800 hidden md:block max-w-[120px] truncate">
+            <p className="text-base font-semibold text-gray-800 hidden md:block max-w-[160px] truncate">
               {rev.nome}
             </p>
             {/* Botão carrinho */}
@@ -695,13 +697,13 @@ function HeaderLogado({ rev, secao, onSecao, onLogout, cartCount, onOpenCart }: 
             <button
               key={id}
               onClick={() => onSecao(id)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors
+              className={`flex items-center gap-2 px-5 py-3 text-base font-medium border-b-2 transition-colors
                 ${secao === id
                   ? 'border-[#fe68c4] text-[#fe68c4]'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-200'
                 }`}
             >
-              <Icon className="w-3.5 h-3.5" />
+              <Icon className="w-4 h-4" />
               {label}
             </button>
           ))}
@@ -726,7 +728,7 @@ function Dashboard({ rev, onIrCatalogo }: { rev: Revendedora; onIrCatalogo: () =
 
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto px-4 py-10 text-center">
+      <div className="max-w-6xl mx-auto px-4 py-10 text-center">
         <div className="w-8 h-8 border-2 border-[#fe68c4] border-t-transparent rounded-full animate-spin mx-auto" />
       </div>
     );
@@ -738,18 +740,18 @@ function Dashboard({ rev, onIrCatalogo }: { rev: Revendedora; onIrCatalogo: () =
   const pg = data?.progresso_nivel;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
 
       {/* Saudação */}
       <div>
-        <h2 className="text-xl font-bold text-gray-900">
+        <h2 className="text-2xl font-bold text-gray-900">
           Olá, {rev.nome.split(' ')[0]}! 👋
         </h2>
-        <p className="text-sm text-gray-500 mt-0.5">Veja seu desempenho este mês</p>
+        <p className="text-base text-gray-500 mt-1">Veja seu desempenho este mês</p>
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           {
             label: 'Vendas este mês',
@@ -777,31 +779,31 @@ function Dashboard({ rev, onIrCatalogo }: { rev: Revendedora; onIrCatalogo: () =
           },
         ].map(card => (
           <div key={card.label}
-            className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-            <p className="text-xs text-gray-400 mb-1">{card.label}</p>
-            <p className={`text-xl font-bold ${card.color}`}>{card.value}</p>
-            <p className="text-[10px] text-gray-400 mt-0.5">{card.sub}</p>
+            className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
+            <p className="text-sm text-gray-400 mb-1">{card.label}</p>
+            <p className={`text-2xl font-bold ${card.color}`}>{card.value}</p>
+            <p className="text-xs text-gray-400 mt-1">{card.sub}</p>
           </div>
         ))}
       </div>
 
       {/* Badge nível + barra progresso */}
-      <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-        <div className="flex items-center justify-between mb-2">
-          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full
-                          text-sm font-semibold border ${nivelCfg.cor}`}>
-            <NivelIcon className="w-3.5 h-3.5" />
+      <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full
+                          text-base font-semibold border ${nivelCfg.cor}`}>
+            <NivelIcon className="w-4 h-4" />
             Nível {nivelCfg.label} · {nivelCfg.desconto}% OFF
           </span>
           {pg?.proximo && (
-            <p className="text-xs text-gray-400">
+            <p className="text-sm text-gray-400">
               Faltam <span className="font-semibold text-gray-700">{formatCurrency(pg.faltam)}</span> para {pg.proximo}
             </p>
           )}
         </div>
         {/* Frete info */}
-        <p className={`text-xs font-medium mb-2 flex items-center gap-1.5 ${nivelCfg.freteGratis ? 'text-green-600' : 'text-gray-400'}`}>
-          <Truck className="w-3 h-3" />
+        <p className={`text-sm font-medium mb-3 flex items-center gap-1.5 ${nivelCfg.freteGratis ? 'text-green-600' : 'text-gray-400'}`}>
+          <Truck className="w-4 h-4" />
           {nivelCfg.freteGratis
             ? 'Frete grátis — a Bibelô arca pelo envio 🎉'
             : 'Frete por sua conta · chegue ao Ouro para frete grátis!'
@@ -823,22 +825,22 @@ function Dashboard({ rev, onIrCatalogo }: { rev: Revendedora; onIrCatalogo: () =
       {/* Últimos pedidos */}
       {data && data.ultimos_pedidos.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <p className="text-sm font-semibold text-gray-800">Últimos pedidos</p>
+          <div className="px-5 py-4 border-b border-gray-100">
+            <p className="text-base font-semibold text-gray-800">Últimos pedidos</p>
           </div>
           <div className="divide-y divide-gray-50">
             {data.ultimos_pedidos.map(p => {
               const cfg = STATUS_PEDIDO[p.status] ?? STATUS_PEDIDO.pendente;
               const Icon = cfg.icon;
               return (
-                <div key={p.id} className="flex items-center gap-3 px-4 py-3">
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full
-                                  text-xs font-medium ${cfg.cor}`}>
-                    <Icon className="w-3 h-3" />
+                <div key={p.id} className="flex items-center gap-3 px-5 py-4">
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full
+                                  text-sm font-medium ${cfg.cor}`}>
+                    <Icon className="w-3.5 h-3.5" />
                     {cfg.label}
                   </span>
-                  <span className="text-sm text-gray-500 flex-1">{formatDate(p.criado_em)}</span>
-                  <span className="text-sm font-semibold text-gray-800">{formatCurrency(p.total)}</span>
+                  <span className="text-base text-gray-500 flex-1">{formatDate(p.criado_em)}</span>
+                  <span className="text-base font-semibold text-gray-800">{formatCurrency(p.total)}</span>
                 </div>
               );
             })}
@@ -1181,7 +1183,7 @@ function Catalogo({ rev, cart, onCartChange, onOpenCart }: CatalogoProps) {
   const fim    = catalogo ? Math.min(catalogo.pagina * limit, catalogo.total) : 0;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-5">
+    <div className="max-w-6xl mx-auto px-4 py-5">
 
       {/* Barra de controles */}
       <div className="flex flex-col sm:flex-row gap-3 mb-3">
@@ -1771,6 +1773,21 @@ function MeusPedidos({ rev: _rev }: { rev: Revendedora }) {
               <span className="text-[#fe68c4]">{formatCurrency(pedidoAberto.total)}</span>
             </div>
           </div>
+          {pedidoAberto.codigo_rastreio && (
+            <div className="px-5 pb-4">
+              <a
+                href={pedidoAberto.url_rastreio ?? `https://melhorrastreio.com.br/rastreio/${pedidoAberto.codigo_rastreio}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg
+                           bg-green-50 border border-green-200 text-green-700
+                           text-sm font-semibold hover:bg-green-100 transition-colors"
+              >
+                <Truck className="w-4 h-4" />
+                Rastrear envio — {pedidoAberto.codigo_rastreio}
+              </a>
+            </div>
+          )}
         </div>
 
         {/* Thread mensagens */}
@@ -1896,8 +1913,17 @@ function MeusPedidos({ rev: _rev }: { rev: Revendedora }) {
                   <span className="font-bold text-gray-800">{formatCurrency(p.total)}</span>
                 </div>
                 <div className="flex items-center gap-1.5 mt-2">
-                  <MessageCircle className="w-3.5 h-3.5 text-gray-300" />
-                  <span className="text-xs text-gray-400">Toque para ver mensagens</span>
+                  {p.codigo_rastreio ? (
+                    <>
+                      <Truck className="w-3.5 h-3.5 text-green-500" />
+                      <span className="text-xs text-green-600 font-medium">Rastreio: {p.codigo_rastreio}</span>
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="w-3.5 h-3.5 text-gray-300" />
+                      <span className="text-xs text-gray-400">Toque para ver mensagens</span>
+                    </>
+                  )}
                   <ChevronRight className="w-3.5 h-3.5 text-gray-300 ml-auto" />
                 </div>
               </button>
@@ -1924,7 +1950,7 @@ function Recursos() {
 
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto px-4 py-10 text-center">
+      <div className="max-w-6xl mx-auto px-4 py-10 text-center">
         <div className="w-8 h-8 border-2 border-[#fe68c4] border-t-transparent rounded-full animate-spin mx-auto" />
       </div>
     );
@@ -1934,7 +1960,7 @@ function Recursos() {
   const disponiveis = modulos.filter(m => !m.tem_acesso);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-900">Recursos disponíveis</h2>
         <p className="text-sm text-gray-500 mt-0.5">
@@ -2072,7 +2098,7 @@ export default function SouParceira() {
           const Icon = cfg.icon;
           return (
             <div className="bg-gradient-to-r from-[#fe68c4] to-[#fd4fb8] text-white">
-              <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-medium text-white/70 uppercase tracking-wider mb-0.5">
                     Seu desconto exclusivo

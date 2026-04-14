@@ -45,6 +45,7 @@ import {
   Server,
   Handshake,
   BookImage,
+  KeyRound,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -270,6 +271,13 @@ interface PedidoRevNotif {
   mensagens_nao_lidas: number;
 }
 
+interface AcessoPortal {
+  id: string;
+  titulo: string;
+  corpo: string;
+  criado_em: string;
+}
+
 const ORIGEM_LABELS: Record<string, string> = {
   parcerias_b2b: 'Parceria B2B',
   grupo_vip: 'Grupo VIP',
@@ -288,17 +296,19 @@ function NotificationBell() {
   const [boasvindasDeals, setBoasvindasDeals] = useState<BoasvindasDeal[]>([]);
   const [pedidosRev, setPedidosRev] = useState<PedidoRevNotif[]>([]);
   const [pedidosRevResumo, setPedidosRevResumo] = useState({ pendentes: 0, mensagens_nao_lidas: 0 });
+  const [acessosPortal, setAcessosPortal] = useState<AcessoPortal[]>([]);
   const ref = useRef<HTMLDivElement>(null);
 
   const fetchAlertas = useCallback(async (signal?: AbortSignal) => {
     try {
-      const [finResp, leadsResp, emailResp, vendasResp, boasvindasResp, pedidosRevResp] = await Promise.all([
+      const [finResp, leadsResp, emailResp, vendasResp, boasvindasResp, pedidosRevResp, acessosPortalResp] = await Promise.all([
         api.get('/financeiro/despesas-fixas/alertas', { signal }),
         api.get('/leads?limit=5', { signal }),
         api.get('/campaigns/email-events?hours=48', { signal }),
         api.get('/tracking/vendas-recentes?horas=48', { signal }),
         api.get('/deals/boasvindas-recentes', { signal }),
         api.get('/revendedoras/pedidos-recentes', { signal }),
+        api.get('/revendedoras/acessos-portal-recentes', { signal }),
       ]);
       setAlertas(finResp.data.data.filter((d: Notificacao) => d.alerta !== 'pago'));
       setResumo(finResp.data.resumo);
@@ -317,6 +327,11 @@ function NotificationBell() {
         pendentes: pedidosRevResp.data.pendentes || 0,
         mensagens_nao_lidas: pedidosRevResp.data.mensagens_nao_lidas || 0,
       });
+      // Acessos das últimas 6h para o sininho
+      const acessosRecentes = (acessosPortalResp.data.data || []).filter((a: AcessoPortal) => {
+        return Date.now() - new Date(a.criado_em).getTime() < 6 * 3600 * 1000;
+      });
+      setAcessosPortal(acessosRecentes);
     } catch (err) {
       if ((err as Error).name !== 'AbortError' && (err as Error).name !== 'CanceledError') {
         console.error('Erro ao buscar notificações:', err);
@@ -352,7 +367,7 @@ function NotificationBell() {
   const parceirasBtoB = boasvindasDeals.filter(d => d.origem === 'parcerias_b2b');
   const contatosVip   = boasvindasDeals.filter(d => d.origem !== 'parcerias_b2b');
 
-  const urgentes = vendas.length + resumo.atrasados + resumo.vence_em_breve + leads.length + emailEvents.length + parceirasBtoB.length + contatosVip.length + pedidosRevResumo.pendentes + pedidosRevResumo.mensagens_nao_lidas;
+  const urgentes = vendas.length + resumo.atrasados + resumo.vence_em_breve + leads.length + emailEvents.length + parceirasBtoB.length + contatosVip.length + pedidosRevResumo.pendentes + pedidosRevResumo.mensagens_nao_lidas + acessosPortal.length;
 
   return (
     <div ref={ref} className="relative">
@@ -412,6 +427,11 @@ function NotificationBell() {
                 <span className="text-[10px] px-2 py-0.5 bg-[#fe68c4]/10 text-[#fe68c4] rounded-full font-medium animate-pulse">
                   {pedidosRevResumo.pendentes > 0 ? `${pedidosRevResumo.pendentes} pedido${pedidosRevResumo.pendentes > 1 ? 's' : ''}` : ''}
                   {pedidosRevResumo.mensagens_nao_lidas > 0 ? ` ${pedidosRevResumo.mensagens_nao_lidas} msg` : ''}
+                </span>
+              )}
+              {acessosPortal.length > 0 && (
+                <span className="text-[10px] px-2 py-0.5 bg-indigo-400/10 text-indigo-400 rounded-full font-medium">
+                  {acessosPortal.length} acesso{acessosPortal.length > 1 ? 's' : ''} portal
                 </span>
               )}
             </div>
@@ -500,6 +520,31 @@ function NotificationBell() {
                       </p>
                     </div>
                     <span className="text-[10px] text-[#fe68c4] font-medium shrink-0">{timeAgo(p.criado_em)}</span>
+                  </button>
+                ))}
+              </>
+            )}
+
+            {/* ── Acessos ao portal Sou Parceira ── */}
+            {acessosPortal.length > 0 && (
+              <>
+                <div className="px-4 py-2 bg-indigo-400/5 border-b border-bibelo-border/50">
+                  <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Acessos Portal Parceira</p>
+                </div>
+                {acessosPortal.slice(0, 5).map((a) => (
+                  <button
+                    key={a.id}
+                    onClick={() => { setOpen(false); navigate('/revendedoras'); }}
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bibelo-border/30 transition-colors text-left border-b border-bibelo-border/50"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-indigo-400/20 flex items-center justify-center shrink-0">
+                      <KeyRound size={14} className="text-indigo-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-bibelo-text truncate">{a.titulo}</p>
+                      <p className="text-xs text-bibelo-muted truncate">{a.corpo}</p>
+                    </div>
+                    <span className="text-[10px] text-indigo-400 font-medium shrink-0">{timeAgo(a.criado_em)}</span>
                   </button>
                 ))}
               </>
@@ -681,7 +726,7 @@ function NotificationBell() {
               </>
             )}
 
-            {alertas.length === 0 && leads.length === 0 && emailEvents.length === 0 && vendas.length === 0 && boasvindasDeals.length === 0 && pedidosRevResumo.pendentes === 0 && pedidosRevResumo.mensagens_nao_lidas === 0 && (
+            {alertas.length === 0 && leads.length === 0 && emailEvents.length === 0 && vendas.length === 0 && boasvindasDeals.length === 0 && pedidosRevResumo.pendentes === 0 && pedidosRevResumo.mensagens_nao_lidas === 0 && acessosPortal.length === 0 && (
               <div className="px-4 py-8 text-center">
                 <CheckCircle2 size={24} className="mx-auto mb-2 text-emerald-400" />
                 <p className="text-sm text-bibelo-muted">Tudo em dia!</p>

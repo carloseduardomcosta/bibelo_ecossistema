@@ -356,6 +356,36 @@ portalSouParceiraRouter.post(
       [rev.id]
     ).catch(() => {});
 
+    // Notificação no sininho + interação CRM (não-bloqueante)
+    const nivelLabel: Record<string, string> = {
+      iniciante: "Iniciante", bronze: "Bronze", prata: "Prata", ouro: "Ouro", diamante: "Diamante",
+    };
+    const nomeEsc  = escHtml(rev.nome);
+    const nivelEsc = escHtml(nivelLabel[rev.nivel] ?? rev.nivel);
+    const ipReq    = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+                     ?? req.socket.remoteAddress ?? null;
+
+    queryOne(
+      `INSERT INTO public.notificacoes (tipo, titulo, corpo, link)
+       VALUES ('acesso_portal_parceira', $1, $2, '/revendedoras')`,
+      [
+        `${nomeEsc} acessou o portal`,
+        `${nivelEsc} · acesso via OTP confirmado`,
+      ]
+    ).catch(err => logger.error("Erro ao inserir notificação de acesso", { error: (err as Error).message }));
+
+    // Registra na timeline do CRM se houver customer_id vinculado
+    queryOne<{ customer_id: string | null }>(
+      "SELECT customer_id FROM crm.revendedoras WHERE id = $1", [rev.id]
+    ).then(r => {
+      if (!r?.customer_id) return;
+      return queryOne(
+        `INSERT INTO crm.interactions (customer_id, tipo, canal, descricao, metadata)
+         VALUES ($1, 'portal_acesso', 'web', 'Parceira acessou o portal Sou Parceira', $2)`,
+        [r.customer_id, JSON.stringify({ nivel: rev.nivel, ip: ipReq })]
+      );
+    }).catch(err => logger.error("Erro ao registrar interação de acesso", { error: (err as Error).message }));
+
     const token = gerarJWT(rev.id, rev.nivel);
 
     logger.info("Login parceira via OTP", { revendedoraId: rev.id, nivel: rev.nivel });
@@ -548,15 +578,22 @@ portalSouParceiraRouter.get(
     );
 
     const vol = parseFloat(rev.volume_mes_atual || "0");
-    let progresso_nivel;
-    if (vol < 600) {
-      const faltam = Math.max(0, 600 - vol);
-      progresso_nivel = { proximo: "prata", meta: 600, faltam, percentual: Math.min(100, Math.max(0, ((vol - 300) / 300) * 100)) };
-    } else if (vol < 1200) {
+    // Progresso correto para todos os 5 níveis
+    let progresso_nivel: { proximo: string | null; meta: number; faltam: number; percentual: number };
+    if (vol >= 3000) {
+      progresso_nivel = { proximo: null, meta: 3000, faltam: 0, percentual: 100 };
+    } else if (vol >= 1200) {
+      const faltam = Math.max(0, 3000 - vol);
+      progresso_nivel = { proximo: "diamante", meta: 3000, faltam, percentual: Math.min(100, Math.max(0, ((vol - 1200) / 1800) * 100)) };
+    } else if (vol >= 600) {
       const faltam = Math.max(0, 1200 - vol);
       progresso_nivel = { proximo: "ouro", meta: 1200, faltam, percentual: Math.min(100, Math.max(0, ((vol - 600) / 600) * 100)) };
+    } else if (vol >= 150) {
+      const faltam = Math.max(0, 600 - vol);
+      progresso_nivel = { proximo: "prata", meta: 600, faltam, percentual: Math.min(100, Math.max(0, ((vol - 150) / 450) * 100)) };
     } else {
-      progresso_nivel = { proximo: null, meta: 1200, faltam: 0, percentual: 100 };
+      const faltam = Math.max(0, 150 - vol);
+      progresso_nivel = { proximo: "bronze", meta: 150, faltam, percentual: Math.min(100, Math.max(0, (vol / 150) * 100)) };
     }
 
     res.json({

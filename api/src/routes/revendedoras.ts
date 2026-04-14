@@ -1,11 +1,13 @@
 import { Router, Request, Response } from "express";
 import crypto from "crypto";
 import { z } from "zod";
+import axios from "axios";
 import { query, queryOne } from "../db";
 import { logger } from "../utils/logger";
 import { authMiddleware } from "../middleware/auth";
 import { sendEmail } from "../integrations/resend/email";
 import { escHtml } from "../utils/sanitize";
+import { getValidToken, BLING_API } from "../integrations/bling/auth";
 
 export const revendedorasRouter = Router();
 revendedorasRouter.use(authMiddleware);
@@ -13,7 +15,7 @@ revendedorasRouter.use(authMiddleware);
 // ── Helpers ──────────────────────────────────────────────────
 
 // Estrutura de níveis:
-//   iniciante : volume < 150     → 15%, frete por conta da revendedora
+//   iniciante : volume < 150     → 5%, frete por conta da revendedora (induz a subir de nível)
 //   bronze    : 150–599          → 25%, frete por conta da revendedora
 //   prata     : 600–1199         → 35%, frete por conta da revendedora
 //   ouro      : 1200–2999        → 45%, frete GRÁTIS (Bibelô arca)
@@ -23,7 +25,7 @@ function calcularNivel(volume: number): { nivel: string; desconto: number } {
   if (volume >= 1200) return { nivel: "ouro",      desconto: 45 };
   if (volume >= 600)  return { nivel: "prata",     desconto: 35 };
   if (volume >= 150)  return { nivel: "bronze",    desconto: 25 };
-  return                    { nivel: "iniciante",  desconto: 15 };
+  return                    { nivel: "iniciante",  desconto: 5  };
 }
 
 function calcularProgresso(volume: number): {
@@ -161,7 +163,7 @@ function buildBoasVindasParceira(nome: string, cpf: string, desconto: number, ni
                 </tr>
               </thead>
               <tbody>
-                ${nivelRow("✨", "Iniciante", 15, "até R$149/mês",          "Por sua conta", nivel === "iniciante")}
+                ${nivelRow("✨", "Iniciante", 5,  "até R$149/mês",          "Por sua conta", nivel === "iniciante")}
                 ${nivelRow("🥉", "Bronze",    25, "R$150 a R$599/mês",      "Por sua conta", nivel === "bronze")}
                 ${nivelRow("🥈", "Prata",     35, "R$600 a R$1.199/mês",    "Por sua conta", nivel === "prata")}
                 ${nivelRow("🥇", "Ouro",      45, "R$1.200 a R$2.999/mês",  "Frete grátis",  nivel === "ouro")}
@@ -229,6 +231,158 @@ function buildBoasVindasParceira(nome: string, cpf: string, desconto: number, ni
   </table>
 </body>
 </html>`;
+}
+
+/** Recalcula volume do mês corrente a partir dos pedidos e ajusta nível/desconto. */
+async function recalcularVolume(revendedoraId: string): Promise<void> {
+  const result = await queryOne<{ volume: string }>(
+    `SELECT COALESCE(SUM(total), 0)::text AS volume
+       FROM crm.revendedora_pedidos
+      WHERE revendedora_id = $1
+        AND status IN ('aprovado', 'enviado', 'entregue')
+        AND DATE_TRUNC('month', criado_em) = DATE_TRUNC('month', NOW())`,
+    [revendedoraId]
+  );
+  const volume = parseFloat(result?.volume || "0");
+  const { nivel, desconto } = calcularNivel(volume);
+  await queryOne(
+    `UPDATE crm.revendedoras
+        SET volume_mes_atual  = $1,
+            total_vendido     = GREATEST(total_vendido, $1),
+            nivel             = $2,
+            percentual_desconto = $3,
+            atualizado_em     = NOW()
+      WHERE id = $4`,
+    [volume, nivel, desconto, revendedoraId]
+  );
+}
+
+/** Busca ou cria o contato da revendedora no Bling pelo CPF. */
+async function buscarOuCriarContatoBling(
+  token: string,
+  nome: string,
+  cpf: string,
+  email: string,
+  telefone: string | null
+): Promise<number | null> {
+  try {
+    // Pesquisa pelo CPF
+    const cpfDigits = cpf.replace(/\D/g, "");
+    const { data: search } = await axios.get(
+      `${BLING_API}/contatos?pesquisa=${cpfDigits}&limite=5`,
+      { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }
+    );
+    const found = (search?.data ?? []).find(
+      (c: { id: number; numeroDocumento?: string }) =>
+        c.numeroDocumento?.replace(/\D/g, "") === cpfDigits
+    );
+    if (found?.id) return found.id;
+
+    // Cria o contato
+    const body: Record<string, unknown> = {
+      nome,
+      tipoPessoa: "F",
+      numeroDocumento: cpfDigits,
+      email,
+    };
+    if (telefone) body.telefone = telefone.replace(/\D/g, "").slice(0, 11);
+
+    const { data: created } = await axios.post(`${BLING_API}/contatos`, body, {
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      timeout: 10000,
+    });
+    return created?.data?.id ?? null;
+  } catch (err) {
+    logger.error("Erro ao buscar/criar contato Bling", { error: (err as Error).message });
+    return null;
+  }
+}
+
+/** Cria pedido de venda no Bling quando um pedido B2B é aprovado. */
+async function sincronizarPedidoBling(
+  pedidoId: string,
+  revendedoraId: string
+): Promise<void> {
+  try {
+    const pedido = await queryOne<{
+      numero_pedido: string;
+      total: string;
+      desconto_percentual: string;
+      observacao: string | null;
+      itens: Array<{ produto_nome: string; produto_sku: string; quantidade: number; preco_com_desconto: number }>;
+    }>(
+      "SELECT numero_pedido, total, desconto_percentual, observacao, itens FROM crm.revendedora_pedidos WHERE id = $1",
+      [pedidoId]
+    );
+    if (!pedido) return;
+
+    const rev = await queryOne<{
+      nome: string; email: string; documento: string | null; telefone: string | null;
+    }>(
+      "SELECT nome, email, documento, telefone FROM crm.revendedoras WHERE id = $1",
+      [revendedoraId]
+    );
+    if (!rev?.documento) {
+      logger.warn("Revendedora sem CPF — pedido Bling não criado", { pedidoId, revendedoraId });
+      return;
+    }
+
+    const token = await getValidToken();
+
+    const contatoId = await buscarOuCriarContatoBling(
+      token, rev.nome, rev.documento, rev.email, rev.telefone
+    );
+    if (!contatoId) {
+      logger.warn("Não foi possível obter contato Bling — pedido B2B não sincronizado", { pedidoId });
+      return;
+    }
+
+    const itens = (pedido.itens as Array<{
+      produto_nome: string; produto_sku: string; quantidade: number; preco_com_desconto: number;
+    }>).map(item => ({
+      codigo:      item.produto_sku || undefined,
+      descricao:   item.produto_nome,
+      unidade:     "UN",
+      quantidade:  item.quantidade,
+      valor:       Number(item.preco_com_desconto),
+    }));
+
+    const hoje = new Date().toISOString().slice(0, 10);
+    const obsBase = `Pedido B2B portal Sou Parceira — ${pedido.numero_pedido}`;
+    const obs = pedido.observacao
+      ? `${obsBase}\n${pedido.observacao}`
+      : obsBase;
+
+    const { data: resp } = await axios.post(
+      `${BLING_API}/pedidos/vendas`,
+      {
+        contato:      { id: contatoId },
+        data:         hoje,
+        observacoes:  obs,
+        observacoesInternas: `Pedido B2B criado automaticamente pelo BibelôCRM`,
+        itens,
+      },
+      {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        timeout: 15000,
+      }
+    );
+
+    const blingId = resp?.data?.id;
+    if (blingId) {
+      await queryOne(
+        "UPDATE crm.revendedora_pedidos SET bling_pedido_id = $1 WHERE id = $2",
+        [blingId, pedidoId]
+      );
+      logger.info("Pedido B2B sincronizado com Bling", { pedidoId, blingId, numeroPedido: pedido.numero_pedido });
+    }
+  } catch (err) {
+    // Não-bloqueante: log e segue
+    logger.error("Erro ao sincronizar pedido B2B com Bling", {
+      pedidoId,
+      error: (err as Error).message,
+    });
+  }
 }
 
 async function gerarNumeroPedido(): Promise<string> {
@@ -415,27 +569,31 @@ revendedorasRouter.post("/", async (req: Request, res: Response) => {
     return;
   }
 
-  const desconto = d.percentual_desconto ?? 15; // novas revendedoras entram como Iniciante
+  const desconto = d.percentual_desconto ?? 5; // novas revendedoras entram como Iniciante
   const minimo   = d.pedido_minimo ?? 150;
+  const criador  = (req as Request & { user?: { email: string } }).user?.email ?? "sistema";
 
   const rev = await queryOne(
     `INSERT INTO crm.revendedoras
        (nome, email, telefone, documento, cidade, estado, observacao,
         customer_id, percentual_desconto, pedido_minimo,
-        cep, logradouro, numero, complemento, bairro)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        cep, logradouro, numero, complemento, bairro,
+        status, aprovada_em, aprovada_por)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+             'ativa', NOW(), $16)
      RETURNING *`,
     [d.nome, d.email, d.telefone ?? null, d.documento ?? null,
      d.cidade ?? null, d.estado ?? null, d.observacao ?? null,
      d.customer_id ?? null, desconto, minimo,
      d.cep ?? null, d.logradouro ?? null, d.numero ?? null,
-     d.complemento ?? null, d.bairro ?? null]
+     d.complemento ?? null, d.bairro ?? null, criador]
   );
 
   logger.info("Revendedora criada", { id: (rev as Record<string,unknown>).id, nome: d.nome });
 
   // E-mail de boas-vindas (não-bloqueante)
   if (d.email) {
+    const revId = (rev as Record<string, unknown>).id as string;
     const NIVEL_LABELS: Record<string, string> = { iniciante: "Iniciante", bronze: "Bronze", prata: "Prata", ouro: "Ouro", diamante: "Diamante" };
     const tabelaNiveis = buildTabelaNiveis(desconto);
     getRenderedEmailTemplate("revendedoras_boas_vindas", {
@@ -444,13 +602,31 @@ revendedorasRouter.post("/", async (req: Request, res: Response) => {
       desconto:     String(desconto),
       nivel_label:  NIVEL_LABELS["iniciante"] ?? "Iniciante",
       tabela_niveis: tabelaNiveis,
-    }).then(tpl => sendEmail({
-      to:      d.email!,
-      from:    FROM_PARCEIRAS,
-      subject: tpl?.subject ?? `Bem-vinda ao Programa Sou Parceira — Papelaria Bibelô! 🤝`,
-      html:    tpl?.html    ?? buildBoasVindasParceira(d.nome, (d.documento ?? "").replace(/\D/g, ""), desconto, "iniciante"),
-      tags:    [{ name: "tipo", value: "boas_vindas_parceira" }],
-    })).catch(err => logger.error("Erro ao enviar email boas-vindas parceira", { error: (err as Error).message }));
+    }).then(async tpl => {
+      await sendEmail({
+        to:      d.email!,
+        from:    FROM_PARCEIRAS,
+        subject: tpl?.subject ?? `Bem-vinda ao Programa Sou Parceira — Papelaria Bibelô! 🤝`,
+        html:    tpl?.html    ?? buildBoasVindasParceira(d.nome, (d.documento ?? "").replace(/\D/g, ""), desconto, "iniciante"),
+        tags:    [{ name: "tipo", value: "boas_vindas_parceira" }],
+      });
+      // Vincula customer_id se não foi passado e registra interação
+      const customer = await queryOne<{ id: string }>(
+        "SELECT id FROM crm.customers WHERE LOWER(email) = LOWER($1)", [d.email]
+      );
+      if (customer) {
+        await query(
+          "UPDATE crm.revendedoras SET customer_id = $1 WHERE id = $2 AND customer_id IS NULL",
+          [customer.id, revId]
+        );
+        await query(
+          `INSERT INTO crm.interactions (customer_id, tipo, canal, descricao, metadata)
+           VALUES ($1, 'email_enviado', 'email', 'Email de boas-vindas Sou Parceira enviado',
+                   $2::jsonb)`,
+          [customer.id, JSON.stringify({ template: "revendedoras_boas_vindas", assunto: tpl?.subject ?? "Bem-vinda ao Programa Sou Parceira — Papelaria Bibelô! 🤝" })]
+        );
+      }
+    }).catch(err => logger.error("Erro ao enviar email boas-vindas parceira", { error: (err as Error).message }));
   }
 
   res.status(201).json(rev);
@@ -517,6 +693,21 @@ revendedorasRouter.put("/email-templates/:slug", async (req: Request, res: Respo
 
   logger.info("Template email revendedora atualizado", { slug });
   res.json({ ok: true });
+});
+
+// ── GET /acessos-portal-recentes — últimos logins via OTP (sininho) ─
+
+revendedorasRouter.get("/acessos-portal-recentes", async (_req: Request, res: Response) => {
+  const rows = await query(
+    `SELECT id, titulo, corpo, criado_em
+       FROM public.notificacoes
+      WHERE tipo = 'acesso_portal_parceira'
+        AND criado_em > NOW() - INTERVAL '48 hours'
+      ORDER BY criado_em DESC
+      LIMIT 15`,
+    []
+  );
+  res.json({ data: rows });
 });
 
 // ── GET /:id ──────────────────────────────────────────────────
@@ -608,28 +799,6 @@ revendedorasRouter.put("/:id/status", async (req: Request, res: Response) => {
   if (!updated) { res.status(404).json({ error: "Revendedora não encontrada" }); return; }
 
   logger.info("Status revendedora atualizado", { id, status, user });
-
-  // E-mail de aprovação — disparado apenas na transição pendente → ativa (primeira vez)
-  if (status === "ativa" && anterior && anterior.status !== "ativa" && anterior.email) {
-    const cpf    = (anterior.documento ?? "").replace(/\D/g, "");
-    const cpfFmt = cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4") || cpf;
-    const NIVEL_LABELS: Record<string, string> = { iniciante: "Iniciante", bronze: "Bronze", prata: "Prata", ouro: "Ouro", diamante: "Diamante" };
-    const tabelaNiveis = buildTabelaNiveis(anterior.percentual_desconto);
-
-    getRenderedEmailTemplate("revendedoras_boas_vindas", {
-      nome:          anterior.nome,
-      cpf_formatado: cpfFmt,
-      desconto:      String(anterior.percentual_desconto),
-      nivel_label:   NIVEL_LABELS[anterior.nivel] ?? anterior.nivel,
-      tabela_niveis: tabelaNiveis,
-    }).then(tpl => sendEmail({
-      to:      anterior.email,
-      from:    FROM_PARCEIRAS,
-      subject: tpl?.subject ?? "🎉 Sua conta Sou Parceira foi aprovada! Acesse o catálogo",
-      html:    tpl?.html    ?? buildBoasVindasParceira(anterior.nome, cpf, anterior.percentual_desconto, anterior.nivel),
-      tags:    [{ name: "tipo", value: "aprovacao_parceira" }],
-    })).catch(err => logger.error("Erro ao enviar email aprovação parceira", { error: (err as Error).message }));
-  }
 
   res.json(updated);
 });
@@ -782,46 +951,59 @@ revendedorasRouter.post("/:id/pedidos", async (req: Request, res: Response) => {
 revendedorasRouter.put("/:id/pedidos/:pedidoId/status", async (req: Request, res: Response) => {
   const { id, pedidoId } = req.params;
   const parse = z.object({
-    status:            z.enum(["pendente", "aprovado", "enviado", "entregue", "cancelado"]),
-    observacao_admin:  z.string().max(1000).optional(),
+    status:           z.enum(["pendente", "aprovado", "enviado", "entregue", "cancelado"]),
+    observacao_admin: z.string().max(1000).optional(),
+    codigo_rastreio:  z.string().max(100).trim().optional(),
   }).safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: "Status inválido" }); return; }
 
-  const { status, observacao_admin } = parse.data;
+  const { status, observacao_admin, codigo_rastreio } = parse.data;
+
+  // Monta URL de rastreio Melhor Envio quando há código
+  const urlRastreio = codigo_rastreio
+    ? `https://melhorrastreio.com.br/rastreio/${codigo_rastreio.trim()}`
+    : undefined;
 
   const updated = await queryOne(`
     UPDATE crm.revendedora_pedidos SET
-      status = $1::text,
-      aprovado_em = CASE WHEN $1::text = 'aprovado' AND aprovado_em IS NULL THEN NOW() ELSE aprovado_em END,
-      enviado_em  = CASE WHEN $1::text = 'enviado'  AND enviado_em  IS NULL THEN NOW() ELSE enviado_em  END,
-      entregue_em = CASE WHEN $1::text = 'entregue' AND entregue_em IS NULL THEN NOW() ELSE entregue_em END,
-      atualizado_em = NOW()
+      status           = $1::text,
+      aprovado_em      = CASE WHEN $1::text = 'aprovado' AND aprovado_em IS NULL THEN NOW() ELSE aprovado_em END,
+      enviado_em       = CASE WHEN $1::text = 'enviado'  AND enviado_em  IS NULL THEN NOW() ELSE enviado_em  END,
+      entregue_em      = CASE WHEN $1::text = 'entregue' AND entregue_em IS NULL THEN NOW() ELSE entregue_em END,
+      codigo_rastreio  = COALESCE($4, codigo_rastreio),
+      url_rastreio     = COALESCE($5, url_rastreio),
+      atualizado_em    = NOW()
     WHERE id = $2 AND revendedora_id = $3
     RETURNING *
-  `, [status, pedidoId, id]);
+  `, [status, pedidoId, id, codigo_rastreio ?? null, urlRastreio ?? null]);
 
   if (!updated) { res.status(404).json({ error: "Pedido não encontrado" }); return; }
 
-  // Enviar email para revendedora e se necessário adicionar mensagem automática
   const pedidoData = updated as Record<string, unknown>;
   const numPedido  = String(pedidoData.numero_pedido ?? "");
+  const rastreioUrl = String(pedidoData.url_rastreio ?? "");
 
-  const rev = await queryOne<{ nome: string; email: string; nivel: string; volume_mes_atual: string }>(
-    "SELECT nome, email, nivel, volume_mes_atual FROM crm.revendedoras WHERE id = $1", [id]
+  const rev = await queryOne<{ nome: string; email: string }>(
+    "SELECT nome, email FROM crm.revendedoras WHERE id = $1", [id]
   );
 
   if (rev && status !== "pendente") {
-    // Email de atualização de status para a revendedora
-    const STATUS_LABELS: Record<string, string> = { aprovado: "✅ Aprovado", enviado: "🚚 Enviado", entregue: "📦 Entregue", cancelado: "❌ Cancelado" };
+    const STATUS_LABELS: Record<string, string> = {
+      aprovado: "✅ Aprovado", enviado: "🚚 Enviado", entregue: "📦 Entregue", cancelado: "❌ Cancelado",
+    };
     const statusLabel = STATUS_LABELS[status] ?? status;
-    const obsBlock = observacao_admin
-      ? `<p style="font-size:13px;color:#555;background:#fff7c1;border-radius:8px;padding:12px 16px;margin:0;"><strong>Mensagem:</strong> ${escHtml(observacao_admin)}</p>`
+    const obsBlock    = observacao_admin
+      ? `<p style="font-size:13px;color:#555;background:#fff7c1;border-radius:8px;padding:12px 16px;margin:0 0 12px;"><strong>Mensagem:</strong> ${escHtml(observacao_admin)}</p>`
       : "";
+    const rastreioBlock = rastreioUrl
+      ? `<p style="font-size:13px;color:#555;margin:0;"><strong>Rastreio:</strong> <a href="${rastreioUrl}" style="color:#fe68c4;">${escHtml(String(pedidoData.codigo_rastreio ?? ""))}</a></p>`
+      : "";
+
     getRenderedEmailTemplate("revendedoras_status_pedido", {
-      nome:            rev.nome,
-      numero_pedido:   numPedido,
-      status_label:    statusLabel,
-      observacao_block: obsBlock,
+      nome:             rev.nome,
+      numero_pedido:    numPedido,
+      status_label:     statusLabel,
+      observacao_block: obsBlock + rastreioBlock,
     }).then(tpl => sendEmail({
       to:      rev!.email,
       subject: tpl?.subject ?? `Pedido ${numPedido} — status atualizado: ${status}`,
@@ -829,9 +1011,8 @@ revendedorasRouter.put("/:id/pedidos/:pedidoId/status", async (req: Request, res
       tags:    [{ name: "tipo", value: "status_pedido" }],
     })).catch(err => logger.error("Erro ao enviar email status pedido", { error: (err as Error).message }));
 
-    // Se admin enviou observação, criar mensagem no thread
     if (observacao_admin) {
-      await queryOne(
+      queryOne(
         `INSERT INTO crm.revendedora_pedido_mensagens
            (pedido_id, autor_tipo, autor_nome, conteudo, lida)
          VALUES ($1, 'admin', 'Papelaria Bibelô', $2, FALSE)`,
@@ -840,44 +1021,30 @@ revendedorasRouter.put("/:id/pedidos/:pedidoId/status", async (req: Request, res
     }
   }
 
-  // Se entregue: atualizar volume e verificar nível
-  if (status === "entregue") {
-    const total = parseFloat(pedidoData.total as string || "0");
-
-    const revAtualizada = await queryOne<{
-      id: string; nivel: string; volume_mes_atual: string; total_vendido: string;
-    }>(
-      `UPDATE crm.revendedoras
-       SET volume_mes_atual = volume_mes_atual + $1,
-           total_vendido    = total_vendido + $1,
-           atualizado_em    = NOW()
-       WHERE id = $2 RETURNING id, nivel, volume_mes_atual, total_vendido`,
-      [total, id]
+  // Volume automático: recalcula sempre que o status afeta contagem
+  if (["aprovado", "enviado", "entregue", "cancelado"].includes(status)) {
+    const nivelAntes = await queryOne<{ nivel: string }>(
+      "SELECT nivel FROM crm.revendedoras WHERE id = $1", [id]
     );
+    await recalcularVolume(id);
+    const nivelDepois = await queryOne<{ nivel: string }>(
+      "SELECT nivel FROM crm.revendedoras WHERE id = $1", [id]
+    );
+    if (nivelAntes && nivelDepois && nivelAntes.nivel !== nivelDepois.nivel) {
+      const novoNivel = nivelDepois.nivel;
+      if (novoNivel === "bronze")   await concederConquista(id, "nivel_bronze",   "Chegou ao Bronze! 🥉 Continue crescendo!", 25);
+      if (novoNivel === "prata")    await concederConquista(id, "nivel_prata",    "Subiu para Prata! 🥈 Parabéns!", 50);
+      if (novoNivel === "ouro")     await concederConquista(id, "nivel_ouro",     "Chegou ao Ouro! 🥇 Frete grátis desbloqueado!", 100);
+      if (novoNivel === "diamante") await concederConquista(id, "nivel_diamante", "Diamante! 💎 Você é top de linha Bibelô!", 200);
+      logger.info("Revendedora mudou de nível", { id, de: nivelAntes.nivel, para: novoNivel });
+    }
+  }
 
-    if (revAtualizada) {
-      const novoVol   = parseFloat(revAtualizada.volume_mes_atual);
-      const { nivel: novoNivel, desconto: novoDesc } = calcularNivel(novoVol);
-
-      if (novoNivel !== revAtualizada.nivel) {
-        await queryOne(
-          "UPDATE crm.revendedoras SET nivel = $1, percentual_desconto = $2 WHERE id = $3",
-          [novoNivel, novoDesc, id]
-        );
-        if (novoNivel === "bronze") {
-          await concederConquista(id, "nivel_bronze",   "Chegou ao Bronze! 🥉 Continue crescendo!", 25);
-        }
-        if (novoNivel === "prata") {
-          await concederConquista(id, "nivel_prata",    "Subiu para Prata! 🥈 Parabéns!", 50);
-        }
-        if (novoNivel === "ouro") {
-          await concederConquista(id, "nivel_ouro",     "Chegou ao Ouro! 🥇 Frete grátis desbloqueado!", 100);
-        }
-        if (novoNivel === "diamante") {
-          await concederConquista(id, "nivel_diamante", "Diamante! 💎 Você é top de linha Bibelô!", 200);
-        }
-        logger.info("Revendedora subiu de nível", { id, de: revAtualizada.nivel, para: novoNivel });
-      }
+  // Integração Bling: cria pedido de venda ao aprovar (não-bloqueante)
+  if (status === "aprovado") {
+    const jaTemBling = !!(pedidoData.bling_pedido_id);
+    if (!jaTemBling) {
+      sincronizarPedidoBling(pedidoId, id).catch(() => {});
     }
   }
 
@@ -977,7 +1144,7 @@ revendedorasRouter.post("/:id/pedidos/:pedidoId/mensagens", async (req: Request,
  *  Usado como valor da variável {{tabela_niveis}} no template do banco. */
 function buildTabelaNiveis(descontoAtual: number): string {
   const niveis = [
-    { emoji: "✨", label: "Iniciante", desc: 15,  meta: "< R$150/mês",    frete: "Por conta da revendedora" },
+    { emoji: "✨", label: "Iniciante", desc: 5,   meta: "< R$150/mês",    frete: "Por conta da revendedora" },
     { emoji: "🥉", label: "Bronze",    desc: 25,  meta: "R$150–599/mês",  frete: "Por conta da revendedora" },
     { emoji: "🥈", label: "Prata",     desc: 35,  meta: "R$600–1199/mês", frete: "Por conta da revendedora" },
     { emoji: "🥇", label: "Ouro",      desc: 45,  meta: "R$1200–2999/mês",frete: "Frete grátis" },

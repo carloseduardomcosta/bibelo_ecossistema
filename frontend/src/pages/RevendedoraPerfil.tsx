@@ -76,6 +76,9 @@ interface Pedido {
   aprovado_em: string | null;
   enviado_em: string | null;
   entregue_em: string | null;
+  codigo_rastreio: string | null;
+  url_rastreio: string | null;
+  bling_pedido_id: number | null;
 }
 
 interface Conquista {
@@ -307,6 +310,7 @@ function AbaPedidos({ revendedoraId, desconto }: { revendedoraId: string; descon
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [rastreioInput, setRastreioInput] = useState<Record<string, string>>({});
 
   const fetchPedidos = useCallback(async () => {
     try {
@@ -324,8 +328,12 @@ function AbaPedidos({ revendedoraId, desconto }: { revendedoraId: string; descon
   async function atualizarStatus(pedidoId: string, status: string) {
     setUpdatingId(pedidoId);
     try {
-      await api.put(`/revendedoras/${revendedoraId}/pedidos/${pedidoId}/status`, { status });
-      toast.success(`Pedido marcado como ${status}`);
+      const body: Record<string, unknown> = { status };
+      if (status === 'enviado' && rastreioInput[pedidoId]?.trim()) {
+        body.codigo_rastreio = rastreioInput[pedidoId].trim();
+      }
+      await api.put(`/revendedoras/${revendedoraId}/pedidos/${pedidoId}/status`, body);
+      toast.success(`Pedido marcado como ${PEDIDO_STATUS[status as keyof typeof PEDIDO_STATUS]?.label ?? status}`);
       fetchPedidos();
     } catch {
       toast.error('Erro ao atualizar status');
@@ -411,6 +419,38 @@ function AbaPedidos({ revendedoraId, desconto }: { revendedoraId: string; descon
                   {p.enviado_em  && <><span>·</span><span className="text-violet-400">✓ Enviado {formatDate(p.enviado_em)}</span></>}
                   {p.entregue_em && <><span>·</span><span className="text-emerald-400">✓ Entregue {formatDate(p.entregue_em)}</span></>}
                 </div>
+
+                {/* Rastreio existente */}
+                {p.codigo_rastreio && (
+                  <a
+                    href={p.url_rastreio ?? `https://melhorrastreio.com.br/rastreio/${p.codigo_rastreio}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-xs text-violet-400 hover:text-violet-300 transition-colors"
+                  >
+                    <Truck size={13} />
+                    <span className="font-mono">{p.codigo_rastreio}</span>
+                    <ExternalLink size={11} />
+                  </a>
+                )}
+
+                {/* Link Bling */}
+                {p.bling_pedido_id && (
+                  <p className="text-xs text-bibelo-muted flex items-center gap-1.5">
+                    <Link2 size={12} className="text-blue-400" />
+                    <span>Bling #{p.bling_pedido_id}</span>
+                  </p>
+                )}
+
+                {/* Campo rastreio ao avançar para Enviado */}
+                {proximo === 'enviado' && (
+                  <input
+                    type="text"
+                    placeholder="Código de rastreio (opcional)"
+                    value={rastreioInput[p.id] ?? ''}
+                    onChange={e => setRastreioInput(prev => ({ ...prev, [p.id]: e.target.value }))}
+                    className="w-full bg-bibelo-card border border-bibelo-border rounded-lg px-3 py-1.5 text-xs text-bibelo-text placeholder-bibelo-muted focus:outline-none focus:border-violet-400/60"
+                  />
+                )}
 
                 {/* Ação */}
                 {proximo && (
