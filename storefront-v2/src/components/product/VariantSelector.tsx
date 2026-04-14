@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react"
 import { useCartStore } from "@/store/cart"
 import { formatPrice, getDiscountPercent } from "@/lib/utils"
+import { trackAddToCart as crmTrackAddToCart } from "@/lib/crm-tracker"
 
 interface VariantSelectorProps {
   product: Record<string, unknown>
@@ -63,6 +64,14 @@ export default function VariantSelector({ product }: VariantSelectorProps) {
     if (!selectedVariant || isAdding || isOutOfStock) return
     setIsAdding(true)
     await addItem(selectedVariant.id, quantity)
+    if (calculatedAmount > 0) {
+      const productName = String(product.title || selectedVariant.title || "")
+      crmTrackAddToCart({
+        productId: selectedVariant.id,
+        productName,
+        price: calculatedAmount * quantity,
+      })
+    }
     setIsAdding(false)
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)

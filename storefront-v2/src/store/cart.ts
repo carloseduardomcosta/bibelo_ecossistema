@@ -3,7 +3,41 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { createCart, getCart, addToCart, updateCartItem, removeCartItem, applyCoupon } from "@/lib/medusa/cart"
+import { reportCartAbandonment } from "@/lib/crm-tracker"
 import type { StoreCart, StoreCartLineItem } from "@medusajs/types"
+
+// ── Debounce para abandonment report — 30s após addItem, uma vez por cartId ─
+let abandonmentTimer: ReturnType<typeof setTimeout> | null = null
+const reportedCartIds = new Set<string>()
+
+function scheduleAbandonmentReport(cart: StoreCart): void {
+  if (!cart?.id) return
+  if (reportedCartIds.has(cart.id)) return // já reportado nesta sessão
+
+  if (abandonmentTimer) clearTimeout(abandonmentTimer)
+
+  abandonmentTimer = setTimeout(() => {
+    // Importa o authStore de forma lazy para evitar dependência circular
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useAuthStore } = require("@/store/auth") as typeof import("@/store/auth")
+    const email = useAuthStore.getState().customer?.email
+    if (!email) return // só reporta se cliente identificado
+
+    const items = (cart.items || []).map((item: StoreCartLineItem) => ({
+      nome: item.title || "",
+      preco: item.unit_price || 0,
+    }))
+
+    if (items.length === 0) return
+
+    reportedCartIds.add(cart.id)
+    reportCartAbandonment({
+      email,
+      cartId: cart.id,
+      items,
+    })
+  }, 30_000) // 30 segundos de debounce
+}
 
 interface CartItem {
   id: string
@@ -107,6 +141,10 @@ export const useCartStore = create<CartState>()(
         const cart = await addToCart({ cartId, variantId, quantity })
         if (cart) {
           set({ ...mapCart(cart), isOpen: true })
+
+          // Abandonment report: dispara 30s após o addItem, uma vez por cartId
+          // Só envia se o customer estiver identificado (email disponível no authStore)
+          scheduleAbandonmentReport(cart)
         }
         set({ isLoading: false })
       },

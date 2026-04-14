@@ -164,6 +164,36 @@ export function trackCategoryView(categoryName: string): void {
   })
 }
 
+// ── Cart abandonment — reportar carrinho com email identificado ─
+// Envia uma vez por cartId para o CRM criar o registro de pedido pendente.
+// O CRM cuidará do disparo de recuperação após 2h sem pagamento.
+export function reportCartAbandonment(params: {
+  email: string
+  cartId: string
+  items: Array<{ nome: string; preco: number }>
+  recoveryUrl?: string
+}): void {
+  if (typeof window === "undefined") return
+  if (!params.email || !params.cartId || params.items.length === 0) return
+
+  const API_CART =
+    process.env.NEXT_PUBLIC_TRACKING_URL ||
+    process.env.NEXT_PUBLIC_LEADS_API_URL ||
+    "https://webhook.papelariabibelo.com.br"
+
+  fetch(`${API_CART}/api/public/cart-storefront`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: params.email,
+      cart_id: params.cartId,
+      items: params.items,
+      recovery_url: params.recoveryUrl || `${window.location.origin}/carrinho`,
+    }),
+    keepalive: true,
+  }).catch(() => {})
+}
+
 // ── Identify — vincular visitor ao customer logado ────────────
 export function identifyCustomer(email: string): void {
   if (typeof window === "undefined") return

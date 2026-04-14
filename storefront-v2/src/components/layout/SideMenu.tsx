@@ -1,29 +1,27 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
+import { listCategories } from "@/lib/medusa/products"
+import { EMOJI_MAP } from "@/components/home/CategoriesSection"
 
 interface SideMenuProps {
   open: boolean
   onClose: () => void
 }
 
-const CATEGORIES = [
+interface Category {
+  id: string
+  name: string
+  handle: string
+  parent_category_id?: string | null
+}
+
+const QUICK_NAV = [
   { label: "Novidades", href: "/produtos?sort=created_at", icon: "M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" },
   { label: "Ofertas", href: "/produtos?sort=price_asc", icon: "M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" },
   { label: "Todos os Produtos", href: "/produtos", icon: "M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" },
-]
-
-const DEPARTMENTS = [
-  { label: "Caderno", href: "/produtos?categoria=caderno" },
-  { label: "Caneta", href: "/produtos?categoria=caneta" },
-  { label: "Lápis de Cor", href: "/produtos?categoria=lapis-de-cor" },
-  { label: "Estojo", href: "/produtos?categoria=estojo" },
-  { label: "Agenda", href: "/produtos?categoria=agenda" },
-  { label: "Apontador", href: "/produtos?categoria=apontador" },
-  { label: "Marca Texto", href: "/produtos?categoria=marca-texto" },
-  { label: "Post-it", href: "/produtos?categoria=post-it" },
 ]
 
 const QUICK_LINKS = [
@@ -34,6 +32,8 @@ const QUICK_LINKS = [
 ]
 
 export default function SideMenu({ open, onClose }: SideMenuProps) {
+  const [categories, setCategories] = useState<Category[]>([])
+
   // Bloqueia scroll do body quando menu está aberto
   useEffect(() => {
     if (open) {
@@ -43,6 +43,18 @@ export default function SideMenu({ open, onClose }: SideMenuProps) {
     }
     return () => { document.body.style.overflow = "" }
   }, [open])
+
+  // Busca categorias ao abrir o menu pela primeira vez
+  useEffect(() => {
+    if (open && categories.length === 0) {
+      listCategories()
+        .then((cats) => {
+          const roots = (cats as Category[]).filter((c) => !c.parent_category_id)
+          setCategories(roots)
+        })
+        .catch(() => setCategories([]))
+    }
+  }, [open, categories.length])
 
   return (
     <>
@@ -93,9 +105,9 @@ export default function SideMenu({ open, onClose }: SideMenuProps) {
         {/* Conteúdo */}
         <div className="px-5 py-4 space-y-6 pb-24">
 
-          {/* Destaques */}
+          {/* Navegação rápida */}
           <div>
-            {CATEGORIES.map((cat) => (
+            {QUICK_NAV.map((cat) => (
               <Link
                 key={cat.href}
                 href={cat.href}
@@ -115,22 +127,28 @@ export default function SideMenu({ open, onClose }: SideMenuProps) {
             ))}
           </div>
 
-          {/* Departamentos */}
-          <div>
-            <h3 className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-2 px-1">Departamentos</h3>
-            <div className="grid grid-cols-2 gap-1.5">
-              {DEPARTMENTS.map((dept) => (
-                <Link
-                  key={dept.href}
-                  href={dept.href}
-                  onClick={onClose}
-                  className="px-3 py-2.5 rounded-lg bg-gray-50 text-sm text-gray-700 font-medium hover:bg-bibelo-pink/10 hover:text-bibelo-pink transition-colors text-center"
-                >
-                  {dept.label}
-                </Link>
-              ))}
+          {/* Categorias dinâmicas */}
+          {categories.length > 0 && (
+            <div>
+              <h3 className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-2 px-1">
+                Categorias
+              </h3>
+              <div className="grid grid-cols-2 gap-1.5">
+                {categories.map((cat) => (
+                  <Link
+                    key={cat.id}
+                    href={`/categoria/${cat.handle}`}
+                    onClick={onClose}
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-gray-50 text-sm text-gray-700
+                               font-medium hover:bg-bibelo-pink/10 hover:text-bibelo-pink transition-colors"
+                  >
+                    <span className="text-base leading-none">{EMOJI_MAP[cat.handle] || "📦"}</span>
+                    <span className="line-clamp-1">{cat.name}</span>
+                  </Link>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Links rápidos */}
           <div>

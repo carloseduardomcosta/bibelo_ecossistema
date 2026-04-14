@@ -3,6 +3,7 @@ import BenefitsStrip from "@/components/home/BenefitsStrip"
 import NovidadesSection from "@/components/home/NovidadesSection"
 import ProductSection from "@/components/home/ProductSection"
 import CategoriesSection from "@/components/home/CategoriesSection"
+import ProductCarouselSection from "@/components/home/ProductCarouselSection"
 import LeadCapture from "@/components/home/LeadCapture"
 import { listProducts } from "@/lib/medusa/products"
 import { getNovidadesBling } from "@/lib/api/novidades"
@@ -11,7 +12,7 @@ import { getNovidadesBling } from "@/lib/api/novidades"
 export const revalidate = 180
 
 export default async function HomePage() {
-  const [promoProducts, novidadesResult] = await Promise.allSettled([
+  const [promoProducts, novidadesResult, maisVendidosResult, lancamentosResult] = await Promise.allSettled([
     listProducts({ limit: 10, order: "created_at" }).then(({ products }) =>
       products.filter((p) => {
         const variant = p.variants?.[0]
@@ -21,10 +22,16 @@ export default async function HomePage() {
       })
     ),
     getNovidadesBling(8),
+    // Mais vendidos: ordem padrão Medusa (relevância/posição de destaque)
+    listProducts({ limit: 8 }).then(({ products }) => products),
+    // Lançamentos: produtos mais recentes pelo created_at
+    listProducts({ limit: 8, order: "-created_at" }).then(({ products }) => products),
   ])
 
   const promos = promoProducts.status === "fulfilled" ? promoProducts.value : []
   const novidadesData = novidadesResult.status === "fulfilled" ? novidadesResult.value : { novidades: [], nf_numero: null }
+  const maisVendidos = maisVendidosResult.status === "fulfilled" ? maisVendidosResult.value : []
+  const lancamentos = lancamentosResult.status === "fulfilled" ? lancamentosResult.value : []
 
   return (
     <>
@@ -58,7 +65,27 @@ export default async function HomePage() {
       {/* 5. Categorias */}
       <CategoriesSection />
 
-      {/* 6. Clube Bibelô — captura de leads */}
+      {/* 6. Mais Vendidos — produtos em destaque da curadoria */}
+      {maisVendidos.length > 0 && (
+        <ProductCarouselSection
+          eyebrow="Os favoritos"
+          title="Mais Vendidos"
+          products={maisVendidos as Parameters<typeof ProductCarouselSection>[0]["products"]}
+          viewAllHref="/produtos"
+        />
+      )}
+
+      {/* 7. Lançamentos — produtos mais recentes */}
+      {lancamentos.length > 0 && (
+        <ProductCarouselSection
+          eyebrow="Acabou de chegar"
+          title="Lançamentos"
+          products={lancamentos as Parameters<typeof ProductCarouselSection>[0]["products"]}
+          viewAllHref="/produtos?sort=created_at"
+        />
+      )}
+
+      {/* 8. Clube Bibelô — captura de leads */}
       <LeadCapture />
     </>
   )

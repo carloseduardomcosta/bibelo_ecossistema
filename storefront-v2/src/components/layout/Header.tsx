@@ -8,12 +8,12 @@ import { useMenuStore } from "@/store/menu"
 import { useTrackingStore } from "@/store/tracking"
 import TopBar from "./TopBar"
 import PromoBanner from "./PromoBanner"
+import CategoryMegaMenu from "./CategoryMegaMenu"
 import { listProducts } from "@/lib/medusa/products"
 import { formatPrice } from "@/lib/utils"
 
 const NAV_LINKS = [
   { label: "INÍCIO", href: "/" },
-  { label: "TODOS OS PRODUTOS", href: "/produtos" },
   { label: "NOVIDADES", href: "/produtos?sort=created_at" },
   { label: "OFERTAS", href: "/produtos?sort=price_asc" },
 ]
@@ -378,6 +378,10 @@ export default function Header() {
         <nav className="hidden md:block bg-bibelo-rosa/60 border-t border-bibelo-pink/10">
           <div className="content-container">
             <div className="flex items-center h-10 gap-1">
+              {/* Mega menu de categorias dinâmicas */}
+              <CategoryMegaMenu />
+
+              {/* Links estáticos */}
               {NAV_LINKS.map((link) => (
                 <Link
                   key={link.href}

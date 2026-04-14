@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useCartStore } from "@/store/cart"
 import { trackAddToCart } from "@/lib/meta-pixel"
+import { trackAddToCart as crmTrackAddToCart } from "@/lib/crm-tracker"
 
 interface Props {
   variantId: string
@@ -22,6 +23,7 @@ export default function BuyNowButton({ variantId, productName, price }: Props) {
     await addItem(variantId, 1)
     if (productName && price) {
       trackAddToCart({ contentId: variantId, contentName: productName, value: price })
+      crmTrackAddToCart({ productId: variantId, productName, price })
     }
     router.push("/checkout")
   }
