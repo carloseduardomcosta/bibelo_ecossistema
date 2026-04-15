@@ -9,6 +9,7 @@
  */
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { listShippingOptionsForCartWorkflow } from "@medusajs/medusa/core-flows"
+import { Modules } from "@medusajs/framework/utils"
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const cart_id =
@@ -29,18 +30,49 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   }
 
   try {
+    // Diagnóstico: buscar o carrinho diretamente para confirmar que existe
+    const cartModule = req.scope.resolve(Modules.CART)
+    const cart = await cartModule.retrieveCart(cart_id, {
+      relations: ["shipping_address"],
+    }).catch((e: any) => null)
+
+    if (!cart) {
+      console.warn(`[ShippingOptions Override] Carrinho ${cart_id} não encontrado!`)
+      res.json({ shipping_options: [] })
+      return
+    }
+
+    console.info(
+      `[ShippingOptions Override] Carrinho encontrado | region_id=${cart.region_id} | country=${(cart as any).shipping_address?.country_code} | postal=${(cart as any).shipping_address?.postal_code}`
+    )
+
+    // Diagnóstico: buscar shipping options direto do módulo de fulfillment
+    const fulfillmentModule = req.scope.resolve(Modules.FULFILLMENT)
+    const allOptions = await (fulfillmentModule as any).listShippingOptions({}).catch((e: any) => {
+      console.warn(`[ShippingOptions Override] Erro ao listar options direto: ${e.message}`)
+      return []
+    })
+    console.info(`[ShippingOptions Override] Total de shipping options no módulo: ${allOptions?.length ?? 0}`)
+    if (allOptions?.length > 0) {
+      allOptions.forEach((o: any) => {
+        console.info(`  -> ${o.id} | ${o.name} | ${o.price_type} | zone=${o.service_zone_id}`)
+      })
+    }
+
+    // Executar o workflow
     const workflow = listShippingOptionsForCartWorkflow(req.scope)
     const { result: shipping_options } = await workflow.run({
       input: { cart_id, is_return: !!is_return },
     })
 
     console.info(
-      `[ShippingOptions Override] Retornando ${shipping_options?.length ?? 0} opções para cart ${cart_id}`
+      `[ShippingOptions Override] Workflow retornou ${shipping_options?.length ?? 0} opções`
     )
 
     res.json({ shipping_options })
   } catch (err: any) {
     console.error(`[ShippingOptions Override] Erro: ${err.message}`)
+    console.error(err.stack)
     res.status(500).json({ message: err.message })
   }
 }
