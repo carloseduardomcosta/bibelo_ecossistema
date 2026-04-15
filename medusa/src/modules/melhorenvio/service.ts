@@ -132,17 +132,22 @@ class MelhorEnvioProviderService extends AbstractFulfillmentProviderService {
     data: CalculateShippingOptionPriceDTO["data"],
     context: CalculateShippingOptionPriceDTO["context"]
   ): Promise<CalculatedShippingOptionPrice> {
+    // LOG DETALHADO para diagnóstico
+    this.logger_.info(
+      `[MelhorEnvio] calculatePrice chamado | optionData=${JSON.stringify(optionData)} | data=${JSON.stringify(data)} | context.shipping_address=${JSON.stringify((context as any)?.shipping_address)}`
+    )
+
     const postalCode =
       (context as any)?.shipping_address?.postal_code ||
       (data as any)?.postal_code ||
       ""
 
     if (!postalCode) {
-      this.logger_.warn("MelhorEnvio calculatePrice: CEP destino ausente")
+      this.logger_.warn("[MelhorEnvio] calculatePrice: CEP destino ausente — retornando 0")
       return { calculated_amount: 0, is_calculated_price_tax_inclusive: true }
     }
 
-    // Peso e dimensões padrão (será ajustado quando tivermos dados do produto)
+    // Peso e dimensões padrão
     const weight = (data as any)?.weight || 0.5
     const height = (data as any)?.height || 10
     const width = (data as any)?.width || 15
@@ -159,8 +164,16 @@ class MelhorEnvioProviderService extends AbstractFulfillmentProviderService {
         }
       )
 
+      this.logger_.info(
+        `[MelhorEnvio] API retornou ${rates?.length ?? 0} tarifas: ${rates?.map((r: any) => `${r.name}=${r.price}${r.error ? '(ERR:'+r.error+')' : ''}`).join(', ')}`
+      )
+
       // Mapear service_id do optionData para encontrar a transportadora
-      const serviceId = (optionData as any)?.id || "pac"
+      // O Medusa passa o nome da shipping option em optionData.name
+      const optionName: string = ((optionData as any)?.name || "").toLowerCase()
+      const serviceId: string = ((optionData as any)?.id || "").toLowerCase()
+
+      this.logger_.info(`[MelhorEnvio] optionName="${optionName}" serviceId="${serviceId}"`)
 
       const serviceMap: Record<string, string[]> = {
         pac: ["PAC"],
@@ -168,14 +181,26 @@ class MelhorEnvioProviderService extends AbstractFulfillmentProviderService {
         mini: ["Mini Envios"],
       }
 
-      const matchNames = serviceMap[serviceId] || [serviceId]
+      // Tentar match por serviceId primeiro, depois por nome da opção
+      let matchNames = serviceMap[serviceId]
+      if (!matchNames) {
+        // Tentar match pelo nome da opção (ex: "PAC (Correios)" -> "PAC")
+        for (const [key, names] of Object.entries(serviceMap)) {
+          if (names.some((n) => optionName.includes(n.toLowerCase()))) {
+            matchNames = names
+            break
+          }
+        }
+      }
+      if (!matchNames) matchNames = [serviceId || optionName]
+
       const rate = rates.find(
-        (r: any) => !r.error && matchNames.some((n) => r.name?.includes(n))
+        (r: any) => !r.error && matchNames.some((n) => r.name?.toLowerCase().includes(n.toLowerCase()))
       )
 
       if (!rate) {
         this.logger_.warn(
-          `MelhorEnvio: sem cotação para ${serviceId} CEP ${postalCode}`
+          `[MelhorEnvio] Sem cotação para "${optionName}" (serviceId="${serviceId}") | CEP ${postalCode} | matchNames=${JSON.stringify(matchNames)}`
         )
         return { calculated_amount: 0, is_calculated_price_tax_inclusive: true }
       }
