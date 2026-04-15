@@ -183,18 +183,12 @@ class MelhorEnvioProviderService extends AbstractFulfillmentProviderService {
       const priceInCents = Math.round(parseFloat(rate.price) * 100)
       const deliveryTime: number = rate.delivery_time || 0
       this.logger_.info(
-        `MelhorEnvio frete: ${rate.name} ${postalCode} = R$ ${rate.price} (${deliveryTime}d)`
+        `[MelhorEnvio] ${rate.name} | CEP ${postalCode} | R$ ${rate.price} | ${deliveryTime} dias uteis`
       )
 
       return {
         calculated_amount: priceInCents,
         is_calculated_price_tax_inclusive: true,
-        // Prazo de entrega retornado para exibição no frontend
-        data: {
-          delivery_time: deliveryTime,
-          carrier_name: rate.name,
-          service_id: serviceId,
-        },
       }
     } catch (err: any) {
       this.logger_.error(`MelhorEnvio calculatePrice erro: ${err.message}`)
