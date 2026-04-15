@@ -28,8 +28,15 @@ export async function loginWithEmail(email: string, password: string) {
 }
 
 // ── Registrar com email/senha ─────────────────────────────────
-export async function registerWithEmail(email: string, password: string) {
-  const res = await fetch(`${PUBLIC_MEDUSA_URL}/auth/customer/emailpass/register`, {
+// Retorna o token JWT após registrar e criar o perfil do cliente
+export async function registerWithEmail(
+  email: string,
+  password: string,
+  firstName?: string,
+  lastName?: string
+): Promise<string> {
+  // 1. Registrar auth_identity
+  const regRes = await fetch(`${PUBLIC_MEDUSA_URL}/auth/customer/emailpass/register`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -39,12 +46,29 @@ export async function registerWithEmail(email: string, password: string) {
     body: JSON.stringify({ email, password }),
   })
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
+  if (!regRes.ok) {
+    const err = await regRes.json().catch(() => ({}))
     throw new Error(err.message || "Erro ao criar conta")
   }
 
-  return res.json()
+  const regData = await regRes.json()
+  const token: string = regData.token
+
+  // 2. Criar perfil do customer com nome se fornecido
+  if (token && (firstName || lastName)) {
+    try {
+      await createCustomer(token, {
+        first_name: firstName || "",
+        last_name: lastName || "",
+        email,
+      })
+    } catch (err) {
+      // Não bloquear o fluxo se a criação do perfil falhar
+      console.warn("[Auth] registerWithEmail: erro ao criar customer:", err)
+    }
+  }
+
+  return token
 }
 
 // ── Google OAuth — busca URL de redirect e redireciona ────────

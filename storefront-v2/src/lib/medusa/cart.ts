@@ -187,7 +187,16 @@ export async function addShippingMethod(cartId: string, optionId: string) {
 }
 
 // Iniciar sessão de pagamento
-export async function initiatePaymentSession(cartId: string, providerId: string) {
+export async function initiatePaymentSession(
+  cartId: string,
+  providerId: string,
+  paymentContext?: {
+    payment_method_type?: "pix" | "credit_card" | "boleto"
+    card_token?: string
+    installments?: number
+    payer_cpf?: string
+  }
+) {
   try {
     const res = await fetch(
       `${PUBLIC_MEDUSA_URL}/store/carts/${cartId}/payment-sessions`,
@@ -197,7 +206,10 @@ export async function initiatePaymentSession(cartId: string, providerId: string)
           "Content-Type": "application/json",
           "x-publishable-api-key": PUBLISHABLE_KEY,
         },
-        body: JSON.stringify({ provider_id: providerId }),
+        body: JSON.stringify({
+          provider_id: providerId,
+          ...(paymentContext ? { data: paymentContext } : {}),
+        }),
       }
     )
     if (!res.ok) {
