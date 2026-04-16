@@ -140,7 +140,7 @@ export default function ContaPage() {
     )
   }
 
-  // Formulário de login/registro
+  // ── Login/registro: full-screen sem distrações ────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
@@ -164,7 +164,21 @@ export default function ContaPage() {
   }
 
   return (
-    <div className="content-container py-8 max-w-md mx-auto">
+    /* Overlay full-screen — cobre header e footer, mantém o foco no login */
+    <div className="fixed inset-0 z-[200] bg-[#FAF7F2] overflow-y-auto flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        {/* Link discreto de volta */}
+        <Link
+          href="/"
+          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-bibelo-pink
+                     transition-colors mb-6 w-fit mx-auto"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+          </svg>
+          Voltar à loja
+        </Link>
+
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         {/* Logo */}
         <div className="text-center mb-6">
@@ -294,6 +308,7 @@ export default function ContaPage() {
             </>
           )}
         </p>
+      </div>
       </div>
     </div>
   )
