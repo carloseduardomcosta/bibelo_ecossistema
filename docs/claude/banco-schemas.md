@@ -1,7 +1,7 @@
 # Banco de dados — schemas e tabelas
 
 ## crm
-`customers`, `customer_scores`, `interactions`, `deals`, `segments`, `tracking_events`, `visitor_customers`
+`customers` (campos extras: `fantasia VARCHAR(255)`, `ie VARCHAR(50)` — migration 045), `customer_scores`, `interactions`, `deals`, `segments`, `tracking_events`, `visitor_customers`
 
 ## marketing
 `templates`, `campaigns`, `campaign_sends`, `flows`, `flow_executions`, `flow_step_executions`, `pedidos_pendentes`, `leads`, `popup_config`, `email_events`

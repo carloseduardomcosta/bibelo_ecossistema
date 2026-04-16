@@ -1419,3 +1419,41 @@ Sem esse campo, `calculatePrice` não consegue identificar o serviço e retorna 
 - Fallback automático para HTML hardcoded se template for removido do banco
 - RTK AI instalado: hook `PreToolUse` comprime output de Bash pesado antes de chegar ao LLM
 - `docs/sou-parceira.md`: documentação completa do programa (tiers, auth, DB, API, segurança)
+
+---
+
+## Sessão 16/04/2026 — Shipping fix, performance, features e testes
+
+### fix(medusa): workaround Bug #14787 + frete Grátis no checkout — commits `9864344`→`c65913d`
+- **Causa raiz 1**: `/store/shipping-options` workflow Medusa v2.13.5 retornava `[]` por cadeia quebrada `sales_channel→stock_locations→fulfillment_sets` via remote query
+- **Causa raiz 2**: `shipping_option.data = NULL` fazia calculatePrice não identificar PAC/SEDEX → retornava preço 0 ("Grátis")
+- **Solução**: custom route `src/api/store/shipping-options/route.ts` bypassa workflow, usa `IFulfillmentModuleService.listShippingOptions()` direto + calcula preços via CRM interno
+- **SQL obrigatório** (reexecutar se shipping options forem recriadas): `UPDATE shipping_option SET data = '{"id":"pac"}'::jsonb WHERE name = 'PAC (Correios)'` (idem sedex)
+- Scripts de diagnóstico: `medusa/diagnose-shipping.js`, `medusa/test-shipping.js`, `scripts/fix-shipping-zones.sh`
+- Documentação: `docs/claude/medusa-operacional.md`, `docs/ecommerce/arquitetura.md`, `docs/projeto/commits.md`
+
+### feat: P0/P1/P2 backlog — `c0ac73e` (16/04/2026)
+**P0 — Performance storefront (desbloqueador de lançamento)**
+- `storefront-v2/src/lib/medusa/products.ts`: `listCategories` agora usa `unstable_cache` com TTL 3600s + tag `"categories"` — elimina chamada redundante ao Medusa a cada render SSR
+- `produtos/page.tsx`: `revalidate` 300→600s (10 min entre revalidações ISR)
+
+**P1 — Portal Sou Parceira: email de aprovação**
+- `api/src/routes/revendedoras.ts`: ao transitar status → `'ativa'` quando anterior ≠ `'ativa'`, dispara `buildBoasVindasParceira()` + `sendEmail()` fire-and-forget via `FROM_PARCEIRAS`
+- Guard: `anterior.status !== "ativa"` evita reenvio em `ativa→ativa`
+- `.catch(e => logger.error(...))` isola falhas do email do HTTP response
+
+**P2 — Catálogo JC: atualizar preços**
+- `api/src/routes/fornecedor-catalogo.ts`: `executarAtualizarPrecos()` — re-scrapa apenas slugs já no banco, atualiza só `preco_custo`, skipa produtos novos e diff < R$0,005
+- 3 novos endpoints: `POST /scraper/atualizar-precos`, `POST /atualizar-precos/parar`, `GET /atualizar-precos/status`
+- `frontend/src/pages/FornecedorCatalogo.tsx`: botão laranja "Atualizar preços", barra de progresso, polling 3s
+- `db/migrations/046_fornecedor_catalogo_enriquecimento.sql`: documenta colunas `produto_url`, `imagens_urls`, `descricao` adicionadas live em 13/04
+
+**P2 — Meta Ads: cron audiências**
+- `api/src/queues/sync.queue.ts`: job `meta-audiences-sync` agendado `0 6 * * *` (06:00 UTC / 03:00 BRT) — chama `syncAudiences()` com resultado `{ sincronizados, erros }`
+- `frontend/src/pages/MetaAds.tsx`: indicador "Sincronização automática diária às 03:00 BRT"
+
+### test: testes automatizados para as 4 features — `648e1a4` (16/04/2026)
+- `revendedoras.test.ts`: +6 testes para email de aprovação fire-and-forget (guard, mock confirmado nos logs)
+- `fornecedor-catalogo.test.ts`: +10 testes para endpoints `atualizar-precos` (status, iniciar, parar)
+- `meta-ads.test.ts`: novo arquivo, 19 testes — auth em 8 endpoints, status/audiences/sync, cron
+- **Total API: 484 → 509 testes** (+25)

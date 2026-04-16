@@ -237,4 +237,4 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 14 de Abril de 2026 — skills ativas corrigidas, security-review e verification-loop adicionadas*
+*Última atualização: 16 de Abril de 2026 — testes 484→509, cache storefront, email aprovação parceira, JC atualizar preços, Meta Ads cron audiências*
