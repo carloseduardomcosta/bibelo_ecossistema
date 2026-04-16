@@ -5,10 +5,12 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuthStore } from "@/store/auth"
 import { updateCustomer, updatePassword, getTokenMetadata } from "@/lib/medusa/auth"
+import { useRequireAuth } from "@/hooks/useRequireAuth"
 
 export default function PerfilPage() {
   const router = useRouter()
   const { token, customer, loading: authLoading, loadCustomer } = useAuthStore()
+  const { isAuthorized } = useRequireAuth()
 
   const [firstName, setFirstName] = useState(customer?.first_name || "")
   const [lastName, setLastName] = useState(customer?.last_name || "")
@@ -24,13 +26,7 @@ export default function PerfilPage() {
   const [profileError, setProfileError] = useState("")
   const [passwordError, setPasswordError] = useState("")
 
-  // Preenche campos quando customer carrega
-  if (!authLoading && !token) {
-    router.replace("/conta")
-    return null
-  }
-
-  if (authLoading || !customer) {
+  if (authLoading || !isAuthorized || !customer) {
     return (
       <div className="content-container py-16 text-center">
         <div className="w-8 h-8 border-2 border-bibelo-pink border-t-transparent rounded-full animate-spin mx-auto" />

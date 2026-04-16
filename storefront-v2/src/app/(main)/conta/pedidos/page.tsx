@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuthStore } from "@/store/auth"
 import { getOrders } from "@/lib/medusa/auth"
+import { useRequireAuth } from "@/hooks/useRequireAuth"
 
 interface Order {
   id: string
@@ -47,21 +48,19 @@ function formatCurrency(amount: number) {
 export default function PedidosPage() {
   const router = useRouter()
   const { token, customer, loading: authLoading } = useAuthStore()
+  const { isAuthorized } = useRequireAuth()
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!authLoading && !token) {
-      router.replace("/conta")
-      return
-    }
+    if (!isAuthorized) return
     if (token) {
       getOrders(token).then((data) => {
         setOrders(data)
         setLoading(false)
       }).catch(() => setLoading(false))
     }
-  }, [token, authLoading, router])
+  }, [token, isAuthorized])
 
   if (authLoading || loading) {
     return (

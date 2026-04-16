@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useParams, notFound } from "next/navigation"
 import { useAuthStore } from "@/store/auth"
 import { getOrderById } from "@/lib/medusa/auth"
+import { useRequireAuth } from "@/hooks/useRequireAuth"
 
 interface OrderFulfillment {
   id: string
@@ -86,17 +87,15 @@ export default function PedidoDetailPage() {
   const params = useParams()
   const orderId = params.id as string
   const { token, loading: authLoading } = useAuthStore()
+  const { isAuthorized } = useRequireAuth()
 
   const [order, setOrder] = useState<OrderDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFoundState, setNotFoundState] = useState(false)
 
   useEffect(() => {
-    if (authLoading) return
-    if (!token) {
-      window.location.href = "/conta"
-      return
-    }
+    if (authLoading || !isAuthorized) return
+    if (!token) return
     getOrderById(token, orderId).then((data) => {
       if (data === null) {
         setNotFoundState(true)

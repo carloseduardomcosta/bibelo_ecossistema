@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuthStore } from "@/store/auth"
 import { getAddresses, addAddress, deleteAddress, updateAddress } from "@/lib/medusa/auth"
+import { useRequireAuth } from "@/hooks/useRequireAuth"
 
 interface Address {
   id: string
@@ -53,6 +54,7 @@ function buildPayload(f: FormState) {
 export default function EnderecosPage() {
   const router = useRouter()
   const { token, loading: authLoading } = useAuthStore()
+  const { isAuthorized } = useRequireAuth()
 
   const [addresses, setAddresses] = useState<Address[]>([])
   const [loading, setLoading] = useState(true)
@@ -80,7 +82,7 @@ export default function EnderecosPage() {
   }
 
   useEffect(() => {
-    if (!authLoading && !token) { router.replace("/conta"); return }
+    if (!isAuthorized) return
     if (token) loadAddresses()
   }, [token, authLoading, router])
 
