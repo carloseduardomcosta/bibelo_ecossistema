@@ -1010,17 +1010,18 @@ export async function syncBlingToMedusa(): Promise<{
           )
           updated++
           await query(
-            `UPDATE sync.product_publish_control SET medusa_id = $1, updated_at = NOW() WHERE sku = $2`,
-            [existing.id, product.sku]
+            `UPDATE sync.product_publish_control SET medusa_id = $1, medusa_handle = $3, updated_at = NOW() WHERE sku = $2`,
+            [existing.id, product.sku, existing.handle]
           )
         } else {
+          const newHandle = toHandle(group.parent.nome, group.parent.sku)
           const newId = await createMedusaProductWithVariants(
             group, stockMap, salesChannelId, categoryMapping, imageMap, gate.publishStatus
           )
           created++
           await query(
-            `UPDATE sync.product_publish_control SET medusa_id = $1, updated_at = NOW() WHERE sku = $2`,
-            [newId, product.sku]
+            `UPDATE sync.product_publish_control SET medusa_id = $1, medusa_handle = $3, updated_at = NOW() WHERE sku = $2`,
+            [newId, product.sku, newHandle]
           )
         }
       } else {
@@ -1031,16 +1032,17 @@ export async function syncBlingToMedusa(): Promise<{
             await updateMedusaProduct(existing.id, variantId, product, stock, categoryMapping, gate.publishStatus)
             updated++
             await query(
-              `UPDATE sync.product_publish_control SET medusa_id = $1, updated_at = NOW() WHERE sku = $2`,
-              [existing.id, product.sku]
+              `UPDATE sync.product_publish_control SET medusa_id = $1, medusa_handle = $3, updated_at = NOW() WHERE sku = $2`,
+              [existing.id, product.sku, existing.handle]
             )
           }
         } else {
+          const newHandle = toHandle(product.nome, product.sku)
           const newId = await createMedusaProduct(product, stock, salesChannelId, categoryMapping, gate.publishStatus)
           created++
           await query(
-            `UPDATE sync.product_publish_control SET medusa_id = $1, updated_at = NOW() WHERE sku = $2`,
-            [newId, product.sku]
+            `UPDATE sync.product_publish_control SET medusa_id = $1, medusa_handle = $3, updated_at = NOW() WHERE sku = $2`,
+            [newId, product.sku, newHandle]
           )
         }
       }

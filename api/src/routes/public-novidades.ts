@@ -39,6 +39,7 @@ interface NovidadeProduct {
   estoque: number
   nf_numero: string
   nf_data: string
+  medusa_handle: string | null
 }
 
 const RE_TAG = /<("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^'">])*>/g
@@ -96,6 +97,7 @@ publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
       saldo_fisico: string
       nf_numero: string
       nf_data: string
+      medusa_handle: string | null
     }>(
       `
       WITH nf_candidates AS (
@@ -121,6 +123,7 @@ publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
           nf.data_emissao                     AS nf_sort,
           nf.criado_em                        AS nf_criado_em,
           nei.numero_item,
+          COALESCE(ppc_sku.medusa_handle, ppc_pai.medusa_handle) AS medusa_handle,
           -- Estoque = saldo do próprio produto + soma dos filhos (variantes).
           -- No Bling o produto pai fica zerado; o estoque real está nos filhos.
           COALESCE(MAX(bs.saldo_fisico), 0) + COALESCE((
@@ -146,10 +149,17 @@ publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
           AND jsonb_array_length(bp.imagens) > 0
         LEFT JOIN sync.bling_stock bs
           ON bs.bling_product_id = bp.bling_id
+        LEFT JOIN sync.product_publish_control ppc_sku
+          ON ppc_sku.sku = bp.sku
+        LEFT JOIN sync.product_publish_control ppc_pai
+          ON ppc_pai.bling_id::text = (bp.dados_raw->>'idProdutoPai')
+          AND (bp.dados_raw->>'idProdutoPai') IS NOT NULL
+          AND (bp.dados_raw->>'idProdutoPai') != '0'
         GROUP BY
           bp.id, bp.bling_id, bp.nome, bp.sku, bp.preco_venda,
           bp.imagens, bp.dados_raw, bp.categoria,
-          nf.id, nf.numero, nf.data_emissao, nf.criado_em, nei.numero_item
+          nf.id, nf.numero, nf.data_emissao, nf.criado_em, nei.numero_item,
+          ppc_sku.medusa_handle, ppc_pai.medusa_handle
         HAVING (
           COALESCE(MAX(bs.saldo_fisico), 0) > 0
           OR EXISTS (
@@ -236,6 +246,7 @@ publicNovidadesRouter.get("/", async (req: Request, res: Response) => {
         estoque,
         nf_numero: row.nf_numero,
         nf_data: row.nf_data,
+        medusa_handle: row.medusa_handle ?? null,
       })
     }
 

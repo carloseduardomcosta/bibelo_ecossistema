@@ -26,6 +26,7 @@ export interface NovidadeProduct {
   estoque: number
   nf_numero: string
   nf_data: string
+  medusa_handle: string | null
 }
 
 export interface NovidadesResponse {

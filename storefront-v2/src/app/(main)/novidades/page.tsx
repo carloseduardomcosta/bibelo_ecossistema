@@ -16,11 +16,13 @@ function formatPrice(value: number): string {
 }
 
 function NovidadeCard({ product }: { product: NovidadeProduct }) {
-  const searchHref = `/produtos?q=${encodeURIComponent(product.nome)}`
+  const href = product.medusa_handle
+    ? `/produto/${product.medusa_handle}`
+    : `/produtos?q=${encodeURIComponent(product.nome)}`
 
   return (
     <Link
-      href={searchHref}
+      href={href}
       className="group flex flex-col bg-white rounded-2xl overflow-hidden border border-gray-100
                  hover:border-bibelo-pink/30 hover:shadow-lg transition-all duration-300"
     >
