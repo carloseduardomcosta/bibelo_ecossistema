@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache"
 import medusa from "./client"
 
 // ID real da região Brasil no Medusa (não é "br", é o UUID)
@@ -71,18 +72,20 @@ export async function getProductByHandle(handle: string) {
   }
 }
 
-// Buscar categorias
-export async function listCategories() {
-  try {
-    const { product_categories } = await medusa.store.category.list({
-      include_descendants_tree: true,
-    } as Parameters<typeof medusa.store.category.list>[0])
-    return product_categories || []
-  } catch (error) {
-    console.error("[Medusa] listCategories error:", error)
-    return []
-  }
+// Buscar categorias — cacheada por 1h (categorias mudam raramente)
+// unstable_cache deduplica requests concorrentes e serve do cache entre revalidações
+const _fetchCategories = async () => {
+  const { product_categories } = await medusa.store.category.list({
+    include_descendants_tree: true,
+  } as Parameters<typeof medusa.store.category.list>[0])
+  return product_categories || []
 }
+
+export const listCategories = unstable_cache(
+  _fetchCategories,
+  ["medusa-categories"],
+  { revalidate: 3600, tags: ["categories"] }
+)
 
 // Buscar produtos para /busca — limit 100, inclui categorias para facets
 export async function searchProducts(q: string) {

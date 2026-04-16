@@ -4,7 +4,7 @@ import {
   TrendingUp, DollarSign, Eye, MousePointerClick, Target, Users,
   MapPin, Monitor, BarChart3, AlertTriangle, CheckCircle2, Loader2,
   ExternalLink, Copy, RefreshCw, Megaphone, ShoppingCart, UserPlus,
-  ArrowUpRight, Zap, Database, CloudDownload,
+  ArrowUpRight, Zap, Database, CloudDownload, Clock,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -925,6 +925,10 @@ export default function MetaAds() {
             <p className="text-bibelo-muted text-xs mt-0.5">
               Segmentos do CRM sincronizados com o Meta para retargeting e lookalike
             </p>
+            <p className="text-bibelo-muted text-xs mt-0.5 flex items-center gap-1">
+              <Clock size={10} className="text-bibelo-muted/60" />
+              Sincronização automática diária às 03:00 BRT
+            </p>
           </div>
           <button
             onClick={handleSyncAudiences}
@@ -932,7 +936,7 @@ export default function MetaAds() {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/20 border border-violet-500/30 text-violet-300 text-xs font-medium hover:bg-violet-500/30 transition-colors disabled:opacity-50"
           >
             <Zap size={13} className={syncingAudiences ? 'animate-pulse' : ''} />
-            {syncingAudiences ? 'Sincronizando...' : 'Sincronizar audiências'}
+            {syncingAudiences ? 'Sincronizando...' : 'Sincronizar agora'}
           </button>
         </div>
 

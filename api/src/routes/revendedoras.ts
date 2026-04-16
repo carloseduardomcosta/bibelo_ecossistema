@@ -800,6 +800,18 @@ revendedorasRouter.put("/:id/status", async (req: Request, res: Response) => {
 
   logger.info("Status revendedora atualizado", { id, status, user });
 
+  // Envia email de aprovação na primeira transição → ativa
+  if (anterior && anterior.status !== "ativa" && status === "ativa") {
+    const desconto = anterior.percentual_desconto ?? 0
+    sendEmail({
+      to:      anterior.email,
+      from:    FROM_PARCEIRAS,
+      subject: "Seu cadastro foi aprovado! Bem-vinda ao Programa Sou Parceira 🤝",
+      html:    buildBoasVindasParceira(anterior.nome, (anterior.documento ?? "").replace(/\D/g, ""), desconto, anterior.nivel ?? "iniciante"),
+      tags:    [{ name: "tipo", value: "aprovacao_parceira" }],
+    }).catch(e => logger.error("Erro ao enviar email aprovação parceira", { id, error: e.message }))
+  }
+
   res.json(updated);
 });
 

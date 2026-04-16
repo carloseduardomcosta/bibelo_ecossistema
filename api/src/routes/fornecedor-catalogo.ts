@@ -1072,3 +1072,181 @@ fornecedorCatalogoRouter.post("/scraper/enriquecer/parar", (_req: Request, res: 
 fornecedorCatalogoRouter.get("/scraper/enriquecer/status", (_req: Request, res: Response) => {
   res.json(enrichState);
 });
+
+// ── Atualização de preços ──────────────────────────────────────
+//
+// Modo focado: percorre as categorias já cadastradas no banco,
+// re-scrapa apenas para atualizar preco_custo dos produtos existentes.
+// Não cria produtos novos, não altera status, nome ou imagens.
+// ──────────────────────────────────────────────────────────────
+
+interface PriceUpdateState {
+  running: boolean;
+  total_categorias: number;
+  categorias_feitas: number;
+  categoria_atual: string;
+  atualizados: number;
+  sem_mudanca: number;
+  erros: number;
+  iniciado_em: string | null;
+  mensagem: string;
+}
+
+const priceUpdateState: PriceUpdateState = {
+  running: false,
+  total_categorias: 0,
+  categorias_feitas: 0,
+  categoria_atual: "",
+  atualizados: 0,
+  sem_mudanca: 0,
+  erros: 0,
+  iniciado_em: null,
+  mensagem: "Aguardando início",
+};
+
+async function executarAtualizarPrecos(): Promise<void> {
+  try {
+    // Busca slugs únicos das categorias já cadastradas no banco
+    const rows = await query<{ slug_categoria: string }>(
+      `SELECT DISTINCT slug_categoria
+       FROM sync.fornecedor_catalogo_jc
+       WHERE slug_categoria IS NOT NULL
+       ORDER BY slug_categoria`
+    );
+    const slugs = rows.map(r => r.slug_categoria);
+
+    priceUpdateState.total_categorias = slugs.length;
+    priceUpdateState.mensagem = `${slugs.length} categorias para atualizar...`;
+    logger.info("Atualizar preços JC iniciado", { total_categorias: slugs.length });
+
+    for (const slug of slugs) {
+      if (!priceUpdateState.running) break;
+
+      priceUpdateState.categoria_atual = slug;
+
+      try {
+        // Scrapa página 1 para obter produtos (inclui DeptCode para paginação se necessário)
+        const url1 = urlPagina(slug, 1, null);
+        const res1 = await HTTP.get(url1);
+        await sleep(DELAY_MS);
+
+        const produtos = extrairProdutosDaPagina(res1.data);
+        if (produtos.length === 0) {
+          priceUpdateState.categorias_feitas++;
+          continue;
+        }
+
+        // Determina se há mais páginas (máx 10 por atualização — evita loop longo)
+        const deptCode = extrairDeptCode(res1.data, slug);
+        let todosProdutos = [...produtos];
+        let pagina = 2;
+
+        while (pagina <= 10 && priceUpdateState.running) {
+          const urlN = urlPagina(slug, pagina, deptCode);
+          try {
+            const resN = await HTTP.get(urlN);
+            await sleep(DELAY_MS);
+            const p = extrairProdutosDaPagina(resN.data);
+            if (p.length === 0) break;
+            todosProdutos = todosProdutos.concat(p);
+            pagina++;
+          } catch { break; }
+        }
+
+        // Atualiza apenas preco_custo de produtos que já existem no banco
+        for (const p of todosProdutos) {
+          try {
+            const result = await queryOne<{ preco_custo: number }>(
+              "SELECT preco_custo FROM sync.fornecedor_catalogo_jc WHERE item_id = $1",
+              [p.item_id]
+            );
+            if (!result) continue; // produto novo — ignorar (não cria)
+
+            if (Math.abs(Number(result.preco_custo) - p.preco_custo) < 0.005) {
+              priceUpdateState.sem_mudanca++;
+              continue; // preço igual
+            }
+
+            await queryOne(
+              "UPDATE sync.fornecedor_catalogo_jc SET preco_custo = $1, atualizado_em = NOW() WHERE item_id = $2",
+              [p.preco_custo, p.item_id]
+            );
+            priceUpdateState.atualizados++;
+          } catch {
+            priceUpdateState.erros++;
+          }
+        }
+
+        priceUpdateState.categorias_feitas++;
+        priceUpdateState.mensagem = `${priceUpdateState.categorias_feitas}/${priceUpdateState.total_categorias} — ${slug}`;
+
+      } catch {
+        priceUpdateState.erros++;
+        priceUpdateState.categorias_feitas++;
+        await sleep(DELAY_MS * 2);
+      }
+    }
+
+    priceUpdateState.running = false;
+    priceUpdateState.mensagem = `Concluído: ${priceUpdateState.atualizados} atualizados, ${priceUpdateState.sem_mudanca} sem mudança, ${priceUpdateState.erros} erros`;
+    logger.info("Atualizar preços JC concluído", {
+      atualizados: priceUpdateState.atualizados,
+      sem_mudanca: priceUpdateState.sem_mudanca,
+      erros: priceUpdateState.erros,
+    });
+
+  } catch (e: unknown) {
+    priceUpdateState.running = false;
+    priceUpdateState.mensagem = `Erro: ${e instanceof Error ? e.message : String(e)}`;
+    logger.error("Atualizar preços JC erro fatal", { error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+/** POST /scraper/atualizar-precos — atualiza preco_custo sem alterar status/imagens */
+fornecedorCatalogoRouter.post("/scraper/atualizar-precos", async (req: Request, res: Response) => {
+  if (scraperState.running) {
+    res.status(409).json({ error: "Scraper principal está em execução — aguarde" });
+    return;
+  }
+  if (enrichState.running) {
+    res.status(409).json({ error: "Enriquecimento está em execução — aguarde" });
+    return;
+  }
+  if (priceUpdateState.running) {
+    res.status(409).json({ error: "Atualização de preços já está em execução" });
+    return;
+  }
+
+  Object.assign(priceUpdateState, {
+    running: true,
+    total_categorias: 0,
+    categorias_feitas: 0,
+    categoria_atual: "",
+    atualizados: 0,
+    sem_mudanca: 0,
+    erros: 0,
+    iniciado_em: new Date().toISOString(),
+    mensagem: "Iniciando...",
+  });
+
+  logger.info("Atualizar preços JC solicitado", { user: (req as Request & { user?: { email: string } }).user?.email });
+  setImmediate(() => { executarAtualizarPrecos().catch(e => logger.error("Atualizar preços erro", { error: e.message })); });
+
+  res.json({ ok: true, mensagem: "Atualização de preços iniciada em background" });
+});
+
+/** POST /scraper/atualizar-precos/parar — interrompe a atualização */
+fornecedorCatalogoRouter.post("/scraper/atualizar-precos/parar", (_req: Request, res: Response) => {
+  if (!priceUpdateState.running) {
+    res.status(409).json({ error: "Atualização de preços não está em execução" });
+    return;
+  }
+  priceUpdateState.running = false;
+  priceUpdateState.mensagem = "Interrompendo...";
+  res.json({ ok: true, mensagem: "Solicitação de parada enviada" });
+});
+
+/** GET /scraper/atualizar-precos/status — estado atual */
+fornecedorCatalogoRouter.get("/scraper/atualizar-precos/status", (_req: Request, res: Response) => {
+  res.json(priceUpdateState);
+});

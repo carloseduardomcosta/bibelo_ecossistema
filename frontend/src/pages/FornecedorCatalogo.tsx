@@ -121,6 +121,18 @@ interface EnrichState {
   mensagem: string;
 }
 
+interface PriceUpdateState {
+  running: boolean;
+  total_categorias: number;
+  categorias_feitas: number;
+  categoria_atual: string;
+  atualizados: number;
+  sem_mudanca: number;
+  erros: number;
+  iniciado_em: string | null;
+  mensagem: string;
+}
+
 // ── Helpers ──────────────────────────────────────────────────
 function calcPrecoVenda(custo: number, markup: number): number {
   return custo * markup;
@@ -155,6 +167,7 @@ export default function FornecedorCatalogo() {
   const [scraper, setScraper]         = useState<ScraperStatus | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [enrich, setEnrich]           = useState<EnrichState | null>(null);
+  const [priceUpdate, setPriceUpdate]  = useState<PriceUpdateState | null>(null);
 
   // ── Polling do scraper enquanto running ──────────────────
   const fetchStatus = useCallback(async () => {
@@ -175,6 +188,15 @@ export default function FornecedorCatalogo() {
     }
   }, []);
 
+  const fetchPriceUpdateStatus = useCallback(async () => {
+    try {
+      const { data } = await api.get<PriceUpdateState>('/fornecedor-catalogo/scraper/atualizar-precos/status');
+      setPriceUpdate(data);
+    } catch {
+      // silencia
+    }
+  }, []);
+
   const fetchStats = useCallback(async () => {
     try {
       const { data } = await api.get<Stats>('/fornecedor-catalogo/stats');
@@ -190,7 +212,8 @@ export default function FornecedorCatalogo() {
     fetchStats();
     fetchStatus();
     fetchEnrichStatus();
-  }, [fetchStats, fetchStatus, fetchEnrichStatus]);
+    fetchPriceUpdateStatus();
+  }, [fetchStats, fetchStatus, fetchEnrichStatus, fetchPriceUpdateStatus]);
 
   useEffect(() => {
     if (!scraper?.running) return;
@@ -203,6 +226,12 @@ export default function FornecedorCatalogo() {
     const id = setInterval(fetchEnrichStatus, 3000);
     return () => clearInterval(id);
   }, [enrich?.running, fetchEnrichStatus]);
+
+  useEffect(() => {
+    if (!priceUpdate?.running) return;
+    const id = setInterval(fetchPriceUpdateStatus, 3000);
+    return () => clearInterval(id);
+  }, [priceUpdate?.running, fetchPriceUpdateStatus]);
 
   // ── Controle do scraper ──────────────────────────────────
   async function iniciarScraper(retomar = false) {
@@ -250,6 +279,32 @@ export default function FornecedorCatalogo() {
       toast.error(e.response?.data?.error || 'Erro ao parar enriquecimento');
     }
   }
+
+  // ── Controle de atualização de preços ────────────────────
+  async function iniciarAtualizarPrecos() {
+    try {
+      await api.post('/fornecedor-catalogo/scraper/atualizar-precos');
+      toast.success('Atualização de preços iniciada — re-scrapa listagens sem alterar status');
+      await fetchPriceUpdateStatus();
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Erro ao iniciar atualização de preços');
+    }
+  }
+
+  async function pararAtualizarPrecos() {
+    try {
+      await api.post('/fornecedor-catalogo/scraper/atualizar-precos/parar');
+      toast.success('Atualização de preços interrompida');
+      await fetchPriceUpdateStatus();
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Erro ao parar atualização de preços');
+    }
+  }
+
+  const priceUpdatePct =
+    priceUpdate && priceUpdate.total_categorias > 0
+      ? Math.round((priceUpdate.categorias_feitas / priceUpdate.total_categorias) * 100)
+      : 0;
 
   const enrichPct =
     enrich && enrich.total > 0
@@ -397,8 +452,38 @@ export default function FornecedorCatalogo() {
               </Tooltip>
             </div>
           )}
+          {/* Botão atualizar preços */}
+          {priceUpdate?.running ? (
+            <Tooltip lines={['Clique para interromper a atualização.', 'Preços já atualizados são preservados.']}>
+              <button
+                onClick={pararAtualizarPrecos}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 text-sm font-medium"
+              >
+                <StopCircle className="w-4 h-4" /> Parar atualização
+              </button>
+            </Tooltip>
+          ) : (
+            <Tooltip lines={[
+              '💰 Atualizar preços',
+              'Re-scrapa as listagens do JC Atacado atualizando apenas o preco_custo.',
+              '✅ Não cria produtos novos',
+              '✅ Não altera status (aprovado/rascunho/pausado)',
+              '✅ Não altera fotos, descrições ou markups',
+              'Ideal para rodar mensalmente e manter preços atualizados.',
+            ]}>
+              <button
+                onClick={iniciarAtualizarPrecos}
+                disabled={!!(scraper?.running || enrich?.running)}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium
+                           hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Tag className="w-4 h-4" /> Atualizar preços
+              </button>
+            </Tooltip>
+          )}
+
           <button
-            onClick={() => { fetchStats(); fetchStatus(); fetchEnrichStatus(); }}
+            onClick={() => { fetchStats(); fetchStatus(); fetchEnrichStatus(); fetchPriceUpdateStatus(); }}
             className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
           >
             <RefreshCw className="w-4 h-4" />
@@ -456,6 +541,34 @@ export default function FornecedorCatalogo() {
             <span>{enrich.com_galeria ?? enrich.com_imagem} com galeria HD</span>
             <span>{enrich.com_descricao} com descrição</span>
             {enrich.erros > 0 && <span className="text-red-600">{enrich.erros} erros</span>}
+          </div>
+        </div>
+      )}
+
+      {/* Barra de progresso de atualização de preços */}
+      {priceUpdate?.running && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium text-orange-800 flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin text-orange-500" />
+              Atualizando preços…
+              {priceUpdate.categoria_atual && (
+                <span className="text-orange-600 font-normal">— {priceUpdate.categoria_atual}</span>
+              )}
+            </span>
+            <span className="text-orange-700 font-semibold">{priceUpdatePct}%</span>
+          </div>
+          <div className="w-full bg-orange-200 rounded-full h-2">
+            <div
+              className="bg-orange-500 h-2 rounded-full transition-all duration-500"
+              style={{ width: `${priceUpdatePct}%` }}
+            />
+          </div>
+          <div className="flex gap-6 text-xs text-orange-700">
+            <span>{priceUpdate.categorias_feitas}/{priceUpdate.total_categorias} categorias</span>
+            <span>{priceUpdate.atualizados} preços atualizados</span>
+            <span>{priceUpdate.sem_mudanca} sem mudança</span>
+            {priceUpdate.erros > 0 && <span className="text-red-600">{priceUpdate.erros} erros</span>}
           </div>
         </div>
       )}

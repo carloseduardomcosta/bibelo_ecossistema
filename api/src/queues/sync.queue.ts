@@ -7,6 +7,7 @@ import { triggerFlow } from "../services/flow.service";
 import { refreshReviewsCache } from "../integrations/google/reviews";
 import { syncMetaAds } from "../services/meta.service";
 import { syncInstagram } from "../integrations/meta/instagram";
+import { syncAudiences } from "../integrations/meta/audiences";
 import { query, queryOne } from "../db";
 
 // ── Redis connection ───────────────────────────────────────────
@@ -132,6 +133,14 @@ export const syncWorker = new Worker(
           break;
         }
 
+        case "meta-audiences-sync": {
+          const audienceResults = await syncAudiences();
+          const sincronizados = audienceResults.filter(r => !r.erro).length;
+          const erros = audienceResults.filter(r => !!r.erro).length;
+          result = { processed: sincronizados, sincronizados, erros };
+          break;
+        }
+
         case "cleanup-old-data": {
           const tracking = await query(
             "DELETE FROM crm.tracking_events WHERE criado_em < NOW() - INTERVAL '90 days'"
@@ -230,7 +239,13 @@ export async function registerScheduledJobs(): Promise<void> {
     repeat: { pattern: "0 7 * * *" },
   });
 
-  logger.info("Jobs agendados registrados: bling-sync (30min), scores (2h), google-reviews (6h), cleanup (4h), meta-ads (6h), instagram (7h)");
+  // Meta Audiences sync: diário às 03:00 BRT = 06:00 UTC
+  // Sincroniza 4 segmentos CRM → Meta Custom Audiences para lookalike e retargeting
+  await syncQueue.add("meta-audiences-sync", {}, {
+    repeat: { pattern: "0 6 * * *" },
+  });
+
+  logger.info("Jobs agendados registrados: bling-sync (30min), scores (2h), google-reviews (6h), cleanup (4h), meta-ads (6h), instagram (7h), meta-audiences (6h UTC/3h BRT)");
 }
 
 // ── Event listeners ────────────────────────────────────────────
