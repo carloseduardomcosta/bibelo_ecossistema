@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { usePathname } from "next/navigation"
 import { useStoreSettings } from "@/hooks/useStoreSettings"
 
 const API_BASE = process.env.NEXT_PUBLIC_LEADS_API_URL || "https://webhook.papelariabibelo.com.br"
@@ -29,6 +30,7 @@ function trySet(k: string, v: string) {
 
 export default function DiscountPopup() {
   const { settings, loading } = useStoreSettings()
+  const pathname = usePathname()
   const [show, setShow] = useState(false)
   const [nome, setNome] = useState("")
   const [email, setEmail] = useState("")
@@ -47,9 +49,10 @@ export default function DiscountPopup() {
     }
     window.addEventListener("bibelo:open-popup", handleManualOpen)
 
-    // Abertura automática após delay — só se popup_ativo e ainda não viu
+    // Abertura automática após delay — não mostrar em páginas de autenticação
     let timer: ReturnType<typeof setTimeout>
-    if (popupAtivo && !getCookie(LEAD_COOKIE) && !tryGet(LEAD_COOKIE) &&
+    if (popupAtivo && !pathname.startsWith("/conta") &&
+        !getCookie(LEAD_COOKIE) && !tryGet(LEAD_COOKIE) &&
         !getCookie(POPUP_COOKIE) && !tryGet(POPUP_COOKIE)) {
       timer = setTimeout(() => setShow(true), DELAY_SECONDS * 1000)
     }
