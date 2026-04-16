@@ -132,18 +132,17 @@ class MelhorEnvioProviderService extends AbstractFulfillmentProviderService {
     data: CalculateShippingOptionPriceDTO["data"],
     context: CalculateShippingOptionPriceDTO["context"]
   ): Promise<CalculatedShippingOptionPrice> {
-    // LOG DETALHADO para diagnóstico
-    this.logger_.info(
-      `[MelhorEnvio] calculatePrice chamado | optionData=${JSON.stringify(optionData)} | data=${JSON.stringify(data)} | context.shipping_address=${JSON.stringify((context as any)?.shipping_address)}`
-    )
-
     const postalCode =
       (context as any)?.shipping_address?.postal_code ||
       (data as any)?.postal_code ||
       ""
 
+    this.logger_.info(
+      `[MelhorEnvio] calculatePrice | postal="${postalCode}" | context=${JSON.stringify(context)}`
+    )
+
     if (!postalCode) {
-      this.logger_.warn("[MelhorEnvio] calculatePrice: CEP destino ausente — retornando 0")
+      this.logger_.warn("[MelhorEnvio] calculatePrice: CEP ausente — retornando 0")
       return { calculated_amount: 0, is_calculated_price_tax_inclusive: true }
     }
 
