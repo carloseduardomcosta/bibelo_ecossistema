@@ -505,6 +505,168 @@ describe("POST /api/fornecedor-catalogo/scraper/parar", () => {
   });
 });
 
+// ── GET /scraper/atualizar-precos/status ──────────────────────────
+
+describe("GET /api/fornecedor-catalogo/scraper/atualizar-precos/status", () => {
+  it("retorna 401 sem token", async () => {
+    const res = await request(app).get("/api/fornecedor-catalogo/scraper/atualizar-precos/status");
+    expect(res.status).toBe(401);
+  });
+
+  it("retorna 200 com campo running", async () => {
+    const res = await request(app)
+      .get("/api/fornecedor-catalogo/scraper/atualizar-precos/status")
+      .set("Authorization", `Bearer ${adminToken()}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("running");
+    expect(typeof res.body.running).toBe("boolean");
+  });
+
+  it("retorna campos completos do estado de atualização de preços", async () => {
+    const res = await request(app)
+      .get("/api/fornecedor-catalogo/scraper/atualizar-precos/status")
+      .set("Authorization", `Bearer ${adminToken()}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("total_categorias");
+    expect(res.body).toHaveProperty("categorias_feitas");
+    expect(res.body).toHaveProperty("atualizados");
+    expect(res.body).toHaveProperty("sem_mudanca");
+    expect(res.body).toHaveProperty("erros");
+    expect(res.body).toHaveProperty("mensagem");
+    expect(typeof res.body.total_categorias).toBe("number");
+    expect(typeof res.body.atualizados).toBe("number");
+    expect(typeof res.body.sem_mudanca).toBe("number");
+    expect(typeof res.body.erros).toBe("number");
+  });
+
+  it("running=false quando nenhuma atualização está em andamento", async () => {
+    // Garante que não está rodando antes de verificar
+    const status = await request(app)
+      .get("/api/fornecedor-catalogo/scraper/atualizar-precos/status")
+      .set("Authorization", `Bearer ${adminToken()}`);
+    if (status.body.running) {
+      await request(app)
+        .post("/api/fornecedor-catalogo/scraper/atualizar-precos/parar")
+        .set("Authorization", `Bearer ${adminToken()}`);
+    }
+
+    const res = await request(app)
+      .get("/api/fornecedor-catalogo/scraper/atualizar-precos/status")
+      .set("Authorization", `Bearer ${adminToken()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.running).toBe(false);
+  });
+});
+
+// ── POST /scraper/atualizar-precos ────────────────────────────────
+
+describe("POST /api/fornecedor-catalogo/scraper/atualizar-precos", () => {
+  it("retorna 401 sem token", async () => {
+    const res = await request(app)
+      .post("/api/fornecedor-catalogo/scraper/atualizar-precos")
+      .send({});
+    expect(res.status).toBe(401);
+  });
+
+  it("retorna 200 e inicia atualização de preços", async () => {
+    // Garante que nada está rodando antes do teste
+    const statusBefore = await request(app)
+      .get("/api/fornecedor-catalogo/scraper/atualizar-precos/status")
+      .set("Authorization", `Bearer ${adminToken()}`);
+    if (statusBefore.body.running) {
+      await request(app)
+        .post("/api/fornecedor-catalogo/scraper/atualizar-precos/parar")
+        .set("Authorization", `Bearer ${adminToken()}`);
+    }
+
+    const res = await request(app)
+      .post("/api/fornecedor-catalogo/scraper/atualizar-precos")
+      .set("Authorization", `Bearer ${adminToken()}`)
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("ok", true);
+    expect(res.body).toHaveProperty("mensagem");
+
+    // Para imediatamente para não interferir nos demais testes
+    await request(app)
+      .post("/api/fornecedor-catalogo/scraper/atualizar-precos/parar")
+      .set("Authorization", `Bearer ${adminToken()}`);
+  });
+
+  it("retorna 409 se atualização já estiver em execução", async () => {
+    // Inicia
+    const ini = await request(app)
+      .post("/api/fornecedor-catalogo/scraper/atualizar-precos")
+      .set("Authorization", `Bearer ${adminToken()}`)
+      .send({});
+
+    if (ini.status !== 200) {
+      // Já estava rodando — 409 é esperado
+      expect(ini.status).toBe(409);
+      return;
+    }
+
+    // Tenta iniciar novamente enquanto está rodando
+    const res = await request(app)
+      .post("/api/fornecedor-catalogo/scraper/atualizar-precos")
+      .set("Authorization", `Bearer ${adminToken()}`)
+      .send({});
+    expect(res.status).toBe(409);
+    expect(res.body).toHaveProperty("error");
+
+    // Para para limpar
+    await request(app)
+      .post("/api/fornecedor-catalogo/scraper/atualizar-precos/parar")
+      .set("Authorization", `Bearer ${adminToken()}`);
+  });
+});
+
+// ── POST /scraper/atualizar-precos/parar ──────────────────────────
+
+describe("POST /api/fornecedor-catalogo/scraper/atualizar-precos/parar", () => {
+  it("retorna 401 sem token", async () => {
+    const res = await request(app)
+      .post("/api/fornecedor-catalogo/scraper/atualizar-precos/parar")
+      .send({});
+    expect(res.status).toBe(401);
+  });
+
+  it("retorna 409 se atualização não estiver rodando", async () => {
+    // Garante que está parada
+    const statusRes = await request(app)
+      .get("/api/fornecedor-catalogo/scraper/atualizar-precos/status")
+      .set("Authorization", `Bearer ${adminToken()}`);
+    if (statusRes.body.running) {
+      await request(app)
+        .post("/api/fornecedor-catalogo/scraper/atualizar-precos/parar")
+        .set("Authorization", `Bearer ${adminToken()}`);
+    }
+
+    const res = await request(app)
+      .post("/api/fornecedor-catalogo/scraper/atualizar-precos/parar")
+      .set("Authorization", `Bearer ${adminToken()}`);
+    expect(res.status).toBe(409);
+    expect(res.body).toHaveProperty("error");
+  });
+
+  it("retorna 200 ao parar uma atualização em andamento", async () => {
+    // Inicia primeiro
+    const ini = await request(app)
+      .post("/api/fornecedor-catalogo/scraper/atualizar-precos")
+      .set("Authorization", `Bearer ${adminToken()}`)
+      .send({});
+
+    if (ini.status !== 200) return; // conflito com outro estado — pula
+
+    const res = await request(app)
+      .post("/api/fornecedor-catalogo/scraper/atualizar-precos/parar")
+      .set("Authorization", `Bearer ${adminToken()}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("ok", true);
+    expect(res.body).toHaveProperty("mensagem");
+  });
+});
+
 // ── Segurança geral ───────────────────────────────────────────────
 
 describe("Segurança — fornecedor-catalogo API", () => {
@@ -551,6 +713,9 @@ describe("Segurança — fornecedor-catalogo API", () => {
       { method: "get",  path: "/api/fornecedor-catalogo/scraper/historico" },
       { method: "post", path: "/api/fornecedor-catalogo/scraper/iniciar" },
       { method: "post", path: "/api/fornecedor-catalogo/scraper/parar" },
+      { method: "get",  path: "/api/fornecedor-catalogo/scraper/atualizar-precos/status" },
+      { method: "post", path: "/api/fornecedor-catalogo/scraper/atualizar-precos" },
+      { method: "post", path: "/api/fornecedor-catalogo/scraper/atualizar-precos/parar" },
     ];
 
     for (const ep of endpoints) {

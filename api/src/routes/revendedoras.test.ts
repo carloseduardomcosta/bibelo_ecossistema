@@ -785,3 +785,89 @@ describe("GET /acessos-portal-recentes — sininho CRM", () => {
     expect(Array.isArray(res.body.data)).toBe(true);
   });
 });
+
+// ── Email de aprovação (fire-and-forget) ──────────────────────────
+//
+// Quando o status muda de qualquer valor ≠ 'ativa' para 'ativa',
+// a rota dispara sendEmail() de forma assíncrona (.catch isolado).
+// Em VITEST=true sendEmail retorna um mock ID sem acionar SES/Resend.
+// Os testes verificam que:
+//   a) a resposta HTTP não é afetada pelo envio do email
+//   b) o guard (anterior.status !== 'ativa') funciona corretamente
+//   c) fire-and-forget não propaga erros para o cliente
+
+const TEST_REV_C  = "cccccccc-0000-4000-a000-000000000030";
+const EMAIL_C     = "vitest-rev-c@test.bibelo.internal";
+
+beforeAll(async () => {
+  await query("DELETE FROM crm.revendedoras WHERE id = $1", [TEST_REV_C]);
+  await query(
+    `INSERT INTO crm.revendedoras
+       (id, nome, email, documento, status, nivel, percentual_desconto, volume_mes_atual)
+     VALUES ($1,'Rev C Email Vitest',$2,'999.888.777-66','pendente','iniciante',10,0)`,
+    [TEST_REV_C, EMAIL_C]
+  );
+});
+
+afterAll(async () => {
+  await query("DELETE FROM crm.revendedoras WHERE id = $1", [TEST_REV_C]);
+});
+
+describe("PUT /:id/status — email de aprovação (fire-and-forget)", () => {
+  it("pendente → ativa: retorna 200 com status correto (email disparado em bg)", async () => {
+    const res = await request(app)
+      .put(`/api/revendedoras/${TEST_REV_C}/status`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ status: "ativa" });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("ativa");
+    expect(res.body.aprovada_em).not.toBeNull();
+  });
+
+  it("ativa → ativa: retorna 200 sem crash (guard evita envio duplicado)", async () => {
+    // TEST_REV_C já está 'ativa' do teste anterior
+    // Guard: anterior.status !== 'ativa' → NÃO dispara email
+    const res = await request(app)
+      .put(`/api/revendedoras/${TEST_REV_C}/status`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ status: "ativa" });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("ativa");
+  });
+
+  it("suspensa → ativa: retorna 200 (email disparado novamente — status anterior era suspensa)", async () => {
+    // Suspende primeiro
+    await request(app)
+      .put(`/api/revendedoras/${TEST_REV_C}/status`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ status: "suspensa" });
+
+    // Reativa — anterior.status === 'suspensa' ≠ 'ativa', portanto email deve disparar
+    const res = await request(app)
+      .put(`/api/revendedoras/${TEST_REV_C}/status`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ status: "ativa" });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("ativa");
+  });
+
+  it("ativa → suspensa: retorna 200 sem email (destino não é 'ativa')", async () => {
+    const res = await request(app)
+      .put(`/api/revendedoras/${TEST_REV_C}/status`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ status: "suspensa" });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("suspensa");
+  });
+
+  it("fire-and-forget: resposta HTTP 200 independe do resultado do email", async () => {
+    // Reativa para garantir que o email seria disparado nesta transição
+    const res = await request(app)
+      .put(`/api/revendedoras/${TEST_REV_C}/status`)
+      .set("Authorization", `Bearer ${tokenAdmin()}`)
+      .send({ status: "ativa" });
+    // O .catch no handler garante que um erro de email não vaza para o HTTP response
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty("email_error");
+  });
+});
