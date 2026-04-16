@@ -12,7 +12,7 @@ Arquivo: `storefront-v2/src/app/(main)/page.tsx`
    - Clube VIP no WhatsApp → link grupo VIP
 3. **`<div className="h-8" />`** — espaçador intencional
 4. **NovidadesSection** — produtos das últimas NFs do Bling (só renderiza se `novidadesBling.length > 0`)
-5. **CategoriesSection** — mobile: scroll horizontal. Desktop: top 8 prioritárias grid 4×2 + "Ver todas →"
+5. **CategoriesSection** — top 4 categorias prioritárias em grid `grid-cols-4`, ícones circulares (`rounded-full`), link "Ver todas →"
 6. **ProductSection "Ofertas"** — só renderiza se houver promos com desconto
 7. **LeadCapture** — captura Clube Bibelô
 
@@ -61,6 +61,34 @@ Usado em: `pedidos`, `pedidos/[id]`, `perfil`, `enderecos`.
 const { isAuthorized, isLoading } = useRequireAuth()
 // Se não logado → redireciona /conta?returnUrl=<pathname> automaticamente
 ```
+
+---
+
+## Checkout — grupo (checkout)
+
+Arquitetura de 16/04/2026: `/checkout` e `/checkout/confirmacao` ficam no grupo `(checkout)` — layout isolado, padrão Amazon/Shopee para maximizar conversão.
+
+### Estrutura de arquivos
+```
+src/app/
+└── (checkout)/
+    ├── layout.tsx                     ← layout slim: logo + "Compra segura", sem nav/footer/popup
+    └── checkout/
+        ├── page.tsx                   ← /checkout (formulário + pagamento)
+        └── confirmacao/page.tsx       ← /checkout/confirmacao (pós-pagamento)
+```
+
+### Características do layout (checkout)
+- `fixed inset-0 z-[500]` — cobre o (main) layout durante transições client-side
+- Header slim: logo Bibelô + shield "Compra segura" — sem menu, sem busca
+- Sem `CartDrawer`, `DiscountPopup`, `Header`, `Footer`, `BottomNav`
+- Inclui `CartInitializer` e `CrmTracker` (necessários para o fluxo)
+- `force-dynamic` — nunca cacheado
+
+### Por que isolar o checkout
+- DiscountPopup e demais distrações aumentam abandono de compra
+- (main) layout continua montado durante navegação client-side → cobre com `z-[500]`
+- DiscountPopup tem proteção dupla: `pathname.startsWith("/checkout")` bloqueia o timer
 
 ---
 

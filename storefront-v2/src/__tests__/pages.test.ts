@@ -29,23 +29,27 @@ describe("Páginas institucionais — existência", () => {
 })
 
 describe("Páginas de e-commerce — existência", () => {
-  const requiredPages = [
-    "produtos",
-    "carrinho",
-    "checkout",
-    "checkout/confirmacao",
-    "busca",
-    "conta",
-    "conta/pedidos",
-    "conta/enderecos",
-  ]
-
-  for (const page of requiredPages) {
-    it(`/${page} existe`, () => {
-      const pagePath = path.join(PAGES_DIR, page, "page.tsx")
-      expect(fs.existsSync(pagePath)).toBe(true)
+  const mainPages = ["produtos", "carrinho", "busca", "conta/pedidos", "conta/enderecos"]
+  for (const page of mainPages) {
+    it(`/${page} existe em (main)`, () => {
+      expect(fs.existsSync(path.join(PAGES_DIR, page, "page.tsx"))).toBe(true)
     })
   }
+
+  it("/checkout existe em (checkout)", () => {
+    const p = path.resolve(__dirname, "../app/(checkout)/checkout/page.tsx")
+    expect(fs.existsSync(p)).toBe(true)
+  })
+
+  it("/checkout/confirmacao existe em (checkout)", () => {
+    const p = path.resolve(__dirname, "../app/(checkout)/checkout/confirmacao/page.tsx")
+    expect(fs.existsSync(p)).toBe(true)
+  })
+
+  it("/conta (login) existe em (auth)", () => {
+    const p = path.resolve(__dirname, "../app/(auth)/conta/page.tsx")
+    expect(fs.existsSync(p)).toBe(true)
+  })
 })
 
 describe("Páginas institucionais — conteúdo obrigatório", () => {
