@@ -14,7 +14,7 @@ import { formatPrice } from "@/lib/utils"
 
 const NAV_LINKS = [
   { label: "INÍCIO", href: "/" },
-  { label: "NOVIDADES", href: "/produtos?sort=created_at" },
+  { label: "NOVIDADES", href: "/novidades" },
   { label: "OFERTAS", href: "/produtos?sort=price_asc" },
 ]
 

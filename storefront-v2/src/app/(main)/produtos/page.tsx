@@ -32,10 +32,10 @@ interface SearchParams {
 }
 
 const SORT_OPTIONS = [
-  { value: "created_at", label: "Mais recentes" },
-  { value: "-created_at", label: "Mais antigos" },
-  { value: "price_asc", label: "Menor preço" },
-  { value: "price_desc", label: "Maior preço" },
+  { value: "-created_at", label: "Mais recentes" },
+  { value: "created_at",  label: "Mais antigos" },
+  { value: "price_asc",   label: "Menor preço" },
+  { value: "price_desc",  label: "Maior preço" },
 ]
 
 function buildSortUrl(sort: string, sp: SearchParams) {

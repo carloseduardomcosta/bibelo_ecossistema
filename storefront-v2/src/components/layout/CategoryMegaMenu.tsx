@@ -23,8 +23,11 @@ export default function CategoryMegaMenu() {
       .catch(() => setCategories([]))
   }, [])
 
-  // Apenas categorias raiz (sem pai)
-  const rootCategories = categories.filter((c) => !c.parent_category_id)
+  // Categorias raiz, excluindo as gerenciadas fora do Medusa
+  const EXCLUDED = ["novidade", "promocao"]
+  const rootCategories = categories.filter(
+    (c) => !c.parent_category_id && !EXCLUDED.includes(c.handle)
+  )
 
   // Fechar ao clicar fora
   useEffect(() => {
