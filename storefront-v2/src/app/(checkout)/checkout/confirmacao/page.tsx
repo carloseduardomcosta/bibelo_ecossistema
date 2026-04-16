@@ -38,7 +38,7 @@ function ConfirmacaoContent() {
   }
 
   return (
-    <div className="content-container py-12 max-w-lg mx-auto text-center">
+    <div className="max-w-4xl mx-auto px-4 py-12 max-w-lg mx-auto text-center">
       {/* Ícone de sucesso */}
       <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
         <svg className="w-10 h-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -193,7 +193,7 @@ function ConfirmacaoContent() {
 export default function ConfirmacaoPage() {
   return (
     <Suspense fallback={
-      <div className="content-container py-16 text-center">
+      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
         <div className="w-8 h-8 border-2 border-bibelo-pink border-t-transparent rounded-full animate-spin mx-auto" />
       </div>
     }>

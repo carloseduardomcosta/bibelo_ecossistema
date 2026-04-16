@@ -51,7 +51,7 @@ export default function DiscountPopup() {
 
     // Abertura automática após delay — não mostrar em páginas de autenticação
     let timer: ReturnType<typeof setTimeout>
-    if (popupAtivo && !pathname.startsWith("/conta") &&
+    if (popupAtivo && !pathname.startsWith("/conta") && !pathname.startsWith("/checkout") &&
         !getCookie(LEAD_COOKIE) && !tryGet(LEAD_COOKIE) &&
         !getCookie(POPUP_COOKIE) && !tryGet(POPUP_COOKIE)) {
       timer = setTimeout(() => setShow(true), DELAY_SECONDS * 1000)

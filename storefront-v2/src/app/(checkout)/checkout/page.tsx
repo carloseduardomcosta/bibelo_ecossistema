@@ -137,7 +137,7 @@ export default function CheckoutPage() {
   // ── Carrinho vazio ─────────────────────────────────────────
   if (items.length === 0) {
     return (
-      <div className="content-container py-16 text-center">
+      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
         <h1 className="text-2xl font-bold text-bibelo-dark mb-4">Seu carrinho está vazio</h1>
         <Link href="/produtos" className="btn-primary">Ver produtos</Link>
       </div>
@@ -436,7 +436,7 @@ export default function CheckoutPage() {
   const currentIdx = stepsArr.indexOf(step)
 
   return (
-    <div className="content-container py-8">
+    <div className="max-w-4xl mx-auto px-4 py-8">
       {/* SDK Mercado Pago v2 */}
       {MP_PUBLIC_KEY && (
         <Script
