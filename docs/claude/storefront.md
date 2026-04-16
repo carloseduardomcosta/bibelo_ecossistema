@@ -25,6 +25,45 @@ Usar **BenefitsStrip** (responsivo). Nunca usar `BenefitCards.tsx` junto com o B
 
 ---
 
+## Autenticação — grupo (auth)
+
+Arquitetura de rotas de 16/04/2026: `/conta` e sub-páginas de auth ficam no grupo `(auth)` — layout limpo sem header/footer.
+
+### Estrutura de arquivos
+```
+src/app/
+├── (auth)/
+│   ├── layout.tsx                  ← layout mínimo: min-h-screen bg-[#FAF7F2], force-dynamic
+│   └── conta/
+│       ├── page.tsx                ← /conta (login + painel da conta)
+│       ├── callback/page.tsx       ← /conta/callback (OAuth Google)
+│       ├── recuperar-senha/page.tsx
+│       └── nova-senha/page.tsx
+└── (main)/
+    └── conta/
+        ├── pedidos/
+        ├── pedidos/[id]/
+        ├── perfil/
+        └── enderecos/
+```
+
+### Fluxo returnUrl
+- Qualquer página protegida redireciona para `/conta?returnUrl=<pathname>`
+- Login com email/senha: `router.replace(returnUrl || "/conta")`
+- Login com Google: `returnUrl` salvo em `sessionStorage` antes do redirect OAuth → `callback/page.tsx` lê e redireciona
+- Constante: `RETURN_URL_KEY = "bibelo-auth-returnUrl"`
+
+### Hook useRequireAuth
+`src/hooks/useRequireAuth.ts` — protege rotas client-side.
+Usado em: `pedidos`, `pedidos/[id]`, `perfil`, `enderecos`.
+
+```ts
+const { isAuthorized, isLoading } = useRequireAuth()
+// Se não logado → redireciona /conta?returnUrl=<pathname> automaticamente
+```
+
+---
+
 ## Página /novidades
 Arquivo: `storefront-v2/src/app/(main)/novidades/page.tsx`
 
