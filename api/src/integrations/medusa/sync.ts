@@ -121,6 +121,7 @@ interface BlingStock {
 interface MedusaProduct {
   id: string
   handle: string
+  status?: string
   variants: Array<{
     id: string
     sku: string
@@ -347,7 +348,7 @@ async function getMedusaProductsBySku(): Promise<Map<string, MedusaProduct>> {
   while (true) {
     const data = await medusaRequest<{ products: MedusaProduct[]; count: number }>(
       "GET",
-      `/admin/products?limit=${limit}&offset=${offset}&fields=id,handle,variants.id,variants.sku`
+      `/admin/products?limit=${limit}&offset=${offset}&fields=id,handle,status,variants.id,variants.sku`
     )
 
     for (const p of data.products) {
@@ -455,7 +456,8 @@ async function createMedusaProductWithVariants(
   stockMap: Record<string, number>,
   salesChannelId: string,
   categoryMapping: Map<string, string>,
-  imageMap: Map<string, string>
+  imageMap: Map<string, string>,
+  overrideStatus?: string
 ): Promise<string> {
   const parent = group.parent
   const handle = toHandle(parent.nome, parent.sku)
@@ -510,7 +512,7 @@ async function createMedusaProductWithVariants(
     title: parent.nome,
     handle,
     description: description || undefined,
-    status: totalStock > 0 ? "published" : "draft",
+    status: overrideStatus ?? (totalStock > 0 ? "published" : "draft"),
     options: [{ title: optionTitle, values: optionValues }],
     variants,
     sales_channels: [{ id: salesChannelId }],
@@ -552,7 +554,8 @@ async function updateMedusaProductWithVariants(
   group: ProductGroup,
   stockMap: Record<string, number>,
   categoryMapping: Map<string, string>,
-  existingVariants: Array<{ id: string; sku: string }>
+  existingVariants: Array<{ id: string; sku: string }>,
+  overrideStatus?: string
 ): Promise<void> {
   const parent = group.parent
   const description = extractDescription(parent)
@@ -562,7 +565,7 @@ async function updateMedusaProductWithVariants(
   const updateBody: Record<string, unknown> = {
     title: parent.nome,
     description: description || undefined,
-    status: totalStock > 0 ? "published" : "draft",
+    status: overrideStatus ?? (totalStock > 0 ? "published" : "draft"),
     metadata: {
       bling_id: parent.bling_id,
       preco_custo: parent.preco_custo,
@@ -615,7 +618,8 @@ async function createMedusaProduct(
   product: BlingProduct,
   stock: number,
   salesChannelId: string,
-  categoryMapping: Map<string, string>
+  categoryMapping: Map<string, string>,
+  overrideStatus?: string
 ): Promise<string> {
   const handle = toHandle(product.nome, product.sku)
 
@@ -629,7 +633,7 @@ async function createMedusaProduct(
     title: product.nome,
     handle,
     description: description || undefined,
-    status: stock > 0 ? "published" : "draft",
+    status: overrideStatus ?? (stock > 0 ? "published" : "draft"),
     options: [{ title: "Padrão", values: ["Único"] }],
     variants: [
       {
@@ -684,14 +688,15 @@ async function updateMedusaProduct(
   variantId: string,
   product: BlingProduct,
   stock: number,
-  categoryMapping: Map<string, string>
+  categoryMapping: Map<string, string>,
+  overrideStatus?: string
 ): Promise<void> {
   const description = extractDescription(product)
 
   const updateBody: Record<string, unknown> = {
     title: product.nome,
     description: description || undefined,
-    status: stock > 0 ? "published" : "draft",
+    status: overrideStatus ?? (stock > 0 ? "published" : "draft"),
     metadata: {
       bling_id: product.bling_id,
       preco_custo: product.preco_custo,
@@ -788,6 +793,81 @@ async function logMedusaSync(
       detalhes ? JSON.stringify(detalhes) : null,
     ]
   )
+}
+
+// ── Gate de publicação ────────────────────────────────────────
+
+interface GateResult {
+  publishStatus: "published" | "draft" | "skip"
+}
+
+async function validateAndGateProduct(
+  product: BlingProduct,
+  categoryMapping: Map<string, string>,
+  currentMedusaStatus?: string
+): Promise<GateResult> {
+  const missingImage = !product.imagens || product.imagens.length === 0
+  const missingPrice = !product.preco_venda || product.preco_venda <= 0
+  const unmappedCategory = !!product.bling_category_id && !categoryMapping.has(product.bling_category_id)
+
+  // Tentar atualizar flags de produto já conhecido (UPDATE retorna a linha se existir)
+  const existing = await queryOne<{ status: string }>(
+    `UPDATE sync.product_publish_control
+     SET missing_image = $2, missing_price = $3, unmapped_category = $4,
+         nome_original = $5, categoria_bling = $6, updated_at = NOW()
+     WHERE sku = $1
+     RETURNING status`,
+    [product.sku, missingImage, missingPrice, unmappedCategory, product.nome, product.categoria]
+  )
+
+  let status: string
+
+  if (existing) {
+    status = existing.status
+  } else {
+    // Produto novo — verificar auto_approve da categoria (só se sem flags bloqueantes)
+    let initialStatus = "pending"
+    if (!missingImage && !missingPrice && product.bling_category_id) {
+      const catRow = await queryOne<{ auto_approve: boolean }>(
+        "SELECT auto_approve FROM sync.bling_medusa_categories WHERE bling_category_id = $1",
+        [product.bling_category_id]
+      )
+      if (catRow?.auto_approve) initialStatus = "auto"
+    }
+
+    await query(
+      `INSERT INTO sync.product_publish_control
+       (sku, bling_id, status, missing_image, missing_price, unmapped_category, nome_original, categoria_bling, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+       ON CONFLICT (sku) DO NOTHING`,
+      [
+        product.sku,
+        parseInt(product.bling_id, 10),
+        initialStatus,
+        missingImage,
+        missingPrice,
+        unmappedCategory,
+        product.nome,
+        product.categoria,
+      ]
+    )
+
+    status = initialStatus
+  }
+
+  if (status === "rejected") return { publishStatus: "skip" }
+  if (status === "approved" || status === "auto") return { publishStatus: "published" }
+
+  // pending: anti-downgrade — produto já published no Medusa não regride para draft
+  if (currentMedusaStatus === "published") return { publishStatus: "published" }
+  return { publishStatus: "draft" }
+}
+
+export async function setMedusaProductStatus(
+  medusaId: string,
+  status: "published" | "draft"
+): Promise<void> {
+  await medusaRequest("POST", `/admin/products/${medusaId}`, { status })
 }
 
 // ── Sync principal (com safeguards) ──────────────────────────
@@ -914,31 +994,54 @@ export async function syncBlingToMedusa(): Promise<{
       continue
     }
 
+    // Gate de publicação — consulta product_publish_control, determina draft/published/skip
+    const gate = await validateAndGateProduct(product, categoryMapping, existing?.status)
+    if (gate.publishStatus === "skip") {
+      logger.info(`Medusa sync: produto rejeitado, pulado SKU=${product.sku}`)
+      continue
+    }
+
     try {
       if (group.isVariant) {
         // ── Produto com variantes ──
         if (existing) {
           await updateMedusaProductWithVariants(
-            existing.id, group, stockMap, categoryMapping, existing.variants
+            existing.id, group, stockMap, categoryMapping, existing.variants, gate.publishStatus
           )
           updated++
+          await query(
+            `UPDATE sync.product_publish_control SET medusa_id = $1, updated_at = NOW() WHERE sku = $2`,
+            [existing.id, product.sku]
+          )
         } else {
-          await createMedusaProductWithVariants(
-            group, stockMap, salesChannelId, categoryMapping, imageMap
+          const newId = await createMedusaProductWithVariants(
+            group, stockMap, salesChannelId, categoryMapping, imageMap, gate.publishStatus
           )
           created++
+          await query(
+            `UPDATE sync.product_publish_control SET medusa_id = $1, updated_at = NOW() WHERE sku = $2`,
+            [newId, product.sku]
+          )
         }
       } else {
         // ── Produto simples (sem variantes) ──
         if (existing) {
           const variantId = existing.variants.find((v) => v.sku === product.sku)?.id
           if (variantId) {
-            await updateMedusaProduct(existing.id, variantId, product, stock, categoryMapping)
+            await updateMedusaProduct(existing.id, variantId, product, stock, categoryMapping, gate.publishStatus)
             updated++
+            await query(
+              `UPDATE sync.product_publish_control SET medusa_id = $1, updated_at = NOW() WHERE sku = $2`,
+              [existing.id, product.sku]
+            )
           }
         } else {
-          await createMedusaProduct(product, stock, salesChannelId, categoryMapping)
+          const newId = await createMedusaProduct(product, stock, salesChannelId, categoryMapping, gate.publishStatus)
           created++
+          await query(
+            `UPDATE sync.product_publish_control SET medusa_id = $1, updated_at = NOW() WHERE sku = $2`,
+            [newId, product.sku]
+          )
         }
       }
       consecutiveErrors = 0 // reset

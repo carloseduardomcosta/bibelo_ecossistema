@@ -55,6 +55,7 @@ import { fornecedorCatalogoRouter } from "./routes/fornecedor-catalogo";
 import { portalRevendedoraRouter } from "./routes/portal-revendedora";
 import { portalSouParceiraRouter } from "./routes/portal-souparceira";
 import { notificacoesRouter } from "./routes/notificacoes";
+import { curadoriaRouter } from "./routes/curadoria";
 import { registerScheduledJobs, closeSyncQueue } from "./queues/sync.queue";
 import { registerFlowJobs, closeFlowQueue }      from "./queues/flow.queue";
 
@@ -167,6 +168,7 @@ app.use("/api/fornecedor-catalogo", fornecedorCatalogoRouter);
 app.use("/api/portal", portalRevendedoraRouter);           // portal público B2B revendedoras (link token)
 app.use("/api/souparceira", portalSouParceiraRouter);      // portal Sou Parceira — OTP por CPF + email
 app.use("/api/notificacoes", notificacoesRouter);           // notificações CRM (sininho)
+app.use("/api/curadoria",   curadoriaRouter);               // curadoria publicação Bling→Medusa
 
 // ── 404
 app.use((_req, res) => {

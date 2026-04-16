@@ -8,6 +8,8 @@ import DiscountPopup from "@/components/home/DiscountPopup"
 import WhatsAppFloat from "@/components/layout/WhatsAppFloat"
 import CrmTracker from "@/components/layout/CrmTracker"
 
+export const dynamic = "force-dynamic"
+
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <>

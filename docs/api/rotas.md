@@ -328,3 +328,19 @@ Admin dashboard desabilitado temporariamente. API REST e Store API disponíveis 
 
 > Ações de whitelist/unban são processadas pelo host via cron (1 min).
 > Dados lidos de `/app/data/firewall-stats.json` (gerado por `scripts/firewall-stats.sh`).
+
+---
+
+## Curadoria Bling→Medusa (admin)
+
+- `GET  /api/curadoria/stats` — contagens por status: `{ pending, approved, rejected, auto, missing_image, missing_price, unmapped_category }`
+- `GET  /api/curadoria/pendentes?page=1&limit=20&status=pending` — lista paginada da tabela `sync.product_publish_control` com JOIN em `bling_products` (preco_venda, tem_foto). `status` opcional: pending | approved | rejected | auto
+- `POST /api/curadoria/aprovar` — aprova SKUs em lote e publica no Medusa. Body: `{ skus: string[] }` (max 100). Admin only.
+- `POST /api/curadoria/rejeitar` — rejeita SKUs, coloca Medusa em draft. Body: `{ skus: string[], motivo?: string }`. Admin only.
+- `POST /api/curadoria/reset` — volta SKUs para pending. Body: `{ skus: string[] }`. Admin only.
+
+> Porta de publicação: todo produto vindo do Bling entra como `pending` (draft no Medusa).
+> Produtos já publicados não são rebaixados se o status de controle for `pending` (anti-downgrade).
+> Categoria com `auto_approve = true` em `sync.bling_medusa_categories` → status inicial `auto` (direto publicado).
+> Migration: `db/migrations/047_product_publish_control.sql`
+> Backfill inicial: `scripts/backfill-publish-control.ts` (390 produtos — 214 approved, 176 pending)

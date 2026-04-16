@@ -377,7 +377,7 @@ export default function Header() {
         {/* Nav bar de categorias */}
         <nav className="hidden md:block bg-bibelo-rosa/60 border-t border-bibelo-pink/10">
           <div className="content-container">
-            <div className="flex items-center h-10 gap-1">
+            <div className="flex items-center justify-center h-10 gap-1">
               {/* Mega menu de categorias dinâmicas */}
               <CategoryMegaMenu />
 

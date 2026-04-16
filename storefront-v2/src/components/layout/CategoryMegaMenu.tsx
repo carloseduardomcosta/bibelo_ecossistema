@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { listCategories } from "@/lib/medusa/products"
-import { EMOJI_MAP } from "@/components/home/CategoriesSection"
 
 interface Category {
   id: string
@@ -81,17 +80,15 @@ export default function CategoryMegaMenu() {
                      min-w-[560px] p-5 animate-in fade-in slide-in-from-top-2 duration-150"
           role="menu"
         >
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-1">
             {rootCategories.map((cat) => (
               <Link
                 key={cat.id}
                 href={`/categoria/${cat.handle}`}
                 onClick={() => setOpen(false)}
                 role="menuitem"
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-bibelo-rosa/50
-                           transition-colors group"
+                className="px-3 py-2 rounded-lg hover:bg-bibelo-rosa/50 transition-colors group"
               >
-                <span className="text-xl leading-none">{EMOJI_MAP[cat.handle] || "📦"}</span>
                 <span className="text-sm font-medium text-gray-700 group-hover:text-bibelo-pink
                                transition-colors leading-tight line-clamp-2">
                   {cat.name}

@@ -6,11 +6,7 @@ import ProductCard from "@/components/product/ProductCard"
 import { EMOJI_MAP } from "@/components/home/CategoriesSection"
 
 export const revalidate = 3600
-
-export async function generateStaticParams() {
-  const categories = await listCategories()
-  return categories.map((c) => ({ handle: c.handle }))
-}
+export const dynamicParams = true
 
 const SORT_OPTIONS = [
   { value: "created_at",  label: "Mais recentes" },
