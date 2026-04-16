@@ -116,6 +116,8 @@ curl -v -X POST http://localhost:9000/webhooks/mercadopago \
 | Connection refused porta 9000 | Container caiu ou ainda subindo | Aguardar 90s, verificar logs |
 | 404 em webhook externo | Nginx sem bloco para api.papelariabibelo.com.br | Criar site no Nginx + certbot SSL |
 | npm ci demora 25+ min | Baixando 1228 pacotes do zero | Não ignorar node_modules no .dockerignore |
+| `/store/shipping-options` retorna `[]` | Bug #14787 — workflow navega `sales_channel→stock_locations→fulfillment_sets` via remote query que retorna array vazio | Custom route em `src/api/store/shipping-options/route.ts` — usa `IFulfillmentModuleService.listShippingOptions()` direto + calcula preços via CRM |
+| Frete exibe "Grátis" no checkout | `shipping_option.data = NULL` — provider não identifica pac/sedex | `UPDATE shipping_option SET data = '{"id":"pac"}'::jsonb WHERE name = 'PAC (Correios)'` (idem sedex). Reexecutar se shipping options forem recriadas |
 
 ## Admin Dashboard — RESOLVIDO em 01/04/2026
 Causa: admin-bundler usa `ADMIN_RELATIVE_OUTPUT_DIR = "./public/admin"`

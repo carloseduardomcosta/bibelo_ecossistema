@@ -1287,6 +1287,85 @@ sync.category_sync_log         (auditoria)
 - `.claude/skills/verification-loop.md`: protocolo pré-PR (typecheck → vitest baseline 717 → health check → scans de segurança → migrations)
 - `CLAUDE.md`: removidas 4 referências mortas para `/mnt/skills/` (path inexistente), substituídas pelos caminhos reais das 5 skills ativas
 
+---
+
+### Sessão 16/04/2026 — Fix crítico: frete exibindo "Grátis" no checkout (Medusa Bug #14787)
+
+#### Problema raiz — Bug #14787 do Medusa v2.13.5
+O endpoint padrão `GET /store/shipping-options?cart_id=...` sempre retornava array vazio, fazendo o
+storefront exibir "Frete Grátis" para qualquer CEP. A causa é um bug no workflow interno
+`listShippingOptionsForCartWorkflow` que navega `sales_channel → stock_locations → fulfillment_sets`
+via `useQueryGraphStep`; o remote query retorna `fulfillmentSetIds = []` mesmo com dados corretos nas
+tabelas `sales_channel_stock_location` + `location_fulfillment_set`.
+
+Duas raízes simultâneas foram identificadas e corrigidas:
+
+**Causa 1: `shipping_option.data = NULL` → `calculatePrice` não identificava PAC vs SEDEX**
+O campo `data` (jsonb) das shipping options estava NULL. O provider `MelhorEnvioProviderService`
+usa `optionData.id` para identificar o serviço (pac/sedex) e buscar o preço correto via Melhor Envio.
+Com `data = NULL`, `serviceId = ""` e `"".includes("")` bate em todos os serviços → retornava o
+preço do primeiro da lista para ambas as opções.
+
+Fix (SQL direto no banco — não há migration file):
+```sql
+UPDATE shipping_option SET data = '{"id": "pac"}'::jsonb  WHERE name = 'PAC (Correios)';
+UPDATE shipping_option SET data = '{"id": "sedex"}'::jsonb WHERE name = 'SEDEX (Correios)';
+```
+⚠️ Se as shipping options forem recriadas via Admin ou seed, este UPDATE deve ser reexecutado.
+
+**Causa 2: custom route retornava `amount: null` → checkout exibia "Grátis"**
+O override `medusa/src/api/store/shipping-options/route.ts` chamava apenas `listShippingOptions()`
+sem calcular preços. O storefront usava `amount: null` → `price <= 0` → exibia "Grátis".
+
+Fix: a rota agora:
+1. Busca o CEP do carrinho via `query.graph({ entity: "cart", fields: ["shipping_address.postal_code"] })`
+2. Chama `http://bibelo_api:4000/api/public/frete?cep={cep}` (CRM interno → Melhor Envio)
+3. Mapeia o resultado por `freteMap.get(opt.data.id)` → `amount` em centavos + `delivery_time` em dias
+
+#### Commits desta sessão
+
+- **`7d73f41`** — fix(medusa): calcular preço frete via CRM+MelhorEnvio no shipping-options override
+  - Arquivo: `medusa/src/api/store/shipping-options/route.ts`
+  - Busca CEP via `ContainerRegistrationKeys.QUERY` + `query.graph()` — padrão idiomático Medusa v2
+  - Chama CRM interno (`CRM_INTERNAL_URL` ou `http://bibelo_api:4000`) com timeout 8s
+  - Mapeia preços por `shipping_option.data.id` (pac/sedex) → `amount` + `delivery_time`
+  - Falha silenciosa: sem CEP retorna opções sem preço; erro de rede não quebra a resposta
+  - Validado E2E: CEP 88131743 → PAC R$21,88 (7d), SEDEX R$24,89 (3d); `addShippingMethod` → `total: 2188`
+
+- **`c65913d`** — refactor(melhorenvio): limpar logs de diagnóstico verbose do calculatePrice
+  - Arquivo: `medusa/src/modules/melhorenvio/service.ts`
+  - Remove ~20 linhas de `console.log` adicionadas na sessão de diagnóstico
+  - Mantém o log funcional na posição correta
+
+#### Arquitetura final do fluxo de frete no checkout
+
+```
+Storefront (Next.js)
+  GET /store/shipping-options?cart_id=abc
+      ↓
+  Medusa Custom Route (route.ts — workaround Bug #14787)
+      ↓ query.graph()
+  Carrinho → shipping_address.postal_code
+      ↓ fetch
+  CRM API (:4000/api/public/frete?cep=88131743)
+      ↓
+  Melhor Envio API (OAuth2)
+      ↓
+  [{ id: "pac", price: 2188, delivery_days: 7 },
+   { id: "sedex", price: 2489, delivery_days: 3 }]
+      ↓ freteMap.get(opt.data.id)
+  shipping_options com amount + delivery_time
+      ↓
+  Storefront exibe "R$ 21,88 (7 dias úteis)"
+```
+
+#### Regra importante — campo `data` nas shipping options
+Cada shipping option DEVE ter `data.id` igual ao ID do serviço na Melhor Envio API:
+- PAC Correios → `data: {"id": "pac"}`
+- SEDEX Correios → `data: {"id": "sedex"}`
+
+Sem esse campo, `calculatePrice` não consegue identificar o serviço e retorna preço errado.
+
 ### feat(souparceira): busca por descrição + pills de categoria + markup 2.5x — `c23efa8` (14/04/2026)
 - `portal-souparceira.ts`: busca estendida cobre nome OR descrição (ILIKE OR)
 - `SouParceira.tsx`: pills de categoria com scroll horizontal para filtragem rápida

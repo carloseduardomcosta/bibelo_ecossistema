@@ -143,6 +143,39 @@ Motor headless e-commerce — sem UI própria, só API REST + Admin.
 - Gera etiqueta após pagamento confirmado
 - Webhook de rastreio atualiza status do pedido
 
+#### Workaround Bug #14787 — Custom Route para `/store/shipping-options`
+
+O endpoint padrão `GET /store/shipping-options?cart_id=...` do Medusa v2.13.5 **sempre retorna array vazio**
+devido a um bug no workflow `listShippingOptionsForCartWorkflow`. O workflow navega
+`sales_channel → stock_locations → fulfillment_sets` via `useQueryGraphStep`, mas o remote query retorna
+`fulfillmentSetIds = []` → `filters: { fulfillment_set_id: [] }` → nenhuma shipping option encontrada.
+
+**Solução permanente:** rota customizada em `medusa/src/api/store/shipping-options/route.ts` que:
+1. Chama `IFulfillmentModuleService.listShippingOptions()` diretamente (bypassa o workflow quebrado)
+2. Busca o CEP do carrinho via `query.graph({ entity: "cart", fields: ["shipping_address.postal_code"] })`
+3. Calcula preços via CRM interno → Melhor Envio (`GET /api/public/frete?cep=XXXXXXXX`)
+4. Mapeia o resultado por `shipping_option.data.id` e retorna `amount` em centavos + `delivery_time` em dias
+
+**Fluxo de dados:**
+```
+GET /store/shipping-options?cart_id=abc
+  → fulfillmentModule.listShippingOptions()   (IFulfillmentModuleService — direto, sem workflow)
+  → query.graph("cart") → postal_code         (ContainerRegistrationKeys.QUERY)
+  → fetch bibelo_api:4000/api/public/frete    (CRM interno, timeout 8s)
+  → freteMap.set(opt.id, { price, delivery_days })
+  → response: shipping_options[{ id, name, amount, data.delivery_time }]
+```
+
+**Requisito crítico — campo `data` nas shipping options:**
+Cada `shipping_option` no banco DEVE ter o campo `data` (jsonb) com o ID do serviço Melhor Envio:
+```sql
+UPDATE shipping_option SET data = '{"id": "pac"}'::jsonb   WHERE name = 'PAC (Correios)';
+UPDATE shipping_option SET data = '{"id": "sedex"}'::jsonb  WHERE name = 'SEDEX (Correios)';
+```
+⚠️ Este UPDATE não tem migration file. Se as shipping options forem recriadas (Admin/seed), deve ser reexecutado.
+
+Sem `data.id`, o `calculatePrice` do provider não identifica o serviço e retorna preço incorreto.
+
 ### BibelôCRM (integração bidirecional)
 
 | Direção | O que | Como |
