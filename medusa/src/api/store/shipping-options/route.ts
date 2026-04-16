@@ -1,28 +1,22 @@
 /**
  * Custom route override para /store/shipping-options
  *
- * Workaround para bug do Medusa v2 (issue #14787) onde o endpoint built-in
- * retorna array vazio porque o validateAndTransformQuery é registrado duas
- * vezes no Express stack, fazendo o cart_id ser perdido antes do handler.
+ * Workaround para bug do Medusa v2.13.5 onde o remote query retorna array vazio
+ * para shipping_options mesmo com dados corretos no banco.
  *
- * Solução: chamar o listShippingOptionsForCartWorkflow diretamente.
+ * Solução:
+ * 1. Usa IFulfillmentModuleService.listShippingOptions() diretamente
+ * 2. Calcula preços via CRM → Melhor Envio quando o cart tem CEP
+ * 3. Repassa delivery_time no campo data para o storefront exibir prazo
  */
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { listShippingOptionsForCartWorkflow } from "@medusajs/medusa/core-flows"
-import { Modules } from "@medusajs/framework/utils"
+import { Modules, ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { IFulfillmentModuleService } from "@medusajs/framework/types"
+
+const CRM_URL = process.env.CRM_INTERNAL_URL || "http://bibelo_api:4000"
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
-  const cart_id =
-    (req.filterableFields as any)?.cart_id ||
-    (req.query?.cart_id as string) ||
-    ""
-
-  const is_return =
-    (req.filterableFields as any)?.is_return || req.query?.is_return
-
-  console.info(
-    `[ShippingOptions Override] cart_id="${cart_id}" is_return="${is_return}"`
-  )
+  const cart_id = (req.query?.cart_id as string) || ""
 
   if (!cart_id) {
     res.status(400).json({ message: "cart_id é obrigatório" })
@@ -30,49 +24,80 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   }
 
   try {
-    // Diagnóstico: buscar o carrinho diretamente para confirmar que existe
-    const cartModule = req.scope.resolve(Modules.CART)
-    const cart = await cartModule.retrieveCart(cart_id, {
-      relations: ["shipping_address"],
-    }).catch((e: any) => null)
+    const container = req.scope
 
-    if (!cart) {
-      console.warn(`[ShippingOptions Override] Carrinho ${cart_id} não encontrado!`)
+    // 1. Listar shipping options via módulo de fulfillment
+    const fulfillmentModule = container.resolve<IFulfillmentModuleService>(
+      Modules.FULFILLMENT
+    )
+    const shippingOptions = await fulfillmentModule.listShippingOptions(
+      {},
+      { take: 100 }
+    )
+
+    if (shippingOptions.length === 0) {
       res.json({ shipping_options: [] })
       return
     }
 
-    console.info(
-      `[ShippingOptions Override] Carrinho encontrado | region_id=${cart.region_id} | country=${(cart as any).shipping_address?.country_code} | postal=${(cart as any).shipping_address?.postal_code}`
-    )
-
-    // Diagnóstico: buscar shipping options direto do módulo de fulfillment
-    const fulfillmentModule = req.scope.resolve(Modules.FULFILLMENT)
-    const allOptions = await (fulfillmentModule as any).listShippingOptions({}).catch((e: any) => {
-      console.warn(`[ShippingOptions Override] Erro ao listar options direto: ${e.message}`)
-      return []
-    })
-    console.info(`[ShippingOptions Override] Total de shipping options no módulo: ${allOptions?.length ?? 0}`)
-    if (allOptions?.length > 0) {
-      allOptions.forEach((o: any) => {
-        console.info(`  -> ${o.id} | ${o.name} | ${o.price_type} | zone=${o.service_zone_id}`)
+    // 2. Buscar CEP do cart via query graph
+    let postalCode = ""
+    try {
+      const query = container.resolve(ContainerRegistrationKeys.QUERY)
+      const { data: carts } = await query.graph({
+        entity: "cart",
+        filters: { id: cart_id },
+        fields: ["id", "shipping_address.postal_code"],
       })
+      postalCode = (carts[0]?.shipping_address?.postal_code || "").replace(/\D/g, "")
+    } catch {
+      // CEP indisponível — retorna opções sem preço calculado
     }
 
-    // Executar o workflow
-    const workflow = listShippingOptionsForCartWorkflow(req.scope)
-    const { result: shipping_options } = await workflow.run({
-      input: { cart_id, is_return: !!is_return },
+    // 3. Calcular preços via CRM se tiver CEP
+    const freteMap = new Map<string, { price: number; delivery_days: number }>()
+
+    if (postalCode.length === 8) {
+      try {
+        const freteRes = await fetch(`${CRM_URL}/api/public/frete?cep=${postalCode}`, {
+          signal: AbortSignal.timeout(8000),
+        })
+        if (freteRes.ok) {
+          const freteData = (await freteRes.json()) as {
+            options: Array<{ id: string; price: number; delivery_days: number }>
+          }
+          for (const opt of freteData.options ?? []) {
+            freteMap.set(opt.id, { price: opt.price, delivery_days: opt.delivery_days })
+          }
+        }
+      } catch {
+        // Falha silenciosa — retorna opções sem preço
+      }
+    }
+
+    // 4. Montar resposta com preços e prazo
+    const formatted = shippingOptions.map((opt: any) => {
+      const serviceId: string = ((opt.data as any)?.id || "").toLowerCase()
+      const freteInfo = freteMap.get(serviceId)
+
+      return {
+        id: opt.id,
+        name: opt.name,
+        provider_id: opt.provider_id,
+        service_zone_id: opt.service_zone_id,
+        price_type: opt.price_type || "calculated",
+        amount: freteInfo?.price ?? null,
+        data: {
+          ...(opt.data || {}),
+          delivery_time: freteInfo?.delivery_days ?? null,
+        },
+        is_return: opt.is_return || false,
+        metadata: opt.metadata || null,
+      }
     })
 
-    console.info(
-      `[ShippingOptions Override] Workflow retornou ${shipping_options?.length ?? 0} opções`
-    )
-
-    res.json({ shipping_options })
+    res.json({ shipping_options: formatted })
   } catch (err: any) {
-    console.error(`[ShippingOptions Override] Erro: ${err.message}`)
-    console.error(err.stack)
     res.status(500).json({ message: err.message })
   }
 }
