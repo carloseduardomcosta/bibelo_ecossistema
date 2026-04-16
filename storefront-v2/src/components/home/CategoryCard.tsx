@@ -8,22 +8,24 @@ interface Props {
   name: string
   handle: string
   fallbackClass: string
+  circle?: boolean
 }
 
-export default function CategoryCard({ name, handle, fallbackClass }: Props) {
+export default function CategoryCard({ name, handle, fallbackClass, circle = false }: Props) {
   const [imgOk, setImgOk] = useState(true)
   const initial = name.charAt(0).toUpperCase()
 
   return (
     <Link
       href={`/categoria/${handle}`}
-      className="group flex flex-col items-center gap-2.5 focus:outline-none"
+      className="group flex flex-col items-center gap-2 focus:outline-none"
     >
       {/* Card de imagem */}
       <div
-        className="relative w-full aspect-square rounded-2xl overflow-hidden
+        className={`relative w-full aspect-square overflow-hidden
                    shadow-sm group-hover:shadow-lg group-hover:scale-[1.05]
-                   transition-all duration-300 ease-out"
+                   transition-all duration-300 ease-out
+                   ${circle ? "rounded-full" : "rounded-2xl"}`}
       >
         {/* Fallback colorido — sempre renderizado, fica atrás quando a imagem carrega */}
         <div

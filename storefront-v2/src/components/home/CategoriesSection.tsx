@@ -75,7 +75,7 @@ interface Category {
 export default async function CategoriesSection() {
   const categories = await listCategories() as Category[]
 
-  const roots = categories
+  const top4 = categories
     .filter((c) => !c.parent_category_id && !EXCLUDED.has(c.handle))
     .sort((a, b) => {
       const ia = PRIORITY.indexOf(a.handle)
@@ -85,40 +85,37 @@ export default async function CategoriesSection() {
       if (ib !== -1) return 1
       return a.name.localeCompare(b.name, "pt-BR")
     })
+    .slice(0, 4)
 
-  if (roots.length === 0) return null
+  if (top4.length === 0) return null
 
   return (
-    <section className="py-8 md:py-12 bg-white">
+    <section className="py-6 bg-white">
       <div className="content-container">
-        {/* Cabeçalho */}
-        <div className="flex items-end justify-between mb-6 md:mb-8">
-          <div>
-            <p className="text-bibelo-pink text-xs font-semibold uppercase tracking-widest mb-1">
-              Encontre o que procura
-            </p>
-            <h2 className="section-title mb-0 text-left">Categorias</h2>
-          </div>
+        {/* Cabeçalho compacto */}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-bold text-bibelo-dark uppercase tracking-widest">Categorias</h2>
           <Link
             href="/produtos"
-            className="text-sm text-bibelo-pink font-semibold hover:underline flex items-center gap-1 shrink-0"
+            className="text-xs text-bibelo-pink font-semibold hover:underline flex items-center gap-1"
           >
-            Ver tudo
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            Ver todas
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
             </svg>
           </Link>
         </div>
 
-        {/* Grid responsivo — 3 cols mobile, 4 tablet, 5 desktop, 6 large */}
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 md:gap-5">
-          {roots.map((cat) => (
+        {/* 4 categorias circulares em linha */}
+        <div className="grid grid-cols-4 gap-3">
+          {top4.map((cat) => (
             <CategoryCard
               key={cat.id}
               id={cat.id}
               name={cat.name}
               handle={cat.handle}
               fallbackClass={COLOR_MAP[cat.handle] || "bg-bibelo-rosa/40"}
+              circle
             />
           ))}
         </div>
