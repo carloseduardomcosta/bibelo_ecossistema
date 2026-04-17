@@ -6,6 +6,7 @@ import {
   ExternalLink, Copy, RefreshCw, Megaphone, ShoppingCart, UserPlus,
   ArrowUpRight, Zap, Database, CloudDownload, Clock, Plus, Play, Pause,
   Trash2, X, ImageIcon, Link2, Type, AlignLeft, Calendar, Wallet,
+  Lightbulb, Sparkles, ThumbsUp, ThumbsDown, Minus, BookOpen, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -34,6 +35,21 @@ interface AudienceSyncResult {
   usuarios: number;
   criada: boolean;
   erro?: string;
+}
+
+type InsightCategoria = 'publico' | 'criativo' | 'orcamento' | 'plataforma' | 'objetivo' | 'regiao' | 'geral';
+type InsightImpacto = 'positivo' | 'negativo' | 'neutro' | 'dica';
+
+interface CampaignInsight {
+  id: string;
+  tipo: 'automatico' | 'manual';
+  categoria: InsightCategoria;
+  impacto: InsightImpacto;
+  titulo: string;
+  descricao: string | null;
+  campanha_ref: string | null;
+  dados_json: Record<string, unknown> | null;
+  criado_em: string;
 }
 
 type CampanhaObjetivo = 'OUTCOME_SALES' | 'OUTCOME_TRAFFIC' | 'OUTCOME_AWARENESS';
@@ -418,6 +434,18 @@ export default function MetaAds() {
   const [syncingAudiences, setSyncingAudiences] = useState(false);
   const [audienceSyncResult, setAudienceSyncResult] = useState<AudienceSyncResult[] | null>(null);
 
+  // Insights acumulativos
+  const [insights, setInsights] = useState<CampaignInsight[]>([]);
+  const [loadingInsights, setLoadingInsights] = useState(false);
+  const [gerandoInsights, setGerandoInsights] = useState(false);
+  const [modalInsight, setModalInsight] = useState(false);
+  const [insightExpandido, setInsightExpandido] = useState<string | null>(null);
+  const [formInsight, setFormInsight] = useState<{
+    categoria: InsightCategoria; impacto: InsightImpacto;
+    titulo: string; descricao: string; campanha_ref: string;
+  }>({ categoria: 'geral', impacto: 'positivo', titulo: '', descricao: '', campanha_ref: '' });
+  const [salvandoInsight, setSalvandoInsight] = useState(false);
+
   // Fase 3 — Criação de campanhas
   const [modalAberto, setModalAberto] = useState(false);
   const [criandoCampanha, setCriandoCampanha] = useState(false);
@@ -497,6 +525,56 @@ export default function MetaAds() {
       setSyncing(false);
     }
   }, [loadSyncStatus]);
+
+  // Carregar insights
+  const loadInsights = useCallback(async () => {
+    setLoadingInsights(true);
+    try {
+      const { data } = await api.get('/meta-ads/insights');
+      setInsights(data.insights || []);
+    } catch { /* ignore */ } finally {
+      setLoadingInsights(false);
+    }
+  }, []);
+
+  // Gerar insights automáticos
+  const handleGerarInsights = useCallback(async () => {
+    setGerandoInsights(true);
+    try {
+      await api.post('/meta-ads/insights/gerar');
+      await loadInsights();
+    } catch (err) {
+      console.error('Erro ao gerar insights:', err);
+    } finally {
+      setGerandoInsights(false);
+    }
+  }, [loadInsights]);
+
+  // Salvar insight manual
+  const handleSalvarInsight = useCallback(async () => {
+    setSalvandoInsight(true);
+    try {
+      await api.post('/meta-ads/insights', formInsight);
+      await loadInsights();
+      setModalInsight(false);
+      setFormInsight({ categoria: 'geral', impacto: 'positivo', titulo: '', descricao: '', campanha_ref: '' });
+    } catch (err) {
+      console.error('Erro ao salvar insight:', err);
+    } finally {
+      setSalvandoInsight(false);
+    }
+  }, [formInsight, loadInsights]);
+
+  // Deletar insight
+  const handleDeletarInsight = useCallback(async (id: string) => {
+    if (!window.confirm('Remover este insight?')) return;
+    try {
+      await api.delete(`/meta-ads/insights/${id}`);
+      setInsights(prev => prev.filter(i => i.id !== id));
+    } catch (err) {
+      console.error('Erro ao deletar insight:', err);
+    }
+  }, []);
 
   // Carregar dados do dashboard
   const loadData = useCallback(async () => {
@@ -590,8 +668,9 @@ export default function MetaAds() {
       loadData();
       loadSyncStatus();
       loadAudiences();
+      loadInsights();
     }
-  }, [status?.connected, loadData, loadSyncStatus, loadAudiences]);
+  }, [status?.connected, loadData, loadSyncStatus, loadAudiences, loadInsights]);
 
   // Loading inicial
   if (loading) {
@@ -1171,6 +1250,248 @@ export default function MetaAds() {
           </div>
         </div>
       </div>
+
+      {/* ── Insights Acumulativos ── */}
+      {(() => {
+        const CATEGORIA_CONFIG: Record<InsightCategoria, { label: string; color: string; bg: string }> = {
+          publico:    { label: 'Público',    color: 'text-blue-400',   bg: 'bg-blue-500/10 border-blue-500/20' },
+          criativo:   { label: 'Criativo',   color: 'text-pink-400',   bg: 'bg-pink-500/10 border-pink-500/20' },
+          orcamento:  { label: 'Orçamento',  color: 'text-amber-400',  bg: 'bg-amber-500/10 border-amber-500/20' },
+          plataforma: { label: 'Plataforma', color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20' },
+          objetivo:   { label: 'Objetivo',   color: 'text-cyan-400',   bg: 'bg-cyan-500/10 border-cyan-500/20' },
+          regiao:     { label: 'Região',     color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+          geral:      { label: 'Geral',      color: 'text-slate-400',  bg: 'bg-slate-500/10 border-slate-500/20' },
+        };
+        const IMPACTO_ICON: Record<InsightImpacto, React.ReactNode> = {
+          positivo: <ThumbsUp size={12} className="text-emerald-400" />,
+          negativo: <ThumbsDown size={12} className="text-red-400" />,
+          neutro:   <Minus size={12} className="text-slate-400" />,
+          dica:     <Lightbulb size={12} className="text-amber-400" />,
+        };
+        const categorias = ['publico','criativo','orcamento','plataforma','objetivo','regiao','geral'] as InsightCategoria[];
+
+        return (
+          <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5 space-y-5">
+            {/* Header */}
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-bibelo-text flex items-center gap-2">
+                  <BookOpen size={16} className="text-amber-400" />
+                  Inteligência de Campanhas
+                </h3>
+                <p className="text-bibelo-muted text-xs mt-0.5">
+                  Aprendizados acumulados de cada campanha — base de conhecimento para otimizar os próximos anúncios
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleGerarInsights}
+                  disabled={gerandoInsights}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-medium hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+                >
+                  {gerandoInsights ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                  {gerandoInsights ? 'Analisando...' : 'Gerar insights'}
+                </button>
+                <button
+                  onClick={() => setModalInsight(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-bibelo-bg border border-bibelo-border text-bibelo-muted text-xs font-medium hover:text-bibelo-text hover:border-bibelo-muted transition-colors"
+                >
+                  <Plus size={12} />
+                  Adicionar nota
+                </button>
+              </div>
+            </div>
+
+            {loadingInsights && (
+              <div className="flex items-center gap-2 text-bibelo-muted text-xs py-4">
+                <Loader2 size={14} className="animate-spin" />
+                Carregando insights...
+              </div>
+            )}
+
+            {!loadingInsights && insights.length === 0 && (
+              <div className="text-center py-8 space-y-2">
+                <Lightbulb size={28} className="text-bibelo-muted/40 mx-auto" />
+                <p className="text-bibelo-muted text-sm">Nenhum insight ainda</p>
+                <p className="text-bibelo-muted/60 text-xs">Clique em "Gerar insights" para analisar suas campanhas automaticamente, ou adicione uma nota manual.</p>
+              </div>
+            )}
+
+            {!loadingInsights && insights.length > 0 && (
+              <div className="space-y-4">
+                {/* Contadores por categoria */}
+                <div className="flex flex-wrap gap-2">
+                  {categorias.filter(cat => insights.some(i => i.categoria === cat)).map(cat => {
+                    const cfg = CATEGORIA_CONFIG[cat];
+                    const count = insights.filter(i => i.categoria === cat).length;
+                    return (
+                      <span key={cat} className={`text-xs px-2 py-0.5 rounded-full border font-medium ${cfg.color} ${cfg.bg}`}>
+                        {cfg.label} · {count}
+                      </span>
+                    );
+                  })}
+                </div>
+
+                {/* Cards de insights agrupados por categoria */}
+                {categorias.filter(cat => insights.some(i => i.categoria === cat)).map(cat => {
+                  const cfg = CATEGORIA_CONFIG[cat];
+                  const grupo = insights.filter(i => i.categoria === cat);
+                  return (
+                    <div key={cat} className="space-y-2">
+                      <p className={`text-xs font-semibold flex items-center gap-1.5 ${cfg.color}`}>
+                        <span className={`w-2 h-2 rounded-full bg-current`} />
+                        {cfg.label}
+                      </p>
+                      {grupo.map(ins => (
+                        <div key={ins.id} className="bg-bibelo-bg rounded-lg border border-bibelo-border overflow-hidden">
+                          <div
+                            className="flex items-start justify-between gap-3 p-3 cursor-pointer"
+                            onClick={() => setInsightExpandido(insightExpandido === ins.id ? null : ins.id)}
+                          >
+                            <div className="flex items-start gap-2 min-w-0">
+                              <span className="mt-0.5 shrink-0">{IMPACTO_ICON[ins.impacto as InsightImpacto]}</span>
+                              <div className="min-w-0">
+                                <p className="text-bibelo-text text-xs font-medium leading-snug">{ins.titulo}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className={`text-xs ${ins.tipo === 'automatico' ? 'text-violet-400/70' : 'text-bibelo-muted/60'}`}>
+                                    {ins.tipo === 'automatico' ? '✦ automático' : '✎ manual'}
+                                  </span>
+                                  {ins.campanha_ref && (
+                                    <span className="text-bibelo-muted/50 text-xs truncate max-w-[140px]" title={ins.campanha_ref}>
+                                      · {ins.campanha_ref}
+                                    </span>
+                                  )}
+                                  <span className="text-bibelo-muted/40 text-xs">
+                                    · {new Date(ins.criado_em).toLocaleDateString('pt-BR')}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeletarInsight(ins.id); }}
+                                className="p-1 rounded hover:bg-red-500/20 text-bibelo-muted/40 hover:text-red-400 transition-colors"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                              {ins.descricao
+                                ? (insightExpandido === ins.id ? <ChevronUp size={13} className="text-bibelo-muted" /> : <ChevronDown size={13} className="text-bibelo-muted" />)
+                                : null
+                              }
+                            </div>
+                          </div>
+                          {insightExpandido === ins.id && ins.descricao && (
+                            <div className="px-3 pb-3 border-t border-bibelo-border/50">
+                              <p className="text-bibelo-muted text-xs leading-relaxed mt-2">{ins.descricao}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── Modal: Adicionar Insight Manual ── */}
+      {modalInsight && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-bibelo-card border border-bibelo-border rounded-2xl shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-bibelo-border">
+              <h2 className="text-sm font-semibold text-bibelo-text flex items-center gap-2">
+                <Lightbulb size={15} className="text-amber-400" />
+                Adicionar aprendizado
+              </h2>
+              <button onClick={() => setModalInsight(false)} className="text-bibelo-muted hover:text-bibelo-text">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Categoria + impacto */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-bibelo-muted text-xs font-medium mb-1.5 block">Categoria</label>
+                  <select
+                    value={formInsight.categoria}
+                    onChange={e => setFormInsight(f => ({ ...f, categoria: e.target.value as InsightCategoria }))}
+                    className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="publico">Público</option>
+                    <option value="criativo">Criativo</option>
+                    <option value="orcamento">Orçamento</option>
+                    <option value="plataforma">Plataforma</option>
+                    <option value="objetivo">Objetivo</option>
+                    <option value="regiao">Região</option>
+                    <option value="geral">Geral</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-bibelo-muted text-xs font-medium mb-1.5 block">Tipo</label>
+                  <select
+                    value={formInsight.impacto}
+                    onChange={e => setFormInsight(f => ({ ...f, impacto: e.target.value as InsightImpacto }))}
+                    className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="positivo">👍 Positivo — o que funcionou</option>
+                    <option value="negativo">👎 Negativo — o que não funcionou</option>
+                    <option value="dica">💡 Dica — ideia para testar</option>
+                    <option value="neutro">— Neutro — observação</option>
+                  </select>
+                </div>
+              </div>
+              {/* Título */}
+              <div>
+                <label className="text-bibelo-muted text-xs font-medium mb-1.5 block">Aprendizado (resumo)</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Imagem de produto fundo branco teve CTR 2x maior"
+                  value={formInsight.titulo}
+                  onChange={e => setFormInsight(f => ({ ...f, titulo: e.target.value }))}
+                  className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              {/* Descrição */}
+              <div>
+                <label className="text-bibelo-muted text-xs font-medium mb-1.5 block">Detalhes (opcional)</label>
+                <textarea
+                  rows={3}
+                  placeholder="Contexto, números, próximos passos..."
+                  value={formInsight.descricao}
+                  onChange={e => setFormInsight(f => ({ ...f, descricao: e.target.value }))}
+                  className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none focus:border-amber-500 resize-none"
+                />
+              </div>
+              {/* Campanha referência */}
+              <div>
+                <label className="text-bibelo-muted text-xs font-medium mb-1.5 block">Campanha relacionada (opcional)</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Catálogo Bibelô — Abril"
+                  value={formInsight.campanha_ref}
+                  onChange={e => setFormInsight(f => ({ ...f, campanha_ref: e.target.value }))}
+                  className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-5 border-t border-bibelo-border">
+              <button onClick={() => setModalInsight(false)} className="px-3 py-1.5 text-xs text-bibelo-muted hover:text-bibelo-text transition-colors">
+                Cancelar
+              </button>
+              <button
+                onClick={handleSalvarInsight}
+                disabled={salvandoInsight || !formInsight.titulo}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-medium hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+              >
+                {salvandoInsight ? <Loader2 size={12} className="animate-spin" /> : <Lightbulb size={12} />}
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Fase 3: Criar e Gerenciar Campanhas ── */}
       <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5 space-y-5">

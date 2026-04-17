@@ -618,3 +618,207 @@ metaAdsRouter.delete("/campanhas/:id", async (req: Request, res: Response) => {
     res.status(500).json({ error: msg });
   }
 });
+
+// ── Insights acumulativos de campanhas ────────────────────────
+
+// GET /api/meta-ads/insights
+metaAdsRouter.get("/insights", async (_req: Request, res: Response) => {
+  const rows = await query<{
+    id: string; tipo: string; categoria: string; impacto: string;
+    titulo: string; descricao: string | null; campanha_ref: string | null;
+    dados_json: Record<string, unknown> | null; criado_em: string;
+  }>(
+    `SELECT id, tipo, categoria, impacto, titulo, descricao, campanha_ref, dados_json, criado_em
+     FROM marketing.meta_campaign_insights
+     ORDER BY criado_em DESC
+     LIMIT 100`
+  );
+  res.json({ insights: rows });
+});
+
+// POST /api/meta-ads/insights — adicionar insight manual
+const insightManualSchema = z.object({
+  categoria: z.enum(["publico", "criativo", "orcamento", "plataforma", "objetivo", "regiao", "geral"]),
+  impacto: z.enum(["positivo", "negativo", "neutro", "dica"]),
+  titulo: z.string().min(5).max(300),
+  descricao: z.string().max(2000).optional(),
+  campanha_ref: z.string().max(200).optional(),
+});
+
+metaAdsRouter.post("/insights", async (req: Request, res: Response) => {
+  const parsed = insightManualSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const { categoria, impacto, titulo, descricao, campanha_ref } = parsed.data;
+  const [row] = await query<{ id: string }>(
+    `INSERT INTO marketing.meta_campaign_insights (tipo, categoria, impacto, titulo, descricao, campanha_ref)
+     VALUES ('manual', $1, $2, $3, $4, $5)
+     RETURNING id`,
+    [categoria, impacto, titulo, descricao || null, campanha_ref || null]
+  );
+  logger.info("Meta Insights: insight manual adicionado", { id: row.id, titulo });
+  res.json({ ok: true, id: row.id });
+});
+
+// DELETE /api/meta-ads/insights/:id
+metaAdsRouter.delete("/insights/:id", async (req: Request, res: Response) => {
+  await query(`DELETE FROM marketing.meta_campaign_insights WHERE id = $1`, [req.params.id]);
+  res.json({ ok: true });
+});
+
+// POST /api/meta-ads/insights/gerar — auto-gerar insights a partir dos dados do banco
+metaAdsRouter.post("/insights/gerar", async (_req: Request, res: Response) => {
+  const insights: Array<{
+    categoria: string; impacto: string; titulo: string; descricao: string;
+    campanha_ref?: string; dados_json: Record<string, unknown>;
+  }> = [];
+
+  try {
+    // ── 1. Plataforma: Instagram vs Facebook ──────────────────
+    const plat = await query<{ plataforma: string; gasto: number; ctr: number; cpc: number; cliques: number }>(
+      `SELECT plataforma,
+              ROUND(SUM(investimento)::numeric, 2) as gasto,
+              ROUND(AVG(ctr)::numeric, 4) as ctr,
+              ROUND(AVG(cpc)::numeric, 2) as cpc,
+              SUM(cliques) as cliques
+       FROM marketing.meta_platforms
+       WHERE plataforma IN ('instagram','facebook')
+       GROUP BY plataforma`
+    );
+    const ig = plat.find(p => p.plataforma === "instagram");
+    const fb = plat.find(p => p.plataforma === "facebook");
+    if (ig && fb && Number(ig.cpc) > 0 && Number(fb.cpc) > 0) {
+      const melhor = Number(ig.cpc) < Number(fb.cpc) ? "Instagram" : "Facebook";
+      const pior = melhor === "Instagram" ? "Facebook" : "Instagram";
+      const melhorCpc = melhor === "Instagram" ? ig.cpc : fb.cpc;
+      const piorCpc = melhor === "Instagram" ? fb.cpc : ig.cpc;
+      insights.push({
+        categoria: "plataforma",
+        impacto: "positivo",
+        titulo: `${melhor} mais eficiente: CPC R$ ${melhorCpc} vs R$ ${piorCpc} no ${pior}`,
+        descricao: `Com base em ${ig.cliques + fb.cliques} cliques totais, ${melhor} entrega cliques mais baratos. Priorize ${melhor} na distribuição de orçamento ou use Advantage+ para otimização automática.`,
+        dados_json: { instagram: ig, facebook: fb },
+      });
+    }
+
+    // ── 2. Faixa etária feminina mais responsiva ──────────────
+    const demo = await query<{ faixa_etaria: string; genero: string; gasto: number; ctr: number; cpc: number; cliques: number }>(
+      `SELECT faixa_etaria, genero,
+              ROUND(SUM(investimento)::numeric, 2) as gasto,
+              ROUND(AVG(ctr)::numeric, 4) as ctr,
+              ROUND(AVG(cpc)::numeric, 2) as cpc,
+              SUM(cliques) as cliques
+       FROM marketing.meta_demographics
+       WHERE genero = 'female'
+       GROUP BY faixa_etaria, genero
+       HAVING SUM(cliques) > 0
+       ORDER BY AVG(ctr) DESC`
+    );
+    if (demo.length >= 2) {
+      const top = demo[0];
+      insights.push({
+        categoria: "publico",
+        impacto: "positivo",
+        titulo: `Mulheres ${top.faixa_etaria} têm CTR ${Number(top.ctr).toFixed(2)}% — maior engajamento`,
+        descricao: `Esta faixa demonstrou o melhor CTR entre mulheres nas campanhas analisadas. Considere criar um AdSet específico para ${top.faixa_etaria} com orçamento dedicado e criativo focado neste perfil.`,
+        dados_json: { top_faixas: demo.slice(0, 3) },
+      });
+    }
+
+    // ── 3. Objetivo: TRÁFEGO vs VENDAS ──────────────────────
+    const objs = await query<{ objetivo: string; ctr_medio: number; cpc_medio: number; total_gasto: number }>(
+      `SELECT mc.objetivo,
+              ROUND(AVG(mi.ctr)::numeric, 4) as ctr_medio,
+              ROUND(AVG(mi.cpc)::numeric, 2) as cpc_medio,
+              ROUND(SUM(mi.investimento)::numeric, 2) as total_gasto
+       FROM marketing.meta_campaigns mc
+       JOIN marketing.meta_insights_daily mi ON mi.campaign_id = mc.id
+       GROUP BY mc.objetivo
+       HAVING SUM(mi.investimento) > 0`
+    );
+    const trafego = objs.find(o => o.objetivo === "OUTCOME_TRAFFIC");
+    const vendas = objs.find(o => o.objetivo === "OUTCOME_SALES");
+    if (trafego && vendas) {
+      insights.push({
+        categoria: "objetivo",
+        impacto: "dica",
+        titulo: `Campanhas de TRÁFEGO geraram CTR ${Number(trafego.ctr_medio).toFixed(2)}% vs ${Number(vendas.ctr_medio).toFixed(2)}% de VENDAS`,
+        descricao: `Objetivo Tráfego aquece público com custo menor. Estratégia recomendada: campanha de Tráfego para novos públicos → retargeting com Vendas para quem visitou o site. Use o Pixel para criar audiência personalizada de visitantes.`,
+        dados_json: { trafego, vendas },
+      });
+    }
+
+    // ── 4. Campanha com melhor CPC ────────────────────────────
+    const melhorCamp = await query<{ nome: string; cpc_medio: number; cliques: number; objetivo: string }>(
+      `SELECT mc.nome, mc.objetivo,
+              ROUND(AVG(mi.cpc)::numeric, 2) as cpc_medio,
+              SUM(mi.cliques) as cliques
+       FROM marketing.meta_campaigns mc
+       JOIN marketing.meta_insights_daily mi ON mi.campaign_id = mc.id
+       GROUP BY mc.id, mc.nome, mc.objetivo
+       HAVING SUM(mi.cliques) > 5
+       ORDER BY AVG(mi.cpc) ASC
+       LIMIT 1`
+    );
+    if (melhorCamp.length > 0) {
+      const c = melhorCamp[0];
+      insights.push({
+        categoria: "criativo",
+        impacto: "positivo",
+        titulo: `"${c.nome.substring(0, 60)}" teve o menor CPC: R$ ${c.cpc_medio}`,
+        descricao: `Com ${c.cliques} cliques a R$ ${c.cpc_medio} cada, este criativo/configuração foi o mais eficiente. Reutilize elementos desta campanha (imagem, copy, público) nas próximas.`,
+        campanha_ref: c.nome,
+        dados_json: { campanha: c },
+      });
+    }
+
+    // ── 5. Região com melhor CTR ──────────────────────────────
+    const regioes = await query<{ regiao: string; ctr: number; cliques: number }>(
+      `SELECT regiao, ROUND(AVG(ctr)::numeric, 4) as ctr, SUM(cliques) as cliques
+       FROM marketing.meta_geographic
+       GROUP BY regiao
+       HAVING SUM(cliques) > 2
+       ORDER BY AVG(ctr) DESC
+       LIMIT 3`
+    );
+    if (regioes.length > 0) {
+      const topRegioes = regioes.map(r => `${r.regiao} (${Number(r.ctr).toFixed(1)}%)`).join(", ");
+      insights.push({
+        categoria: "regiao",
+        impacto: "positivo",
+        titulo: `Melhores regiões por CTR: ${topRegioes}`,
+        descricao: `Estas regiões demonstraram maior engajamento com os anúncios. Considere criar campanhas geo-segmentadas para estas regiões com mensagens específicas (ex: frete grátis Sul/Sudeste).`,
+        dados_json: { regioes },
+      });
+    }
+
+    // ── Inserir apenas os que ainda não existem (por título) ──
+    let novos = 0;
+    for (const ins of insights) {
+      const existing = await query(
+        `SELECT id FROM marketing.meta_campaign_insights WHERE titulo = $1 AND tipo = 'automatico'`,
+        [ins.titulo]
+      );
+      if (existing.length === 0) {
+        await query(
+          `INSERT INTO marketing.meta_campaign_insights
+             (tipo, categoria, impacto, titulo, descricao, campanha_ref, dados_json)
+           VALUES ('automatico', $1, $2, $3, $4, $5, $6)`,
+          [ins.categoria, ins.impacto, ins.titulo, ins.descricao,
+           ins.campanha_ref || null, JSON.stringify(ins.dados_json)]
+        );
+        novos++;
+      }
+    }
+
+    logger.info("Meta Insights: insights automáticos gerados", { total: insights.length, novos });
+    res.json({ ok: true, gerados: insights.length, novos });
+
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Erro desconhecido";
+    logger.error("Meta Insights: falha ao gerar insights", { error: msg });
+    res.status(500).json({ error: msg });
+  }
+});
