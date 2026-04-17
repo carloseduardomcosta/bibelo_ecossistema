@@ -237,4 +237,4 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 16 de Abril de 2026 — curadoria Bling→Medusa (porta de publicação), nav categorias sem emoji, layout force-dynamic storefront*
+*Última atualização: 17 de Abril de 2026 — página Curadoria no CRM, store-settings integrado no storefront (BenefitsStrip + checkout), desconto Pix 3% via CRM, parcelamento com juros MP*

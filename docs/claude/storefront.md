@@ -184,3 +184,24 @@ Painel no CRM (sidebar > Loja Online > Configurações) — storefront consome v
 
 ### Campos monetários
 Banco armazena em **centavos** (ex: 7900). CRM exibe em **reais** (R$ 79,00). API converte automaticamente.
+
+### Campos consumidos pelo storefront
+
+| Componente | Campos lidos do CRM |
+|---|---|
+| `DiscountPopup.tsx` | `popup_ativo`, `popup_desconto`, `popup_cupom` |
+| `BenefitsStrip.tsx` | `banner_frete_gratis`, `frete_gratis_valor`, `frete_gratis_regioes`, `popup_desconto` |
+| `checkout/page.tsx` | `pix_desconto` (%), `cartao_parcelas_max` |
+
+**Regra de parcelamento no checkout:**
+- 1x: sem juros (cálculo local)
+- 2x a `cartao_parcelas_max`: exibe "+ juros MP" — loja não absorve juros, comprador paga taxas do plano Mercado Pago
+- Valor do desconto Pix: `pix_desconto / 100` aplicado sobre `(total + shippingCost)` — banco tem `pix_desconto = 3` (3%)
+
+### HOMOLOG — separação de dados CRM
+
+Todos os eventos do storefront são marcados com `fonte: "homolog_storefront"` para separar dos dados de produção (NuvemShop). Afeta:
+- `crm-tracker.ts` — todos os `sendEvent()` incluem `fonte: "homolog_storefront"`
+- `DiscountPopup.tsx` — POST de captura de lead inclui `fonte: "homolog_storefront"`
+
+O storefront vai a ar em **janeiro/2027**. Até lá, dados de CRM, leads e tracking do storefront são marcados como homolog.

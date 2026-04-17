@@ -1457,3 +1457,52 @@ Sem esse campo, `calculatePrice` não consegue identificar o serviço e retorna 
 - `fornecedor-catalogo.test.ts`: +10 testes para endpoints `atualizar-precos` (status, iniciar, parar)
 - `meta-ads.test.ts`: novo arquivo, 19 testes — auth em 8 endpoints, status/audiences/sync, cron
 - **Total API: 484 → 509 testes** (+25)
+
+---
+
+## Sessão 17/04/2026 — Curadoria CRM + store-settings integrado + checkout corrigido
+
+### feat: página Curadoria Produtos no CRM — `1317a0e`
+
+**Novo arquivo: `frontend/src/pages/Curadoria.tsx`**
+- Página `/curadoria` no CRM (rota registrada em `App.tsx`, item "Curadoria Produtos" no grupo Ferramentas da sidebar com ícone `ClipboardList`)
+- Stats cards: pending (amarelo), approved (verde), rejected (vermelho), auto (azul), flags (missing_image, missing_price, unmapped_category)
+- Filtros por status em abas (Todos / Pendentes / Aprovados / Rejeitados / Auto)
+- Tabela com: SKU, nome original, categoria Bling, preço de venda, flags de completude (foto ✓/✗, preço ✓/✗, categoria ✓/✗), status badge, motivo de rejeição, data de atualização
+- Seleção múltipla via checkboxes + "Selecionar todos da página"
+- Ações em lote: Aprovar (publica no Medusa), Rejeitar (modal com campo de motivo → Medusa draft), Resetar para pending
+- Paginação com navegação de páginas
+- Toasts de feedback para cada ação
+- TypeScript: 2 imports não utilizados (`Filter`, `Sparkles`) corrigidos após falha de build
+
+**Registros adicionados:**
+- `frontend/src/App.tsx`: import + `<Route path="/curadoria" element={<Curadoria />} />`
+- `frontend/src/components/Layout.tsx`: import `ClipboardList` + item `{ to: '/curadoria', label: 'Curadoria Produtos', icon: ClipboardList }` no grupo Ferramentas (logo após Loja Online)
+
+### feat: store-settings integrado no storefront — `1317a0e`
+
+**`storefront-v2/src/hooks/useStoreSettings.ts`** — expandido com campos de pagamento:
+- Adicionados: `pix_ativo`, `pix_desconto` (%), `cartao_ativo`, `cartao_parcelas_max`, `boleto_ativo`
+- Defaults: `pix_desconto: 5`, `cartao_parcelas_max: 12` (sobrescritos pelos valores do banco CRM)
+- Banco: `pix_desconto = 3` (3%), `cartao_parcelas_max = 12`, `cartao_juros = 0`
+
+**`storefront-v2/src/components/home/BenefitsStrip.tsx`** — agora usa `useStoreSettings`:
+- `BENEFITS` movido de constante global para array derivado dentro do componente
+- "Frete Grátis" exibe threshold dinâmico: `"a partir de R$ {valor} · {regiões}"` quando `banner_frete_gratis = true`
+- "Promoção de 1ª compra" exibe `"{popup_desconto}% na 1ª compra"` em vez de texto fixo
+
+**`storefront-v2/src/lib/crm-tracker.ts`** — `fonte: "homolog_storefront"` em todos os eventos enviados ao CRM
+
+**`storefront-v2/src/components/home/DiscountPopup.tsx`** — `fonte: "homolog_storefront"` no POST de captura de lead
+
+### fix: checkout — desconto Pix e parcelamento vindos do CRM — `1317a0e`
+
+**`storefront-v2/src/app/(checkout)/checkout/page.tsx`**:
+- `useStoreSettings` importado; `pixDesconto = storeSettings.pix_desconto / 100`, `pixDescontoLabel = "${N}%"`
+- Badge "5% OFF" → `"{pixDescontoLabel} OFF"` (agora lê 3% do CRM)
+- Info box Pix: "Desconto Pix: {pixDescontoLabel} OFF"
+- Resumo de valores: `(total + shippingCost) * pixDesconto` e `(1 - pixDesconto)` em vez de `0.05` / `0.95` hardcoded
+- Parcelamento: "Até {cartao_parcelas_max}x*" (CRM) — era "Até 12x" fixo
+- Select de parcelas: 1x "sem juros" + 2x-Nx "+ juros MP" (era "sem juros" em todas)
+- Nota adicionada: "* Parcelas a partir de 2x estão sujeitas aos juros do Mercado Pago, cobrados do comprador"
+- Razão: loja não absorve juros de parcelamento — comprador paga as taxas do plano MP
