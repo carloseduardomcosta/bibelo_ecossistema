@@ -13,6 +13,11 @@ export interface StoreSettings {
   banner_frete_gratis: boolean
   frete_gratis_valor: number   // centavos — ex: 7900 = R$79,00
   frete_gratis_regioes: string
+  pix_ativo: boolean
+  pix_desconto: number         // percentual — ex: 5 = 5%
+  cartao_ativo: boolean
+  cartao_parcelas_max: number  // ex: 12
+  boleto_ativo: boolean
 }
 
 const DEFAULTS: StoreSettings = {
@@ -22,6 +27,11 @@ const DEFAULTS: StoreSettings = {
   banner_frete_gratis: true,
   frete_gratis_valor: 7900,
   frete_gratis_regioes: "Sul e Sudeste",
+  pix_ativo: true,
+  pix_desconto: 5,
+  cartao_ativo: true,
+  cartao_parcelas_max: 12,
+  boleto_ativo: true,
 }
 
 interface CacheEntry {
@@ -73,6 +83,26 @@ function parseApiResponse(raw: Record<string, string>): StoreSettings {
         : DEFAULTS.frete_gratis_valor,
     frete_gratis_regioes:
       raw.frete_gratis_regioes?.trim() || DEFAULTS.frete_gratis_regioes,
+    pix_ativo:
+      "pix_ativo" in raw
+        ? raw.pix_ativo === "true" || raw.pix_ativo === "1"
+        : DEFAULTS.pix_ativo,
+    pix_desconto:
+      "pix_desconto" in raw
+        ? Number(raw.pix_desconto) || DEFAULTS.pix_desconto
+        : DEFAULTS.pix_desconto,
+    cartao_ativo:
+      "cartao_ativo" in raw
+        ? raw.cartao_ativo === "true" || raw.cartao_ativo === "1"
+        : DEFAULTS.cartao_ativo,
+    cartao_parcelas_max:
+      "cartao_parcelas_max" in raw
+        ? Number(raw.cartao_parcelas_max) || DEFAULTS.cartao_parcelas_max
+        : DEFAULTS.cartao_parcelas_max,
+    boleto_ativo:
+      "boleto_ativo" in raw
+        ? raw.boleto_ativo === "true" || raw.boleto_ativo === "1"
+        : DEFAULTS.boleto_ativo,
   }
 }
 

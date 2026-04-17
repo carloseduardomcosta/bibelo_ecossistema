@@ -91,6 +91,7 @@ function sendEvent(payload: TrackPayload): void {
     ...payload,
     pagina: payload.pagina || window.location.href,
     referrer: payload.referrer || document.referrer || undefined,
+    fonte: "homolog_storefront",
     ...utms,
   })
 

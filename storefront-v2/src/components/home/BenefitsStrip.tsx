@@ -1,39 +1,12 @@
 "use client"
 
 import Link from "next/link"
+import { useStoreSettings } from "@/hooks/useStoreSettings"
 
-const BENEFITS = [
-  {
-    icon: "M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12",
-    title: "Frete Grátis",
-    subtitle: "Leia a Política de Frete AQUI",
-    href: "/politica-de-frete",
-    sparkle: false,
-  },
-  {
-    icon: "M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z",
-    title: "Pagamento facilitado",
-    subtitle: "Vários meios de pagamento",
-    href: null,
-    sparkle: false,
-  },
-  {
-    icon: "M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L9.568 3z M6 6h.008v.008H6V6z",
-    title: "Promoção de 1ª compra",
-    subtitle: "CUPOM clicando AQUI",
-    href: null,
-    sparkle: false,
-    openPopup: true,
-  },
-  {
-    // WhatsApp chat bubble (Heroicons outline)
-    icon: "M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z",
-    title: "Clube VIP no WhatsApp",
-    subtitle: "Entre para o Clube Bibelô",
-    href: "https://boasvindas.papelariabibelo.com.br/api/links/grupo-vip",
-    sparkle: true,
-  },
-]
+const ICON_TRUCK = "M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"
+const ICON_CARD  = "M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z"
+const ICON_TAG   = "M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L9.568 3z M6 6h.008v.008H6V6z"
+const ICON_WA    = "M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"
 
 type Benefit = {
   icon: string
@@ -124,6 +97,47 @@ function BenefitCard({ benefit }: { benefit: Benefit }) {
 }
 
 export default function BenefitsStrip() {
+  const { settings } = useStoreSettings()
+
+  const freteValor = settings.banner_frete_gratis
+    ? `a partir de R$ ${(settings.frete_gratis_valor / 100).toFixed(0)}`
+    : "Leia a Política de Frete"
+  const freteSubtitle = settings.banner_frete_gratis
+    ? `${freteValor} · ${settings.frete_gratis_regioes}`
+    : "Leia a Política de Frete AQUI"
+
+  const BENEFITS: Benefit[] = [
+    {
+      icon: ICON_TRUCK,
+      title: "Frete Grátis",
+      subtitle: freteSubtitle,
+      href: "/politica-de-frete",
+      sparkle: false,
+    },
+    {
+      icon: ICON_CARD,
+      title: "Pagamento facilitado",
+      subtitle: "Vários meios de pagamento",
+      href: null,
+      sparkle: false,
+    },
+    {
+      icon: ICON_TAG,
+      title: `${settings.popup_desconto}% na 1ª compra`,
+      subtitle: "CUPOM clicando AQUI",
+      href: null,
+      sparkle: false,
+      openPopup: true,
+    },
+    {
+      icon: ICON_WA,
+      title: "Clube VIP no WhatsApp",
+      subtitle: "Entre para o Clube Bibelô",
+      href: "https://boasvindas.papelariabibelo.com.br/api/links/grupo-vip",
+      sparkle: true,
+    },
+  ]
+
   return (
     <>
       {/* Mobile: ticker scrollando */}

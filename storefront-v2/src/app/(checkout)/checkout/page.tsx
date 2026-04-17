@@ -17,6 +17,7 @@ import {
 import { startGoogleLogin, loginWithEmail, registerWithEmail } from "@/lib/medusa/auth"
 import { formatPrice } from "@/lib/utils"
 import { trackInitiateCheckout } from "@/lib/meta-pixel"
+import { useStoreSettings } from "@/hooks/useStoreSettings"
 
 // Steps: "identificacao" → "endereco" → "entrega" → "pagamento"
 type Step = "identificacao" | "endereco" | "entrega" | "pagamento"
@@ -38,6 +39,9 @@ export default function CheckoutPage() {
   const router = useRouter()
   const { items, total, subtotal, discount_total, cartId, refreshCart } = useCartStore()
   const { customer, token, setToken, loadCustomer } = useAuthStore()
+  const { settings: storeSettings } = useStoreSettings()
+  const pixDesconto = storeSettings.pix_desconto / 100  // ex: 0.05
+  const pixDescontoLabel = `${storeSettings.pix_desconto}%`
 
   const [step, setStep] = useState<Step>("identificacao")
   const [loading, setLoading] = useState(false)
@@ -849,7 +853,7 @@ export default function CheckoutPage() {
                     <p className="font-medium text-gray-800">Pix</p>
                     <p className="text-xs text-gray-500">Aprovação instantânea</p>
                   </div>
-                  <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">5% OFF</span>
+                  <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">{pixDescontoLabel} OFF</span>
                 </label>
 
                 {/* Cartão de Crédito */}
@@ -866,7 +870,7 @@ export default function CheckoutPage() {
                     <p className="font-medium text-gray-800">Cartão de Crédito</p>
                     <p className="text-xs text-gray-500">Visa, Mastercard, Elo, Amex, Hipercard</p>
                   </div>
-                  <span className="text-xs text-gray-400">Até 12x</span>
+                  <span className="text-xs text-gray-400">Até {storeSettings.cartao_parcelas_max}x*</span>
                 </label>
 
                 {/* Boleto */}
@@ -889,7 +893,7 @@ export default function CheckoutPage() {
               {/* Info box Pix */}
               {selectedPayment === "pix" && (
                 <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm">
-                  <p className="font-semibold text-green-800">Desconto Pix: 5% OFF</p>
+                  <p className="font-semibold text-green-800">Desconto Pix: {pixDescontoLabel} OFF</p>
                   <p className="text-green-600 text-xs mt-1">
                     O QR Code Pix será gerado após a confirmação. Pagamento aprovado em segundos.
                   </p>
@@ -935,13 +939,16 @@ export default function CheckoutPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Parcelas</label>
                     <select className="input-base" value={installments} onChange={(e) => setInstallments(Number(e.target.value))}>
-                      <option value={1}>1x de {formatPrice(total + shippingCost)} (sem juros)</option>
-                      {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
+                      <option value={1}>1x de {formatPrice(total + shippingCost)} sem juros</option>
+                      {Array.from({ length: storeSettings.cartao_parcelas_max - 1 }, (_, i) => i + 2).map((n) => (
                         <option key={n} value={n}>
-                          {n}x de {formatPrice(Math.ceil((total + shippingCost) / n))} (sem juros)
+                          {n}x de {formatPrice(Math.ceil((total + shippingCost) / n))} + juros MP
                         </option>
                       ))}
                     </select>
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      * Parcelas a partir de 2x estão sujeitas aos juros do Mercado Pago, cobrados do comprador.
+                    </p>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-gray-400">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -1023,8 +1030,8 @@ export default function CheckoutPage() {
             )}
             {selectedPayment === "pix" && step === "pagamento" && (
               <div className="flex justify-between text-sm text-green-600">
-                <span>Desconto Pix (5%)</span>
-                <span>-{formatPrice(Math.round((total + shippingCost) * 0.05))}</span>
+                <span>Desconto Pix ({pixDescontoLabel})</span>
+                <span>-{formatPrice(Math.round((total + shippingCost) * pixDesconto))}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-bibelo-dark pt-1 border-t border-gray-100">
@@ -1032,7 +1039,7 @@ export default function CheckoutPage() {
               <span>
                 {formatPrice(
                   selectedPayment === "pix" && step === "pagamento"
-                    ? Math.round((total + shippingCost) * 0.95)
+                    ? Math.round((total + shippingCost) * (1 - pixDesconto))
                     : total + shippingCost
                 )}
               </span>

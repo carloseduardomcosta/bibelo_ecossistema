@@ -48,6 +48,7 @@ import {
   BarChart2,
   Settings,
   PieChart,
+  ClipboardList,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -142,6 +143,7 @@ const navMainGroups: NavMainGroup[] = [
         label: '',
         items: [
           { to: '/loja-online', label: 'Loja Online', icon: Store },
+          { to: '/curadoria', label: 'Curadoria Produtos', icon: ClipboardList },
           { to: '/fornecedor-catalogo', label: 'Catálogo Fornecedor', icon: Package },
           { to: '/editor-imagens', label: 'Editor Imagens', icon: ImagePlus },
           { to: '/seo', label: 'SEO', icon: Globe },

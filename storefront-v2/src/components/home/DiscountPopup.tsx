@@ -76,6 +76,7 @@ export default function DiscountPopup() {
           email: email.trim(),
           nome: nome.trim() || undefined,
           popup_id: "clube_bibelo",
+          fonte: "homolog_storefront",
           pagina: window.location.href,
         }),
       })

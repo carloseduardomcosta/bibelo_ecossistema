@@ -43,6 +43,7 @@ import Revendedoras from './pages/Revendedoras';
 import RevendedoraPerfil from './pages/RevendedoraPerfil';
 import DashboardRevendedoras from './pages/DashboardRevendedoras';
 import FornecedorCatalogo from './pages/FornecedorCatalogo';
+import Curadoria from './pages/Curadoria';
 import PortalRevendedora from './pages/PortalRevendedora';
 import SouParceira from './pages/SouParceira';
 import { ToastProvider } from './components/Toast';
@@ -134,6 +135,7 @@ export default function App() {
               <Route path="/revendedoras/:id" element={<RevendedoraPerfil />} />
               <Route path="/dashboard-revendedoras" element={<DashboardRevendedoras />} />
               <Route path="/fornecedor-catalogo" element={<FornecedorCatalogo />} />
+              <Route path="/curadoria" element={<Curadoria />} />
             </Route>
           </Routes>
           </ErrorBoundary>
