@@ -12,12 +12,13 @@
 - **Tendência diária** — acompanhar evolução dos investimentos e resultados
 - **Visão por campanha** — comparar performance entre campanhas ativas
 
-### Fases planejadas
+### Fases implementadas
 | Fase | Funcionalidade | Status |
 |------|---------------|--------|
 | 1 | Dashboard de Insights (leitura) | ✅ Implementado |
-| 2 | Sync de Públicos CRM → Meta (Custom Audiences) | 🔜 Próximo |
-| 3 | Criação de campanhas pelo CRM | 📋 Planejado |
+| 2 | Sync de Públicos CRM → Meta (Custom Audiences) | ✅ Implementado |
+| 3 | Criação de campanhas pelo CRM | ✅ Implementado |
+| + | Inteligência de Campanhas (insights acumulativos) | ✅ Implementado |
 
 ---
 
@@ -149,6 +150,9 @@ Dados da Meta são persistidos no PostgreSQL (schema `marketing`) via sync autom
 |----------|-----------|
 | `META_ACCESS_TOKEN` | Token de acesso (System User ou Long-lived) |
 | `META_AD_ACCOUNT_ID` | ID da conta de anúncios (sem prefixo act_) |
+| `META_PAGE_ID` | ID da Página do Facebook da Bibelô (`958122297382938`) |
+| `META_PIXEL_ID` | ID do Pixel do Facebook (`1380166206444041`) |
+| `META_INSTAGRAM_ID` | ID da conta do Instagram Business (`17841478800595116`) |
 
 ---
 
@@ -182,10 +186,122 @@ Dados da Meta são persistidos no PostgreSQL (schema `marketing`) via sync autom
 4. **ROAS** → focar budget nas campanhas com melhor retorno sobre investimento
 5. **Horário** → analisar quando o público feminino mais engaja (futuro: breakdown por hora)
 
-### Próximos passos (Fase 2 — Audiences)
-- Exportar segmento "Clientes VIP mulheres Sul/Sudeste" como Custom Audience
-- Criar Lookalike Audience a partir das melhores clientes
-- Retargeting de visitantes do site que não compraram
+### Fase 2 — Custom Audiences (Implementada)
+- Sync automático diário às 03:00 BRT via BullMQ (`meta-audiences-sync`)
+- 4 segmentos exportados automaticamente para Meta:
+  - **Clientes ativos** — compraram nos últimos 90 dias
+  - **Leads verificados** — email confirmado, nunca compraram
+  - **Clientes VIP** — top 20% por valor (RFM score)
+  - **Clientes inativos** — sem compra em 180+ dias (retargeting/exclusão)
+- Endpoint manual: `POST /api/meta-ads/audiences/sync`
+- Indicador no dashboard: "Sincronização automática diária às 03:00 BRT"
+- **⚠️ Pré-requisito**: aceitar TOS em `business.facebook.com/ads/manage/customaudiences/tos/?act=1753454592707878`
+
+---
+
+---
+
+## Fase 3 — Criação de Campanhas pelo CRM
+
+### Fluxo de criação (4 passos sequenciais)
+```
+CRM UI → POST /api/meta-ads/campanhas/criar
+    ↓ 1. criarCampaign()   → Campaign (PAUSED)  → campaign_id
+    ↓ 2. criarAdSet()      → AdSet (PAUSED)      → adset_id
+    ↓ 3. criarAdCreative() → AdCreative          → creative_id
+    ↓ 4. criarAd()         → Ad (PAUSED)         → ad_id
+    ↓
+{campanhaId, adsetId, creativeId, adId, nome, urlGerenciador}
+```
+
+### Arquivo principal
+`api/src/integrations/meta/campaigns.ts` — implementa o fluxo completo:
+- `criarCampanhaCompleta(input)` — fluxo sequencial de 4 passos
+- `atualizarStatusCampanha(id, "ACTIVE"|"PAUSED")` — ativar/pausar
+- `arquivarCampanha(id)` — seta status DELETED no Meta
+
+### Input de criação de campanha
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `nome` | string (3-100) | Nome da campanha |
+| `objetivo` | enum | `OUTCOME_SALES`, `OUTCOME_TRAFFIC`, `OUTCOME_AWARENESS` |
+| `orcamentoDiario` | number (5-10000) | Orçamento em reais (ex: 30 = R$30/dia) |
+| `dataInicio` | string YYYY-MM-DD | Data de início |
+| `dataFim` | string YYYY-MM-DD | Data de fim (opcional) |
+| `urlDestino` | url | URL de destino do anúncio |
+| `imagemUrl` | url | URL pública da imagem |
+| `titulo` | string (1-40) | Headline do anúncio |
+| `texto` | string (1-600) | Texto principal do anúncio |
+| `cta` | enum | `SHOP_NOW`, `LEARN_MORE`, `SIGN_UP`, `GET_OFFER` (padrão: `SHOP_NOW`) |
+| `idadeMin` | number | Idade mínima (padrão: 18) |
+| `idadeMax` | number | Idade máxima (padrão: 55) |
+| `publicoIds` | string[] | IDs de Custom Audiences (opcional) |
+
+### Mapeamento de objetivo → otimização Meta
+| Objetivo CRM | optimization_goal | billing_event |
+|---|---|---|
+| `OUTCOME_SALES` | `OFFSITE_CONVERSIONS` | `IMPRESSIONS` + pixel Purchase |
+| `OUTCOME_TRAFFIC` | `LINK_CLICKS` | `LINK_CLICKS` |
+| `OUTCOME_AWARENESS` | `REACH` | `IMPRESSIONS` |
+
+### Targeting padrão
+- País: Brasil (BR)
+- Gênero: feminino [2] — foco no público-alvo da Bibelô
+- Idade: 18-55 (configurável)
+- Pixel: `1380166206444041` (para campanhas de vendas)
+
+### Regra de segurança
+Todas as campanhas criadas pelo CRM iniciam como **PAUSED**. O Carlos ativa manualmente no Gerenciador de Anúncios ou via botão no CRM, após revisar.
+
+### Endpoints Fase 3
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `POST` | `/api/meta-ads/campanhas/criar` | Cria campanha completa (4 passos) |
+| `PUT` | `/api/meta-ads/campanhas/:id/status` | Ativar (`ACTIVE`) ou pausar (`PAUSED`) |
+| `DELETE` | `/api/meta-ads/campanhas/:id` | Arquivar campanha (status DELETED) |
+
+---
+
+## Sistema de Inteligência de Campanhas
+
+Seção acumulativa no dashboard Meta Ads que armazena aprendizados de campanhas para melhorar decisões futuras.
+
+### Banco de dados
+Tabela `marketing.meta_campaign_insights` (migration `050_meta_campaign_insights.sql`):
+| Coluna | Descrição |
+|--------|-----------|
+| `tipo` | `'automatico'` (gerado pelo sistema) ou `'manual'` (inserido pelo Carlos) |
+| `categoria` | `publico`, `criativo`, `orcamento`, `plataforma`, `objetivo`, `regiao`, `geral` |
+| `impacto` | `positivo`, `negativo`, `neutro`, `dica` |
+| `titulo` | Título do insight (até 300 chars) |
+| `descricao` | Texto detalhado (opcional) |
+| `campanha_ref` | Nome da campanha que originou o insight |
+| `dados_json` | Métricas de suporte em JSONB |
+
+### Insights automáticos (gerados via `POST /insights/gerar`)
+O sistema analisa os dados históricos do banco e gera até 5 insights automáticos, idempotentes (não cria duplicatas por título):
+
+1. **Melhor plataforma** — compara CTR Instagram vs Facebook (última semana)
+2. **Melhor objetivo** — compara CTR TRAFFIC vs SALES (últimos 30 dias)
+3. **Melhor faixa etária** — identifica faixa com maior volume de cliques no demográfico
+4. **Melhor região** — identifica estado com maior volume de cliques no geográfico
+5. **Eficiência de custo** — compara CPC atual com benchmark R$0.50
+
+### Endpoints de Insights
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `GET` | `/api/meta-ads/insights` | Lista todos os insights, ordenados por data (mais recente primeiro) |
+| `POST` | `/api/meta-ads/insights` | Cria insight manual (Carlos) |
+| `DELETE` | `/api/meta-ads/insights/:id` | Remove insight |
+| `POST` | `/api/meta-ads/insights/gerar` | Gera insights automáticos a partir dos dados do banco |
+
+### Interface no CRM
+A seção "Inteligência de Campanhas" aparece no dashboard `/meta-ads`:
+- Cards agrupados por **categoria** (Público, Criativo, Orçamento, etc.)
+- Ícone de impacto: ✅ positivo / ❌ negativo / ➖ neutro / 💡 dica
+- Expandir card mostra descrição completa + referência de campanha
+- Botão "Adicionar Insight" — modal para registro manual
+- Botão "Gerar Insights" — análise automática dos dados históricos
 
 ---
 
@@ -260,4 +376,4 @@ Dados da Meta são persistidos no PostgreSQL (schema `marketing`) via sync autom
 ---
 
 *Criado em: 4 de Abril de 2026*
-*Última atualização: 4 de Abril de 2026 — persistência banco, sync 6h, análise campanhas Caderno + Catálogo*
+*Última atualização: 17 de Abril de 2026 — Fase 3 criação de campanhas, Custom Audiences sync, Inteligência de Campanhas (insights acumulativos), migration 050, novas vars de ambiente*

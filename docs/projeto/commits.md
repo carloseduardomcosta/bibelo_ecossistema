@@ -1506,3 +1506,63 @@ Sem esse campo, `calculatePrice` não consegue identificar o serviço e retorna 
 - Select de parcelas: 1x "sem juros" + 2x-Nx "+ juros MP" (era "sem juros" em todas)
 - Nota adicionada: "* Parcelas a partir de 2x estão sujeitas aos juros do Mercado Pago, cobrados do comprador"
 - Razão: loja não absorve juros de parcelamento — comprador paga as taxas do plano MP
+
+---
+
+### Sessão 17/04/2026 — Meta Ads Fase 3 + Inteligência de Campanhas
+
+### feat(meta-ads): Fase 3 — criação de campanhas pelo CRM — `4936ac7`
+
+**Novo arquivo: `api/src/integrations/meta/campaigns.ts`**
+- Fluxo completo Campaign → AdSet → AdCreative → Ad, todos criados como **PAUSED**
+- `criarCampanhaCompleta(input)` — 4 funções sequenciais (cada passo depende do anterior)
+- Objetivos: `OUTCOME_SALES` → `OFFSITE_CONVERSIONS` + Pixel Purchase; `OUTCOME_TRAFFIC` → `LINK_CLICKS`; `OUTCOME_AWARENESS` → `REACH`
+- Targeting padrão: Brasil, gênero feminino [2], faixa etária 18-55 (configurável)
+- Orçamento convertido: reais × 100 = centavos (formato Meta API)
+- Pixel `1380166206444041` injetado automaticamente em campanhas de vendas
+- Instagram configurado via `META_INSTAGRAM_ID` (opcional)
+
+**`api/src/routes/meta-ads.ts`** — 3 novos endpoints Fase 3:
+- `POST /api/meta-ads/campanhas/criar` — validação Zod completa (nome 3-100, objetivo enum, orcamento 5-10000, dataInicio regex, urlDestino URL, imagemUrl URL, titulo 1-40, texto 1-600, cta enum)
+- `PUT /api/meta-ads/campanhas/:id/status` — ativar (`ACTIVE`) ou pausar (`PAUSED`)
+- `DELETE /api/meta-ads/campanhas/:id` — arquivar (status DELETED no Meta)
+
+**`frontend/src/pages/MetaAds.tsx`** — modal "Criar Campanha":
+- Formulário com todos os campos, preview de objetivo, botão de criação
+- Resultado exibe IDs criados (Campaign, AdSet, Creative, Ad) + link direto para o Gerenciador
+- Botões "Ativar/Pausar" e "Arquivar" nas campanhas listadas
+
+**Novas variáveis de ambiente adicionadas ao `.env`**:
+- `META_PAGE_ID=958122297382938`
+- `META_PIXEL_ID=1380166206444041`
+- `META_INSTAGRAM_ID=17841478800595116`
+
+**Fix TypeScript**: handlers `handleCriarCampanha`, `handleToggleCampanha`, `handleArquivarCampanha` movidos para após a declaração `loadData = useCallback(...)` (dependência de closure)
+
+### feat(meta-ads): sistema de Inteligência de Campanhas — `fe98394`
+
+**Novo arquivo: `db/migrations/050_meta_campaign_insights.sql`**
+- Tabela `marketing.meta_campaign_insights`: campos `tipo`, `categoria`, `impacto`, `titulo`, `descricao`, `campanha_ref`, `dados_json`, `criado_em`
+- 3 índices: `categoria`, `criado_em DESC`, `tipo`
+- Migration aplicada live ao banco de produção
+
+**`api/src/routes/meta-ads.ts`** — 4 novos endpoints de insights:
+- `GET /api/meta-ads/insights` — lista ordenada por `criado_em DESC`
+- `POST /api/meta-ads/insights` — insight manual com Zod: `categoria`(enum 7 valores), `impacto`(enum), `titulo`(5-300), `descricao`/`campanha_ref` opcionais
+- `DELETE /api/meta-ads/insights/:id` — remove insight
+- `POST /api/meta-ads/insights/gerar` — gera até 5 insights automáticos idempotentes (dedup por título):
+  1. **Melhor plataforma** — CTR Instagram vs Facebook (últimos 7 dias de `meta_platforms`)
+  2. **Melhor objetivo** — CTR TRAFFIC vs SALES (30 dias de `meta_insights_daily`)
+  3. **Melhor faixa etária** — maior volume de cliques em `meta_demographics`
+  4. **Melhor região** — maior volume de cliques em `meta_geographic`
+  5. **Eficiência de custo** — CPC atual vs benchmark R$0.50
+
+**Fix SQL**: query de demográfico usava `WHERE SUM(cliques) > 0` (inválido) → movido para `HAVING SUM(cliques) > 0`
+
+**`frontend/src/pages/MetaAds.tsx`** — seção "Inteligência de Campanhas":
+- Cards agrupados por categoria com ícone CATEGORIA_CONFIG (cores e ícones por tipo)
+- Ícone de impacto: ✅ positivo / ❌ negativo / ➖ neutro / 💡 dica
+- Cards expansíveis — clique mostra descrição + referência de campanha
+- Botão "Adicionar Insight" — modal com formulário manual
+- Botão "Gerar Insights" — dispara análise automática e recarrega lista
+- Pattern IIFE para constantes locais de configuração dentro do JSX

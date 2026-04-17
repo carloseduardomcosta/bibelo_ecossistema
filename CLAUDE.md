@@ -237,4 +237,4 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 17 de Abril de 2026 — página Curadoria no CRM, store-settings integrado no storefront (BenefitsStrip + checkout), desconto Pix 3% via CRM, parcelamento com juros MP*
+*Última atualização: 17 de Abril de 2026 — Meta Ads Fase 3 (criação de campanhas pelo CRM), sistema de Inteligência de Campanhas (insights acumulativos), migration 050*
