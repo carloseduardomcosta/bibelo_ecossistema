@@ -4,7 +4,8 @@ import {
   TrendingUp, DollarSign, Eye, MousePointerClick, Target, Users,
   MapPin, Monitor, BarChart3, AlertTriangle, CheckCircle2, Loader2,
   ExternalLink, Copy, RefreshCw, Megaphone, ShoppingCart, UserPlus,
-  ArrowUpRight, Zap, Database, CloudDownload, Clock,
+  ArrowUpRight, Zap, Database, CloudDownload, Clock, Plus, Play, Pause,
+  Trash2, X, ImageIcon, Link2, Type, AlignLeft, Calendar, Wallet,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -33,6 +34,34 @@ interface AudienceSyncResult {
   usuarios: number;
   criada: boolean;
   erro?: string;
+}
+
+type CampanhaObjetivo = 'OUTCOME_SALES' | 'OUTCOME_TRAFFIC' | 'OUTCOME_AWARENESS';
+type CampanhaCTA = 'SHOP_NOW' | 'LEARN_MORE' | 'SIGN_UP' | 'GET_OFFER';
+
+interface CriarCampanhaForm {
+  nome: string;
+  objetivo: CampanhaObjetivo;
+  orcamentoDiario: string;
+  dataInicio: string;
+  dataFim: string;
+  publicoIds: string[];
+  urlDestino: string;
+  imagemUrl: string;
+  titulo: string;
+  texto: string;
+  cta: CampanhaCTA;
+  idadeMin: string;
+  idadeMax: string;
+}
+
+interface CriarCampanhaResult {
+  campanhaId: string;
+  adsetId: string;
+  creativeId: string;
+  adId: string;
+  nome: string;
+  urlGerenciador: string;
 }
 
 interface ConnectionStatus {
@@ -389,6 +418,29 @@ export default function MetaAds() {
   const [syncingAudiences, setSyncingAudiences] = useState(false);
   const [audienceSyncResult, setAudienceSyncResult] = useState<AudienceSyncResult[] | null>(null);
 
+  // Fase 3 — Criação de campanhas
+  const [modalAberto, setModalAberto] = useState(false);
+  const [criandoCampanha, setCriandoCampanha] = useState(false);
+  const [campanhaCriada, setCampanhaCriada] = useState<CriarCampanhaResult | null>(null);
+  const [eroCampanha, setErroCampanha] = useState<string | null>(null);
+  const [togglingCampanha, setTogglingCampanha] = useState<string | null>(null);
+  const hoje = new Date().toISOString().split('T')[0];
+  const [form, setForm] = useState<CriarCampanhaForm>({
+    nome: '',
+    objetivo: 'OUTCOME_SALES',
+    orcamentoDiario: '30',
+    dataInicio: hoje,
+    dataFim: '',
+    publicoIds: [],
+    urlDestino: 'https://www.papelariabibelo.com.br',
+    imagemUrl: '',
+    titulo: '',
+    texto: '',
+    cta: 'SHOP_NOW',
+    idadeMin: '18',
+    idadeMax: '55',
+  });
+
   // Carregar status de conexão
   const loadStatus = useCallback(async () => {
     try {
@@ -470,6 +522,64 @@ export default function MetaAds() {
       setDataLoading(false);
     }
   }, [periodo]);
+
+  // Criar campanha
+  const handleCriarCampanha = useCallback(async () => {
+    setCriandoCampanha(true);
+    setErroCampanha(null);
+    setCampanhaCriada(null);
+    try {
+      const body = {
+        nome: form.nome,
+        objetivo: form.objetivo,
+        orcamentoDiario: parseFloat(form.orcamentoDiario),
+        dataInicio: form.dataInicio,
+        dataFim: form.dataFim || undefined,
+        publicoIds: form.publicoIds.length > 0 ? form.publicoIds : undefined,
+        urlDestino: form.urlDestino,
+        imagemUrl: form.imagemUrl,
+        titulo: form.titulo,
+        texto: form.texto,
+        cta: form.cta,
+        idadeMin: parseInt(form.idadeMin) || 18,
+        idadeMax: parseInt(form.idadeMax) || 55,
+      };
+      const { data } = await api.post('/meta-ads/campanhas/criar', body);
+      setCampanhaCriada(data);
+      setModalAberto(false);
+      await loadData();
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || 'Erro ao criar campanha';
+      setErroCampanha(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setCriandoCampanha(false);
+    }
+  }, [form, loadData]);
+
+  // Pausar / ativar campanha
+  const handleToggleCampanha = useCallback(async (id: string, statusAtual: string) => {
+    setTogglingCampanha(id);
+    try {
+      const novoStatus = statusAtual === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+      await api.put(`/meta-ads/campanhas/${id}/status`, { status: novoStatus });
+      await loadData();
+    } catch (err) {
+      console.error('Erro ao alterar status da campanha:', err);
+    } finally {
+      setTogglingCampanha(null);
+    }
+  }, [loadData]);
+
+  // Arquivar campanha
+  const handleArquivarCampanha = useCallback(async (id: string) => {
+    if (!window.confirm('Arquivar esta campanha? Esta ação não pode ser desfeita.')) return;
+    try {
+      await api.delete(`/meta-ads/campanhas/${id}`);
+      await loadData();
+    } catch (err) {
+      console.error('Erro ao arquivar campanha:', err);
+    }
+  }, [loadData]);
 
   useEffect(() => {
     loadStatus();
@@ -1061,6 +1171,382 @@ export default function MetaAds() {
           </div>
         </div>
       </div>
+
+      {/* ── Fase 3: Criar e Gerenciar Campanhas ── */}
+      <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5 space-y-5">
+        {/* Header */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-bibelo-text flex items-center gap-2">
+              <Megaphone size={16} className="text-pink-400" />
+              Criar Campanha
+            </h3>
+            <p className="text-bibelo-muted text-xs mt-0.5">
+              Configure e lance campanhas no Meta Ads diretamente pelo CRM — criadas pausadas para revisão
+            </p>
+          </div>
+          <button
+            onClick={() => { setModalAberto(true); setCampanhaCriada(null); setErroCampanha(null); }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-pink-500/20 border border-pink-500/30 text-pink-300 text-xs font-medium hover:bg-pink-500/30 transition-colors"
+          >
+            <Plus size={13} />
+            Nova campanha
+          </button>
+        </div>
+
+        {/* Resultado da criação */}
+        {campanhaCriada && (
+          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4 space-y-2">
+            <p className="text-emerald-400 text-sm font-semibold flex items-center gap-2">
+              <CheckCircle2 size={15} />
+              Campanha criada com sucesso!
+            </p>
+            <p className="text-bibelo-muted text-xs">
+              <span className="text-bibelo-text font-medium">{campanhaCriada.nome}</span> — criada pausada. Ative-a no Gerenciador após revisar.
+            </p>
+            <div className="flex flex-wrap gap-2 text-xs text-bibelo-muted font-mono">
+              <span>Campaign: {campanhaCriada.campanhaId}</span>
+              <span>·</span>
+              <span>AdSet: {campanhaCriada.adsetId}</span>
+              <span>·</span>
+              <span>Ad: {campanhaCriada.adId}</span>
+            </div>
+            <a
+              href={campanhaCriada.urlGerenciador}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300"
+            >
+              <ExternalLink size={11} />
+              Abrir no Gerenciador de Anúncios
+            </a>
+          </div>
+        )}
+
+        {/* Lista de campanhas existentes */}
+        {campaigns.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-bibelo-muted text-xs font-semibold uppercase tracking-wider">Campanhas ativas / pausadas</p>
+            <div className="space-y-2">
+              {campaigns.map((c) => (
+                <div key={c.id} className="flex items-center justify-between gap-3 bg-bibelo-bg rounded-lg px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-bibelo-text text-xs font-medium truncate">{c.name}</p>
+                    <p className="text-bibelo-muted text-xs">
+                      {c.objective?.replace('OUTCOME_', '')} ·{' '}
+                      {c.daily_budget ? `R$ ${(parseInt(c.daily_budget) / 100).toFixed(0)}/dia` : 'orçamento vitalício'}
+                      {c.insights && ` · R$ ${parseFloat(c.insights.spend || '0').toFixed(2)} gasto`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${c.status === 'ACTIVE' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                      {c.status === 'ACTIVE' ? 'Ativa' : 'Pausada'}
+                    </span>
+                    <button
+                      onClick={() => handleToggleCampanha(c.id, c.status)}
+                      disabled={togglingCampanha === c.id}
+                      className="p-1.5 rounded hover:bg-white/10 text-bibelo-muted hover:text-bibelo-text transition-colors disabled:opacity-50"
+                      title={c.status === 'ACTIVE' ? 'Pausar' : 'Ativar'}
+                    >
+                      {togglingCampanha === c.id
+                        ? <Loader2 size={13} className="animate-spin" />
+                        : c.status === 'ACTIVE'
+                          ? <Pause size={13} />
+                          : <Play size={13} />
+                      }
+                    </button>
+                    <button
+                      onClick={() => handleArquivarCampanha(c.id)}
+                      className="p-1.5 rounded hover:bg-red-500/20 text-bibelo-muted hover:text-red-400 transition-colors"
+                      title="Arquivar campanha"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                    <a
+                      href={`https://www.facebook.com/adsmanager/manage/campaigns?act=1753454592707878`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded hover:bg-white/10 text-bibelo-muted hover:text-violet-400 transition-colors"
+                      title="Ver no Gerenciador"
+                    >
+                      <ExternalLink size={13} />
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Modal: Criar Campanha ── */}
+      {modalAberto && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-12 bg-black/60 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-xl bg-bibelo-card border border-bibelo-border rounded-2xl shadow-2xl">
+            {/* Header modal */}
+            <div className="flex items-center justify-between p-5 border-b border-bibelo-border">
+              <h2 className="text-sm font-semibold text-bibelo-text flex items-center gap-2">
+                <Megaphone size={16} className="text-pink-400" />
+                Nova Campanha Meta Ads
+              </h2>
+              <button onClick={() => setModalAberto(false)} className="text-bibelo-muted hover:text-bibelo-text">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Corpo do modal */}
+            <div className="p-5 space-y-4">
+
+              {/* Nome */}
+              <div>
+                <label className="text-bibelo-muted text-xs font-medium flex items-center gap-1.5 mb-1.5">
+                  <Type size={11} /> Nome da campanha
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Canetas Premium — Abril 2026"
+                  value={form.nome}
+                  onChange={(e) => setForm(f => ({ ...f, nome: e.target.value }))}
+                  className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none focus:border-violet-500"
+                />
+              </div>
+
+              {/* Objetivo */}
+              <div>
+                <label className="text-bibelo-muted text-xs font-medium flex items-center gap-1.5 mb-1.5">
+                  <Target size={11} /> Objetivo
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { value: 'OUTCOME_SALES', label: 'Vendas', desc: 'Otimiza para compras', color: 'emerald' },
+                    { value: 'OUTCOME_TRAFFIC', label: 'Tráfego', desc: 'Mais cliques no site', color: 'blue' },
+                    { value: 'OUTCOME_AWARENESS', label: 'Alcance', desc: 'Máx. de pessoas', color: 'violet' },
+                  ] as const).map((obj) => (
+                    <button
+                      key={obj.value}
+                      onClick={() => setForm(f => ({ ...f, objetivo: obj.value }))}
+                      className={`p-3 rounded-lg border text-left transition-colors ${form.objetivo === obj.value ? 'bg-violet-500/20 border-violet-500/50' : 'bg-bibelo-bg border-bibelo-border hover:border-bibelo-muted'}`}
+                    >
+                      <p className={`text-xs font-semibold ${form.objetivo === obj.value ? 'text-violet-300' : 'text-bibelo-text'}`}>{obj.label}</p>
+                      <p className="text-bibelo-muted text-xs mt-0.5">{obj.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Orçamento e datas */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-bibelo-muted text-xs font-medium flex items-center gap-1.5 mb-1.5">
+                    <Wallet size={11} /> Orçamento/dia (R$)
+                  </label>
+                  <input
+                    type="number"
+                    min="5"
+                    step="5"
+                    value={form.orcamentoDiario}
+                    onChange={(e) => setForm(f => ({ ...f, orcamentoDiario: e.target.value }))}
+                    className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-bibelo-muted text-xs font-medium flex items-center gap-1.5 mb-1.5">
+                    <Calendar size={11} /> Início
+                  </label>
+                  <input
+                    type="date"
+                    value={form.dataInicio}
+                    onChange={(e) => setForm(f => ({ ...f, dataInicio: e.target.value }))}
+                    className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-bibelo-muted text-xs font-medium flex items-center gap-1.5 mb-1.5">
+                    <Calendar size={11} /> Fim (opcional)
+                  </label>
+                  <input
+                    type="date"
+                    value={form.dataFim}
+                    onChange={(e) => setForm(f => ({ ...f, dataFim: e.target.value }))}
+                    className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+              </div>
+
+              {/* Público */}
+              <div>
+                <label className="text-bibelo-muted text-xs font-medium flex items-center gap-1.5 mb-1.5">
+                  <Users size={11} /> Público personalizado (opcional)
+                </label>
+                <div className="space-y-1.5">
+                  {(segmentCounts.length > 0 ? segmentCounts : [
+                    { nome: 'Bibelô — Clientes' },
+                    { nome: 'Bibelô — Leads não convertidos' },
+                    { nome: 'Bibelô — Inativos +90d' },
+                    { nome: 'Bibelô — Compradores Recentes' },
+                  ]).map((seg) => {
+                    const audienceMeta = audiences.find((a) => a.name === seg.nome);
+                    const ativo = audienceMeta && form.publicoIds.includes(audienceMeta.id);
+                    return (
+                      <button
+                        key={seg.nome}
+                        onClick={() => {
+                          if (!audienceMeta) return;
+                          setForm(f => ({
+                            ...f,
+                            publicoIds: ativo
+                              ? f.publicoIds.filter(id => id !== audienceMeta.id)
+                              : [...f.publicoIds, audienceMeta.id],
+                          }));
+                        }}
+                        disabled={!audienceMeta}
+                        className={`w-full text-left px-3 py-2 rounded-lg border text-xs transition-colors ${ativo ? 'bg-violet-500/20 border-violet-500/40 text-violet-300' : 'bg-bibelo-bg border-bibelo-border text-bibelo-muted'} ${!audienceMeta ? 'opacity-40 cursor-not-allowed' : 'hover:border-bibelo-muted'}`}
+                      >
+                        {seg.nome}
+                        {!audienceMeta && <span className="ml-2 text-amber-400">(sincronize os públicos primeiro)</span>}
+                        {audienceMeta && <span className="ml-2 text-bibelo-muted/60">id:{audienceMeta.id}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-bibelo-muted/60 text-xs mt-1.5">Sem seleção = alcance amplo no Brasil (feminino, 18–55 anos)</p>
+              </div>
+
+              {/* URL destino */}
+              <div>
+                <label className="text-bibelo-muted text-xs font-medium flex items-center gap-1.5 mb-1.5">
+                  <Link2 size={11} /> URL de destino
+                </label>
+                <input
+                  type="url"
+                  value={form.urlDestino}
+                  onChange={(e) => setForm(f => ({ ...f, urlDestino: e.target.value }))}
+                  className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text focus:outline-none focus:border-violet-500"
+                />
+              </div>
+
+              {/* Imagem */}
+              <div>
+                <label className="text-bibelo-muted text-xs font-medium flex items-center gap-1.5 mb-1.5">
+                  <ImageIcon size={11} /> URL da imagem do anúncio
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://... (mín. 1080×1080, JPG/PNG)"
+                  value={form.imagemUrl}
+                  onChange={(e) => setForm(f => ({ ...f, imagemUrl: e.target.value }))}
+                  className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none focus:border-violet-500"
+                />
+                {form.imagemUrl && (
+                  <img src={form.imagemUrl} alt="preview" className="mt-2 h-20 w-20 object-cover rounded border border-bibelo-border" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                )}
+              </div>
+
+              {/* Título e CTA */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-bibelo-muted text-xs font-medium flex items-center gap-1.5 mb-1.5">
+                    <Type size={11} /> Título <span className="text-bibelo-muted/50">(máx. 40)</span>
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={40}
+                    placeholder="Ex: Canetas Premium Bibelô"
+                    value={form.titulo}
+                    onChange={(e) => setForm(f => ({ ...f, titulo: e.target.value }))}
+                    className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none focus:border-violet-500"
+                  />
+                  <p className="text-bibelo-muted/50 text-xs mt-0.5 text-right">{form.titulo.length}/40</p>
+                </div>
+                <div>
+                  <label className="text-bibelo-muted text-xs font-medium flex items-center gap-1.5 mb-1.5">
+                    CTA
+                  </label>
+                  <select
+                    value={form.cta}
+                    onChange={(e) => setForm(f => ({ ...f, cta: e.target.value as CampanhaCTA }))}
+                    className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text focus:outline-none focus:border-violet-500"
+                  >
+                    <option value="SHOP_NOW">Comprar agora</option>
+                    <option value="LEARN_MORE">Saiba mais</option>
+                    <option value="GET_OFFER">Ver oferta</option>
+                    <option value="SIGN_UP">Cadastrar</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Texto */}
+              <div>
+                <label className="text-bibelo-muted text-xs font-medium flex items-center gap-1.5 mb-1.5">
+                  <AlignLeft size={11} /> Texto do anúncio
+                </label>
+                <textarea
+                  rows={3}
+                  maxLength={600}
+                  placeholder="Texto que aparece no feed..."
+                  value={form.texto}
+                  onChange={(e) => setForm(f => ({ ...f, texto: e.target.value }))}
+                  className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text placeholder:text-bibelo-muted/50 focus:outline-none focus:border-violet-500 resize-none"
+                />
+                <p className="text-bibelo-muted/50 text-xs mt-0.5 text-right">{form.texto.length}/600</p>
+              </div>
+
+              {/* Faixa etária */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-bibelo-muted text-xs font-medium mb-1.5 block">Idade mínima</label>
+                  <input
+                    type="number" min="13" max="65"
+                    value={form.idadeMin}
+                    onChange={(e) => setForm(f => ({ ...f, idadeMin: e.target.value }))}
+                    className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-bibelo-muted text-xs font-medium mb-1.5 block">Idade máxima</label>
+                  <input
+                    type="number" min="13" max="65"
+                    value={form.idadeMax}
+                    onChange={(e) => setForm(f => ({ ...f, idadeMax: e.target.value }))}
+                    className="w-full bg-bibelo-bg border border-bibelo-border rounded-lg px-3 py-2 text-sm text-bibelo-text focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+              </div>
+              <p className="text-bibelo-muted/60 text-xs">Segmentação: Brasil · Feminino · {form.idadeMin}–{form.idadeMax} anos</p>
+
+              {/* Erro */}
+              {eroCampanha && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                  <p className="text-red-400 text-xs">{eroCampanha}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer modal */}
+            <div className="flex items-center justify-between gap-3 p-5 border-t border-bibelo-border">
+              <p className="text-bibelo-muted/60 text-xs">Campanha criada <strong className="text-amber-400">pausada</strong> — ative no Gerenciador após revisar.</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setModalAberto(false)}
+                  className="px-3 py-1.5 text-xs text-bibelo-muted hover:text-bibelo-text transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleCriarCampanha}
+                  disabled={criandoCampanha || !form.nome || !form.imagemUrl || !form.titulo || !form.texto}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-pink-500/20 border border-pink-500/30 text-pink-300 text-xs font-medium hover:bg-pink-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {criandoCampanha
+                    ? <><Loader2 size={13} className="animate-spin" /> Criando...</>
+                    : <><Megaphone size={13} /> Criar campanha</>
+                  }
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

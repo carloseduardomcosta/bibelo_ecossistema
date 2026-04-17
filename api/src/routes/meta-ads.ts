@@ -15,6 +15,13 @@ import {
 } from "../integrations/meta/client";
 import { syncMetaAds } from "../services/meta.service";
 import { syncAudiences, listAudiences, AUDIENCE_SEGMENTS } from "../integrations/meta/audiences";
+import {
+  criarCampanhaCompleta,
+  atualizarStatusCampanha,
+  arquivarCampanha,
+  type CampanhaObjetivo,
+  type CampanhaCTA,
+} from "../integrations/meta/campaigns";
 
 export const metaAdsRouter = Router();
 metaAdsRouter.use(authMiddleware);
@@ -527,4 +534,87 @@ metaAdsRouter.get("/sync-status", async (_req: Request, res: Response) => {
     total_registros: parseInt(totalRows?.total || "0"),
     total_campanhas: parseInt(campaigns?.total || "0"),
   });
+});
+
+// ── Fase 3: Criação de campanhas ──────────────────────────────
+
+const criarCampanhaSchema = z.object({
+  nome: z.string().min(3).max(100),
+  objetivo: z.enum(["OUTCOME_SALES", "OUTCOME_TRAFFIC", "OUTCOME_AWARENESS"]),
+  orcamentoDiario: z.number().min(5).max(10000),   // R$ 5 a R$ 10.000/dia
+  dataInicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  dataFim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  publicoIds: z.array(z.string()).optional(),
+  urlDestino: z.string().url(),
+  imagemUrl: z.string().url(),
+  titulo: z.string().min(1).max(40),
+  texto: z.string().min(1).max(600),
+  cta: z.enum(["SHOP_NOW", "LEARN_MORE", "SIGN_UP", "GET_OFFER"]).optional(),
+  idadeMin: z.number().min(13).max(65).optional(),
+  idadeMax: z.number().min(13).max(65).optional(),
+});
+
+// POST /api/meta-ads/campanhas/criar
+metaAdsRouter.post("/campanhas/criar", async (req: Request, res: Response) => {
+  if (!isMetaConfigured()) {
+    res.status(503).json({ error: "Meta Ads não configurado" });
+    return;
+  }
+
+  const parsed = criarCampanhaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  try {
+    const result = await criarCampanhaCompleta(parsed.data as Parameters<typeof criarCampanhaCompleta>[0]);
+    logger.info("Meta Campaigns: campanha criada com sucesso", { campanhaId: result.campanhaId, nome: result.nome });
+    res.json({ ok: true, ...result });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Erro desconhecido";
+    logger.error("Meta Campaigns: falha ao criar campanha", { error: msg });
+    res.status(500).json({ error: msg });
+  }
+});
+
+// PUT /api/meta-ads/campanhas/:id/status
+metaAdsRouter.put("/campanhas/:id/status", async (req: Request, res: Response) => {
+  if (!isMetaConfigured()) {
+    res.status(503).json({ error: "Meta Ads não configurado" });
+    return;
+  }
+
+  const schema = z.object({ status: z.enum(["ACTIVE", "PAUSED"]) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "status deve ser ACTIVE ou PAUSED" });
+    return;
+  }
+
+  try {
+    await atualizarStatusCampanha(req.params.id, parsed.data.status);
+    res.json({ ok: true, campanhaId: req.params.id, status: parsed.data.status });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Erro desconhecido";
+    logger.error("Meta Campaigns: falha ao atualizar status", { error: msg });
+    res.status(500).json({ error: msg });
+  }
+});
+
+// DELETE /api/meta-ads/campanhas/:id
+metaAdsRouter.delete("/campanhas/:id", async (req: Request, res: Response) => {
+  if (!isMetaConfigured()) {
+    res.status(503).json({ error: "Meta Ads não configurado" });
+    return;
+  }
+
+  try {
+    await arquivarCampanha(req.params.id);
+    res.json({ ok: true, campanhaId: req.params.id });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Erro desconhecido";
+    logger.error("Meta Campaigns: falha ao arquivar campanha", { error: msg });
+    res.status(500).json({ error: msg });
+  }
 });
