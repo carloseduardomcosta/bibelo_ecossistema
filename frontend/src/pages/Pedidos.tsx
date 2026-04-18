@@ -44,6 +44,8 @@ interface OrderDetail extends Order {
   sincronizado_em: string;
   itens_detalhados: ItemDetalhado[];
   parcelas: Array<{ forma_descricao: string; valor: number; data_vencimento: string }>;
+  valor_itens: number;
+  frete_estimado: number;
   custo_total: number;
   lucro_estimado: number;
   margem_percentual: number;
@@ -542,7 +544,10 @@ export default function Pedidos() {
                           <div className="grid grid-cols-3 gap-3">
                             <div className="bg-bibelo-border/30 rounded-lg p-2.5 text-center">
                               <p className="text-[10px] text-bibelo-muted uppercase">Receita</p>
-                              <p className="text-sm font-bold text-bibelo-text">{formatCurrency(detail.valor)}</p>
+                              <p className="text-sm font-bold text-bibelo-text">{formatCurrency(detail.valor_itens)}</p>
+                              {detail.frete_estimado > 0 && (
+                                <p className="text-[10px] text-bibelo-muted mt-0.5">+ {formatCurrency(detail.frete_estimado)} frete</p>
+                              )}
                             </div>
                             <div className="bg-bibelo-border/30 rounded-lg p-2.5 text-center">
                               <p className="text-[10px] text-bibelo-muted uppercase">Custo</p>

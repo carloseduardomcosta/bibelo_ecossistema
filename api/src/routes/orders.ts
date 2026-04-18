@@ -197,20 +197,28 @@ ordersRouter.get("/:id", async (req: Request, res: Response) => {
     [order.bling_id]
   );
 
-  // Totais de custo
+  // Totais: separa valor dos itens do frete
   let custoTotal = 0;
+  let valorItens = 0;
   for (const item of itensDetalhados) {
-    const custo = Number(item.custo_nf) || Number(item.custo_produto) || 0;
+    const preco = Number(item.preco_venda) || 0;
+    const desconto = Number(item.desconto) || 0;
     const qtd = Number(item.quantidade) || 1;
+    valorItens += (preco - desconto) * qtd;
+
+    const custo = Number(item.custo_nf) || Number(item.custo_produto) || 0;
     custoTotal += custo * qtd;
   }
+  const freteEstimado = Math.max(0, Math.round((Number(order.valor) - valorItens) * 100) / 100);
 
   res.json({
     ...order,
     itens_detalhados: itensDetalhados,
     parcelas,
+    valor_itens: valorItens,
+    frete_estimado: freteEstimado,
     custo_total: custoTotal,
-    lucro_estimado: Number(order.valor) - custoTotal,
-    margem_percentual: Number(order.valor) > 0 ? Math.round((Number(order.valor) - custoTotal) / Number(order.valor) * 100) : 0,
+    lucro_estimado: valorItens - custoTotal,
+    margem_percentual: valorItens > 0 ? Math.round((valorItens - custoTotal) / valorItens * 100) : 0,
   });
 });
