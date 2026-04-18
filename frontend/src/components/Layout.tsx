@@ -49,6 +49,7 @@ import {
   Settings,
   PieChart,
   ClipboardList,
+  Printer,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -146,6 +147,7 @@ const navMainGroups: NavMainGroup[] = [
           { to: '/curadoria', label: 'Curadoria Produtos', icon: ClipboardList },
           { to: '/fornecedor-catalogo', label: 'Catálogo Fornecedor', icon: Package },
           { to: '/editor-imagens', label: 'Editor Imagens', icon: ImagePlus },
+          { to: '/impressao', label: 'Impressão Etiquetas', icon: Printer },
           { to: '/seo', label: 'SEO', icon: Globe },
           { to: '/catalogo-whatsapp', label: 'Catálogo WhatsApp', icon: BookImage },
           { to: '/sync', label: 'Sync', icon: RefreshCw },

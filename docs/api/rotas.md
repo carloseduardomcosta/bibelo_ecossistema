@@ -203,6 +203,9 @@ Painel de mapeamento de categorias Bling → Medusa. Rota base: `/api/categorias
 - `GET  /api/links/parcerias` — página HTML do formulário B2B (atacado, revenda, brindes corporativos, eventos)
 - `POST /api/links/parcerias` — processa solicitação B2B: valida com Zod, upsert customer (canal `parcerias_b2b`), registra interação `parceria_b2b` na timeline, cria deal em `prospeccao` (prob. 40%), notifica admin por email. Campos: nome*, email*, assunto* (atacado|revenda|corporativo|evento|outro), empresa, documento (CPF/CNPJ), telefone, mensagem. Clique registrado em `marketing.link_clicks` com slug `parcerias-submit`.
 
+### Impressão de Etiquetas
+- `POST /api/impressao/combinar` — recebe dois PDFs (`danfe` + `etiqueta`, multipart/form-data) e retorna um único PDF A4 paisagem com DANFE à esquerda e etiqueta de envio à direita, separados por linha de corte pontilhada. Layout IPP Everywhere: cada lado ~144×206mm, etiqueta ampliada ~140% do original. Retorna `application/pdf` com `Content-Disposition: attachment; filename="etiqueta-impressao.pdf"`. Requer autenticação.
+
 ### Imagens (Editor de Imagens para Marketplaces)
 - `GET  /api/images/presets` — lista presets disponíveis (Shopee, NuvemShop, Loja Própria, Instagram, Custom)
 - `POST /api/images/convert` — converte 1-50 imagens (multipart). Params: preset, width, height, format, quality, background, fit, removeBackground (IA). Retorna base64

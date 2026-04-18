@@ -237,4 +237,4 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 17 de Abril de 2026 (noite) — Evolution API Clube VIP (migration 049, webhook GROUP_PARTICIPANTS_UPDATE), Meta Custom Audiences ativado (TOS aceitos, 4 audiências criadas), Dashboard Revendedoras B2B, Storefront BrandsSection + InstagramPlaceholder*
+*Última atualização: 18 de Abril de 2026 — Módulo Impressão Etiquetas (DANFE+etiqueta em A4 paisagem, pdf-lib, preview dinâmico com dimensões ajustáveis), Servidor de Impressão CUPS via WireGuard (container /opt/printserver/, Epson L4260 driverless IPP)*

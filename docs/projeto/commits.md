@@ -1670,3 +1670,51 @@ Sync automático BullMQ ativo: `meta-audiences-sync` às 03:00 BRT diariamente.
 **`api/src/routes/orders.ts`** — busca `custo_insumos_pedido` do banco e inclui no breakdown: `custo_produtos`, `custo_insumos`, `custo_total` (produtos + insumos), `lucro_estimado`, `margem_percentual`.
 
 **`frontend/src/pages/Pedidos.tsx`** — breakdown em grid 2×2: Receita | Produtos | Insumos (editável inline com ícone ⚙️ + Enter para salvar) | Lucro (%). Alteração persiste via `PUT /api/store-settings` e reflete em todos os pedidos imediatamente.
+
+---
+
+## Sessão 18/04/2026 — Impressão de Etiquetas + Servidor CUPS + Preview com Dimensões
+
+### feat(impressao): módulo de combinação DANFE + etiqueta em A4 paisagem
+
+**Novo arquivo: `api/src/routes/impressao.ts`**
+- `POST /api/impressao/combinar` — recebe dois PDFs via multipart (`danfe` + `etiqueta`)
+- Layout A4 paisagem (841.89 × 595.28 pts): DANFE à esquerda, linha tracejada de corte, etiqueta à direita
+- Cada lado: ~408 × 583 pts (~144 × 206 mm) — etiqueta Correios 10×15cm escala ~140% do original
+- Dimensões customizadas via `danfeW`, `danfeH`, `etiquetaW`, `etiquetaH` (cm) — convertidas para pts com `Math.min` para não exceder o slot
+- Sem dimensões → preenche slot inteiro (comportamento padrão)
+- Dependência: `pdf-lib ^1.17.1` (pura JS, sem binários nativos)
+- Proteção: multer com `memoryStorage`, filtro MIME PDF, limite 30 MB
+
+**Novo arquivo: `frontend/src/pages/Impressao.tsx`**
+- Dois `DropZone` para arraste-e-solte dos PDFs
+- Controles de dimensão (largura × altura em cm) por documento — padrão 15 × 10 cm
+- Preview A4 dinâmico: mostra o layout proporcional exato (blocos coloridos centrados no slot, linha tracejada, labels) — atualiza em tempo real ao mudar as dimensões
+- Download automático do PDF gerado via `URL.createObjectURL()`
+- Sem dependências externas de renderização PDF — preview é CSS puro com cálculo proporcional
+
+**Arquivos modificados:**
+- `api/package.json`: `pdf-lib ^1.17.1`
+- `api/src/server.ts`: `import { impressaoRouter }` + `app.use("/api/impressao", impressaoRouter)`
+- `frontend/src/App.tsx`: rota `/impressao`
+- `frontend/src/components/Layout.tsx`: item "Impressão Etiquetas" no grupo Ferramentas (ícone `Printer`)
+
+---
+
+### infra: servidor de impressão CUPS via WireGuard
+
+**Novo container: `/opt/printserver/`**
+- `Dockerfile`: `debian:bookworm-slim` + `cups` + `cups-filters`
+- `docker-compose.yml`: `network_mode: host` (acessa `wg0` diretamente), `restart: unless-stopped`
+- `entrypoint.sh`: cria usuário CUPS, gera `cupsd.conf` com Listen `10.0.111.7:631` (só WireGuard), adiciona impressora via `driverless ipp://10.0.0.110/ipp/print` (gera PPD automaticamente), inicia CUPS em foreground
+
+**Impressora configurada:** Epson L4260 Series — `10.0.0.110` (LAN doméstica)
+- Protocolo: IPP Everywhere (driverless) — sem driver nos clientes
+- Driver: `cups-filters 1.28.17` + PPD gerado via `driverless`
+
+**WireGuard:** AllowedIPs do peer MikroTik expandido: `10.0.111.0/28, 10.0.0.0/24`
+- Rota de kernel: `ip route add 10.0.0.0/24 dev wg0`
+
+**UFW:** `ufw allow in on wg0 to any port 631 proto tcp` — CUPS exposto só na interface WireGuard
+
+**Nova documentação:** `docs/infra/servidor-impressao.md`
