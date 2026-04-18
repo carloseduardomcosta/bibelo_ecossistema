@@ -1652,3 +1652,21 @@ Sync automático BullMQ ativo: `meta-audiences-sync` às 03:00 BRT diariamente.
 ### fix(fornecedor): ajustes FornecedorCatalogo
 
 **`frontend/src/pages/FornecedorCatalogo.tsx`** — melhorias de UX/layout na curadoria do catálogo JC Atacado
+
+---
+
+### fix(pedidos): frete excluído do cálculo de receita e margem — 18/04/2026
+
+**`api/src/routes/orders.ts`** — `GET /api/orders/:id` agora retorna `valor_itens` (soma dos produtos sem frete) e `frete_estimado` (diferença entre valor total e itens). Lucro e margem calculados sobre `valor_itens`.
+
+**`frontend/src/pages/Pedidos.tsx`** — "Receita" exibe `valor_itens` com nota discreta "+ R$ X frete" quando houver.
+
+---
+
+### feat(pedidos): custo de insumos por pedido — 18/04/2026
+
+**`db/migrations/051_custo_insumos_pedido.sql`** — insere `store_settings(financeiro, custo_insumos_pedido, 300)` — padrão R$ 3,00 (embalagem, saquinho, balinha, etiqueta).
+
+**`api/src/routes/orders.ts`** — busca `custo_insumos_pedido` do banco e inclui no breakdown: `custo_produtos`, `custo_insumos`, `custo_total` (produtos + insumos), `lucro_estimado`, `margem_percentual`.
+
+**`frontend/src/pages/Pedidos.tsx`** — breakdown em grid 2×2: Receita | Produtos | Insumos (editável inline com ícone ⚙️ + Enter para salvar) | Lucro (%). Alteração persiste via `PUT /api/store-settings` e reflete em todos os pedidos imediatamente.
