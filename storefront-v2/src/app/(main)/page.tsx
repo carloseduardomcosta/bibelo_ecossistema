@@ -4,6 +4,8 @@ import NovidadesSection from "@/components/home/NovidadesSection"
 import ProductSection from "@/components/home/ProductSection"
 import CategoriesSection from "@/components/home/CategoriesSection"
 import ProductCarouselSection from "@/components/home/ProductCarouselSection"
+import BrandsSection from "@/components/home/BrandsSection"
+import InstagramPlaceholder from "@/components/home/InstagramPlaceholder"
 import LeadCapture from "@/components/home/LeadCapture"
 import { listProducts } from "@/lib/medusa/products"
 import { getNovidadesBling } from "@/lib/api/novidades"
@@ -85,7 +87,13 @@ export default async function HomePage() {
         />
       )}
 
-      {/* 8. Clube Bibelô — captura de leads */}
+      {/* 8. Compre por Marca */}
+      <BrandsSection />
+
+      {/* 9. Instagram */}
+      <InstagramPlaceholder />
+
+      {/* 10. Clube Bibelô — captura de leads */}
       <LeadCapture />
     </>
   )

@@ -410,26 +410,37 @@ export default function FornecedorCatalogo() {
                 </Tooltip>
               )}
               {stats && stats.total > 0 && (
-                <Tooltip lines={[
-                  '🔄 Atualizar preços JC — use periodicamente',
-                  'Re-escaneia todas as categorias do JC Atacado.',
-                  '• Atualiza o preço de custo dos produtos existentes',
-                  '• Adiciona produtos novos como RASCUNHO',
-                  '• Remove produtos extintos (marca como pausado)',
-                  '✅ Status aprovado/rascunho/pausado é PRESERVADO.',
-                  '⚠ Dura ≈ 90 minutos. Use fora do horário de pico.',
-                  'Fluxo recomendado: 1️⃣ Atualizar preços  2️⃣ Enriquecer rascunhos  3️⃣ Aprovar na Curadoria',
-                ]}>
-                  <button
-                    onClick={() => {
-                      if (confirm('Atualizar preços não muda status dos produtos aprovados. Status e markups são preservados. Continuar?'))
-                        iniciarScraper(false);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
-                  >
-                    <RefreshCw className="w-4 h-4" /> Atualizar preços JC
-                  </button>
-                </Tooltip>
+                priceUpdate?.running ? (
+                  <Tooltip lines={['Clique para interromper a atualização de preços em andamento.']}>
+                    <button
+                      onClick={pararAtualizarPrecos}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 text-sm font-medium"
+                    >
+                      <StopCircle className="w-4 h-4" /> Parar atualização
+                    </button>
+                  </Tooltip>
+                ) : (
+                  <Tooltip lines={[
+                    '🔄 Atualizar preços JC — use periodicamente',
+                    'Re-escaneia as listagens do JC Atacado.',
+                    '• Atualiza preço de custo dos produtos existentes',
+                    '• Adiciona produtos novos como RASCUNHO',
+                    '✅ Status aprovado/rascunho/pausado é PRESERVADO.',
+                    '⚠ Dura ≈ 90 minutos. Use fora do horário de pico.',
+                    'Fluxo: 1️⃣ Atualizar preços  2️⃣ Enriquecer rascunhos  3️⃣ Aprovar na Curadoria',
+                  ]}>
+                    <button
+                      onClick={() => {
+                        if (confirm('Atualizar preços não muda status dos produtos aprovados. Status e markups são preservados. Continuar?'))
+                          iniciarAtualizarPrecos();
+                      }}
+                      disabled={scraper?.running || enrich?.running}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RefreshCw className="w-4 h-4" /> Atualizar preços JC
+                    </button>
+                  </Tooltip>
+                )
               )}
               <Tooltip lines={[
                 '▶ Importar tudo — primeira importação ou reset',

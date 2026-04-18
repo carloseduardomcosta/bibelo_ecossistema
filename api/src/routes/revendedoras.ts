@@ -710,6 +710,157 @@ revendedorasRouter.get("/acessos-portal-recentes", async (_req: Request, res: Re
   res.json({ data: rows });
 });
 
+// ── GET /dashboard — analytics B2B ──────────────────────────
+// IMPORTANTE: deve vir antes de /:id para não ser tratado como parâmetro
+
+revendedorasRouter.get("/dashboard", async (_req: Request, res: Response) => {
+  try {
+    // Resumo de revendedoras
+    const contagem = await queryOne<{
+      total: string;
+      ativas: string;
+      pendentes: string;
+    }>(
+      `SELECT
+        COUNT(*)                                        AS total,
+        COUNT(*) FILTER (WHERE status = 'ativa')       AS ativas,
+        COUNT(*) FILTER (WHERE status = 'pendente')    AS pendentes
+      FROM crm.revendedoras`
+    );
+
+    // Resumo de pedidos
+    const pedidosResumo = await queryOne<{
+      receita_total: string;
+      receita_mes: string;
+      ticket_medio: string;
+      pedidos_pendentes: string;
+      pedidos_mes: string;
+    }>(
+      `SELECT
+        COALESCE(SUM(total) FILTER (WHERE status IN ('aprovado','enviado','entregue')), 0)                                                              AS receita_total,
+        COALESCE(SUM(total) FILTER (WHERE status IN ('aprovado','enviado','entregue') AND criado_em >= DATE_TRUNC('month', NOW())), 0)                  AS receita_mes,
+        COALESCE(AVG(total) FILTER (WHERE status IN ('aprovado','enviado','entregue')), 0)                                                              AS ticket_medio,
+        COUNT(*) FILTER (WHERE status = 'pendente')                                                                                                    AS pedidos_pendentes,
+        COUNT(*) FILTER (WHERE status IN ('aprovado','enviado','entregue') AND criado_em >= DATE_TRUNC('month', NOW()))                                 AS pedidos_mes
+      FROM crm.revendedora_pedidos`
+    );
+
+    const resumo = {
+      total_revendedoras: Number(contagem?.total ?? 0),
+      ativas:             Number(contagem?.ativas ?? 0),
+      pendentes:          Number(contagem?.pendentes ?? 0),
+      receita_total:      Number(pedidosResumo?.receita_total ?? 0),
+      receita_mes:        Number(pedidosResumo?.receita_mes ?? 0),
+      ticket_medio:       Number(pedidosResumo?.ticket_medio ?? 0),
+      pedidos_pendentes:  Number(pedidosResumo?.pedidos_pendentes ?? 0),
+      pedidos_mes:        Number(pedidosResumo?.pedidos_mes ?? 0),
+    };
+
+    // Por nível
+    const porNivel = await query<{ nivel: string; total: string; receita: string }>(
+      `SELECT
+        r.nivel,
+        COUNT(DISTINCT r.id)                                                                          AS total,
+        COALESCE(SUM(p.total) FILTER (WHERE p.status IN ('aprovado','enviado','entregue')), 0)        AS receita
+      FROM crm.revendedoras r
+      LEFT JOIN crm.revendedora_pedidos p ON p.revendedora_id = r.id
+      GROUP BY r.nivel
+      ORDER BY receita DESC`
+    );
+
+    // Top 10 revendedoras por receita
+    const topRevendedoras = await query<{
+      id: string;
+      nome: string;
+      nivel: string;
+      total_pedidos: string;
+      receita: string;
+      ultimo_pedido: string | null;
+    }>(
+      `SELECT
+        r.id,
+        r.nome,
+        r.nivel,
+        COUNT(p.id)                                                                                   AS total_pedidos,
+        COALESCE(SUM(p.total) FILTER (WHERE p.status IN ('aprovado','enviado','entregue')), 0)        AS receita,
+        MAX(p.criado_em)                                                                              AS ultimo_pedido
+      FROM crm.revendedoras r
+      LEFT JOIN crm.revendedora_pedidos p ON p.revendedora_id = r.id
+      GROUP BY r.id, r.nome, r.nivel
+      ORDER BY receita DESC
+      LIMIT 10`
+    );
+
+    // Evolução mensal — últimos 6 meses
+    const evolucaoMensal = await query<{ mes: string; receita: string; pedidos: string }>(
+      `SELECT
+        TO_CHAR(DATE_TRUNC('month', criado_em), 'YYYY-MM') AS mes,
+        COALESCE(SUM(total) FILTER (WHERE status IN ('aprovado','enviado','entregue')), 0)            AS receita,
+        COUNT(*) FILTER (WHERE status IN ('aprovado','enviado','entregue'))                           AS pedidos
+      FROM crm.revendedora_pedidos
+      WHERE criado_em >= NOW() - INTERVAL '6 months'
+      GROUP BY mes
+      ORDER BY mes`
+    );
+
+    // Revendedoras inativas (ativas mas sem pedido aprovado nos últimos 60 dias)
+    const inativas = await query<{
+      id: string;
+      nome: string;
+      nivel: string;
+      ultimo_pedido: string | null;
+      dias_inativa: number | null;
+    }>(
+      `SELECT
+        r.id,
+        r.nome,
+        r.nivel,
+        MAX(p.criado_em)                                                                              AS ultimo_pedido,
+        EXTRACT(DAY FROM NOW() - MAX(p.criado_em))::int                                              AS dias_inativa
+      FROM crm.revendedoras r
+      LEFT JOIN crm.revendedora_pedidos p
+        ON p.revendedora_id = r.id
+        AND p.status IN ('aprovado','enviado','entregue')
+      WHERE r.status = 'ativa'
+      GROUP BY r.id, r.nome, r.nivel
+      HAVING MAX(p.criado_em) IS NULL OR MAX(p.criado_em) < NOW() - INTERVAL '60 days'
+      ORDER BY dias_inativa DESC NULLS FIRST`
+    );
+
+    res.json({
+      resumo,
+      por_nivel: porNivel.map((n) => ({
+        nivel:   n.nivel,
+        total:   Number(n.total),
+        receita: Number(n.receita),
+      })),
+      top_revendedoras: topRevendedoras.map((r) => ({
+        id:            r.id,
+        nome:          r.nome,
+        nivel:         r.nivel,
+        total_pedidos: Number(r.total_pedidos),
+        receita:       Number(r.receita),
+        ultimo_pedido: r.ultimo_pedido ?? null,
+      })),
+      evolucao_mensal: evolucaoMensal.map((e) => ({
+        mes:     e.mes,
+        receita: Number(e.receita),
+        pedidos: Number(e.pedidos),
+      })),
+      revendedoras_inativas: inativas.map((i) => ({
+        id:            i.id,
+        nome:          i.nome,
+        nivel:         i.nivel,
+        ultimo_pedido: i.ultimo_pedido ?? null,
+        dias_inativa:  i.dias_inativa ?? null,
+      })),
+    });
+  } catch (err) {
+    logger.error("Erro ao carregar dashboard revendedoras", { err });
+    res.status(500).json({ error: "Erro interno. Tente novamente." });
+  }
+});
+
 // ── GET /:id ──────────────────────────────────────────────────
 
 revendedorasRouter.get("/:id", async (req: Request, res: Response) => {
@@ -1325,156 +1476,6 @@ function buildMensagemEmail(
 </table>
 </body></html>`;
 }
-
-// ── GET /dashboard — analytics B2B ──────────────────────────
-
-revendedorasRouter.get("/dashboard", async (_req: Request, res: Response) => {
-  try {
-    // Resumo de revendedoras
-    const contagem = await queryOne<{
-      total: string;
-      ativas: string;
-      pendentes: string;
-    }>(
-      `SELECT
-        COUNT(*)                                        AS total,
-        COUNT(*) FILTER (WHERE status = 'ativa')       AS ativas,
-        COUNT(*) FILTER (WHERE status = 'pendente')    AS pendentes
-      FROM crm.revendedoras`
-    );
-
-    // Resumo de pedidos
-    const pedidosResumo = await queryOne<{
-      receita_total: string;
-      receita_mes: string;
-      ticket_medio: string;
-      pedidos_pendentes: string;
-      pedidos_mes: string;
-    }>(
-      `SELECT
-        COALESCE(SUM(total) FILTER (WHERE status IN ('aprovado','enviado','entregue')), 0)                                                              AS receita_total,
-        COALESCE(SUM(total) FILTER (WHERE status IN ('aprovado','enviado','entregue') AND criado_em >= DATE_TRUNC('month', NOW())), 0)                  AS receita_mes,
-        COALESCE(AVG(total) FILTER (WHERE status IN ('aprovado','enviado','entregue')), 0)                                                              AS ticket_medio,
-        COUNT(*) FILTER (WHERE status = 'pendente')                                                                                                    AS pedidos_pendentes,
-        COUNT(*) FILTER (WHERE status IN ('aprovado','enviado','entregue') AND criado_em >= DATE_TRUNC('month', NOW()))                                 AS pedidos_mes
-      FROM crm.revendedora_pedidos`
-    );
-
-    const resumo = {
-      total_revendedoras: Number(contagem?.total ?? 0),
-      ativas:             Number(contagem?.ativas ?? 0),
-      pendentes:          Number(contagem?.pendentes ?? 0),
-      receita_total:      Number(pedidosResumo?.receita_total ?? 0),
-      receita_mes:        Number(pedidosResumo?.receita_mes ?? 0),
-      ticket_medio:       Number(pedidosResumo?.ticket_medio ?? 0),
-      pedidos_pendentes:  Number(pedidosResumo?.pedidos_pendentes ?? 0),
-      pedidos_mes:        Number(pedidosResumo?.pedidos_mes ?? 0),
-    };
-
-    // Por nível
-    const porNivel = await query<{ nivel: string; total: string; receita: string }>(
-      `SELECT
-        r.nivel,
-        COUNT(DISTINCT r.id)                                                                          AS total,
-        COALESCE(SUM(p.total) FILTER (WHERE p.status IN ('aprovado','enviado','entregue')), 0)        AS receita
-      FROM crm.revendedoras r
-      LEFT JOIN crm.revendedora_pedidos p ON p.revendedora_id = r.id
-      GROUP BY r.nivel
-      ORDER BY receita DESC`
-    );
-
-    // Top 10 revendedoras por receita
-    const topRevendedoras = await query<{
-      id: string;
-      nome: string;
-      nivel: string;
-      total_pedidos: string;
-      receita: string;
-      ultimo_pedido: string | null;
-    }>(
-      `SELECT
-        r.id,
-        r.nome,
-        r.nivel,
-        COUNT(p.id)                                                                                   AS total_pedidos,
-        COALESCE(SUM(p.total) FILTER (WHERE p.status IN ('aprovado','enviado','entregue')), 0)        AS receita,
-        MAX(p.criado_em)                                                                              AS ultimo_pedido
-      FROM crm.revendedoras r
-      LEFT JOIN crm.revendedora_pedidos p ON p.revendedora_id = r.id
-      GROUP BY r.id, r.nome, r.nivel
-      ORDER BY receita DESC
-      LIMIT 10`
-    );
-
-    // Evolução mensal — últimos 6 meses
-    const evolucaoMensal = await query<{ mes: string; receita: string; pedidos: string }>(
-      `SELECT
-        TO_CHAR(DATE_TRUNC('month', criado_em), 'YYYY-MM') AS mes,
-        COALESCE(SUM(total) FILTER (WHERE status IN ('aprovado','enviado','entregue')), 0)            AS receita,
-        COUNT(*) FILTER (WHERE status IN ('aprovado','enviado','entregue'))                           AS pedidos
-      FROM crm.revendedora_pedidos
-      WHERE criado_em >= NOW() - INTERVAL '6 months'
-      GROUP BY mes
-      ORDER BY mes`
-    );
-
-    // Revendedoras inativas (ativas mas sem pedido aprovado nos últimos 60 dias)
-    const inativas = await query<{
-      id: string;
-      nome: string;
-      nivel: string;
-      ultimo_pedido: string | null;
-      dias_inativa: number | null;
-    }>(
-      `SELECT
-        r.id,
-        r.nome,
-        r.nivel,
-        MAX(p.criado_em)                                                                              AS ultimo_pedido,
-        EXTRACT(DAY FROM NOW() - MAX(p.criado_em))::int                                              AS dias_inativa
-      FROM crm.revendedoras r
-      LEFT JOIN crm.revendedora_pedidos p
-        ON p.revendedora_id = r.id
-        AND p.status IN ('aprovado','enviado','entregue')
-      WHERE r.status = 'ativa'
-      GROUP BY r.id, r.nome, r.nivel
-      HAVING MAX(p.criado_em) IS NULL OR MAX(p.criado_em) < NOW() - INTERVAL '60 days'
-      ORDER BY dias_inativa DESC NULLS FIRST`
-    );
-
-    res.json({
-      resumo,
-      por_nivel: porNivel.map((n) => ({
-        nivel:   n.nivel,
-        total:   Number(n.total),
-        receita: Number(n.receita),
-      })),
-      top_revendedoras: topRevendedoras.map((r) => ({
-        id:            r.id,
-        nome:          r.nome,
-        nivel:         r.nivel,
-        total_pedidos: Number(r.total_pedidos),
-        receita:       Number(r.receita),
-        ultimo_pedido: r.ultimo_pedido ?? null,
-      })),
-      evolucao_mensal: evolucaoMensal.map((e) => ({
-        mes:     e.mes,
-        receita: Number(e.receita),
-        pedidos: Number(e.pedidos),
-      })),
-      revendedoras_inativas: inativas.map((i) => ({
-        id:            i.id,
-        nome:          i.nome,
-        nivel:         i.nivel,
-        ultimo_pedido: i.ultimo_pedido ?? null,
-        dias_inativa:  i.dias_inativa ?? null,
-      })),
-    });
-  } catch (err) {
-    logger.error("Erro ao carregar dashboard revendedoras", { err });
-    res.status(500).json({ error: "Erro interno. Tente novamente." });
-  }
-});
 
 // ── GET /:id/conquistas ───────────────────────────────────────
 

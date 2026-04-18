@@ -237,4 +237,4 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 17 de Abril de 2026 — Meta Ads Fase 3 (criação de campanhas pelo CRM), sistema de Inteligência de Campanhas (insights acumulativos), migration 050*
+*Última atualização: 17 de Abril de 2026 (noite) — Evolution API Clube VIP (migration 049, webhook GROUP_PARTICIPANTS_UPDATE), Meta Custom Audiences ativado (TOS aceitos, 4 audiências criadas), Dashboard Revendedoras B2B, Storefront BrandsSection + InstagramPlaceholder*

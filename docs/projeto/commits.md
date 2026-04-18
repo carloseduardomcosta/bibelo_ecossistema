@@ -1566,3 +1566,89 @@ Sem esse campo, `calculatePrice` não consegue identificar o serviço e retorna 
 - Botão "Adicionar Insight" — modal com formulário manual
 - Botão "Gerar Insights" — dispara análise automática e recarrega lista
 - Pattern IIFE para constantes locais de configuração dentro do JSX
+
+---
+
+### Sessão 17/04/2026 (noite) — Evolution Clube VIP + Meta Custom Audiences + Dashboard Revendedoras B2B + Storefront Marcas/Instagram
+
+### feat(whatsapp): integração Evolution API para rastreio do Clube VIP
+
+**Novo arquivo: `api/src/integrations/evolution/webhook.ts`**
+- Webhook `POST /api/webhooks/evolution` — recebe `GROUP_PARTICIPANTS_UPDATE` da Evolution API
+- Evento `action: "add"` → vincula novo membro do grupo ao CRM via `whatsapp_jid` ou telefone
+- Se customer existente: atualiza `whatsapp_jid` (COALESCE — não sobrescreve se já tinha)
+- Se novo contato: busca nome via `fetchContactName()` (`/chat/fetchProfile/:instance`) + cria customer com `canal_origem: 'whatsapp_clube_vip'`
+- Filtra por `EVOLUTION_CLUBE_VIP_GROUP_JID` (env) — ignora outros grupos
+- Registra interaction `whatsapp_grupo` em `crm.interactions` em ambos os casos
+- Auth: header `apikey` comparado com `EVOLUTION_API_KEY` (sem `timingSafeEqual` — a melhorar)
+- Rate limit: 300 req/min
+
+**`db/migrations/049_evolution_whatsapp.sql`**
+- `ALTER TABLE crm.customers ADD COLUMN IF NOT EXISTS whatsapp_jid VARCHAR(100) UNIQUE`
+- Índice parcial `idx_customers_whatsapp_jid WHERE whatsapp_jid IS NOT NULL`
+
+**`docker-compose.yml`** — novo serviço `evolution`:
+- Image: `atendai/evolution-api:v2.2.3`
+- Porta: `127.0.0.1:8080:8080` (só interna)
+- DB: schema `evolution` no mesmo PostgreSQL
+- Persistência: `DATABASE_SAVE_DATA_INSTANCE=true`, `DATABASE_SAVE_DATA_CONTACTS=true`
+- Sem salvar mensagens (`DATABASE_SAVE_DATA_NEW_MESSAGE=false`) — apenas metadados de grupo
+- `mem_limit: 512m`, `cpus: 0.5`
+
+**`api/src/server.ts`** — registra `evolutionWebhookRouter` em `/api/webhooks/evolution`
+
+**Novas variáveis de ambiente**: `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`, `EVOLUTION_CLUBE_VIP_GROUP_JID`
+
+---
+
+### feat(meta-ads): Custom Audiences ativado — TOS aceitos + primeiro sync executado
+
+**TOS aceitos em 17/04/2026** em `business.facebook.com/ads/manage/customaudiences/tos/?act=1753454592707878`
+
+**Primeiro sync manual executado com sucesso:**
+| Audiência | ID Meta | Usuários |
+|---|---|---|
+| Bibelô — Clientes | 6923924704787 | 8 |
+| Bibelô — Leads não convertidos | 6923924707587 | 13 |
+| Bibelô — Inativos +90d | 6923924710787 | 4 |
+| Bibelô — Compradores Recentes | 6923924710987 | 4 |
+
+Sync automático BullMQ ativo: `meta-audiences-sync` às 03:00 BRT diariamente.
+
+---
+
+### feat(revendedoras): dashboard analytics B2B + design system tokens
+
+**`api/src/routes/revendedoras.ts`** — novo endpoint `GET /api/revendedoras/dashboard`:
+- KPIs gerais: total, ativas, pendentes, receita total, receita do mês, ticket médio, pedidos pendentes, pedidos do mês
+- Por nível: receita e contagem agrupadas
+- Top 5 revendedoras: nome, nível, total pedidos, receita, último pedido
+- Evolução mensal (12 meses): receita + contagem de pedidos por mês
+- Rota posicionada antes de `/:id` para evitar conflito de parâmetro
+
+**`frontend/src/pages/DashboardRevendedoras.tsx`** — migração de classes hardcodadas para design system tokens (`bibelo-card`, `bibelo-border`, `bibelo-text`, `bibelo-muted`)
+
+---
+
+### feat(storefront): seção Marcas + placeholder Instagram na homepage
+
+**Novo arquivo: `storefront-v2/src/components/home/BrandsSection.tsx`**
+- 6 marcas: Faber-Castell, Tilibra, BRW, Tris, Cis, Stabilo — com cor de marca individual
+- Links para `/produtos?marca={slug}` (filtro futuro)
+
+**`storefront-v2/src/components/home/InstagramPlaceholder.tsx`** — seção placeholder para feed Instagram (aguardando integração Instagram Business API)
+
+**`storefront-v2/src/app/(main)/page.tsx`** — homepage atualizada:
+- Ordem: ... → Ofertas → **BrandsSection (8)** → **InstagramPlaceholder (9)** → LeadCapture (10)
+
+---
+
+### fix(leads-script): correção menor em leads-script.ts
+
+**`api/src/routes/leads-script.ts`** — ajuste pontual (ver diff)
+
+---
+
+### fix(fornecedor): ajustes FornecedorCatalogo
+
+**`frontend/src/pages/FornecedorCatalogo.tsx`** — melhorias de UX/layout na curadoria do catálogo JC Atacado

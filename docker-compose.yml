@@ -222,6 +222,39 @@ services:
       driver: "json-file"
       options: { max-size: "5m", max-file: "2" }
 
+  evolution:
+    image: atendai/evolution-api:v2.2.3
+    container_name: bibelo_evolution
+    restart: unless-stopped
+    environment:
+      TZ: America/Sao_Paulo
+      SERVER_PORT: 8080
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: "postgresql://${DB_USER}:${DB_PASS}@postgres:5432/bibelocrm?schema=evolution"
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_LABELS: "false"
+      AUTHENTICATION_TYPE: apikey
+      AUTHENTICATION_API_KEY: "${EVOLUTION_API_KEY}"
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      DEL_INSTANCE: "false"
+      LOG_LEVEL: "ERROR"
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bibelo_internal
+    mem_limit: 512m
+    cpus: 0.5
+    logging:
+      driver: "json-file"
+      options: { max-size: "20m", max-file: "5" }
+
 networks:
   bibelo_internal:
     driver: bridge

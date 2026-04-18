@@ -1,6 +1,6 @@
 # Status das Integrações — BibelôCRM
 
-Última atualização: 10 de Abril de 2026
+Última atualização: 17 de Abril de 2026
 
 | Integração | Status | Observações |
 |-----------|--------|-------------|
@@ -27,6 +27,9 @@
 | Caça-Leads (Popup) | ✅ produção | popup JS via GTM, captura email+WhatsApp, verificação email obrigatória |
 | Opt-out Email (LGPD) | ✅ produção | descadastro 1-click, campanhas e fluxos respeitam opt-out |
 | Chatwoot (multi-canal) | 📋 planejado | WhatsApp + Instagram DM via Meta Cloud API oficial — docs/integracoes/whatsapp-chatwoot.md |
+| Evolution API (Clube VIP) | ✅ produção | v2.2.3, porta 8080, webhook GROUP_PARTICIPANTS_UPDATE → vincula membro ao CRM (whatsapp_jid), cria customer se novo. Somente leitura — sem envio de mensagens |
+| Meta Ads Dashboard | ✅ produção | Graph API v25.0, 6 endpoints insights + 7 históricos, BullMQ sync 6h, migration 050 |
+| Meta Custom Audiences | ✅ produção | TOS aceitos 17/04/2026, 4 segmentos (Clientes 8, Leads 13, Inativos 4, Recentes 4), sync diário 03:00 BRT, endpoint manual POST /api/meta-ads/audiences/sync |
 | Tracking Comportamental | ✅ produção | page_view, product_view, add_to_cart, search, checkout — script JS via GTM |
 | Geolocalização | ✅ produção | geoip-lite (MaxMind offline), IP real → cidade/estado/país |
 | Score de Leads | ✅ produção | engajamento (popup +15, views +3, cart +10, emails +3) |
@@ -39,7 +42,7 @@
 | Medusa.js v2 | ✅ produção | porta 9000, Admin Dashboard ativo, 373 produtos sincronizados do Bling, Pix integrado |
 | Sync Bling → Medusa | ✅ produção | CRM como hub: sync.bling_products → Medusa Admin API, BullMQ 30min, dedup SKU+handle (fallback), estoque → published/draft. Fix 10/04: fallback handle p/ produtos sem SKU na variante |
 | Categorias Sync (painel) | ✅ produção | Painel CRM Loja Online → Categorias Sync. 4 rotas `/api/categorias-sync`. Fluxo automático: webhook product.* → syncCategoriesToMedusa() → cria+marca mapped. Manual: importar/mapear/sincronizar. 54 categorias mapeadas. |
-| Next.js Storefront | 🔧 em desenvolvimento | porta 8001, integrado com Medusa.js v2. Páginas concluídas: /produtos (filtros+paginação+badges), /produto/[handle] (galeria clicável, zoom, frete, comprar agora, accordion, relacionados por categoria) |
+| Next.js Storefront | 🔧 em desenvolvimento | porta 8001, integrado com Medusa.js v2. Páginas: /produtos, /produto/[handle], /novidades. Homepage: +BrandsSection (6 marcas filtráveis) + InstagramPlaceholder |
 | Mercado Pago Pix | ✅ produção | Payment provider Medusa v2 — API Orders (Checkout Transparente), webhook HMAC validado, Nginx+SSL em api.papelariabibelo.com.br |
 | Melhor Envio | ✅ produção | OAuth2 conectado, fulfillment provider Medusa v2, PAC+SEDEX calculados via API, token via CRM |
 | Medusa → Bling pedidos | ✅ produção | Subscriber order.placed → CRM → Bling API (busca/cria contato + cria pedido), webhook bidirecional confirmado |

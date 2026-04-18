@@ -92,10 +92,10 @@ function TooltipMensal({ active, payload, label }: {
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border border-pink-100 rounded-lg shadow-lg p-3 text-sm">
-      <p className="font-semibold text-gray-700 mb-1">{label}</p>
+    <div className="bg-bibelo-card border border-bibelo-border rounded-lg shadow-lg p-3 text-sm">
+      <p className="font-semibold text-bibelo-text mb-1">{label}</p>
       {payload.map((p) => (
-        <p key={p.name} className="text-gray-600">
+        <p key={p.name} className="text-bibelo-muted">
           {p.name === 'receita'
             ? `Receita: ${formatCurrency(p.value)}`
             : `Pedidos: ${p.value}`}
@@ -157,7 +157,7 @@ export default function DashboardRevendedoras() {
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
-          <p className="text-gray-500">{erro ?? 'Nenhum dado encontrado.'}</p>
+          <p className="text-bibelo-muted">{erro ?? 'Nenhum dado encontrado.'}</p>
         </div>
       </div>
     );
@@ -180,8 +180,8 @@ export default function DashboardRevendedoras() {
       {/* Cabeçalho */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Canal Revendedoras</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Visão geral do programa B2B</p>
+          <h1 className="text-2xl font-bold text-bibelo-text">Canal Revendedoras</h1>
+          <p className="text-sm text-bibelo-muted mt-0.5">Visão geral do programa B2B</p>
         </div>
         <button
           onClick={() => navigate('/revendedoras')}
@@ -195,69 +195,69 @@ export default function DashboardRevendedoras() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
 
         {/* Receita total */}
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <div className="bg-bibelo-card rounded-xl border border-bibelo-border p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-500 font-medium">Receita Total</span>
+            <span className="text-xs text-bibelo-muted font-medium">Receita Total</span>
             <DollarSign className="w-4 h-4 text-emerald-500" />
           </div>
-          <p className="text-xl font-bold text-gray-900">{formatCurrency(resumo.receita_total)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">todos os pedidos aprovados</p>
+          <p className="text-xl font-bold text-bibelo-text">{formatCurrency(resumo.receita_total)}</p>
+          <p className="text-xs text-bibelo-muted mt-0.5">todos os pedidos aprovados</p>
         </div>
 
         {/* Receita do mês */}
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <div className="bg-bibelo-card rounded-xl border border-bibelo-border p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-500 font-medium">Receita Este Mês</span>
+            <span className="text-xs text-bibelo-muted font-medium">Receita Este Mês</span>
             <TrendingUp className="w-4 h-4" style={{ color: '#fe68c4' }} />
           </div>
-          <p className="text-xl font-bold text-gray-900">{formatCurrency(resumo.receita_mes)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{resumo.pedidos_mes} pedidos aprovados</p>
+          <p className="text-xl font-bold text-bibelo-text">{formatCurrency(resumo.receita_mes)}</p>
+          <p className="text-xs text-bibelo-muted mt-0.5">{resumo.pedidos_mes} pedidos aprovados</p>
         </div>
 
         {/* Ticket médio */}
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <div className="bg-bibelo-card rounded-xl border border-bibelo-border p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-500 font-medium">Ticket Médio</span>
+            <span className="text-xs text-bibelo-muted font-medium">Ticket Médio</span>
             <ShoppingBag className="w-4 h-4 text-purple-400" />
           </div>
-          <p className="text-xl font-bold text-gray-900">{formatCurrency(resumo.ticket_medio)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">por pedido aprovado</p>
+          <p className="text-xl font-bold text-bibelo-text">{formatCurrency(resumo.ticket_medio)}</p>
+          <p className="text-xs text-bibelo-muted mt-0.5">por pedido aprovado</p>
         </div>
 
         {/* Pedidos pendentes */}
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <div className="bg-bibelo-card rounded-xl border border-bibelo-border p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-500 font-medium">Pedidos Pendentes</span>
+            <span className="text-xs text-bibelo-muted font-medium">Pedidos Pendentes</span>
             <Clock className="w-4 h-4 text-amber-400" />
           </div>
           <div className="flex items-center gap-2">
-            <p className="text-xl font-bold text-gray-900">{resumo.pedidos_pendentes}</p>
+            <p className="text-xl font-bold text-bibelo-text">{resumo.pedidos_pendentes}</p>
             {resumo.pedidos_pendentes > 0 && (
               <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-600">
                 !
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-400 mt-0.5">aguardando aprovação</p>
+          <p className="text-xs text-bibelo-muted mt-0.5">aguardando aprovação</p>
         </div>
 
         {/* Revendedoras ativas */}
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <div className="bg-bibelo-card rounded-xl border border-bibelo-border p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-500 font-medium">Revendedoras Ativas</span>
+            <span className="text-xs text-bibelo-muted font-medium">Revendedoras Ativas</span>
             <Users className="w-4 h-4 text-sky-400" />
           </div>
-          <p className="text-xl font-bold text-gray-900">{resumo.ativas}</p>
-          <p className="text-xs text-gray-400 mt-0.5">de {resumo.total_revendedoras} cadastradas</p>
+          <p className="text-xl font-bold text-bibelo-text">{resumo.ativas}</p>
+          <p className="text-xs text-bibelo-muted mt-0.5">de {resumo.total_revendedoras} cadastradas</p>
         </div>
 
       </div>
 
       {/* Gráfico de evolução mensal */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Evolução Mensal</h2>
+      <div className="bg-bibelo-card rounded-xl border border-bibelo-border p-5">
+        <h2 className="text-sm font-semibold text-bibelo-text mb-4">Evolução Mensal</h2>
         {dadosGrafico.length === 0 ? (
-          <div className="flex items-center justify-center h-40 text-gray-400 text-sm">
+          <div className="flex items-center justify-center h-40 text-bibelo-muted text-sm">
             Nenhuma venda registrada ainda
           </div>
         ) : (
@@ -269,15 +269,15 @@ export default function DashboardRevendedoras() {
                   <stop offset="95%" stopColor="#fe68c4" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3e8f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3A" />
               <XAxis
                 dataKey="mesLabel"
-                tick={{ fontSize: 12, fill: '#9ca3af' }}
+                tick={{ fontSize: 12, fill: '#64748B' }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fontSize: 11, fill: '#9ca3af' }}
+                tick={{ fontSize: 11, fill: '#64748B' }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v: number) =>
@@ -304,15 +304,15 @@ export default function DashboardRevendedoras() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Top revendedoras */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Top Revendedoras</h2>
+        <div className="bg-bibelo-card rounded-xl border border-bibelo-border p-5">
+          <h2 className="text-sm font-semibold text-bibelo-text mb-3">Top Revendedoras</h2>
           {top_revendedoras.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4">Nenhum pedido aprovado ainda.</p>
+            <p className="text-sm text-bibelo-muted py-4">Nenhum pedido aprovado ainda.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-gray-400 border-b border-gray-50">
+                  <tr className="text-xs text-bibelo-muted border-b border-bibelo-border">
                     <th className="text-left font-medium pb-2">Nome</th>
                     <th className="text-center font-medium pb-2">Nível</th>
                     <th className="text-right font-medium pb-2">Pedidos</th>
@@ -324,23 +324,23 @@ export default function DashboardRevendedoras() {
                   {top_revendedoras.map((r, idx) => (
                     <tr
                       key={r.id}
-                      className="border-b border-gray-50 last:border-0 hover:bg-pink-50/40 cursor-pointer transition-colors"
+                      className="border-b border-bibelo-border last:border-0 hover:bg-[#fe68c4]/5 cursor-pointer transition-colors"
                       onClick={() => navigate(`/revendedoras/${r.id}`)}
                     >
                       <td className="py-2.5 pr-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400 w-4 shrink-0">{idx + 1}</span>
-                          <span className="font-medium text-gray-800 truncate max-w-[120px]">{r.nome}</span>
+                          <span className="text-xs text-bibelo-muted w-4 shrink-0">{idx + 1}</span>
+                          <span className="font-medium text-bibelo-text truncate max-w-[120px]">{r.nome}</span>
                         </div>
                       </td>
                       <td className="py-2.5 text-center">
                         <BadgeNivel nivel={r.nivel} />
                       </td>
-                      <td className="py-2.5 text-right text-gray-600">{r.total_pedidos}</td>
-                      <td className="py-2.5 text-right font-semibold text-gray-800">
+                      <td className="py-2.5 text-right text-bibelo-muted">{r.total_pedidos}</td>
+                      <td className="py-2.5 text-right font-semibold text-bibelo-text">
                         {formatCurrency(r.receita)}
                       </td>
-                      <td className="py-2.5 text-right text-gray-400 text-xs">
+                      <td className="py-2.5 text-right text-bibelo-muted text-xs">
                         {r.ultimo_pedido
                           ? new Date(r.ultimo_pedido).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
                           : '—'}
@@ -354,10 +354,10 @@ export default function DashboardRevendedoras() {
         </div>
 
         {/* Distribuição por nível */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Distribuição por Nível</h2>
+        <div className="bg-bibelo-card rounded-xl border border-bibelo-border p-5">
+          <h2 className="text-sm font-semibold text-bibelo-text mb-3">Distribuição por Nível</h2>
           {por_nivel.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4">Nenhuma revendedora cadastrada.</p>
+            <p className="text-sm text-bibelo-muted py-4">Nenhuma revendedora cadastrada.</p>
           ) : (
             <>
               {/* Mini gráfico de barras */}
@@ -369,7 +369,7 @@ export default function DashboardRevendedoras() {
                 >
                   <XAxis
                     dataKey="nivel"
-                    tick={{ fontSize: 11, fill: '#9ca3af' }}
+                    tick={{ fontSize: 11, fill: '#64748B' }}
                     axisLine={false}
                     tickLine={false}
                     tickFormatter={(v: string) =>
@@ -407,11 +407,11 @@ export default function DashboardRevendedoras() {
                   const cfg = NIVEL_CONFIG[n.nivel] ?? { label: n.nivel, cor: '#6b7280', bg: '#f3f4f6' };
                   return (
                     <div key={n.nivel}>
-                      <div className="flex justify-between text-xs text-gray-600 mb-1">
+                      <div className="flex justify-between text-xs text-bibelo-muted mb-1">
                         <span className="font-medium">{cfg.label}</span>
-                        <span className="text-gray-400">{n.total} rev · {formatCurrency(n.receita)} · {pct}%</span>
+                        <span className="text-bibelo-muted">{n.total} rev · {formatCurrency(n.receita)} · {pct}%</span>
                       </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-bibelo-border rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all"
                           style={{ width: `${pct}%`, backgroundColor: cfg.cor }}
@@ -429,10 +429,10 @@ export default function DashboardRevendedoras() {
 
       {/* Revendedoras que precisam de atenção */}
       {revendedoras_inativas.length > 0 && (
-        <div className="bg-white rounded-xl border border-amber-100 p-5 shadow-sm">
+        <div className="bg-bibelo-card rounded-xl border border-amber-900/40 p-5">
           <div className="flex items-center gap-2 mb-3">
             <AlertTriangle className="w-4 h-4 text-amber-500" />
-            <h2 className="text-sm font-semibold text-gray-700">
+            <h2 className="text-sm font-semibold text-bibelo-text">
               Precisam de Atenção ({revendedoras_inativas.length})
             </h2>
             <span className="text-xs text-gray-400">— ativas sem pedido nos últimos 60 dias</span>
@@ -441,10 +441,10 @@ export default function DashboardRevendedoras() {
             {revendedoras_inativas.map((r) => (
               <div
                 key={r.id}
-                className="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2.5 border border-amber-100"
+                className="flex items-center justify-between bg-amber-900/10 rounded-lg px-3 py-2.5 border border-amber-900/30"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium text-gray-800 text-sm truncate">{r.nome}</p>
+                  <p className="font-medium text-bibelo-text text-sm truncate">{r.nome}</p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <BadgeNivel nivel={r.nivel} />
                     <span className="text-xs text-amber-600">
