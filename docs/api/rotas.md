@@ -137,7 +137,7 @@ Painel de mapeamento de categorias Bling → Medusa. Rota base: `/api/categorias
 ### Pedidos
 - `GET  /api/orders` — lista paginada (search, canal, status, periodo, ordenar)
 - `GET  /api/orders/stats` — KPIs: total, receita, ticket médio, físico/online, variação
-- `GET  /api/orders/:id` — detalhe com itens, parcelas e breakdown financeiro: `valor_itens` (sem frete), `frete_estimado` (valor − itens), `custo_total`, `lucro_estimado`, `margem_percentual` (lucro calculado sobre itens, excluindo frete)
+- `GET  /api/orders/:id` — detalhe com itens, parcelas e breakdown financeiro: `valor_itens` (sem frete), `frete_estimado`, `custo_produtos`, `custo_insumos` (média por pedido — embalagem/saquinho/brindes), `custo_total` (produtos + insumos), `lucro_estimado`, `margem_percentual`. Insumos configurável via `store_settings` (financeiro / custo_insumos_pedido, centavos, padrão 300)
 
 ### Briefing Diário
 - `GET  /api/briefing?horas=24` — gera briefing completo (site, leads, vendas, automações, syncs, alertas)

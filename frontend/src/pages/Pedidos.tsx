@@ -4,7 +4,7 @@ import {
   Search, ChevronLeft, ChevronRight, ShoppingCart, Download,
   ArrowUpDown, Filter, RefreshCw, Store, Globe, Package,
   DollarSign, TrendingUp, Eye, X, CreditCard, Calendar,
-  User,
+  User, Settings, Check,
 } from 'lucide-react';
 import api from '../lib/api';
 import { exportCsv } from '../lib/export';
@@ -47,6 +47,8 @@ interface OrderDetail extends Order {
   valor_itens: number;
   frete_estimado: number;
   custo_total: number;
+  custo_produtos: number;
+  custo_insumos: number;
   lucro_estimado: number;
   margem_percentual: number;
 }
@@ -147,6 +149,9 @@ export default function Pedidos() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [detail, setDetail] = useState<OrderDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [insumosEdit, setInsumosEdit] = useState(false);
+  const [insumosValor, setInsumosValor] = useState('3,00');
+  const [insumosSaving, setInsumosSaving] = useState(false);
 
   const fetchOrders = useCallback(async (page: number) => {
     setLoading(true);
@@ -191,6 +196,9 @@ export default function Pedidos() {
     try {
       const { data } = await api.get(`/orders/${id}`, { signal: controller.signal });
       setDetail(data);
+      if (data.custo_insumos != null) {
+        setInsumosValor(data.custo_insumos.toFixed(2).replace('.', ','));
+      }
     } catch (err: any) {
       if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
     }
@@ -204,6 +212,30 @@ export default function Pedidos() {
     { label: 'Loja Fisica', value: stats.fisico, icon: Store, color: 'text-blue-400', bg: 'bg-blue-400/10', extra: null },
     { label: 'Online', value: stats.online, icon: Globe, color: 'text-cyan-400', bg: 'bg-cyan-400/10', extra: null },
   ] : [];
+
+  const saveInsumos = async () => {
+    const valor = parseFloat(insumosValor.replace(',', '.'));
+    if (isNaN(valor) || valor < 0) return;
+    setInsumosSaving(true);
+    try {
+      await api.put('/store-settings', {
+        settings: [{ categoria: 'financeiro', chave: 'custo_insumos_pedido', valor: Math.round(valor * 100) }],
+      });
+      setInsumosEdit(false);
+      if (detail) {
+        const novoCustoTotal = detail.custo_produtos + valor;
+        setDetail({
+          ...detail,
+          custo_insumos: valor,
+          custo_total: novoCustoTotal,
+          lucro_estimado: detail.valor_itens - novoCustoTotal,
+          margem_percentual: detail.valor_itens > 0 ? Math.round((detail.valor_itens - novoCustoTotal) / detail.valor_itens * 100) : 0,
+        });
+      }
+    } finally {
+      setInsumosSaving(false);
+    }
+  };
 
   return (
     <div>
@@ -541,7 +573,7 @@ export default function Pedidos() {
                         })}
                         {/* Resumo custo/lucro */}
                         <div className="pt-3 mt-1 border-t border-bibelo-border">
-                          <div className="grid grid-cols-3 gap-3">
+                          <div className="grid grid-cols-2 gap-2 mb-2">
                             <div className="bg-bibelo-border/30 rounded-lg p-2.5 text-center">
                               <p className="text-[10px] text-bibelo-muted uppercase">Receita</p>
                               <p className="text-sm font-bold text-bibelo-text">{formatCurrency(detail.valor_itens)}</p>
@@ -550,8 +582,37 @@ export default function Pedidos() {
                               )}
                             </div>
                             <div className="bg-bibelo-border/30 rounded-lg p-2.5 text-center">
-                              <p className="text-[10px] text-bibelo-muted uppercase">Custo</p>
-                              <p className="text-sm font-bold text-amber-400">{detail.custo_total > 0 ? formatCurrency(detail.custo_total) : '--'}</p>
+                              <p className="text-[10px] text-bibelo-muted uppercase">Produtos</p>
+                              <p className="text-sm font-bold text-amber-400">{detail.custo_produtos > 0 ? formatCurrency(detail.custo_produtos) : '--'}</p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {/* Insumos — editável */}
+                            <div className="bg-bibelo-border/30 rounded-lg p-2.5 text-center relative">
+                              <div className="flex items-center justify-center gap-1">
+                                <p className="text-[10px] text-bibelo-muted uppercase">Insumos</p>
+                                <button onClick={() => setInsumosEdit(v => !v)} className="text-bibelo-muted/50 hover:text-pink-400 transition-colors">
+                                  <Settings size={9} />
+                                </button>
+                              </div>
+                              {insumosEdit ? (
+                                <div className="flex items-center gap-1 mt-1 justify-center">
+                                  <span className="text-[10px] text-bibelo-muted">R$</span>
+                                  <input
+                                    autoFocus
+                                    value={insumosValor}
+                                    onChange={e => setInsumosValor(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') saveInsumos(); if (e.key === 'Escape') setInsumosEdit(false); }}
+                                    className="w-14 text-center text-xs bg-bibelo-bg border border-pink-400/50 rounded px-1 py-0.5 text-bibelo-text focus:outline-none"
+                                  />
+                                  <button onClick={saveInsumos} disabled={insumosSaving} className="text-emerald-400 hover:text-emerald-300">
+                                    <Check size={11} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <p className="text-sm font-bold text-amber-400/80">{formatCurrency(detail.custo_insumos)}</p>
+                              )}
+                              {insumosEdit && <p className="text-[9px] text-bibelo-muted/50 mt-0.5">média por pedido</p>}
                             </div>
                             <div className="bg-bibelo-border/30 rounded-lg p-2.5 text-center">
                               <p className="text-[10px] text-bibelo-muted uppercase">Lucro</p>

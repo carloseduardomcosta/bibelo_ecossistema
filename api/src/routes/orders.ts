@@ -197,6 +197,13 @@ ordersRouter.get("/:id", async (req: Request, res: Response) => {
     [order.bling_id]
   );
 
+  // Custo médio de insumos por pedido (embalagem, saquinho, brinde etc.)
+  const insumosSetting = await queryOne<{ valor: string }>(
+    `SELECT valor FROM public.store_settings WHERE categoria = 'financeiro' AND chave = 'custo_insumos_pedido'`,
+    []
+  );
+  const custoInsumos = Math.round(Number(insumosSetting?.valor || 0)) / 100;
+
   // Totais: separa valor dos itens do frete
   let custoTotal = 0;
   let valorItens = 0;
@@ -210,6 +217,7 @@ ordersRouter.get("/:id", async (req: Request, res: Response) => {
     custoTotal += custo * qtd;
   }
   const freteEstimado = Math.max(0, Math.round((Number(order.valor) - valorItens) * 100) / 100);
+  const custoComInsumos = custoTotal + custoInsumos;
 
   res.json({
     ...order,
@@ -217,8 +225,10 @@ ordersRouter.get("/:id", async (req: Request, res: Response) => {
     parcelas,
     valor_itens: valorItens,
     frete_estimado: freteEstimado,
-    custo_total: custoTotal,
-    lucro_estimado: valorItens - custoTotal,
-    margem_percentual: valorItens > 0 ? Math.round((valorItens - custoTotal) / valorItens * 100) : 0,
+    custo_total: custoComInsumos,
+    custo_produtos: custoTotal,
+    custo_insumos: custoInsumos,
+    lucro_estimado: valorItens - custoComInsumos,
+    margem_percentual: valorItens > 0 ? Math.round((valorItens - custoComInsumos) / valorItens * 100) : 0,
   });
 });
