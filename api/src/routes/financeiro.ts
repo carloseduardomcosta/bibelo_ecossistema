@@ -384,11 +384,13 @@ financeiroRouter.put("/despesas-fixas/:id", async (req: Request, res: Response) 
     dia_vencimento: z.number().int().min(1).max(31).optional(),
     observacoes: z.string().optional(),
     ativo: z.boolean().optional(),
+    data_inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    data_fim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   });
   const parse = schema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: "Dados inválidos" }); return; }
 
-  const ALLOWED_DESP = ["descricao","valor","dia_vencimento","categoria_id","observacoes","ativo"];
+  const ALLOWED_DESP = ["descricao","valor","dia_vencimento","categoria_id","observacoes","ativo","data_inicio","data_fim"];
   const safeEntries = Object.entries(parse.data).filter(([k, v]) => v !== undefined && ALLOWED_DESP.includes(k));
   if (safeEntries.length === 0) { res.status(400).json({ error: "Nenhum campo" }); return; }
 
@@ -427,7 +429,8 @@ financeiroRouter.get("/despesas-fixas/alertas", async (_req: Request, res: Respo
     LEFT JOIN financeiro.despesas_fixas_pagamentos p
       ON p.despesa_fixa_id = df.id AND p.mes_referencia = $2
     WHERE df.ativo = true
-      AND (df.data_fim IS NULL OR df.data_fim >= CURRENT_DATE)
+      AND (df.data_inicio IS NULL OR df.data_inicio <= $2)
+      AND (df.data_fim IS NULL OR df.data_fim >= $2)
     ORDER BY
       CASE
         WHEN p.status = 'pago' THEN 3
@@ -469,6 +472,8 @@ financeiroRouter.get("/despesas-fixas/pagamentos", async (req: Request, res: Res
     LEFT JOIN financeiro.despesas_fixas_pagamentos p
       ON p.despesa_fixa_id = df.id AND p.mes_referencia = $1
     WHERE df.ativo = true
+      AND (df.data_inicio IS NULL OR df.data_inicio <= $1)
+      AND (df.data_fim IS NULL OR df.data_fim >= $1)
     ORDER BY df.dia_vencimento
   `, [mesRef]);
 

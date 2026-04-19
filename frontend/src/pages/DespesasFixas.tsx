@@ -54,12 +54,17 @@ export default function DespesasFixas() {
   const [showModal, setShowModal] = useState(false);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [saving, setSaving] = useState(false);
+  const currentMonthValue = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
   const [formData, setFormData] = useState({
     descricao: '',
     categoria_id: '',
     valor: '',
     dia_vencimento: '',
     observacoes: '',
+    data_inicio: currentMonthValue(),
   });
   const [editModal, setEditModal] = useState<string | null>(null);
   const [editData, setEditData] = useState({
@@ -68,6 +73,7 @@ export default function DespesasFixas() {
     valor: '',
     dia_vencimento: '',
     observacoes: '',
+    data_inicio: '',
   });
 
   const fetchAlertas = useCallback(async () => {
@@ -141,12 +147,15 @@ export default function DespesasFixas() {
     setSaving(true);
     try {
       await api.post('/financeiro/despesas-fixas', {
-        ...formData,
+        descricao: formData.descricao,
+        categoria_id: formData.categoria_id,
         valor: parseFloat(formData.valor),
         dia_vencimento: parseInt(formData.dia_vencimento),
+        observacoes: formData.observacoes || undefined,
+        data_inicio: formData.data_inicio ? `${formData.data_inicio}-01` : undefined,
       });
       setShowModal(false);
-      setFormData({ descricao: '', categoria_id: '', valor: '', dia_vencimento: '', observacoes: '' });
+      setFormData({ descricao: '', categoria_id: '', valor: '', dia_vencimento: '', observacoes: '', data_inicio: currentMonthValue() });
       fetchAlertas();
     } catch (err) { console.error('Erro ao salvar despesa fixa:', err); }
     finally { setSaving(false); }
@@ -159,15 +168,20 @@ export default function DespesasFixas() {
       valor: String(parseFloat(df.valor)),
       dia_vencimento: String(df.dia_vencimento),
       observacoes: '',
+      data_inicio: currentMonthValue(),
     });
     // buscar dados completos da despesa para pegar categoria_id
     api.get('/financeiro/despesas-fixas').then(({ data }) => {
       const found = data.data.find((d: any) => d.id === df.id);
       if (found) {
+        const dataInicio = found.data_inicio
+          ? found.data_inicio.substring(0, 7)
+          : currentMonthValue();
         setEditData(prev => ({
           ...prev,
           categoria_id: found.categoria_id,
           observacoes: found.observacoes || '',
+          data_inicio: dataInicio,
         }));
       }
     }).catch(() => {});
@@ -184,6 +198,7 @@ export default function DespesasFixas() {
         valor: parseFloat(editData.valor),
         dia_vencimento: parseInt(editData.dia_vencimento),
         observacoes: editData.observacoes || undefined,
+        data_inicio: editData.data_inicio ? `${editData.data_inicio}-01` : undefined,
       });
       setEditModal(null);
       fetchAlertas();
@@ -430,6 +445,16 @@ export default function DespesasFixas() {
               </div>
 
               <div>
+                <label className="block text-xs text-bibelo-muted mb-1">Vigência a partir de</label>
+                <input
+                  type="month"
+                  value={editData.data_inicio}
+                  onChange={(e) => setEditData(f => ({ ...f, data_inicio: e.target.value }))}
+                  className="w-full px-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text focus:outline-none focus:border-bibelo-primary"
+                />
+              </div>
+
+              <div>
                 <label className="block text-xs text-bibelo-muted mb-1">Observações</label>
                 <input type="text" placeholder="Opcional" value={editData.observacoes} onChange={(e) => setEditData(f => ({ ...f, observacoes: e.target.value }))}
                   className="w-full px-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text focus:outline-none focus:border-bibelo-primary" />
@@ -483,6 +508,17 @@ export default function DespesasFixas() {
                   <option value="">Selecione...</option>
                   {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs text-bibelo-muted mb-1">Vigência a partir de</label>
+                <input
+                  type="month"
+                  value={formData.data_inicio}
+                  onChange={(e) => setFormData(f => ({ ...f, data_inicio: e.target.value }))}
+                  className="w-full px-3 py-2 bg-bibelo-bg border border-bibelo-border rounded-lg text-sm text-bibelo-text focus:outline-none focus:border-bibelo-primary"
+                />
+                <p className="text-xs text-bibelo-muted mt-1">A despesa só aparecerá a partir deste mês</p>
               </div>
 
               <div>

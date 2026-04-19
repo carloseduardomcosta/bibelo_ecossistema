@@ -1701,6 +1701,15 @@ Sync automático BullMQ ativo: `meta-audiences-sync` às 03:00 BRT diariamente.
 
 ---
 
+### fix(financeiro): despesas fixas respeitam data_inicio — não aparecem em meses anteriores
+
+- `GET /despesas-fixas/alertas` e `GET /despesas-fixas/pagamentos` filtram por `data_inicio <= mesRef` e `data_fim >= mesRef`
+- `PUT /despesas-fixas/:id` aceita `data_inicio` e `data_fim` para correção retroativa
+- Frontend: campo "Vigência a partir de" (seletor de mês) adicionado nos modais Nova e Editar Despesa Fixa
+- Ao criar, campo pré-preenchido com o mês atual
+
+---
+
 ### infra: servidor de impressão CUPS via WireGuard
 
 **Novo container: `/opt/printserver/`**

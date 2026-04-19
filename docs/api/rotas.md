@@ -109,10 +109,10 @@ Painel de mapeamento de categorias Bling → Medusa. Rota base: `/api/categorias
 - `GET  /api/financeiro/categorias` — listar categorias com total de lançamentos
 - `POST /api/financeiro/categorias` — criar categoria
 - `GET  /api/financeiro/despesas-fixas` — listar despesas fixas ativas
-- `POST /api/financeiro/despesas-fixas` — criar despesa fixa
-- `PUT  /api/financeiro/despesas-fixas/:id` — atualizar
-- `GET  /api/financeiro/despesas-fixas/alertas` — status do mês (atrasado, vence_em_breve, pago, pendente)
-- `GET  /api/financeiro/despesas-fixas/pagamentos` — pagamentos por mês
+- `POST /api/financeiro/despesas-fixas` — criar despesa fixa (aceita `data_inicio: YYYY-MM-DD`)
+- `PUT  /api/financeiro/despesas-fixas/:id` — atualizar (aceita `data_inicio`, `data_fim`)
+- `GET  /api/financeiro/despesas-fixas/alertas` — status do mês (filtra por `data_inicio`/`data_fim`)
+- `GET  /api/financeiro/despesas-fixas/pagamentos` — pagamentos por mês (filtra por `data_inicio`/`data_fim`)
 - `POST /api/financeiro/despesas-fixas/:id/pagar` — marcar como pago
 - `POST /api/financeiro/despesas-fixas/:id/desfazer-pagamento` — desfazer pagamento
 - `GET  /api/financeiro/embalagens` — itens + kits com custo total
