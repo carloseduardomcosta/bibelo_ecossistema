@@ -674,6 +674,76 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
     setTimeout(render, 2000);
   }
 
+  // ── Rastrear pedido ─────────────────────────────────────
+  function injectRastreioWidget() {
+    if (document.getElementById('bibelo-rastreio-btn')) return;
+
+    // Ancora no nosso proprio frete-bar — sempre presente, nao afeta layout
+    var freteBar = document.getElementById('bibelo-frete-bar');
+    if (!freteBar) return;
+
+    var btn = document.createElement('a');
+    btn.id = 'bibelo-rastreio-btn';
+    btn.href = '#';
+    btn.style.cssText = 'color:inherit;text-decoration:none;font-size:12px;font-family:Jost,Arial,sans-serif;font-weight:600;letter-spacing:0.3px;white-space:nowrap;';
+    btn.innerHTML = '&nbsp;&nbsp;|&nbsp;&nbsp;\\uD83D\\uDCE6 Rastrear pedido';
+    freteBar.insertAdjacentElement('afterend', btn);
+
+    // Modal
+    var overlay = document.createElement('div');
+    overlay.id = 'bibelo-rastreio-overlay';
+    overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;justify-content:center;align-items:center;';
+    overlay.innerHTML =
+      '<div style="background:#fff;border-radius:8px;padding:28px 24px;width:90%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.18);">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+          '<strong style="font-size:16px;">Rastrear pedido</strong>' +
+          '<button id="bibelo-rastreio-close" style="background:none;border:none;cursor:pointer;font-size:20px;line-height:1;color:#666;">&times;</button>' +
+        '</div>' +
+        '<p style="font-size:13px;color:#555;margin:0 0 12px;">Digite o c\\u00f3digo de rastreio (ex: BR123456789BR) ou n\\u00famero do pedido.</p>' +
+        '<input id="bibelo-rastreio-input" type="text" placeholder="C\\u00f3digo de rastreio" ' +
+          'style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #ddd;border-radius:4px;font-size:14px;margin-bottom:12px;" />' +
+        '<button id="bibelo-rastreio-submit" ' +
+          'style="width:100%;padding:10px;background:#2d2d2d;color:#fff;border:none;border-radius:4px;font-size:14px;cursor:pointer;">' +
+          'Rastrear' +
+        '</button>' +
+        '<p id="bibelo-rastreio-error" style="display:none;color:#c00;font-size:12px;margin:8px 0 0;text-align:center;">Por favor, informe um c\\u00f3digo v\\u00e1lido.</p>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    function openModal() {
+      overlay.style.display = 'flex';
+      var inp = document.getElementById('bibelo-rastreio-input');
+      if (inp) { inp.value = ''; inp.focus(); }
+      var err = document.getElementById('bibelo-rastreio-error');
+      if (err) err.style.display = 'none';
+    }
+    function closeModal() { overlay.style.display = 'none'; }
+
+    function doRastreio() {
+      var inp = document.getElementById('bibelo-rastreio-input');
+      var err = document.getElementById('bibelo-rastreio-error');
+      if (!inp) return;
+      var code = inp.value.trim().toUpperCase();
+      if (!code) { if (err) err.style.display = 'block'; return; }
+      if (err) err.style.display = 'none';
+      closeModal();
+      var correiosPattern = /^[A-Z]{2}\\d{9}[A-Z]{2}$/;
+      if (correiosPattern.test(code)) {
+        window.open('https://rastreamento.correios.com.br/app/index.php?objeto=' + code, '_blank');
+      } else {
+        window.open('https://melhorenvio.com.br/rastreamento/' + code, '_blank');
+      }
+    }
+
+    btn.addEventListener('click', openModal);
+    document.getElementById('bibelo-rastreio-close').addEventListener('click', closeModal);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
+    document.getElementById('bibelo-rastreio-submit').addEventListener('click', doRastreio);
+    document.getElementById('bibelo-rastreio-input').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') doRastreio();
+    });
+  }
+
   // ── Inicializar ─────────────────────────────────────────
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
@@ -683,6 +753,7 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
       injectFreteBar();
       injectCartProgress();
       injectWhatsApp();
+      injectRastreioWidget();
     });
   } else {
     detectPage();
@@ -691,6 +762,7 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
     injectFreteBar();
     injectCartProgress();
     injectWhatsApp();
+    injectRastreioWidget();
   }
 
 })();
