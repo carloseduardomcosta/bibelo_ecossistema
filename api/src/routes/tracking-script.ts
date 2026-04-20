@@ -674,6 +674,221 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
     setTimeout(render, 2000);
   }
 
+  // ══════════════════════════════════════════════════════════
+  // BOTÃO RASTREAR PEDIDO NO HEADER
+  // ══════════════════════════════════════════════════════════
+
+  var _rCores = { blue: '#3b82f6', yellow: '#d97706', orange: '#f97316', green: '#16a34a', red: '#dc2626', purple: '#9333ea', gray: '#6b7280' };
+  var _rIcones = { blue: '\\uD83D\\uDCE6', yellow: '\\uD83D\\uDE9A', orange: '\\uD83D\\uDEF5', green: '\\u2705', red: '\\u21A9', purple: '\\uD83C\\uDFEA', gray: '\\u23F3' };
+
+  function injectRastreioBtn() {
+    if (window.location.pathname.includes('/checkout')) return;
+
+    // CSS compacto para o botão desktop não criar nova linha
+    if (!document.getElementById('bibelo-rastreio-css-btn')) {
+      var cs = document.createElement('style');
+      cs.id = 'bibelo-rastreio-css-btn';
+      cs.textContent =
+        '#bibelo-rastreio-item .utility-head{padding-left:4px!important;padding-right:4px!important;}' +
+        '#bibelo-rastreio-item .utility-name{font-size:10px!important;white-space:nowrap;}' +
+        '#bibelo-rastreio-item:hover .utility-head{opacity:.75;}';
+      document.head.appendChild(cs);
+    }
+
+    // === DESKTOP: ícone compacto no header (ao lado do carrinho) ===
+    if (!document.getElementById('bibelo-rastreio-item')) {
+      var uc = document.querySelector('.utilities-container');
+      if (uc) {
+        var btn = document.createElement('div');
+        btn.id = 'bibelo-rastreio-item';
+        btn.className = 'utilities-item transition-soft d-none d-md-inline-block';
+        btn.title = 'Rastrear pedido';
+        btn.style.cssText = 'cursor:pointer;';
+        btn.innerHTML =
+          '<div class="utility-head text-center">' +
+            '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" style="display:block;margin:0 auto 2px;">' +
+              '<path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>' +
+            '</svg>' +
+            '<span class="utility-name transition-soft d-block">Rastrear</span>' +
+          '</div>';
+        btn.onclick = _openRastreio;
+        var cartEl = document.getElementById('ajax-cart');
+        var cartItem = cartEl ? cartEl.closest('.utilities-item') : null;
+        if (cartItem && cartItem.parentNode === uc) { uc.insertBefore(btn, cartItem); } else { uc.appendChild(btn); }
+      }
+    }
+
+    // === MOBILE: link no menu sandwich (hamburger) ===
+    if (!document.getElementById('bibelo-rastreio-mobile')) {
+      var navList = document.querySelector(
+        '#nav-hamburger .nav-list, #nav-hamburger .js-nav-list, ' +
+        '#nav-hamburger ul.nav-items, #nav-hamburger nav ul, #nav-hamburger ul'
+      );
+      if (navList) {
+        var li = document.createElement('li');
+        li.id = 'bibelo-rastreio-mobile';
+        li.className = 'nav-list-item';
+        li.innerHTML =
+          '<a href="#" class="nav-list-link" style="display:flex;align-items:center;gap:8px;cursor:pointer;">' +
+            '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" style="flex-shrink:0;opacity:.65;">' +
+              '<path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>' +
+            '</svg>' +
+            'Rastrear pedido' +
+          '</a>';
+        li.querySelector('a').onclick = function(e) {
+          e.preventDefault();
+          // Fechar hamburger antes de abrir modal
+          var closeBtn = document.querySelector('#nav-hamburger .js-modal-close, #nav-hamburger .modal-close, [data-modal-close="#nav-hamburger"]');
+          if (closeBtn) { closeBtn.click(); }
+          else {
+            var hm = document.getElementById('nav-hamburger');
+            if (hm) { hm.classList.remove('modal-open', 'is-open', 'open', 'active'); hm.style.display = 'none'; }
+            document.body.classList.remove('modal-open', 'nav-open');
+            document.body.style.overflow = '';
+          }
+          setTimeout(_openRastreio, 250);
+        };
+        navList.appendChild(li);
+      }
+    }
+
+    if (!document.getElementById('bibelo-rastreio-modal')) _buildRastreioModal();
+  }
+
+  function _buildRastreioModal() {
+    if (document.getElementById('bibelo-rastreio-modal')) return;
+    if (!document.getElementById('bibelo-rastreio-css')) {
+      var s = document.createElement('style');
+      s.id = 'bibelo-rastreio-css';
+      s.textContent = '@keyframes br-spin{to{transform:rotate(360deg)}} #bibelo-rastreio-input:focus{border-color:#fe68c4!important;box-shadow:0 0 0 3px rgba(254,104,196,.15)!important;}';
+      document.head.appendChild(s);
+    }
+    var ov = document.createElement('div');
+    ov.id = 'bibelo-rastreio-modal';
+    ov.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;background:rgba(0,0,0,.55);align-items:center;justify-content:center;padding:16px;font-family:Jost,Arial,sans-serif;box-sizing:border-box;';
+    ov.innerHTML =
+      '<div style="background:#fff;border-radius:16px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.2);overflow:hidden;">' +
+        '<div style="background:linear-gradient(135deg,#fe68c4,#f472b6);padding:18px 20px;display:flex;align-items:center;justify-content:space-between;">' +
+          '<div style="display:flex;align-items:center;gap:10px;">' +
+            '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" style="flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>' +
+            '<span style="color:#fff;font-size:15px;font-weight:700;">Rastrear Pedido</span>' +
+          '</div>' +
+          '<button id="bibelo-rastreio-close" style="background:rgba(255,255,255,.25);border:none;border-radius:50%;width:28px;height:28px;cursor:pointer;color:#fff;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;" aria-label="Fechar">&times;</button>' +
+        '</div>' +
+        '<div style="padding:20px;">' +
+          '<p style="color:#666;font-size:13px;margin:0 0 14px;line-height:1.5;">Digite o c\\u00F3digo de rastreio (ex: AN817294331BR) ou o n\\u00FAmero do pedido.</p>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<input id="bibelo-rastreio-input" type="text" placeholder="C\\u00F3digo ou n\\u00BA do pedido" autocomplete="off" style="flex:1;border:2px solid #e5e7eb;border-radius:10px;padding:10px 12px;font-size:14px;font-family:Jost,Arial,sans-serif;outline:none;transition:border-color .2s;min-width:0;box-sizing:border-box;" />' +
+            '<button id="bibelo-rastreio-search" style="background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;font-family:Jost,Arial,sans-serif;white-space:nowrap;flex-shrink:0;">Rastrear</button>' +
+          '</div>' +
+          '<div id="bibelo-rastreio-result" style="margin-top:14px;min-height:0;"></div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    document.getElementById('bibelo-rastreio-close').onclick = _closeRastreio;
+    document.getElementById('bibelo-rastreio-search').onclick = _doRastreio;
+    document.getElementById('bibelo-rastreio-input').addEventListener('keydown', function(e) { if (e.key === 'Enter') _doRastreio(); });
+    ov.addEventListener('click', function(e) { if (e.target === ov) _closeRastreio(); });
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && ov.style.display !== 'none') _closeRastreio(); });
+  }
+
+  function _openRastreio() {
+    var m = document.getElementById('bibelo-rastreio-modal');
+    if (!m) { _buildRastreioModal(); m = document.getElementById('bibelo-rastreio-modal'); }
+    m.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    var inp = document.getElementById('bibelo-rastreio-input');
+    if (inp) { inp.value = ''; setTimeout(function() { inp.focus(); }, 80); }
+    var res = document.getElementById('bibelo-rastreio-result');
+    if (res) res.innerHTML = '';
+  }
+
+  function _closeRastreio() {
+    var m = document.getElementById('bibelo-rastreio-modal');
+    if (m) m.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  function _doRastreio() {
+    var inp = document.getElementById('bibelo-rastreio-input');
+    var res = document.getElementById('bibelo-rastreio-result');
+    if (!inp || !res) return;
+    var val = inp.value.trim().toUpperCase().replace(/\\s+/g, '');
+    if (!val) {
+      res.innerHTML = '<p style="color:#dc2626;font-size:13px;margin:0;">Informe o c\\u00F3digo ou n\\u00FAmero do pedido.</p>';
+      return;
+    }
+    res.innerHTML =
+      '<div style="text-align:center;padding:20px 0;">' +
+        '<div style="width:26px;height:26px;border:3px solid #ffe5ec;border-top-color:#fe68c4;border-radius:50%;animation:br-spin .7s linear infinite;margin:0 auto 8px;"></div>' +
+        '<p style="color:#aaa;font-size:13px;margin:0;">Buscando...</p>' +
+      '</div>';
+    // Código Correios: AA000000000BR. Número de pedido: apenas dígitos.
+    var isCode = /^[A-Z]{2}[0-9]{8,11}[A-Z]{2}$/.test(val) || (!/^[0-9]+$/.test(val) && val.length > 4);
+    var qs = isCode ? ('codigo=' + encodeURIComponent(val)) : ('pedido=' + encodeURIComponent(val));
+    fetch('${apiBase}/api/public/rastreio?' + qs)
+      .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
+      .then(function(resp) {
+        if (!resp.ok) {
+          if (resp.status === 404 && isCode) {
+            res.innerHTML = _rFallback(val, 'Envio n\\u00E3o encontrado em nossa base.');
+          } else {
+            res.innerHTML = '<p style="color:#dc2626;font-size:13px;margin:0;">' + (resp.data.error || 'N\\u00E3o encontrado.') + '</p>';
+          }
+          return;
+        }
+        var d = resp.data;
+        var cor = _rCores[d.status.cor] || '#6b7280';
+        var ico = _rIcones[d.status.cor] || '\\uD83D\\uDCE6';
+        var h =
+          '<div style="border:2px solid ' + cor + ';border-radius:12px;padding:14px;background:#fafafa;">' +
+            '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">' +
+              '<span style="font-size:26px;line-height:1;">' + ico + '</span>' +
+              '<div style="min-width:0;">' +
+                '<div style="font-size:15px;font-weight:700;color:' + cor + ';">' + d.status.label + '</div>' +
+                '<div style="font-size:11px;color:#999;margin-top:2px;">' + d.servico + ' &middot; ' + d.tracking_code + '</div>' +
+              '</div>' +
+            '</div>';
+        var items = [];
+        if (d.ultima_atualizacao) {
+          try {
+            var dt = new Date(d.ultima_atualizacao);
+            items.push(['\\u00DAlt. atualiza\\u00E7\\u00E3o', dt.toLocaleString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})]);
+          } catch(ignored) {}
+        }
+        if (d.previsao_entrega && !d.status.entregue) items.push(['Previs\\u00E3o', d.previsao_entrega]);
+        if (d.prazo_entrega_dias && !d.status.entregue) items.push(['Prazo', d.prazo_entrega_dias + ' dias \\u00FAteis']);
+        if (d.origem) items.push(['Origem', d.origem]);
+        if (d.destino) items.push(['Destino', d.destino]);
+        if (d.pedido && d.pedido.numero) items.push(['Pedido', '#' + d.pedido.numero + (d.pedido.cliente ? ' &middot; ' + d.pedido.cliente : '')]);
+        if (items.length) {
+          h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;">';
+          items.forEach(function(it) {
+            h += '<div style="background:#fff;border-radius:8px;padding:8px 10px;">' +
+              '<div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.4px;">' + it[0] + '</div>' +
+              '<div style="font-size:12px;color:#333;font-weight:600;margin-top:2px;word-break:break-word;">' + it[1] + '</div>' +
+              '</div>';
+          });
+          h += '</div>';
+        }
+        var url = d.url_rastreio || ('https://melhorrastreio.com.br/rastreio/' + encodeURIComponent(d.tracking_code));
+        h += '<a href="' + url + '" target="_blank" rel="noopener" style="display:block;text-align:center;background:' + cor + ';color:#fff;padding:10px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">Ver detalhes completos \\u2192</a>';
+        h += '</div>';
+        res.innerHTML = h;
+      })
+      .catch(function() { res.innerHTML = _rFallback(val, 'N\\u00E3o foi poss\\u00EDvel consultar agora.'); });
+  }
+
+  function _rFallback(codigo, msg) {
+    return '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px;text-align:center;">' +
+      '<p style="color:#ea580c;font-size:13px;margin:0 0 10px;">' + msg + '</p>' +
+      '<a href="https://melhorrastreio.com.br/rastreio/' + encodeURIComponent(codigo) + '" target="_blank" rel="noopener" ' +
+        'style="display:inline-block;background:#ea580c;color:#fff;padding:9px 18px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">' +
+        'Rastrear no Melhor Envio \\u2192' +
+      '</a>' +
+      '</div>';
+  }
+
   // ── Inicializar ─────────────────────────────────────────
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
@@ -683,6 +898,7 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
       injectFreteBar();
       injectCartProgress();
       injectWhatsApp();
+      injectRastreioBtn();
     });
   } else {
     detectPage();
@@ -691,6 +907,7 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
     injectFreteBar();
     injectCartProgress();
     injectWhatsApp();
+    injectRastreioBtn();
   }
 
 })();
