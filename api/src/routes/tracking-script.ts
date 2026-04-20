@@ -684,7 +684,7 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
   function injectRastreioBtn() {
     if (window.location.pathname.includes('/checkout')) return;
 
-    // CSS compacto para o botão desktop não criar nova linha
+    // CSS compacto (injetar uma única vez)
     if (!document.getElementById('bibelo-rastreio-css-btn')) {
       var cs = document.createElement('style');
       cs.id = 'bibelo-rastreio-css-btn';
@@ -695,7 +695,17 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
       document.head.appendChild(cs);
     }
 
-    // === DESKTOP: ícone compacto no header (ao lado do carrinho) ===
+    if (!document.getElementById('bibelo-rastreio-modal')) _buildRastreioModal();
+
+    // Tenta injetar em múltiplos momentos — NuvemShop re-renderiza
+    // o .utilities-container após inicializar componentes (cart, account)
+    _tryInjectRastreio();
+    setTimeout(_tryInjectRastreio, 1000);
+    setTimeout(_tryInjectRastreio, 2500);
+  }
+
+  function _tryInjectRastreio() {
+    // === DESKTOP: botão compacto antes do carrinho ===
     if (!document.getElementById('bibelo-rastreio-item')) {
       var uc = document.querySelector('.utilities-container');
       if (uc) {
@@ -715,10 +725,19 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
         var cartEl = document.getElementById('ajax-cart');
         var cartItem = cartEl ? cartEl.closest('.utilities-item') : null;
         if (cartItem && cartItem.parentNode === uc) { uc.insertBefore(btn, cartItem); } else { uc.appendChild(btn); }
+
+        // MutationObserver: se o tema remover nosso botão, re-injetar
+        var obs = new MutationObserver(function() {
+          if (!document.getElementById('bibelo-rastreio-item') && document.querySelector('.utilities-container')) {
+            obs.disconnect();
+            setTimeout(_tryInjectRastreio, 100);
+          }
+        });
+        obs.observe(uc, { childList: true });
       }
     }
 
-    // === MOBILE: link no menu sandwich (hamburger) ===
+    // === MOBILE: link no menu sandwich (hamburger lateral) ===
     if (!document.getElementById('bibelo-rastreio-mobile')) {
       var navList = document.querySelector(
         '#nav-hamburger .nav-list, #nav-hamburger .js-nav-list, ' +
@@ -737,7 +756,6 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
           '</a>';
         li.querySelector('a').onclick = function(e) {
           e.preventDefault();
-          // Fechar hamburger antes de abrir modal
           var closeBtn = document.querySelector('#nav-hamburger .js-modal-close, #nav-hamburger .modal-close, [data-modal-close="#nav-hamburger"]');
           if (closeBtn) { closeBtn.click(); }
           else {
@@ -751,8 +769,6 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
         navList.appendChild(li);
       }
     }
-
-    if (!document.getElementById('bibelo-rastreio-modal')) _buildRastreioModal();
   }
 
   function _buildRastreioModal() {
