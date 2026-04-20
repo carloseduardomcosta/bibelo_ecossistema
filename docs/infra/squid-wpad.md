@@ -210,6 +210,44 @@ docker compose -f /opt/dnsstack/docker-compose.yml ps
 | Squid não sobe | ssl_db corrompido | `docker exec dnsstack_squid rm -rf /var/lib/squid/ssl_db && docker compose restart squid` |
 | 503 em alguns sites | SSL bump incompatível (certificate pinning) | Adicionar exceção: `ssl_bump splice domínio.com` |
 | iptables não persiste após reboot | Regras são runtime | Adicionar `bash /opt/dnsstack/scripts/iptables-setup.sh` ao cron `@reboot` |
+| `Internal Error: Missing Template ERR_BIBELO_BLOCKED` | Squid compilado com `--disable-translation` usa `templates/` | Montar o arquivo em **dois** locais: `en/` **e** `templates/` no docker-compose |
+
+---
+
+## Página de Bloqueio Customizada
+
+Quando um site é bloqueado, ao invés da mensagem genérica do Squid, é exibida uma página com a identidade visual da Bibelô.
+
+### Configuração no squid.conf
+
+```
+acl porn_domains dstdomain "/etc/squid/blocklists/porn_domains.txt"
+acl porn_regex   url_regex  -i "/etc/squid/blocklists/porn_regex.txt"
+
+deny_info ERR_BIBELO_BLOCKED porn_domains
+deny_info ERR_BIBELO_BLOCKED porn_regex
+
+http_access deny porn_domains
+http_access deny porn_regex
+```
+
+### Template HTML
+
+Arquivo: `/opt/dnsstack/squid/error-pages/ERR_BIBELO_BLOCKED`
+
+Variáveis Squid disponíveis no template:
+- `%u` — URL completa bloqueada
+- `%H` — hostname
+
+### Montagem no docker-compose
+
+**Atenção:** este Squid é compilado com `--disable-translation`, o que faz o motor de templates procurar em `templates/` e não em `en/`. O arquivo deve ser montado nos **dois** locais:
+
+```yaml
+volumes:
+  - ./squid/error-pages/ERR_BIBELO_BLOCKED:/usr/share/squid/errors/en/ERR_BIBELO_BLOCKED:ro
+  - ./squid/error-pages/ERR_BIBELO_BLOCKED:/usr/share/squid/errors/templates/ERR_BIBELO_BLOCKED:ro
+```
 
 ---
 
@@ -240,4 +278,4 @@ ssl_bump bump all
 
 ---
 
-*Última atualização: 20 de Abril de 2026 — WPAD + SSL Inspection validados e funcionais*
+*Última atualização: 20 de Abril de 2026 — WPAD + SSL Inspection + Página de bloqueio customizada validados e funcionais*
