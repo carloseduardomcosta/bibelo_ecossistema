@@ -684,17 +684,6 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
   function injectRastreioBtn() {
     if (window.location.pathname.includes('/checkout')) return;
 
-    // CSS compacto (injetar uma única vez)
-    if (!document.getElementById('bibelo-rastreio-css-btn')) {
-      var cs = document.createElement('style');
-      cs.id = 'bibelo-rastreio-css-btn';
-      cs.textContent =
-        '#bibelo-rastreio-item .utility-head{padding-left:4px!important;padding-right:4px!important;}' +
-        '#bibelo-rastreio-item .utility-name{font-size:10px!important;white-space:nowrap;}' +
-        '#bibelo-rastreio-item:hover .utility-head{opacity:.75;}';
-      document.head.appendChild(cs);
-    }
-
     if (!document.getElementById('bibelo-rastreio-modal')) _buildRastreioModal();
 
     // Tenta injetar em múltiplos momentos — NuvemShop re-renderiza
@@ -705,28 +694,33 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
   }
 
   function _tryInjectRastreio() {
-    // === DESKTOP: botão compacto antes do carrinho ===
+    // === DESKTOP: ícone-only antes do carrinho, sem texto para não quebrar linha ===
     if (!document.getElementById('bibelo-rastreio-item')) {
       var uc = document.querySelector('.utilities-container');
       if (uc) {
+        // Força uma única linha no container (evita wrap para 2ª linha)
+        uc.style.cssText = (uc.style.cssText || '') + ';white-space:nowrap!important;';
+
         var btn = document.createElement('div');
         btn.id = 'bibelo-rastreio-item';
+        // d-none d-md-inline-block = oculto no mobile, visível no desktop
         btn.className = 'utilities-item transition-soft d-none d-md-inline-block';
         btn.title = 'Rastrear pedido';
-        btn.style.cssText = 'cursor:pointer;';
+        btn.style.cssText = 'cursor:pointer;vertical-align:middle;';
         btn.innerHTML =
           '<div class="utility-head text-center">' +
-            '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" style="display:block;margin:0 auto 2px;">' +
+            '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">' +
               '<path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>' +
             '</svg>' +
-            '<span class="utility-name transition-soft d-block">Rastrear</span>' +
+            '<span class="utility-name transition-soft d-block" style="white-space:nowrap;">Rastrear</span>' +
           '</div>';
         btn.onclick = _openRastreio;
+
         var cartEl = document.getElementById('ajax-cart');
         var cartItem = cartEl ? cartEl.closest('.utilities-item') : null;
         if (cartItem && cartItem.parentNode === uc) { uc.insertBefore(btn, cartItem); } else { uc.appendChild(btn); }
 
-        // MutationObserver: se o tema remover nosso botão, re-injetar
+        // MutationObserver: re-injetar se o tema remover o botão
         var obs = new MutationObserver(function() {
           if (!document.getElementById('bibelo-rastreio-item') && document.querySelector('.utilities-container')) {
             obs.disconnect();
@@ -737,36 +731,26 @@ trackingScriptRouter.get("/bibelo.js", scriptLimiter, (_req: Request, res: Respo
       }
     }
 
-    // === MOBILE: link no menu sandwich (hamburger lateral) ===
+    // === MOBILE: link abaixo da barra de busca (d-md-none = só no mobile) ===
+    // Abordagem mais robusta que tentar encontrar o nav-hamburger
     if (!document.getElementById('bibelo-rastreio-mobile')) {
-      var navList = document.querySelector(
-        '#nav-hamburger .nav-list, #nav-hamburger .js-nav-list, ' +
-        '#nav-hamburger ul.nav-items, #nav-hamburger nav ul, #nav-hamburger ul'
-      );
-      if (navList) {
-        var li = document.createElement('li');
-        li.id = 'bibelo-rastreio-mobile';
-        li.className = 'nav-list-item';
-        li.innerHTML =
-          '<a href="#" class="nav-list-link" style="display:flex;align-items:center;gap:8px;cursor:pointer;">' +
-            '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" style="flex-shrink:0;opacity:.65;">' +
+      var searchEl = document.querySelector('.js-search-container, .search-container, form[action*="search"]');
+      var searchParent = searchEl ? searchEl.parentElement : null;
+      if (searchParent) {
+        var mob = document.createElement('div');
+        mob.id = 'bibelo-rastreio-mobile';
+        mob.className = 'd-block d-md-none';
+        mob.style.cssText = 'text-align:center;padding:5px 0 2px;';
+        mob.innerHTML =
+          '<a href="#" style="font-size:12px;font-family:Jost,Arial,sans-serif;font-weight:600;' +
+            'color:#fe68c4;text-decoration:none;display:inline-flex;align-items:center;gap:5px;">' +
+            '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fe68c4" stroke-width="2" style="flex-shrink:0;">' +
               '<path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>' +
             '</svg>' +
             'Rastrear pedido' +
           '</a>';
-        li.querySelector('a').onclick = function(e) {
-          e.preventDefault();
-          var closeBtn = document.querySelector('#nav-hamburger .js-modal-close, #nav-hamburger .modal-close, [data-modal-close="#nav-hamburger"]');
-          if (closeBtn) { closeBtn.click(); }
-          else {
-            var hm = document.getElementById('nav-hamburger');
-            if (hm) { hm.classList.remove('modal-open', 'is-open', 'open', 'active'); hm.style.display = 'none'; }
-            document.body.classList.remove('modal-open', 'nav-open');
-            document.body.style.overflow = '';
-          }
-          setTimeout(_openRastreio, 250);
-        };
-        navList.appendChild(li);
+        mob.querySelector('a').onclick = function(e) { e.preventDefault(); _openRastreio(); };
+        searchParent.appendChild(mob);
       }
     }
   }
