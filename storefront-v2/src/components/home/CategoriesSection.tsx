@@ -70,6 +70,7 @@ interface Category {
   name: string
   handle: string
   parent_category_id?: string | null
+  category_children?: Category[]
 }
 
 export default async function CategoriesSection() {

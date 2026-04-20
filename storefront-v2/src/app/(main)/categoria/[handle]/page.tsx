@@ -15,14 +15,22 @@ const SORT_OPTIONS = [
   { value: "price_desc",  label: "Maior preço" },
 ]
 
+interface CategoryType {
+  id: string
+  name: string
+  handle: string
+  parent_category_id?: string | null
+  category_children?: CategoryType[]
+}
+
 interface PageProps {
   params: Promise<{ handle: string }>
-  searchParams: Promise<{ sort?: string; page?: string }>
+  searchParams: Promise<{ sort?: string; page?: string; sub?: string }>
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { handle } = await params
-  const categories = await listCategories()
+  const categories = await listCategories() as CategoryType[]
   const cat = categories.find((c) => c.handle === handle)
   if (!cat) return { title: "Categoria não encontrada" }
   const emoji = EMOJI_MAP[handle] || "📦"
@@ -39,47 +47,138 @@ export default async function CategoriaPage({ params, searchParams }: PageProps)
   const limit = 20
   const offset = (page - 1) * limit
 
-  const [{ products, count }, categories] = await Promise.all([
-    listProducts({ limit, offset, categoryId: handle, order: sp.sort }),
-    listCategories(),
-  ])
-
+  // listCategories é cacheada — sem custo extra de rede
+  const categories = await listCategories() as CategoryType[]
   const category = categories.find((c) => c.handle === handle)
   if (!category) notFound()
+
+  // Determinar posição na hierarquia
+  const children = (category.category_children || []) as CategoryType[]
+  const isParent = children.length > 0
+  const parentCategory = category.parent_category_id
+    ? categories.find((c) => c.id === category.parent_category_id)
+    : null
+
+  // Subcategoria selecionada via pill (?sub=handle)
+  const selectedSub = sp.sub
+    ? children.find((c) => c.handle === sp.sub) ?? null
+    : null
+
+  // Determinar quais IDs de categoria buscar produtos
+  let productFetchParams: { categoryId?: string; categoryIds?: string[] }
+  if (isParent) {
+    if (selectedSub) {
+      productFetchParams = { categoryIds: [selectedSub.id] }
+    } else {
+      // Pai + todos os filhos para mostrar o acervo completo da categoria
+      productFetchParams = { categoryIds: [category.id, ...children.map((c) => c.id)] }
+    }
+  } else {
+    productFetchParams = { categoryId: handle }
+  }
+
+  const { products, count } = await listProducts({
+    limit,
+    offset,
+    order: sp.sort,
+    ...productFetchParams,
+  })
 
   const totalPages = Math.ceil(count / limit)
   const emoji = EMOJI_MAP[handle] || "📦"
 
   function sortUrl(sort: string) {
-    return `/categoria/${handle}?sort=${sort}${page > 1 ? `&page=${page}` : ""}`
+    const p = new URLSearchParams()
+    p.set("sort", sort)
+    if (selectedSub) p.set("sub", selectedSub.handle)
+    return `/categoria/${handle}?${p.toString()}`
   }
+
   function pageUrl(p: number) {
-    return `/categoria/${handle}?page=${p}${sp.sort ? `&sort=${sp.sort}` : ""}`
+    const params = new URLSearchParams()
+    params.set("page", String(p))
+    if (sp.sort) params.set("sort", sp.sort)
+    if (selectedSub) params.set("sub", selectedSub.handle)
+    return `/categoria/${handle}?${params.toString()}`
   }
+
+  function pillUrl(sub?: CategoryType) {
+    const p = new URLSearchParams()
+    if (sub) p.set("sub", sub.handle)
+    if (sp.sort) p.set("sort", sp.sort)
+    const qs = p.toString()
+    return `/categoria/${handle}${qs ? `?${qs}` : ""}`
+  }
+
+  const contextLabel = selectedSub
+    ? selectedSub.name
+    : isParent
+    ? `${category.name} e subcategorias`
+    : category.name
 
   return (
     <div className="content-container py-8">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-1.5 text-xs text-gray-400 mb-5">
+      {/* Breadcrumb — inclui pai quando for categoria filha */}
+      <nav className="flex items-center gap-1.5 text-xs text-gray-400 mb-5 flex-wrap">
         <Link href="/" className="hover:text-bibelo-pink transition-colors">Início</Link>
         <span>/</span>
         <Link href="/produtos" className="hover:text-bibelo-pink transition-colors">Categorias</Link>
+        {parentCategory && (
+          <>
+            <span>/</span>
+            <Link
+              href={`/categoria/${parentCategory.handle}`}
+              className="hover:text-bibelo-pink transition-colors"
+            >
+              {parentCategory.name}
+            </Link>
+          </>
+        )}
         <span>/</span>
         <span className="text-bibelo-pink font-medium">{category.name}</span>
       </nav>
 
       {/* Título */}
-      <div className="mb-6">
+      <div className="mb-5">
         <p className="text-bibelo-pink text-xs font-semibold uppercase tracking-widest mb-1">
-          Categoria
+          {parentCategory ? parentCategory.name : "Categoria"}
         </p>
         <h1 className="text-2xl md:text-3xl font-bold text-bibelo-dark">
           {emoji} {category.name}
         </h1>
         <p className="text-gray-500 text-sm mt-1">
-          {count} produto{count !== 1 ? "s" : ""} em {category.name}
+          {count} produto{count !== 1 ? "s" : ""} em {contextLabel}
         </p>
       </div>
+
+      {/* Pills de subcategorias — apenas para categorias pai */}
+      {isParent && (
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          <Link
+            href={pillUrl()}
+            className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+              !selectedSub
+                ? "bg-bibelo-pink text-white border-bibelo-pink"
+                : "border-gray-200 text-gray-600 hover:border-bibelo-pink hover:text-bibelo-pink"
+            }`}
+          >
+            Todos
+          </Link>
+          {children.map((child) => (
+            <Link
+              key={child.id}
+              href={pillUrl(child)}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                selectedSub?.handle === child.handle
+                  ? "bg-bibelo-pink text-white border-bibelo-pink"
+                  : "border-gray-200 text-gray-600 hover:border-bibelo-pink hover:text-bibelo-pink"
+              }`}
+            >
+              {child.name}
+            </Link>
+          ))}
+        </div>
+      )}
 
       {/* Ordenação */}
       <div className="flex flex-wrap items-center gap-2 mb-5 pb-4 border-b border-gray-100">

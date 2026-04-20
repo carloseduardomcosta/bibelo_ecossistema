@@ -8,6 +8,7 @@ interface Category {
   name: string
   handle: string
   parent_category_id?: string | null
+  category_children?: Category[]
 }
 
 interface Props {
@@ -34,13 +35,27 @@ export default function FilterSidebar({
 }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const rootCategories = categories
+  // Apenas raízes, com filhos incluídos via category_children
+  const groups = categories
     .filter((c) => !c.parent_category_id)
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+    .map((c) => ({
+      ...c,
+      children: (c.category_children || []).sort((a, b) =>
+        a.name.localeCompare(b.name, "pt-BR")
+      ),
+    }))
 
-  // JSX compartilhado entre desktop e drawer mobile
+  // Identificar se a categoria ativa é filha (para destacar o pai também)
+  const currentCatObj = categories.find((c) => c.handle === currentCategory)
+  const currentParentId = currentCatObj?.parent_category_id ?? null
+  const currentParentHandle = currentParentId
+    ? categories.find((c) => c.id === currentParentId)?.handle
+    : null
+
   const categoryLinks = (
     <ul className="space-y-0.5">
+      {/* "Todos os produtos" */}
       <li>
         <Link
           href={buildUrl({ sort: currentSort, q: currentQ })}
@@ -54,21 +69,63 @@ export default function FilterSidebar({
           Todos os produtos
         </Link>
       </li>
-      {rootCategories.map((cat) => (
-        <li key={cat.id}>
-          <Link
-            href={buildUrl({ categoria: cat.handle, sort: currentSort, q: currentQ })}
-            onClick={() => setDrawerOpen(false)}
-            className={`flex items-center px-3 py-2 rounded-xl text-sm transition-colors ${
-              currentCategory === cat.handle
-                ? "bg-bibelo-pink text-white font-semibold"
-                : "text-gray-600 hover:bg-bibelo-rosa hover:text-bibelo-pink"
-            }`}
-          >
-            {cat.name}
-          </Link>
-        </li>
-      ))}
+
+      {groups.map((cat) => {
+        const isParentActive =
+          currentCategory === cat.handle || currentParentHandle === cat.handle
+        const hasChildren = cat.children.length > 0
+
+        return (
+          <li key={cat.id}>
+            {/* Categoria raiz */}
+            <Link
+              href={buildUrl({ categoria: cat.handle, sort: currentSort, q: currentQ })}
+              onClick={() => setDrawerOpen(false)}
+              className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-colors ${
+                currentCategory === cat.handle
+                  ? "bg-bibelo-pink text-white font-semibold"
+                  : isParentActive && currentCategory !== cat.handle
+                  ? "text-bibelo-pink font-semibold bg-bibelo-rosa/40"
+                  : "text-gray-600 hover:bg-bibelo-rosa hover:text-bibelo-pink"
+              }`}
+            >
+              <span>{cat.name}</span>
+              {hasChildren && (
+                <span
+                  className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 ${
+                    currentCategory === cat.handle
+                      ? "bg-white/20 text-white"
+                      : "bg-gray-100 text-gray-400"
+                  }`}
+                >
+                  {cat.children.length}
+                </span>
+              )}
+            </Link>
+
+            {/* Subcategorias indentadas */}
+            {hasChildren && (
+              <ul className="mt-0.5 ml-3 pl-3 border-l-2 border-bibelo-rosa/60 space-y-0.5 mb-1">
+                {cat.children.map((child) => (
+                  <li key={child.id}>
+                    <Link
+                      href={buildUrl({ categoria: child.handle, sort: currentSort, q: currentQ })}
+                      onClick={() => setDrawerOpen(false)}
+                      className={`flex items-center px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                        currentCategory === child.handle
+                          ? "bg-bibelo-pink text-white font-semibold"
+                          : "text-gray-500 hover:bg-bibelo-rosa hover:text-bibelo-pink"
+                      }`}
+                    >
+                      {child.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        )
+      })}
     </ul>
   )
 
@@ -96,12 +153,10 @@ export default function FilterSidebar({
       {/* Mobile: drawer overlay */}
       {drawerOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
-          {/* Fundo escuro */}
           <div
             className="absolute inset-0 bg-black/40 animate-fade-in"
             onClick={() => setDrawerOpen(false)}
           />
-          {/* Painel (desliza da direita) */}
           <div className="relative ml-auto w-72 max-w-[80vw] bg-white h-full shadow-2xl p-6 overflow-y-auto animate-slide-up">
             <div className="flex items-center justify-between mb-6">
               <h2 className="font-semibold text-bibelo-dark text-base">Filtrar por</h2>

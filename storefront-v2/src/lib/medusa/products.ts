@@ -9,6 +9,7 @@ export async function listProducts({
   limit = 12,
   offset = 0,
   categoryId,
+  categoryIds,
   collectionId,
   q,
   order,
@@ -16,6 +17,7 @@ export async function listProducts({
   limit?: number
   offset?: number
   categoryId?: string
+  categoryIds?: string[]   // UUIDs pré-resolvidos (pcat_...) — para pai+filhos
   collectionId?: string
   q?: string
   order?: string
@@ -28,7 +30,10 @@ export async function listProducts({
       fields: "*variants.calculated_price,+variants.inventory_quantity",
     }
 
-    if (categoryId) {
+    if (categoryIds && categoryIds.length > 0) {
+      // UUIDs já resolvidos — usa diretamente
+      params.category_id = categoryIds
+    } else if (categoryId) {
       // Se é um handle (string sem "pcat_"), resolver para UUID via API
       if (!categoryId.startsWith("pcat_")) {
         try {
@@ -38,7 +43,6 @@ export async function listProducts({
             params.category_id = [cat.id]
           }
         } catch {
-          // Se falhar, tenta usar como ID direto
           params.category_id = [categoryId]
         }
       } else {
