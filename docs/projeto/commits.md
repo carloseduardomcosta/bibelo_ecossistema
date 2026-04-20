@@ -1727,3 +1727,37 @@ Sync automático BullMQ ativo: `meta-audiences-sync` às 03:00 BRT diariamente.
 **UFW:** `ufw allow in on wg0 to any port 631 proto tcp` — CUPS exposto só na interface WireGuard
 
 **Nova documentação:** `docs/infra/servidor-impressao.md`
+
+---
+
+## Sessão 19/04/2026 — Diagnóstico e correção do fluxo Carrinho Abandonado + Docker docs
+
+### docs: guia completo de operação Docker — `ee5d6f9`
+
+- Novo arquivo: `docs/infra/docker.md` — referência completa para operar o ambiente sem acesso ao Claude Code
+- Cobre: containers/portas, comandos do dia a dia, rebuild de serviços, banco (psql, migrations), Redis/BullMQ, situações de emergência (API, Medusa, PostgreSQL, container travado), limpeza de disco, deploy via GitHub Actions, variáveis de ambiente, verificação completa do sistema
+
+### fix(nuvemshop): corrige fluxo Carrinho Abandonado — dois bugs bloqueavam todo disparo
+
+**Diagnóstico realizado:**
+- Apenas 3 carrinhos em `marketing.pedidos_pendentes` desde o início da loja
+- 2 foram pagos antes da janela de 2h (`convertido=true`) → ignorados pela query do job
+- 1 ficou órfão (`customer_id=NULL, notificado=true`) → pulado por `continue` em `checkAbandonedCarts`
+- Job `flow-check-abandoned` rodava corretamente a cada 5 min mas sempre retornava `triggered=0`
+
+**Bug 1 — `registerPendingOrder` dentro de `if (customerId)` em `processOrder()`**
+
+`api/src/integrations/nuvemshop/webhook.ts`:
+- **Causa**: quando `order.customer` vem nulo no payload (guest checkout ou falha de dados), `customerId` ficava `null` e o bloco `if (customerId)` pulava o `registerPendingOrder()` inteiro — carrinho nunca entrava no banco
+- **Fix A**: adicionado bloco `else if (event === "order/created")` após o upsert de customer:
+  - Tenta `fetchCustomerDetails(order.customer_id)` via API NuvemShop antes de desistir
+  - Se encontrar → faz upsert normal e seta `customerId`
+  - Se não encontrar → `logger.warn` com `orderId` para rastreio
+- **Fix B**: `registerPendingOrder` movido para **fora** do `if (customerId)` — agora roda independentemente, mesmo com `customerId = null`
+- `paymentStatus` e `shippingStatus` hoistados para antes do `if (customerId)` (sem mudança de comportamento)
+
+**Bug 2 — dado corrompido no banco**
+
+- Pedido `1934376861` (28/03): `notificado=true` mas sem execução real — dado inconsistente do período antes do fix
+- Corrigido direto no banco: `UPDATE marketing.pedidos_pendentes SET notificado = false WHERE notificado = true AND customer_id IS NULL`
+- **1 linha afetada**

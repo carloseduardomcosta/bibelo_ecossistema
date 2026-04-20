@@ -111,6 +111,31 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
       cep: (billing?.zipcode as string) || undefined,
     });
     customerId = upserted.id;
+  } else if (event === "order/created") {
+    // Customer ausente no payload — tentar buscar via API usando customer_id do pedido
+    const nsCustomerId = (order.customer_id as number | undefined) ?? null;
+    if (nsCustomerId) {
+      const fullCustomer = await fetchCustomerDetails(String(nsCustomerId));
+      if (fullCustomer) {
+        const billing = (order.billing_address || order.shipping_address) as Record<string, unknown> | undefined;
+        const upserted = await upsertCustomer({
+          nome: (fullCustomer.name as string) || "Sem nome",
+          email: (fullCustomer.email as string) || undefined,
+          telefone: (fullCustomer.phone as string) || undefined,
+          cpf: (fullCustomer.identification as string) || undefined,
+          canal_origem: "nuvemshop",
+          nuvemshop_id: String(fullCustomer.id),
+          cidade: (billing?.city as string) || undefined,
+          estado: (billing?.province_code as string) || (billing?.province as string)?.substring(0, 2)?.toUpperCase() || undefined,
+          cep: (billing?.zipcode as string) || undefined,
+        });
+        customerId = upserted.id;
+        logger.info("NuvemShop: customer recuperado via API para pedido órfão", { orderId: resourceId, customerId });
+      }
+    }
+    if (!customerId) {
+      logger.warn("NuvemShop: pedido criado sem customer — carrinho será salvo com customer_id nulo", { orderId: resourceId });
+    }
   }
 
   const products = (order.products as Array<Record<string, unknown>>) || [];
@@ -152,14 +177,14 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
     }
   }
 
+  // ── Motor de fluxos: disparar automações ──
+  const paymentStatus = (order.payment_status as string) || "pending";
+  const shippingStatus = (order.shipping_status as string) || "";
+
   if (customerId) {
     await calculateScore(customerId);
 
-    // ── Motor de fluxos: disparar automações ──
-    const paymentStatus = (order.payment_status as string) || "pending";
-
     // Pedido entregue → marcar como convertido (para não disparar abandono) + fluxo de avaliação
-    const shippingStatus = (order.shipping_status as string) || "";
     if (event === "order/fulfilled" || shippingStatus === "delivered") {
       await markOrderConverted(resourceId);
       await triggerFlow("order.delivered", customerId, {
@@ -285,30 +310,31 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
       if (scoreData && parseInt(scoreData.total_pedidos, 10) <= 1) {
         await triggerFlow("order.first", customerId, { ns_order_id: resourceId, valor });
       }
-    } else if (event === "order/created" && paymentStatus !== "paid") {
-      // Pedido criado mas não pago → registrar como pendente para detecção de abandono
-      const customerEmail = customer ? (customer.email as string) : null;
-      // Construir recovery_url a partir do id + token do pedido
-      const orderToken = order.token as string || "";
-      const recoveryUrl = orderToken
-        ? `https://www.papelariabibelo.com.br/checkout/v3/proxy/${resourceId}/${orderToken}`
-        : null;
-
-      await registerPendingOrder(
-        resourceId,
-        customerId,
-        customerEmail,
-        valor,
-        products.map((p) => ({
-          name: p.name,
-          quantity: p.quantity,
-          price: p.price,
-          image_url: (p.image as Record<string, unknown>)?.src || p.image_url || null,
-          variant_name: p.variant_name || null,
-        })),
-        recoveryUrl
-      );
     }
+  }
+
+  // Registrar pedido pendente mesmo sem customer_id — garante detecção de abandono
+  if (event === "order/created" && paymentStatus !== "paid") {
+    const customerEmail = customer ? (customer.email as string) : null;
+    const orderToken = order.token as string || "";
+    const recoveryUrl = orderToken
+      ? `https://www.papelariabibelo.com.br/checkout/v3/proxy/${resourceId}/${orderToken}`
+      : null;
+
+    await registerPendingOrder(
+      resourceId,
+      customerId,
+      customerEmail,
+      valor,
+      products.map((p) => ({
+        name: p.name,
+        quantity: p.quantity,
+        price: p.price,
+        image_url: (p.image as Record<string, unknown>)?.src || p.image_url || null,
+        variant_name: p.variant_name || null,
+      })),
+      recoveryUrl
+    );
   }
 
   logger.info(`NuvemShop webhook: pedido ${event}`, { orderId: resourceId, customerId });
