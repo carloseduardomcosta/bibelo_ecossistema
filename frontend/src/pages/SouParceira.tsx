@@ -5,9 +5,12 @@ import {
   Handshake, ShoppingBag, MessageCircle, ChevronLeft, ChevronRight,
   Tag, Search, Medal, Star, Crown, LogOut, Loader2,
   ArrowRight, CheckCircle2, Sparkles, TrendingUp, Package,
-  LayoutDashboard, BookOpen, Lock, Clock, Truck, CheckCircle,
+  LayoutDashboard, BookOpen, Clock, Truck, CheckCircle,
   XCircle, SortAsc, ShoppingCart, Plus, Minus, Trash2, Send, X,
   ClipboardList, Eye, ImageOff, Gem,
+  Wallet, BarChart2, CreditCard, QrCode, Copy, Calendar,
+  ArrowUpCircle, ArrowDownCircle, DollarSign, RefreshCw, ExternalLink,
+  AlertCircle,
 } from 'lucide-react';
 
 // Instância axios sem interceptors de auth do CRM
@@ -115,6 +118,53 @@ interface Modulo {
   preco_mensal: string | null;
   ativo: boolean;
   tem_acesso: boolean;
+  expira_em: string | null;
+  plano: string | null;
+  assinatura_status: string | null;
+}
+
+interface PagamentoPix {
+  tipo: 'pix';
+  pagamento_id: string;
+  qr_code: string | null;
+  qr_code_base64: string | null;
+  ticket_url: string | null;
+  expira_em: string;
+  valor: number;
+  descricao: string;
+}
+
+interface PagamentoCartao {
+  tipo: 'cartao';
+  pagamento_id: string;
+  checkout_url: string;
+  valor: number;
+  descricao: string;
+}
+
+type RespostaPagamento = PagamentoPix | PagamentoCartao;
+
+interface VendaFluxo {
+  id: string;
+  descricao: string;
+  valor: string;
+  data_venda: string;
+  categoria: string | null;
+}
+
+interface FluxoCaixaDados {
+  saidas: { mes: string; valor: string; pedidos: string }[];
+  entradas: { mes: string; valor: string; qtd: string }[];
+  vendas_recentes: VendaFluxo[];
+}
+
+interface RelatorioVendasDados {
+  volume_mensal: { mes: string; total: string; pedidos: string; desconto: string }[];
+  top_produtos:  { nome: string; qtd: string; total: string }[];
+  resumo: {
+    total_pedidos: string; total_gasto: string; ticket_medio: string;
+    meses_consecutivos: string; nivel: string;
+  } | null;
 }
 
 type Tela   = 'verificando' | 'login_cpf' | 'login_otp' | 'logado';
@@ -2066,55 +2116,347 @@ function MeusPedidos({ rev: _rev }: { rev: Revendedora }) {
   );
 }
 
-// ── Seção: Recursos (scaffold) ───────────────────────────────────
+// ── Ícone por módulo ─────────────────────────────────────────────
 
-function Recursos() {
-  const [modulos, setModulos] = useState<Modulo[]>([]);
+function iconeModulo(id: string) {
+  if (id === 'fluxo_caixa')     return <Wallet className="w-5 h-5 text-[#fe68c4]" />;
+  if (id === 'relatorio_vendas') return <BarChart2 className="w-5 h-5 text-[#fe68c4]" />;
+  return <Sparkles className="w-5 h-5 text-[#fe68c4]" />;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────
+
+const PRECO_MENSAL = 7.90;
+const PRECO_ANUAL  = parseFloat((PRECO_MENSAL * 12 * 0.85).toFixed(2));
+
+function fmtMoeda(v: string | number) {
+  return `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+}
+
+function fmtMes(mes: string) {
+  const [y, m] = mes.split('-');
+  const nomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  return `${nomes[parseInt(m) - 1]}/${y?.slice(2)}`;
+}
+
+function fmtData(d: string) {
+  const [y, m, day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+
+// ── Componente: Fluxo de Caixa ────────────────────────────────────
+
+function FluxoCaixa({ onVoltar }: { onVoltar: () => void }) {
+  const [dados, setDados]         = useState<FluxoCaixaDados | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [showForm, setShowForm]   = useState(false);
+  const [form, setForm]           = useState({ descricao: '', valor: '', data_venda: new Date().toISOString().split('T')[0], categoria: '' });
+  const [salvando, setSalvando]   = useState(false);
+  const [erro, setErro]           = useState('');
+
+  const carregar = useCallback(() => {
+    setLoading(true);
+    api.get('/souparceira/modulos/fluxo-caixa/dados')
+      .then(r => setDados(r.data))
+      .catch(() => setErro('Erro ao carregar dados.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { carregar(); }, [carregar]);
+
+  async function salvarVenda(e: React.FormEvent) {
+    e.preventDefault();
+    setSalvando(true);
+    setErro('');
+    try {
+      await api.post('/souparceira/modulos/fluxo-caixa/venda', {
+        descricao:  form.descricao,
+        valor:      parseFloat(form.valor),
+        data_venda: form.data_venda,
+        categoria:  form.categoria || undefined,
+      });
+      setForm({ descricao: '', valor: '', data_venda: new Date().toISOString().split('T')[0], categoria: '' });
+      setShowForm(false);
+      carregar();
+    } catch {
+      setErro('Erro ao salvar venda.');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function excluirVenda(id: string) {
+    if (!confirm('Excluir esta venda?')) return;
+    await api.delete(`/souparceira/modulos/fluxo-caixa/venda/${id}`).catch(() => {});
+    carregar();
+  }
+
+  if (loading) return (
+    <div className="flex justify-center py-16">
+      <div className="w-8 h-8 border-2 border-[#fe68c4] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  // Mesclar meses de entradas e saídas
+  const meses = Array.from(new Set([
+    ...(dados?.saidas.map(s => s.mes) ?? []),
+    ...(dados?.entradas.map(e => e.mes) ?? []),
+  ])).sort();
+
+  const totalEntradas = dados?.entradas.reduce((s, e) => s + Number(e.valor), 0) ?? 0;
+  const totalSaidas   = dados?.saidas.reduce((s, e) => s + Number(e.valor), 0) ?? 0;
+  const saldo         = totalEntradas - totalSaidas;
+  const maxVal        = Math.max(...meses.map(m => {
+    const e = dados?.entradas.find(x => x.mes === m);
+    const s = dados?.saidas.find(x => x.mes === m);
+    return Math.max(Number(e?.valor ?? 0), Number(s?.valor ?? 0));
+  }), 1);
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
+      {/* Cabeçalho */}
+      <div className="flex items-center gap-3">
+        <button onClick={onVoltar} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
+          <ChevronLeft className="w-5 h-5 text-gray-500" />
+        </button>
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Fluxo de Caixa</h2>
+          <p className="text-sm text-gray-500">Entradas e saídas da sua revenda</p>
+        </div>
+      </div>
+
+      {/* Cards resumo */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <ArrowUpCircle className="w-4 h-4 text-green-500" />
+            <span className="text-xs text-gray-500 font-medium">Entradas</span>
+          </div>
+          <p className="text-lg font-bold text-green-600">{fmtMoeda(totalEntradas)}</p>
+          <p className="text-xs text-gray-400 mt-0.5">últimos 12 meses</p>
+        </div>
+        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <ArrowDownCircle className="w-4 h-4 text-red-400" />
+            <span className="text-xs text-gray-500 font-medium">Saídas (Bibelô)</span>
+          </div>
+          <p className="text-lg font-bold text-red-500">{fmtMoeda(totalSaidas)}</p>
+          <p className="text-xs text-gray-400 mt-0.5">pedidos realizados</p>
+        </div>
+        <div className={`rounded-xl p-4 border shadow-sm ${saldo >= 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
+          <div className="flex items-center gap-2 mb-1">
+            <DollarSign className={`w-4 h-4 ${saldo >= 0 ? 'text-green-500' : 'text-red-500'}`} />
+            <span className="text-xs text-gray-500 font-medium">Saldo</span>
+          </div>
+          <p className={`text-lg font-bold ${saldo >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmtMoeda(saldo)}</p>
+          <p className="text-xs text-gray-400 mt-0.5">entradas − saídas</p>
+        </div>
+      </div>
+
+      {/* Gráfico de barras por mês */}
+      {meses.length > 0 && (
+        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Últimos meses</p>
+          <div className="space-y-3">
+            {meses.map(m => {
+              const ent = Number(dados?.entradas.find(x => x.mes === m)?.valor ?? 0);
+              const sai = Number(dados?.saidas.find(x => x.mes === m)?.valor ?? 0);
+              return (
+                <div key={m}>
+                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                    <span className="font-medium">{fmtMes(m)}</span>
+                    <span className={ent - sai >= 0 ? 'text-green-600' : 'text-red-500'}>
+                      {ent - sai >= 0 ? '+' : ''}{fmtMoeda(ent - sai)}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="w-14 text-right text-[10px] text-gray-400">Entrada</span>
+                      <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                        <div className="bg-green-400 h-2 rounded-full transition-all" style={{ width: `${(ent / maxVal) * 100}%` }} />
+                      </div>
+                      <span className="text-[10px] text-gray-500 w-16 text-right">{fmtMoeda(ent)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-14 text-right text-[10px] text-gray-400">Saída</span>
+                      <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                        <div className="bg-red-300 h-2 rounded-full transition-all" style={{ width: `${(sai / maxVal) * 100}%` }} />
+                      </div>
+                      <span className="text-[10px] text-gray-500 w-16 text-right">{fmtMoeda(sai)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Minhas vendas */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <p className="text-sm font-semibold text-gray-800">Minhas vendas registradas</p>
+          <button
+            onClick={() => setShowForm(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#fe68c4] text-white rounded-lg text-xs font-semibold hover:bg-[#e855b0] transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Registrar venda
+          </button>
+        </div>
+
+        {showForm && (
+          <form onSubmit={salvarVenda} className="p-4 bg-[#ffe5ec]/20 border-b border-gray-100 space-y-3">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Descrição *</label>
+                <input
+                  value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))}
+                  placeholder="Ex: Venda de cadernos"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#fe68c4]"
+                  required maxLength={300}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Valor (R$) *</label>
+                <input
+                  type="number" step="0.01" min="0.01"
+                  value={form.valor} onChange={e => setForm(f => ({ ...f, valor: e.target.value }))}
+                  placeholder="0,00"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#fe68c4]"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Data da venda *</label>
+                <input
+                  type="date" value={form.data_venda} onChange={e => setForm(f => ({ ...f, data_venda: e.target.value }))}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#fe68c4]"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Categoria</label>
+                <input
+                  value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}
+                  placeholder="Ex: Cadernos, Canetas..."
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#fe68c4]"
+                  maxLength={100}
+                />
+              </div>
+            </div>
+            {erro && <p className="text-red-500 text-xs">{erro}</p>}
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setShowForm(false)}
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                Cancelar
+              </button>
+              <button type="submit" disabled={salvando}
+                className="px-4 py-2 text-sm bg-[#fe68c4] text-white rounded-lg font-semibold hover:bg-[#e855b0] disabled:opacity-50 transition-colors">
+                {salvando ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {(dados?.vendas_recentes.length ?? 0) === 0 ? (
+          <div className="text-center py-10">
+            <DollarSign className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+            <p className="text-gray-400 text-sm">Nenhuma venda registrada ainda</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {dados?.vendas_recentes.map(v => (
+              <div key={v.id} className="flex items-center justify-between px-4 py-3">
+                <div>
+                  <p className="text-sm text-gray-800 font-medium">{v.descricao}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {fmtData(v.data_venda)}
+                    {v.categoria && <span className="ml-2 bg-gray-100 px-2 py-0.5 rounded-full">{v.categoria}</span>}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-bold text-green-600">{fmtMoeda(v.valor)}</span>
+                  <button onClick={() => excluirVenda(v.id)}
+                    className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Componente: Relatório de Vendas ───────────────────────────────
+
+function RelatorioVendas({ onVoltar }: { onVoltar: () => void }) {
+  const [dados, setDados]     = useState<RelatorioVendasDados | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/souparceira/modulos')
-      .then(r => setModulos(r.data))
+    api.get('/souparceira/modulos/relatorio-vendas/dados')
+      .then(r => setDados(r.data))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <div className="max-w-6xl mx-auto px-4 py-10 text-center">
-        <div className="w-8 h-8 border-2 border-[#fe68c4] border-t-transparent rounded-full animate-spin mx-auto" />
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="flex justify-center py-16">
+      <div className="w-8 h-8 border-2 border-[#fe68c4] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 
-  const ativos   = modulos.filter(m => m.tem_acesso);
-  const disponiveis = modulos.filter(m => !m.tem_acesso);
+  const maxVol = Math.max(...(dados?.volume_mensal.map(v => Number(v.total)) ?? []), 1);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900">Recursos disponíveis</h2>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Módulos extras para potencializar sua revenda
-        </p>
+    <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
+      <div className="flex items-center gap-3">
+        <button onClick={onVoltar} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
+          <ChevronLeft className="w-5 h-5 text-gray-500" />
+        </button>
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Relatório de Vendas</h2>
+          <p className="text-sm text-gray-500">Análise do desempenho da sua revenda</p>
+        </div>
       </div>
 
-      {ativos.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-            Seus módulos ativos
-          </p>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {ativos.map(m => (
-              <div key={m.id}
-                className="bg-white rounded-xl p-4 border border-[#fe68c4]/30 shadow-sm
-                           flex items-start gap-3">
-                <div className="w-9 h-9 bg-[#ffe5ec] rounded-xl flex items-center justify-center flex-shrink-0">
-                  <CheckCircle2 className="w-5 h-5 text-[#fe68c4]" />
+      {/* Cards resumo */}
+      {dados?.resumo && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: 'Pedidos feitos', valor: dados.resumo.total_pedidos, icon: <Package className="w-4 h-4 text-[#fe68c4]" /> },
+            { label: 'Total investido', valor: fmtMoeda(dados.resumo.total_gasto), icon: <DollarSign className="w-4 h-4 text-[#fe68c4]" /> },
+            { label: 'Ticket médio', valor: fmtMoeda(dados.resumo.ticket_medio), icon: <TrendingUp className="w-4 h-4 text-[#fe68c4]" /> },
+            { label: 'Meses seguidos', valor: dados.resumo.meses_consecutivos, icon: <Calendar className="w-4 h-4 text-[#fe68c4]" /> },
+          ].map(c => (
+            <div key={c.label} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+              <div className="flex items-center gap-2 mb-1">{c.icon}<span className="text-xs text-gray-500">{c.label}</span></div>
+              <p className="text-lg font-bold text-gray-900">{c.valor}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Volume mensal */}
+      {(dados?.volume_mensal.length ?? 0) > 0 && (
+        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Volume mensal (últimos 12 meses)</p>
+          <div className="space-y-3">
+            {dados?.volume_mensal.map(m => (
+              <div key={m.mes} className="flex items-center gap-3">
+                <span className="text-xs text-gray-500 w-12 flex-shrink-0 font-medium">{fmtMes(m.mes)}</span>
+                <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
+                  <div
+                    className="bg-[#fe68c4] h-4 rounded-full transition-all flex items-center justify-end pr-2"
+                    style={{ width: `${Math.max((Number(m.total) / maxVol) * 100, 3)}%` }}
+                  />
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-800">{m.nome}</p>
-                  {m.descricao && <p className="text-xs text-gray-500 mt-0.5">{m.descricao}</p>}
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xs font-bold text-gray-800">{fmtMoeda(m.total)}</p>
+                  <p className="text-[10px] text-gray-400">{m.pedidos} ped.</p>
                 </div>
               </div>
             ))}
@@ -2122,39 +2464,406 @@ function Recursos() {
         </div>
       )}
 
-      <div>
-        {ativos.length > 0 && (
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-            Em breve
+      {/* Top produtos */}
+      {(dados?.top_produtos.length ?? 0) > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3 border-b border-gray-100">
+            Top produtos pedidos (6 meses)
           </p>
-        )}
-        <div className="grid sm:grid-cols-2 gap-3">
-          {disponiveis.map(m => (
-            <div key={m.id}
-              className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm
-                         flex items-start gap-3 opacity-70">
-              <div className="w-9 h-9 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                <Lock className="w-4 h-4 text-gray-400" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-gray-700">{m.nome}</p>
-                  <span className="text-[10px] font-bold px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">
-                    Em breve
-                  </span>
+          <div className="divide-y divide-gray-50">
+            {dados?.top_produtos.map((p, i) => (
+              <div key={p.nome} className="flex items-center gap-3 px-4 py-3">
+                <span className="w-6 h-6 bg-[#ffe5ec] text-[#fe68c4] rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
+                  {i + 1}
+                </span>
+                <p className="flex-1 text-sm text-gray-800 truncate">{p.nome}</p>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xs font-bold text-gray-800">{fmtMoeda(p.total)}</p>
+                  <p className="text-[10px] text-gray-400">{p.qtd} un.</p>
                 </div>
-                {m.descricao && <p className="text-xs text-gray-400 mt-0.5">{m.descricao}</p>}
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
+      )}
+
+      {(dados?.volume_mensal.length ?? 0) === 0 && (
+        <div className="text-center py-16">
+          <BarChart2 className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+          <p className="text-gray-500">Nenhum pedido ainda</p>
+          <p className="text-gray-400 text-sm mt-1">Os dados aparecerão após seu primeiro pedido</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Componente: Modal de Contratação ──────────────────────────────
+
+function ModalContratacao({
+  modulo,
+  onFechar,
+  onSucesso,
+}: {
+  modulo: Modulo;
+  onFechar: () => void;
+  onSucesso: () => void;
+}) {
+  const [passo, setPasso]       = useState<'plano' | 'pagando' | 'aguardando' | 'sucesso' | 'falha'>('plano');
+  const [plano, setPlano]       = useState<'mensal' | 'anual'>('mensal');
+  const [metodo, setMetodo]     = useState<'pix' | 'cartao'>('pix');
+  const [pagamento, setPagamento] = useState<RespostaPagamento | null>(null);
+  const [copiado, setCopiado]   = useState(false);
+  const [segundos, setSegundos] = useState(0);
+  const [processando, setProcessando] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Countdown do PIX
+  useEffect(() => {
+    if (passo !== 'aguardando' || !pagamento || pagamento.tipo !== 'pix') return;
+    const expira = new Date(pagamento.expira_em).getTime();
+    const atualizar = () => {
+      const restam = Math.max(0, Math.floor((expira - Date.now()) / 1000));
+      setSegundos(restam);
+      if (restam === 0) onFechar();
+    };
+    atualizar();
+    const t = setInterval(atualizar, 1000);
+    return () => clearInterval(t);
+  }, [passo, pagamento, onFechar]);
+
+  // Polling do status do pagamento
+  useEffect(() => {
+    if (passo !== 'aguardando' || !pagamento) return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await api.get(`/souparceira/modulos/pagamento/${pagamento.pagamento_id}`);
+        if (r.data.status === 'aprovado') {
+          clearInterval(pollRef.current!);
+          setPasso('sucesso');
+          setTimeout(() => { onSucesso(); onFechar(); }, 2500);
+        } else if (['rejeitado', 'cancelado'].includes(r.data.status)) {
+          clearInterval(pollRef.current!);
+          setPasso('falha');
+        }
+      } catch { /* silencioso */ }
+    }, 4000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [passo, pagamento, onSucesso, onFechar]);
+
+  async function contratar() {
+    setProcessando(true);
+    try {
+      const r = await api.post(`/souparceira/modulos/${modulo.id}/contratar`, { plano, metodo });
+      setPagamento(r.data);
+      if (r.data.tipo === 'cartao') {
+        window.location.href = r.data.checkout_url;
+      } else {
+        setPasso('aguardando');
+      }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      alert(msg || 'Erro ao gerar pagamento. Tente novamente.');
+    } finally {
+      setProcessando(false);
+    }
+  }
+
+  function copiarCodigo() {
+    if (pagamento?.tipo === 'pix' && pagamento.qr_code) {
+      navigator.clipboard.writeText(pagamento.qr_code).then(() => {
+        setCopiado(true);
+        setTimeout(() => setCopiado(false), 2000);
+      });
+    }
+  }
+
+  const mm = Math.floor(segundos / 60).toString().padStart(2, '0');
+  const ss = (segundos % 60).toString().padStart(2, '0');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+
+        {/* Sucesso */}
+        {passo === 'sucesso' && (
+          <div className="p-8 text-center">
+            <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Pagamento confirmado!</h3>
+            <p className="text-gray-500">Módulo <strong>{modulo.nome}</strong> ativado com sucesso.</p>
+          </div>
+        )}
+
+        {/* Falha */}
+        {passo === 'falha' && (
+          <div className="p-8 text-center">
+            <XCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Pagamento não confirmado</h3>
+            <p className="text-gray-500 mb-5">Tente novamente ou escolha outro método.</p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={onFechar} className="px-4 py-2 text-sm border border-gray-200 rounded-xl hover:bg-gray-50">Fechar</button>
+              <button onClick={() => setPasso('plano')} className="px-4 py-2 text-sm bg-[#fe68c4] text-white rounded-xl font-semibold hover:bg-[#e855b0]">Tentar novamente</button>
+            </div>
+          </div>
+        )}
+
+        {/* Aguardando PIX */}
+        {passo === 'aguardando' && pagamento?.tipo === 'pix' && (
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-900">Pagar com PIX</h3>
+              <button onClick={onFechar} className="p-1.5 rounded-full hover:bg-gray-100"><X className="w-5 h-5 text-gray-400" /></button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4 text-center">
+              Escaneie o QR Code ou copie o código. Expira em{' '}
+              <span className="font-bold text-[#fe68c4]">{mm}:{ss}</span>
+            </p>
+            {pagamento.qr_code_base64 && (
+              <div className="flex justify-center mb-4">
+                <img
+                  src={`data:image/png;base64,${pagamento.qr_code_base64}`}
+                  alt="QR Code PIX"
+                  className="w-48 h-48 rounded-xl border border-gray-100"
+                />
+              </div>
+            )}
+            {pagamento.qr_code && (
+              <button
+                onClick={copiarCodigo}
+                className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-[#fe68c4]/40 rounded-xl text-sm text-[#fe68c4] font-semibold hover:bg-[#ffe5ec]/30 transition-colors"
+              >
+                {copiado ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copiado ? 'Código copiado!' : 'Copiar código PIX'}
+              </button>
+            )}
+            <div className="mt-4 flex items-center gap-2 bg-[#ffe5ec]/40 rounded-xl p-3">
+              <RefreshCw className="w-4 h-4 text-[#fe68c4] animate-spin" />
+              <p className="text-xs text-gray-600">Aguardando confirmação do pagamento…</p>
+            </div>
+            <p className="text-center text-lg font-bold text-gray-900 mt-3">{fmtMoeda(pagamento.valor)}</p>
+          </div>
+        )}
+
+        {/* Seleção de plano e método */}
+        {passo === 'plano' && (
+          <div>
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
+              <div>
+                <h3 className="font-bold text-gray-900">Contratar {modulo.nome}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{modulo.descricao}</p>
+              </div>
+              <button onClick={onFechar} className="p-1.5 rounded-full hover:bg-gray-100"><X className="w-5 h-5 text-gray-400" /></button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Seleção de plano */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Plano</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setPlano('mensal')}
+                    className={`p-4 rounded-xl border-2 text-left transition-all ${plano === 'mensal' ? 'border-[#fe68c4] bg-[#ffe5ec]/20' : 'border-gray-200 hover:border-gray-300'}`}
+                  >
+                    <p className="text-sm font-bold text-gray-900">Mensal</p>
+                    <p className="text-xl font-bold text-[#fe68c4] mt-1">{fmtMoeda(PRECO_MENSAL)}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">por mês</p>
+                  </button>
+                  <button
+                    onClick={() => setPlano('anual')}
+                    className={`p-4 rounded-xl border-2 text-left transition-all relative ${plano === 'anual' ? 'border-[#fe68c4] bg-[#ffe5ec]/20' : 'border-gray-200 hover:border-gray-300'}`}
+                  >
+                    <span className="absolute -top-2 right-3 text-[10px] font-bold px-2 py-0.5 bg-green-500 text-white rounded-full">-15%</span>
+                    <p className="text-sm font-bold text-gray-900">Anual</p>
+                    <p className="text-xl font-bold text-[#fe68c4] mt-1">{fmtMoeda(PRECO_ANUAL)}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">pagamento único · 12 meses</p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Método de pagamento */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Forma de pagamento</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setMetodo('pix')}
+                    className={`p-3 rounded-xl border-2 flex items-center gap-2 transition-all ${metodo === 'pix' ? 'border-[#fe68c4] bg-[#ffe5ec]/20' : 'border-gray-200 hover:border-gray-300'}`}
+                  >
+                    <QrCode className={`w-5 h-5 ${metodo === 'pix' ? 'text-[#fe68c4]' : 'text-gray-400'}`} />
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-gray-800">PIX</p>
+                      <p className="text-[10px] text-gray-400">Aprovação imediata</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setMetodo('cartao')}
+                    className={`p-3 rounded-xl border-2 flex items-center gap-2 transition-all ${metodo === 'cartao' ? 'border-[#fe68c4] bg-[#ffe5ec]/20' : 'border-gray-200 hover:border-gray-300'}`}
+                  >
+                    <CreditCard className={`w-5 h-5 ${metodo === 'cartao' ? 'text-[#fe68c4]' : 'text-gray-400'}`} />
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-gray-800">Cartão</p>
+                      <p className="text-[10px] text-gray-400">Crédito / Débito</p>
+                    </div>
+                  </button>
+                </div>
+                {metodo === 'cartao' && (
+                  <div className="flex items-center gap-2 mt-2 bg-blue-50 rounded-lg px-3 py-2">
+                    <ExternalLink className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                    <p className="text-xs text-blue-600">Você será redirecionado para a página segura do Mercado Pago.</p>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={contratar}
+                disabled={processando}
+                className="w-full py-3 bg-[#fe68c4] text-white rounded-xl font-bold text-sm hover:bg-[#e855b0] disabled:opacity-50 transition-colors"
+              >
+                {processando ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Gerando pagamento…
+                  </span>
+                ) : (
+                  `Contratar por ${fmtMoeda(plano === 'anual' ? PRECO_ANUAL : PRECO_MENSAL)}`
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+// ── Seção: Recursos ───────────────────────────────────────────────
+
+function Recursos() {
+  const [modulos, setModulos]         = useState<Modulo[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [subTela, setSubTela]         = useState<'lista' | 'fluxo_caixa' | 'relatorio_vendas'>('lista');
+  const [modalModulo, setModalModulo] = useState<Modulo | null>(null);
+
+  const carregar = useCallback(() => {
+    setLoading(true);
+    api.get('/souparceira/modulos')
+      .then(r => setModulos(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { carregar(); }, [carregar]);
+
+  // Sub-telas de módulos ativos
+  if (subTela === 'fluxo_caixa')     return <FluxoCaixa onVoltar={() => setSubTela('lista')} />;
+  if (subTela === 'relatorio_vendas') return <RelatorioVendas onVoltar={() => setSubTela('lista')} />;
+
+  if (loading) return (
+    <div className="max-w-6xl mx-auto px-4 py-10 text-center">
+      <div className="w-8 h-8 border-2 border-[#fe68c4] border-t-transparent rounded-full animate-spin mx-auto" />
+    </div>
+  );
+
+  const ativos      = modulos.filter(m => m.tem_acesso);
+  const disponiveis = modulos.filter(m => !m.tem_acesso);
+
+  function abrirModulo(id: string) {
+    if (id === 'fluxo_caixa')     setSubTela('fluxo_caixa');
+    if (id === 'relatorio_vendas') setSubTela('relatorio_vendas');
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      {modalModulo && (
+        <ModalContratacao
+          modulo={modalModulo}
+          onFechar={() => setModalModulo(null)}
+          onSucesso={() => { setModalModulo(null); carregar(); }}
+        />
+      )}
+
+      <div>
+        <h2 className="text-xl font-bold text-gray-900">Recursos da Parceira</h2>
+        <p className="text-sm text-gray-500 mt-0.5">Ferramentas para potencializar sua revenda</p>
+      </div>
+
+      {/* Módulos ativos */}
+      {ativos.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Módulos ativos</p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {ativos.map(m => (
+              <div key={m.id}
+                className="bg-white rounded-xl p-4 border border-[#fe68c4]/30 shadow-sm flex items-start gap-3">
+                <div className="w-10 h-10 bg-[#ffe5ec] rounded-xl flex items-center justify-center flex-shrink-0">
+                  {iconeModulo(m.id)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="text-sm font-semibold text-gray-800">{m.nome}</p>
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-green-100 text-green-600 rounded-full">Ativo</span>
+                  </div>
+                  {m.descricao && <p className="text-xs text-gray-500">{m.descricao}</p>}
+                  {m.expira_em && (
+                    <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />
+                      Válido até {new Date(m.expira_em).toLocaleDateString('pt-BR')}
+                      {m.plano && <span className="ml-1 capitalize">· {m.plano}</span>}
+                    </p>
+                  )}
+                  <button
+                    onClick={() => abrirModulo(m.id)}
+                    className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-[#fe68c4] hover:underline"
+                  >
+                    Abrir módulo <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Módulos disponíveis para contratar */}
+      {disponiveis.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            {ativos.length > 0 ? 'Disponíveis para contratar' : 'Módulos disponíveis'}
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {disponiveis.map(m => (
+              <div key={m.id}
+                className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm flex items-start gap-3">
+                <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                  {iconeModulo(m.id)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 mb-0.5">{m.nome}</p>
+                  {m.descricao && <p className="text-xs text-gray-500 mb-2">{m.descricao}</p>}
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <span className="text-sm font-bold text-[#fe68c4]">{fmtMoeda(PRECO_MENSAL)}</span>
+                      <span className="text-xs text-gray-400">/mês</span>
+                      <span className="mx-2 text-gray-200">·</span>
+                      <span className="text-sm font-bold text-gray-700">{fmtMoeda(PRECO_ANUAL)}</span>
+                      <span className="ml-1 text-[10px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">-15% anual</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setModalModulo(m)}
+                    className="mt-2 flex items-center gap-1.5 px-4 py-1.5 bg-[#fe68c4] text-white text-xs font-semibold rounded-lg hover:bg-[#e855b0] transition-colors"
+                  >
+                    Contratar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {modulos.length === 0 && (
         <div className="text-center py-16">
-          <Sparkles className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium">Nenhum módulo disponível ainda</p>
-          <p className="text-gray-400 text-sm mt-1">Em breve novidades por aqui!</p>
+          <AlertCircle className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+          <p className="text-gray-500 font-medium">Nenhum módulo disponível</p>
         </div>
       )}
     </div>
@@ -2174,6 +2883,17 @@ export default function SouParceira() {
   const [novosProdutos, setNovosProdutos] = useState(0);
 
   useEffect(() => {
+    // Detectar retorno do Checkout Pro (cartão) com query params
+    const sp = new URLSearchParams(window.location.search);
+    const pagStatus = sp.get('pag_status');
+    if (pagStatus) {
+      window.history.replaceState({}, '', window.location.pathname);
+      if (pagStatus === 'sucesso') {
+        // Módulo ativado via webhook — vai para recursos após login
+        setTimeout(() => setSecao('recursos'), 500);
+      }
+    }
+
     const token = localStorage.getItem('souparceira_token');
     if (!token) { setTela('login_cpf'); return; }
     api.get('/souparceira/me')
@@ -2181,7 +2901,8 @@ export default function SouParceira() {
         setRev(r.data);
         setNovosProdutos(r.data.novos_produtos ?? 0);
         setTela('logado');
-        setSecao('dashboard');
+        if (pagStatus === 'sucesso') setSecao('recursos');
+        else setSecao('dashboard');
       })
       .catch(() => {
         localStorage.removeItem('souparceira_token');

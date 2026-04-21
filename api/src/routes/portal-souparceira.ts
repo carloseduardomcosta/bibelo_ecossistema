@@ -664,11 +664,16 @@ portalSouParceiraRouter.get(
     const modulos = await query(`
       SELECT
         m.id, m.nome, m.descricao, m.preco_mensal, m.ativo,
-        (rm.revendedora_id IS NOT NULL) AS tem_acesso
+        (rm.revendedora_id IS NOT NULL) AS tem_acesso,
+        rm.expira_em,
+        rm.plano,
+        rm.status AS assinatura_status
       FROM crm.modulos m
       LEFT JOIN crm.revendedora_modulos rm
         ON rm.modulo_id = m.id AND rm.revendedora_id = $1
+        AND rm.status = 'ativo'
         AND (rm.expira_em IS NULL OR rm.expira_em > NOW())
+      WHERE m.ativo = true
       ORDER BY m.id
     `, [id]);
 
@@ -1215,5 +1220,393 @@ portalSouParceiraRouter.post(
 
     logger.info("Mensagem portal enviada", { parceiraId, pedidoId: id });
     res.status(201).json(msg);
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════
+// MÓDULOS — ASSINATURAS E CONTEÚDO
+// ═══════════════════════════════════════════════════════════════
+
+const MP_API    = "https://api.mercadopago.com";
+const MP_TOKEN  = process.env.MP_ACCESS_TOKEN!;
+const MP_SANDBOX = process.env.MP_SANDBOX === "true";
+
+const PRECO_MENSAL = 7.90;
+const PRECO_ANUAL  = parseFloat((PRECO_MENSAL * 12 * 0.85).toFixed(2)); // R$ 80,58
+
+function valorPlano(plano: "mensal" | "anual"): number {
+  return plano === "anual" ? PRECO_ANUAL : PRECO_MENSAL;
+}
+
+async function mpPost<T>(
+  path: string,
+  body: Record<string, unknown>,
+  idempotencyKey?: string
+): Promise<T> {
+  const headers: Record<string, string> = {
+    Authorization:  `Bearer ${MP_TOKEN}`,
+    "Content-Type": "application/json",
+    ...(idempotencyKey ? { "X-Idempotency-Key": idempotencyKey } : {}),
+  };
+  const res = await fetch(`${MP_API}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`MP API ${res.status}: ${err}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function verificarAcessoModulo(revendedoraId: string, moduloId: string): Promise<boolean> {
+  const row = await queryOne(
+    `SELECT 1 FROM crm.revendedora_modulos
+     WHERE revendedora_id = $1 AND modulo_id = $2 AND status = 'ativo'
+     AND (expira_em IS NULL OR expira_em > NOW())`,
+    [revendedoraId, moduloId]
+  );
+  return !!row;
+}
+
+// ── POST /modulos/:id/contratar ──────────────────────────────────
+
+const schemaContratar = z.object({
+  plano:  z.enum(["mensal", "anual"]),
+  metodo: z.enum(["pix", "cartao"]),
+});
+
+portalSouParceiraRouter.post(
+  "/modulos/:id/contratar",
+  limiterEscrita,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const parceiraId = (req as Request & { parceiraId?: string }).parceiraId!;
+    const moduloId   = req.params.id;
+
+    const parsed = schemaContratar.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const { plano, metodo } = parsed.data;
+
+    const modulo = await queryOne<{ id: string; nome: string }>(
+      `SELECT id, nome FROM crm.modulos WHERE id = $1 AND ativo = true`,
+      [moduloId]
+    );
+    if (!modulo) return res.status(404).json({ error: "Módulo não encontrado" });
+
+    const jaAtivo = await verificarAcessoModulo(parceiraId, moduloId);
+    if (jaAtivo) return res.status(409).json({ error: "Módulo já está ativo" });
+
+    const rev = await queryOne<{ nome: string; email: string }>(
+      `SELECT r.nome, c.email
+       FROM crm.revendedoras r JOIN crm.customers c ON c.id = r.customer_id
+       WHERE r.id = $1`,
+      [parceiraId]
+    );
+    if (!rev) return res.status(404).json({ error: "Revendedora não encontrada" });
+
+    const valor      = valorPlano(plano);
+    const diasAcesso = plano === "anual" ? 365 : 30;
+    const inicio     = new Date();
+    const fim        = new Date(inicio.getTime() + diasAcesso * 24 * 60 * 60 * 1000);
+
+    // Cria registro pendente para obter o ID antes de chamar o MP
+    const pagRow = await queryOne<{ id: string }>(
+      `INSERT INTO crm.modulo_pagamentos
+         (revendedora_id, modulo_id, plano, valor, metodo_pagamento, status, periodo_inicio, periodo_fim)
+       VALUES ($1, $2, $3, $4, $5, 'pendente', $6, $7)
+       RETURNING id`,
+      [parceiraId, moduloId, plano, valor, metodo,
+       inicio.toISOString().split("T")[0], fim.toISOString().split("T")[0]]
+    );
+    if (!pagRow) throw new Error("Falha ao criar registro de pagamento");
+
+    const extRef = `modulo:${parceiraId}:${moduloId}:${pagRow.id}`;
+    await query(
+      `UPDATE crm.modulo_pagamentos SET external_reference = $1 WHERE id = $2`,
+      [extRef, pagRow.id]
+    );
+
+    const labelModulo = `Módulo ${modulo.nome} — Plano ${plano === "anual" ? "Anual" : "Mensal"}`;
+
+    try {
+      if (metodo === "pix") {
+        // PIX via Orders API (mesmo padrão do Medusa)
+        const order = await mpPost<{
+          id: string;
+          transactions?: { payments?: Array<{ point_of_interaction?: { transaction_data?: { qr_code?: string; qr_code_base64?: string; ticket_url?: string } } }> };
+        }>("/v1/orders", {
+          type:             "online",
+          processing_mode:  "automatic",
+          total_amount:     valor.toFixed(2),
+          external_reference: extRef,
+          payer:            { email: rev.email },
+          transactions: {
+            payments: [{
+              amount:         valor.toFixed(2),
+              payment_method: { id: "pix", type: "bank_transfer" },
+            }],
+          },
+        }, `PIX-MOD-${pagRow.id}`);
+
+        const pixData  = order.transactions?.payments?.[0]?.point_of_interaction?.transaction_data;
+        const pixExpira = new Date(Date.now() + 30 * 60 * 1000); // 30 min
+
+        await query(
+          `UPDATE crm.modulo_pagamentos
+           SET mp_order_id = $1, qr_code = $2, qr_code_base64 = $3, ticket_url = $4, expira_pix_em = $5
+           WHERE id = $6`,
+          [order.id, pixData?.qr_code ?? null, pixData?.qr_code_base64 ?? null,
+           pixData?.ticket_url ?? null, pixExpira, pagRow.id]
+        );
+
+        logger.info("PIX módulo criado", { parceiraId, moduloId, plano, orderId: order.id });
+
+        return res.json({
+          tipo:            "pix",
+          pagamento_id:    pagRow.id,
+          qr_code:         pixData?.qr_code ?? null,
+          qr_code_base64:  pixData?.qr_code_base64 ?? null,
+          ticket_url:      pixData?.ticket_url ?? null,
+          expira_em:       pixExpira,
+          valor,
+          descricao:       labelModulo,
+        });
+
+      } else {
+        // Cartão via Checkout Pro (MP gerencia o formulário)
+        const portalUrl = "https://souparceira.papelariabibelo.com.br";
+        const pref = await mpPost<{ id: string; init_point: string; sandbox_init_point: string }>(
+          "/checkout/preferences",
+          {
+            items: [{
+              id:         moduloId,
+              title:      labelModulo,
+              quantity:   1,
+              unit_price: valor,
+              currency_id: "BRL",
+            }],
+            payer:              { email: rev.email, name: rev.nome },
+            external_reference: extRef,
+            back_urls: {
+              success: `${portalUrl}?pag_status=sucesso&pag_id=${pagRow.id}`,
+              failure: `${portalUrl}?pag_status=falha&pag_id=${pagRow.id}`,
+              pending: `${portalUrl}?pag_status=pendente&pag_id=${pagRow.id}`,
+            },
+            auto_return:         "approved",
+            statement_descriptor: "BIBELO PARCEIRA",
+          }
+        );
+
+        await query(
+          `UPDATE crm.modulo_pagamentos SET mp_order_id = $1 WHERE id = $2`,
+          [pref.id, pagRow.id]
+        );
+
+        logger.info("Checkout Pro módulo criado", { parceiraId, moduloId, plano, prefId: pref.id });
+
+        return res.json({
+          tipo:         "cartao",
+          pagamento_id: pagRow.id,
+          checkout_url: MP_SANDBOX ? pref.sandbox_init_point : pref.init_point,
+          valor,
+          descricao:    labelModulo,
+        });
+      }
+    } catch (err) {
+      await query(
+        `UPDATE crm.modulo_pagamentos SET status = 'cancelado' WHERE id = $1`,
+        [pagRow.id]
+      );
+      logger.error("Erro ao criar pagamento MP módulo", {
+        error: (err as Error).message, parceiraId, moduloId,
+      });
+      return res.status(500).json({ error: "Falha ao gerar pagamento. Tente novamente." });
+    }
+  }
+);
+
+// ── GET /modulos/pagamento/:pagId — polling de status ───────────
+
+portalSouParceiraRouter.get(
+  "/modulos/pagamento/:pagId",
+  limiterCatalogo,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const parceiraId = (req as Request & { parceiraId?: string }).parceiraId!;
+    const { pagId }  = req.params;
+
+    const pag = await queryOne<{
+      id: string; status: string; qr_code: string | null;
+      expira_pix_em: string | null; modulo_id: string; plano: string;
+    }>(
+      `SELECT id, status, qr_code, expira_pix_em, modulo_id, plano
+       FROM crm.modulo_pagamentos WHERE id = $1 AND revendedora_id = $2`,
+      [pagId, parceiraId]
+    );
+    if (!pag) return res.status(404).json({ error: "Pagamento não encontrado" });
+
+    res.json(pag);
+  }
+);
+
+// ── GET /modulos/fluxo-caixa/dados ──────────────────────────────
+
+portalSouParceiraRouter.get(
+  "/modulos/fluxo-caixa/dados",
+  limiterCatalogo,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const parceiraId = (req as Request & { parceiraId?: string }).parceiraId!;
+    if (!(await verificarAcessoModulo(parceiraId, "fluxo_caixa")))
+      return res.status(403).json({ error: "Módulo não contratado" });
+
+    const saidas = await query<{ mes: string; valor: string; pedidos: string }>(
+      `SELECT
+         TO_CHAR(DATE_TRUNC('month', criado_em), 'YYYY-MM') AS mes,
+         COALESCE(SUM(total), 0)::TEXT AS valor,
+         COUNT(*)::TEXT AS pedidos
+       FROM crm.revendedora_pedidos
+       WHERE revendedora_id = $1 AND status NOT IN ('cancelado')
+         AND criado_em >= NOW() - INTERVAL '12 months'
+       GROUP BY 1 ORDER BY 1`,
+      [parceiraId]
+    );
+
+    const entradas = await query<{ mes: string; valor: string; qtd: string }>(
+      `SELECT
+         TO_CHAR(DATE_TRUNC('month', data_venda), 'YYYY-MM') AS mes,
+         COALESCE(SUM(valor), 0)::TEXT AS valor,
+         COUNT(*)::TEXT AS qtd
+       FROM crm.revendedora_vendas
+       WHERE revendedora_id = $1
+         AND data_venda >= CURRENT_DATE - INTERVAL '12 months'
+       GROUP BY 1 ORDER BY 1`,
+      [parceiraId]
+    );
+
+    const vendasRecentes = await query(
+      `SELECT id, descricao, valor, data_venda, categoria
+       FROM crm.revendedora_vendas
+       WHERE revendedora_id = $1
+       ORDER BY data_venda DESC, criado_em DESC
+       LIMIT 50`,
+      [parceiraId]
+    );
+
+    res.json({ saidas, entradas, vendas_recentes: vendasRecentes });
+  }
+);
+
+// ── POST /modulos/fluxo-caixa/venda ─────────────────────────────
+
+const schemaVenda = z.object({
+  descricao:  z.string().min(1).max(300),
+  valor:      z.number().positive(),
+  data_venda: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Formato AAAA-MM-DD"),
+  categoria:  z.string().max(100).optional(),
+});
+
+portalSouParceiraRouter.post(
+  "/modulos/fluxo-caixa/venda",
+  limiterEscrita,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const parceiraId = (req as Request & { parceiraId?: string }).parceiraId!;
+    if (!(await verificarAcessoModulo(parceiraId, "fluxo_caixa")))
+      return res.status(403).json({ error: "Módulo não contratado" });
+
+    const parsed = schemaVenda.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const { descricao, valor, data_venda, categoria } = parsed.data;
+
+    const venda = await queryOne(
+      `INSERT INTO crm.revendedora_vendas (revendedora_id, descricao, valor, data_venda, categoria)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [parceiraId, descricao, valor, data_venda, categoria ?? null]
+    );
+    res.status(201).json(venda);
+  }
+);
+
+// ── DELETE /modulos/fluxo-caixa/venda/:id ───────────────────────
+
+portalSouParceiraRouter.delete(
+  "/modulos/fluxo-caixa/venda/:id",
+  limiterEscrita,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const parceiraId = (req as Request & { parceiraId?: string }).parceiraId!;
+    if (!(await verificarAcessoModulo(parceiraId, "fluxo_caixa")))
+      return res.status(403).json({ error: "Módulo não contratado" });
+
+    const deleted = await queryOne(
+      `DELETE FROM crm.revendedora_vendas WHERE id = $1 AND revendedora_id = $2 RETURNING id`,
+      [req.params.id, parceiraId]
+    );
+    if (!deleted) return res.status(404).json({ error: "Venda não encontrada" });
+    res.json({ ok: true });
+  }
+);
+
+// ── GET /modulos/relatorio-vendas/dados ─────────────────────────
+
+portalSouParceiraRouter.get(
+  "/modulos/relatorio-vendas/dados",
+  limiterCatalogo,
+  (req: Request, res: Response, next: () => void) => authParceira(req, res, next),
+  async (req: Request, res: Response) => {
+    const parceiraId = (req as Request & { parceiraId?: string }).parceiraId!;
+    if (!(await verificarAcessoModulo(parceiraId, "relatorio_vendas")))
+      return res.status(403).json({ error: "Módulo não contratado" });
+
+    const volumeMensal = await query<{ mes: string; total: string; pedidos: string; desconto: string }>(
+      `SELECT
+         TO_CHAR(DATE_TRUNC('month', criado_em), 'YYYY-MM') AS mes,
+         COALESCE(SUM(total), 0)::TEXT AS total,
+         COUNT(*)::TEXT AS pedidos,
+         ROUND(COALESCE(AVG(desconto_percentual), 0), 1)::TEXT AS desconto
+       FROM crm.revendedora_pedidos
+       WHERE revendedora_id = $1 AND status NOT IN ('cancelado')
+         AND criado_em >= NOW() - INTERVAL '12 months'
+       GROUP BY 1 ORDER BY 1`,
+      [parceiraId]
+    );
+
+    const topProdutos = await query<{ nome: string; qtd: string; total: string }>(
+      `SELECT
+         item->>'produto_nome' AS nome,
+         SUM((item->>'qtd')::numeric)::TEXT AS qtd,
+         ROUND(SUM((item->>'preco_com_desconto')::numeric * (item->>'qtd')::numeric), 2)::TEXT AS total
+       FROM crm.revendedora_pedidos p,
+            jsonb_array_elements(p.itens) AS item
+       WHERE p.revendedora_id = $1 AND p.status NOT IN ('cancelado')
+         AND p.criado_em >= NOW() - INTERVAL '6 months'
+       GROUP BY 1
+       ORDER BY 2::numeric DESC
+       LIMIT 10`,
+      [parceiraId]
+    );
+
+    const resumo = await queryOne<{
+      total_pedidos: string; total_gasto: string; ticket_medio: string;
+      meses_consecutivos: string; nivel: string;
+    }>(
+      `SELECT
+         COUNT(p.id)::TEXT AS total_pedidos,
+         COALESCE(SUM(p.total), 0)::TEXT AS total_gasto,
+         ROUND(COALESCE(AVG(p.total), 0), 2)::TEXT AS ticket_medio,
+         r.meses_consecutivos::TEXT,
+         r.nivel
+       FROM crm.revendedoras r
+       LEFT JOIN crm.revendedora_pedidos p
+         ON p.revendedora_id = r.id AND p.status NOT IN ('cancelado')
+       WHERE r.id = $1
+       GROUP BY r.meses_consecutivos, r.nivel`,
+      [parceiraId]
+    );
+
+    res.json({ volume_mensal: volumeMensal, top_produtos: topProdutos, resumo });
   }
 );
