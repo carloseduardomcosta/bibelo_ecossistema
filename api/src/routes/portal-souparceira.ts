@@ -1354,14 +1354,14 @@ portalSouParceiraRouter.post(
             },
             auto_return:         "approved",
             statement_descriptor: "BIBELO PARCEIRA",
-            // PIX: restringe métodos de pagamento
+            // PIX: exclui cartão e boleto, deixa só PIX
             ...(metodo === "pix" ? {
               payment_methods: {
                 excluded_payment_types: [
-                  { id: "credit_card" }, { id: "debit_card" },
-                  { id: "ticket" }, { id: "atm" },
+                  { id: "credit_card" },
+                  { id: "debit_card" },
+                  { id: "ticket" },
                 ],
-                default_payment_method_id: "pix",
               },
             } : {}),
           }
