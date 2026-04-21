@@ -1299,8 +1299,8 @@ portalSouParceiraRouter.post(
     if (jaAtivo) return res.status(409).json({ error: "Módulo já está ativo" });
 
     const rev = await queryOne<{ nome: string; email: string }>(
-      `SELECT r.nome, c.email
-       FROM crm.revendedoras r JOIN crm.customers c ON c.id = r.customer_id
+      `SELECT r.nome, COALESCE(c.email, r.email) AS email
+       FROM crm.revendedoras r LEFT JOIN crm.customers c ON c.id = r.customer_id
        WHERE r.id = $1`,
       [parceiraId]
     );
