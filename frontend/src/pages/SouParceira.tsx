@@ -2556,7 +2556,7 @@ function ModalContratacao({
     try {
       const r = await api.post(`/souparceira/modulos/${modulo.id}/contratar`, { plano, metodo });
       setPagamento(r.data);
-      if (r.data.tipo === 'cartao') {
+      if (r.data.tipo === 'cartao' || r.data.tipo === 'pix_redirect') {
         window.location.href = r.data.checkout_url;
       } else {
         setPasso('aguardando');

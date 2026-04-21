@@ -1332,46 +1332,8 @@ portalSouParceiraRouter.post(
     const labelModulo = `Módulo ${modulo.nome} — Plano ${plano === "anual" ? "Anual" : "Mensal"}`;
 
     try {
-      if (metodo === "pix") {
-        // PIX via Payments API padrão (produção)
-        const expiraPix = new Date(Date.now() + 30 * 60 * 1000);
-        const payment = await mpPost<{
-          id: number;
-          point_of_interaction?: { transaction_data?: { qr_code?: string; qr_code_base64?: string; ticket_url?: string } };
-        }>("/v1/payments", {
-          transaction_amount: Number(valor.toFixed(2)),
-          description:        labelModulo,
-          payment_method_id:  "pix",
-          external_reference: extRef,
-          payer:              { email: rev.email },
-          date_of_expiration: expiraPix.toISOString(),
-        }, `PIX-MOD-${pagRow.id}`);
-
-        const pixData = payment.point_of_interaction?.transaction_data;
-
-        await query(
-          `UPDATE crm.modulo_pagamentos
-           SET mp_payment_id = $1, qr_code = $2, qr_code_base64 = $3, ticket_url = $4, expira_pix_em = $5
-           WHERE id = $6`,
-          [String(payment.id), pixData?.qr_code ?? null, pixData?.qr_code_base64 ?? null,
-           pixData?.ticket_url ?? null, expiraPix, pagRow.id]
-        );
-
-        logger.info("PIX módulo criado", { parceiraId, moduloId, plano, paymentId: payment.id });
-
-        return res.json({
-          tipo:            "pix",
-          pagamento_id:    pagRow.id,
-          qr_code:         pixData?.qr_code ?? null,
-          qr_code_base64:  pixData?.qr_code_base64 ?? null,
-          ticket_url:      pixData?.ticket_url ?? null,
-          expira_em:       expiraPix,
-          valor,
-          descricao:       labelModulo,
-        });
-
-      } else {
-        // Cartão via Checkout Pro (MP gerencia o formulário)
+      // PIX e Cartão ambos via Checkout Pro (conta MP não tem /v1/payments habilitado)
+      {
         const portalUrl = "https://souparceira.papelariabibelo.com.br";
         const pref = await mpPost<{ id: string; init_point: string; sandbox_init_point: string }>(
           "/checkout/preferences",
@@ -1392,6 +1354,16 @@ portalSouParceiraRouter.post(
             },
             auto_return:         "approved",
             statement_descriptor: "BIBELO PARCEIRA",
+            // PIX: restringe métodos de pagamento
+            ...(metodo === "pix" ? {
+              payment_methods: {
+                excluded_payment_types: [
+                  { id: "credit_card" }, { id: "debit_card" },
+                  { id: "ticket" }, { id: "atm" },
+                ],
+                default_payment_method_id: "pix",
+              },
+            } : {}),
           }
         );
 
@@ -1400,10 +1372,10 @@ portalSouParceiraRouter.post(
           [pref.id, pagRow.id]
         );
 
-        logger.info("Checkout Pro módulo criado", { parceiraId, moduloId, plano, prefId: pref.id });
+        logger.info("Checkout Pro módulo criado", { metodo, parceiraId, moduloId, plano, prefId: pref.id });
 
         return res.json({
-          tipo:         "cartao",
+          tipo:         metodo === "pix" ? "pix_redirect" : "cartao",
           pagamento_id: pagRow.id,
           checkout_url: MP_SANDBOX ? pref.sandbox_init_point : pref.init_point,
           valor,
