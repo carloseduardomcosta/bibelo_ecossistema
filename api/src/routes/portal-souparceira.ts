@@ -1322,7 +1322,8 @@ portalSouParceiraRouter.post(
     );
     if (!pagRow) throw new Error("Falha ao criar registro de pagamento");
 
-    const extRef = `modulo:${parceiraId}:${moduloId}:${pagRow.id}`;
+    // MP Orders API: external_reference <= 64 chars, alfanumérico
+    const extRef = `m${pagRow.id.replace(/-/g, "")}`; // 33 chars
     await query(
       `UPDATE crm.modulo_pagamentos SET external_reference = $1 WHERE id = $2`,
       [extRef, pagRow.id]

@@ -179,9 +179,7 @@ mpModulosWebhookRouter.post("/", async (req: Request, res: Response) => {
     }
 
     const extRef = payment.external_reference;
-    if (!extRef?.startsWith("modulo:")) {
-      return res.status(200).json({ ok: true }); // pagamento de outro fluxo
-    }
+    if (!extRef) return res.status(200).json({ ok: true });
 
     const pagRow = await queryOne<{
       id: string;
