@@ -1502,7 +1502,7 @@ portalSouParceiraRouter.get(
 // ── POST /modulos/fluxo-caixa/venda ─────────────────────────────
 
 const schemaVenda = z.object({
-  descricao:  z.string().min(1).max(300),
+  descricao:  z.string().min(1).max(300).transform(s => s.replace(/<[^>]*>/g, "").trim()),
   valor:      z.number().positive(),
   data_venda: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Formato AAAA-MM-DD"),
   categoria:  z.string().max(100).optional(),
