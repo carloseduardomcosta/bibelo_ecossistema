@@ -1333,36 +1333,31 @@ portalSouParceiraRouter.post(
 
     try {
       if (metodo === "pix") {
-        // PIX via Orders API (mesmo padrão do Medusa)
-        const order = await mpPost<{
-          id: string;
-          transactions?: { payments?: Array<{ point_of_interaction?: { transaction_data?: { qr_code?: string; qr_code_base64?: string; ticket_url?: string } } }> };
-        }>("/v1/orders", {
-          type:             "online",
-          processing_mode:  "automatic",
-          total_amount:     valor.toFixed(2),
+        // PIX via Payments API padrão (produção)
+        const expiraPix = new Date(Date.now() + 30 * 60 * 1000);
+        const payment = await mpPost<{
+          id: number;
+          point_of_interaction?: { transaction_data?: { qr_code?: string; qr_code_base64?: string; ticket_url?: string } };
+        }>("/v1/payments", {
+          transaction_amount: Number(valor.toFixed(2)),
+          description:        labelModulo,
+          payment_method_id:  "pix",
           external_reference: extRef,
-          payer:            { email: rev.email },
-          transactions: {
-            payments: [{
-              amount:         valor.toFixed(2),
-              payment_method: { id: "pix", type: "bank_transfer" },
-            }],
-          },
+          payer:              { email: rev.email },
+          date_of_expiration: expiraPix.toISOString(),
         }, `PIX-MOD-${pagRow.id}`);
 
-        const pixData  = order.transactions?.payments?.[0]?.point_of_interaction?.transaction_data;
-        const pixExpira = new Date(Date.now() + 30 * 60 * 1000); // 30 min
+        const pixData = payment.point_of_interaction?.transaction_data;
 
         await query(
           `UPDATE crm.modulo_pagamentos
-           SET mp_order_id = $1, qr_code = $2, qr_code_base64 = $3, ticket_url = $4, expira_pix_em = $5
+           SET mp_payment_id = $1, qr_code = $2, qr_code_base64 = $3, ticket_url = $4, expira_pix_em = $5
            WHERE id = $6`,
-          [order.id, pixData?.qr_code ?? null, pixData?.qr_code_base64 ?? null,
-           pixData?.ticket_url ?? null, pixExpira, pagRow.id]
+          [String(payment.id), pixData?.qr_code ?? null, pixData?.qr_code_base64 ?? null,
+           pixData?.ticket_url ?? null, expiraPix, pagRow.id]
         );
 
-        logger.info("PIX módulo criado", { parceiraId, moduloId, plano, orderId: order.id });
+        logger.info("PIX módulo criado", { parceiraId, moduloId, plano, paymentId: payment.id });
 
         return res.json({
           tipo:            "pix",
@@ -1370,7 +1365,7 @@ portalSouParceiraRouter.post(
           qr_code:         pixData?.qr_code ?? null,
           qr_code_base64:  pixData?.qr_code_base64 ?? null,
           ticket_url:      pixData?.ticket_url ?? null,
-          expira_em:       pixExpira,
+          expira_em:       expiraPix,
           valor,
           descricao:       labelModulo,
         });
