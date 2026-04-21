@@ -1761,3 +1761,54 @@ Sync automático BullMQ ativo: `meta-audiences-sync` às 03:00 BRT diariamente.
 - Pedido `1934376861` (28/03): `notificado=true` mas sem execução real — dado inconsistente do período antes do fix
 - Corrigido direto no banco: `UPDATE marketing.pedidos_pendentes SET notificado = false WHERE notificado = true AND customer_id IS NULL`
 - **1 linha afetada**
+
+## Sessão 21/04/2026 — Assinaturas de Módulos Sou Parceira + Testes + Correções
+
+### feat(souparceira): assinaturas de módulos com Mercado Pago — `17a7f2a`
+
+**Módulos disponíveis:** Fluxo de Caixa e Relatório de Vendas — R$7,90/mês ou R$80,58/ano (15% off)
+
+**Migration 052 (`db/migrations/052_modulo_assinaturas.sql`):**
+- Ativa `fluxo_caixa` e `relatorio_vendas` em `crm.modulos` com `preco_mensal = 7.90`
+- `ALTER TABLE crm.revendedora_modulos` — adiciona `status`, `ultimo_pagamento_em`, `proximo_vencimento_em`
+- `CREATE TABLE crm.modulo_pagamentos` — registro de cada transação MP (PIX + Checkout Pro)
+- `CREATE TABLE crm.revendedora_vendas` — vendas próprias da parceira no Fluxo de Caixa
+
+**Novos endpoints em `api/src/routes/portal-souparceira.ts`:**
+- `GET  /modulos` — lista módulos com status de assinatura ativa (`expira_em`, `plano`)
+- `POST /modulos/:id/contratar` — PIX via MP Orders API (QR code inline 30min) ou Cartão via Checkout Pro (redirect URL)
+- `GET  /modulos/pagamento/:pagId` — polling status do PIX (IDOR: só vê pagamento próprio)
+- `GET  /modulos/fluxo-caixa/dados` — entradas + saídas + saldo (requer assinatura ativa)
+- `POST /modulos/fluxo-caixa/venda` — registra venda própria (Zod + HTML strip no `descricao`)
+- `DELETE /modulos/fluxo-caixa/venda/:id` — exclui venda própria (IDOR protegido no banco)
+- `GET  /modulos/relatorio-vendas/dados` — volume mensal, top produtos, nível atual
+
+**Novo webhook `api/src/integrations/mp-modulos/webhook.ts`:**
+- `POST /api/webhooks/mp-modulos` — registrado em `api/src/server.ts`
+- Validação HMAC: `x-signature: ts=...,v1=...` → manifest `id:{dataId};request-id:{reqId};ts:{ts};` → `timingSafeEqual`
+- Ao `payment.status === "approved"`: upsert `revendedora_modulos` com extensão inteligente (se ainda vigente → estende; se expirado → reinicia via `make_interval(days => $5)`)
+- Envia email HTML de confirmação para a parceira
+- Sempre retorna HTTP 200 (MP não retenta)
+
+**Frontend `frontend/src/pages/SouParceira.tsx`:**
+- `ModalContratacao`: seleção plano (Mensal/Anual com badge -15%), método (PIX/Cartão), exibição QR code com countdown MM:SS, polling 4s, cópia do código
+- Componente `FluxoCaixa`: cards resumo, gráfico barras mensal, formulário de registro, exclusão de vendas
+- Componente `RelatorioVendas`: 4 KPIs, gráfico volume mensal, tabela top produtos
+- Detecção de `?pag_status=sucesso&pag_id=XXX` (retorno Checkout Pro cartão)
+
+### test(souparceira): 50 testes de segurança e integração — `f032624`
+
+**`api/src/routes/portal-modulos.test.ts`** — 50 testes cobrindo:
+- Auth 401 em todos os 7 endpoints novos (sem token, token CRM com iss errado)
+- IDOR: `GET /pagamento/:id` e `DELETE /venda/:id` retornam 404 para dono errado
+- Controle de acesso: 403 sem assinatura ativa em dados de módulos e registro de venda
+- Multi-tenant: REV_B nunca acessa dados de REV_A
+- Zod: descrição vazia, valor negativo/zero, data inválida → 400
+- XSS: `<script>` no `descricao` é stripped antes de persistir (fix aplicado)
+- SQL injection: payload `DROP TABLE` → tabela sobrevive
+- Webhook HMAC: sem header → 401, hash errado → 401, timestamp adulterado → 401
+- Integridade do banco: colunas, constraint UNIQUE em `external_reference`, preços dos módulos
+
+**Fix XSS `descricao` em `schemaVenda`:** `.transform(s => s.replace(/<[^>]*>/g, "").trim())` no Zod — tags HTML removidas antes do banco.
+
+**Fix pdf-lib no ambiente de testes:** `npm install pdf-lib` no `api/node_modules` do host — restaurou 801 testes passando (de 96 após regressão causada pelo commit da impressão em 18/04).

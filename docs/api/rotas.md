@@ -266,6 +266,15 @@ Painel de mapeamento de categorias Bling → Medusa. Rota base: `/api/categorias
 - `GET  /api/souparceira/pedidos/:id/mensagens` — thread de mensagens; marca mensagens do admin como lidas
 - `POST /api/souparceira/pedidos/:id/mensagens` — revendedora envia mensagem; envia email para admin + cria notificação sininho
 
+#### Módulos Sou Parceira — Assinaturas (auth `iss:"souparceira"`)
+- `GET  /api/souparceira/modulos` — lista todos os módulos com status de assinatura (`ativo`, `expira_em`, `plano`)
+- `POST /api/souparceira/modulos/:id/contratar` — inicia pagamento. Body: `{ plano: 'mensal'|'anual', metodo: 'pix'|'cartao' }`. PIX → QR code + código copia-e-cola (30min). Cartão → URL Checkout Pro MP para redirect.
+- `GET  /api/souparceira/modulos/pagamento/:pagId` — polling do status do pagamento (uso com PIX). IDOR: só vê pagamento próprio.
+- `GET  /api/souparceira/modulos/fluxo-caixa/dados` — **requer assinatura ativa** `fluxo_caixa`. Retorna `entradas` (vendas registradas pela parceira), `saidas` (pedidos Bibelô), `saldo`.
+- `POST /api/souparceira/modulos/fluxo-caixa/venda` — registra venda própria da parceira. Body: `{ descricao, valor, data_venda, categoria? }`. HTML stripped do `descricao`.
+- `DELETE /api/souparceira/modulos/fluxo-caixa/venda/:id` — exclui venda. IDOR: só exclui venda própria.
+- `GET  /api/souparceira/modulos/relatorio-vendas/dados` — **requer assinatura ativa** `relatorio_vendas`. Retorna volume mensal (12m), top produtos, nível atual e meta para próximo nível.
+
 ### Notificações CRM — Sininho (protegidas)
 - `GET  /api/notificacoes` — lista notificações com `total_nao_lidas`. Retorna `{ data[], total_nao_lidas }`.
 - `PUT  /api/notificacoes/lida-tudo` — marca todas como lidas
@@ -287,6 +296,7 @@ Painel de mapeamento de categorias Bling → Medusa. Rota base: `/api/categorias
 ### Webhooks (validação HMAC)
 - `POST /api/webhooks/nuvemshop` — recebe eventos da NuvemShop + dispara fluxos automáticos
 - `POST /api/webhooks/bling` — recebe eventos do Bling: `contato.*` (upsert customer), `order.*` (salva pedido, busca detalhe para itens), `stock.*` (atualiza saldo), `product.*` (busca `GET /produtos/{id}` para imagens HD + propaga para Medusa)
+- `POST /api/webhooks/mp-modulos` — webhook Mercado Pago para assinaturas de módulos. HMAC: `x-signature` com `ts` + `v1`. Ao aprovar pagamento: ativa/estende módulo em `crm.revendedora_modulos` + envia email confirmação. Retorna sempre 200 (MP não retenta).
 
 ---
 

@@ -237,4 +237,4 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 18 de Abril de 2026 — Módulo Impressão Etiquetas (DANFE+etiqueta em A4 paisagem, pdf-lib, preview dinâmico com dimensões ajustáveis), Servidor de Impressão CUPS via WireGuard (container /opt/printserver/, Epson L4260 driverless IPP)*
+*Última atualização: 21 de Abril de 2026 — Assinaturas de Módulos Sou Parceira (Fluxo de Caixa + Relatório de Vendas, R$7,90/mês ou R$80,58/ano, PIX via MP Orders API + Cartão via Checkout Pro, webhook HMAC, multi-tenant, 50 testes de segurança, 801 testes totais)*
