@@ -1009,6 +1009,8 @@ export async function syncContasPagar(since?: string): Promise<number> {
     const contatoCache = new Map<string, { nome: string; doc: string }>();
     // Incremental: só contas em aberto (pagas não mudam). Full: todas
     const sinceParam = since ? `&situacao=1` : "";
+    // Coleta IDs vistos no Bling para reconciliação posterior (modo incremental)
+    const seenBlingIds = new Set<string>();
 
     while (true) {
       const data = await rateLimitedGet<{ data: Array<Record<string, unknown>> }>(
@@ -1121,9 +1123,38 @@ export async function syncContasPagar(since?: string): Promise<number> {
             JSON.stringify({ ...conta, detalhe }),
           ]
         );
+        seenBlingIds.add(String(conta.id));
         total++;
       }
       page++;
+    }
+
+    // Reconciliação: contas que estão como situacao=1 no banco mas não vieram do Bling
+    // (foram pagas/canceladas diretamente no Bling sem passar pelo CRM)
+    if (since) {
+      const localPendentes = await query<{ bling_id: string }>(
+        "SELECT bling_id FROM sync.bling_contas_pagar WHERE situacao = 1",
+        []
+      );
+      const orphans = localPendentes.filter(r => !seenBlingIds.has(r.bling_id));
+      for (const { bling_id } of orphans) {
+        try {
+          const det = await rateLimitedGet<{ data: Record<string, unknown> }>(
+            `${BLING_API}/contas/pagar/${bling_id}`,
+            token
+          );
+          const situacaoAtual = (det.data?.situacao as number) || 1;
+          if (situacaoAtual !== 1) {
+            await query(
+              "UPDATE sync.bling_contas_pagar SET situacao=$2, sincronizado_em=NOW() WHERE bling_id=$1",
+              [bling_id, situacaoAtual]
+            );
+            logger.info("Conta a pagar reconciliada", { bling_id, situacao: situacaoAtual });
+          }
+        } catch {
+          // ignora erro individual — não impede o sync
+        }
+      }
     }
 
     await logSync("bling", "contas_pagar", "ok", total);

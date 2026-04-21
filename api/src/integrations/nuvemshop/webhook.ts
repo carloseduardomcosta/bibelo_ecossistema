@@ -185,7 +185,9 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
     await calculateScore(customerId);
 
     // Pedido entregue → marcar como convertido (para não disparar abandono) + fluxo de avaliação
-    if (event === "order/fulfilled" || shippingStatus === "delivered") {
+    // Só dispara quando NuvemShop confirma entrega real (shipping_status=delivered via order/updated)
+    // order/fulfilled = etiqueta criada pelo lojista, não entrega — não usar aqui
+    if (shippingStatus === "delivered") {
       await markOrderConverted(resourceId);
       await triggerFlow("order.delivered", customerId, {
         ns_order_id: resourceId,

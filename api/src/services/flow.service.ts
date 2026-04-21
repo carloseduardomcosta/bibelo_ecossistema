@@ -7,6 +7,7 @@ import { gerarLinkDescadastro, proxyImageUrl, warmProxyImage } from "../routes/e
 import crypto from "crypto";
 import { escHtml } from "../utils/sanitize";
 import { type Regiao, detectarRegiao, bannerFretep, textoFreteInline, itemFreteHtml } from "../utils/regiao";
+import { verificarEPersistirVip } from "../integrations/whatsapp/waha";
 
 const GRUPO_VIP_URL = "https://chat.whatsapp.com/DzOJHBZ2vECF1taXiRRv6g";
 
@@ -17,6 +18,7 @@ async function gerarCupomUnico(
   tipo: "percentage" | "absolute",
   valor: number,
   validadeDias: number,
+  primeiraCompra = true,  // false para clientes que já compraram
 ): Promise<string | null> {
   try {
     const token = await getNuvemShopToken();
@@ -36,7 +38,7 @@ async function gerarCupomUnico(
       type: tipo,
       value: String(valor),
       max_uses: 1,
-      first_consumer_purchase: true,
+      first_consumer_purchase: primeiraCompra,
       end_date: endDateStr,
       valid: true,
       combines_with_other_discounts: false,
@@ -58,7 +60,7 @@ interface FlowStep {
   template?: string;
   delay_horas: number;
   // Campos de condição (só quando tipo === "condicao"):
-  condicao?: "email_aberto" | "email_clicado" | "comprou" | "visitou_site" | "viu_produto" | "abandonou_cart" | "score_minimo";
+  condicao?: "email_aberto" | "email_clicado" | "comprou" | "visitou_site" | "viu_produto" | "abandonou_cart" | "score_minimo" | "membro_grupo_vip";
   ref_step?: number;    // qual email step verificar (para email_aberto/email_clicado)
   parametros?: Record<string, unknown>;
   sim?: number;         // índice do step se TRUE (-1 = completar fluxo)
@@ -314,6 +316,19 @@ async function evaluateCondition(
         [customerId, minimo],
       );
       return !!score;
+    }
+
+    case "membro_grupo_vip": {
+      // Verifica se o customer está no grupo VIP do WhatsApp via WAHA (read-only)
+      // Cache: Redis 30min (lista) + banco 24h (por customer)
+      const cust = await queryOne<{ telefone: string | null }>(
+        "SELECT telefone FROM crm.customers WHERE id = $1",
+        [customerId],
+      );
+      if (!cust?.telefone) return false;
+      const resultado = await verificarEPersistirVip(customerId, cust.telefone);
+      // null = indeterminado (WAHA não configurado ou timeout) → assume não membro
+      return resultado === true;
     }
 
     default:
@@ -637,21 +652,25 @@ async function executeEmailStep(
     [`%${step.template || ""}%`]
   );
 
-  // ── Pré-gerar cupom para templates de agradecimento (1ª compra) ──
-  const tplLowerPre = (step.template || "").toLowerCase();
-  const isAgradecimentoPre = tplLowerPre.includes("agradecimento") || tplLowerPre.includes("obrigad") || (tplLowerPre.includes("pós-compra") && !tplLowerPre.includes("cross"));
-  if (isAgradecimentoPre && !metadata.cupom) {
+  // ── Verificar histórico de compras do cliente ─────────────────
+  // ja_comprou: usado pelos templates para adaptar mensagens de "primeira compra"
+  if (metadata.ja_comprou === undefined) {
     const scoreData = await queryOne<{ total_pedidos: string }>(
       "SELECT total_pedidos::text FROM crm.customer_scores WHERE customer_id = $1",
       [customer.id]
     );
     const totalPedidos = parseInt(scoreData?.total_pedidos || "0", 10);
-    if (totalPedidos <= 1) {
+    metadata.ja_comprou = totalPedidos >= 1;
+
+    // Para templates de agradecimento/pós-compra de 1ª compra: gerar cupom de próxima compra
+    const tplLowerPre = (step.template || "").toLowerCase();
+    const isAgradecimentoPre = tplLowerPre.includes("agradecimento") || tplLowerPre.includes("obrigad") || (tplLowerPre.includes("pós-compra") && !tplLowerPre.includes("cross"));
+    if (isAgradecimentoPre && !metadata.cupom && totalPedidos <= 1) {
       metadata.primeira_compra = true;
-      const cupom = await gerarCupomUnico(customer.nome, "percentage", 10, 30);
+      const cupom = await gerarCupomUnico(customer.nome, "percentage", 10, 30, false);
       if (cupom) {
         metadata.cupom = cupom;
-        logger.info("Cupom 10% OFF 1ª compra gerado", { cupom, customerId: customer.id });
+        logger.info("Cupom 10% OFF próxima compra gerado", { cupom, customerId: customer.id });
       }
     }
   }
@@ -714,7 +733,8 @@ async function executeEmailStep(
       cupomValor = 10; cupomDias = 2;  // Nutrição lead: 10%, 48h
     }
 
-    const cupomUnico = await gerarCupomUnico(customer.nome, cupomTipo, cupomValor, cupomDias);
+    // Se cliente já comprou, gerar cupom sem restrição de primeira compra
+    const cupomUnico = await gerarCupomUnico(customer.nome, cupomTipo, cupomValor, cupomDias, !metadata.ja_comprou);
     if (cupomUnico) {
       cupomFinal = cupomUnico;
       logger.info("Cupom único gerado para email", { cupom: cupomUnico, template: step.template, customerId: customer.id });
@@ -1298,6 +1318,7 @@ async function buildReactivationEmail(nome: string, regiao: Regiao = null): Prom
 
 function buildLeadCartEmail(nome: string, metadata: Record<string, unknown>): string {
   const cupom = (metadata.cupom as string) || "BIBELO10";
+  const jaComprou = metadata.ja_comprou === true;
   const productName = (metadata.resource_nome as string) || "";
   const productImg = safeImageUrl(metadata.resource_imagem as string);
   const productUrl = cleanProductUrl(metadata.recovery_url as string);
@@ -1315,16 +1336,20 @@ function buildLeadCartEmail(nome: string, metadata: Record<string, unknown>): st
     </p>
     ${productBlock}
     <p style="font-size:15px;color:#555;line-height:1.6;">
-      Lembra do seu cupom de boas-vindas? Ele ainda está ativo:
+      ${jaComprou
+        ? "Separamos um desconto exclusivo pra você finalizar:"
+        : "Lembra do seu cupom de boas-vindas? Ele ainda está ativo:"}
     </p>
     <div style="background:#fff3e0;border:2px dashed #fe68c4;border-radius:10px;padding:18px;text-align:center;margin:20px 0;">
       <p style="font-size:14px;color:#888;margin:0 0 6px;">Use o cupom:</p>
       <p style="font-size:26px;font-weight:800;color:#fe68c4;margin:0;letter-spacing:2px;">${cupom}</p>
-      <p style="font-size:14px;color:#888;margin:6px 0 0;">10% de desconto na primeira compra!</p>
+      <p style="font-size:14px;color:#888;margin:6px 0 0;">
+        ${jaComprou ? "10% de desconto exclusivo!" : "10% de desconto na primeira compra!"}
+      </p>
     </div>
     ${ctaButton("Aproveitar agora", productUrl)}
     <p style="font-size:13px;color:#999;text-align:center;">
-      Frete calculado no carrinho. Cupom válido para primeira compra.
+      Frete calculado no carrinho.${jaComprou ? "" : " Cupom válido para primeira compra."}
     </p>
   `);
 }
@@ -1496,17 +1521,20 @@ async function buildNewsEmail(nome: string, regiao: Regiao = null): Promise<stri
 
 function buildLeadCouponEmail(nome: string, metadata: Record<string, unknown>): string {
   const cupom = escHtml(String(metadata.cupom || "BIBELO10"));
+  const jaComprou = metadata.ja_comprou === true;
 
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🎁</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
       Você faz parte do <strong>Clube Bibelô</strong> e preparamos algo especial:
-      um cupom exclusivo para a sua primeira compra!
+      ${jaComprou ? "um cupom exclusivo pra você!" : "um cupom exclusivo para a sua primeira compra!"}
     </p>
     <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border:2px dashed #fe68c4;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
       <p style="font-size:13px;color:#888;margin:0;text-transform:uppercase;letter-spacing:1px;">Seu cupom exclusivo</p>
       <p style="font-size:32px;font-weight:700;color:#fe68c4;margin:8px 0;letter-spacing:2px;">${cupom}</p>
-      <p style="font-size:14px;color:#555;margin:0;">Desconto na primeira compra · Use no checkout</p>
+      <p style="font-size:14px;color:#555;margin:0;">
+        ${jaComprou ? "Desconto exclusivo · Use no checkout" : "Desconto na primeira compra · Use no checkout"}
+      </p>
     </div>
     <p style="font-size:15px;color:#555;line-height:1.6;">
       Temos agendas, cadernos, canetas e presentes que vão te encantar.
@@ -1514,7 +1542,7 @@ function buildLeadCouponEmail(nome: string, metadata: Record<string, unknown>): 
     </p>
     ${ctaButton("Usar meu cupom agora", "https://www.papelariabibelo.com.br")}
     <p style="font-size:13px;color:#999;text-align:center;">
-      Cupom válido para primeira compra. Não acumulável.
+      ${jaComprou ? "Cupom de uso único." : "Cupom válido para primeira compra. Não acumulável."}
     </p>
   `);
 }
@@ -1536,7 +1564,7 @@ function buildFomoVipEmail(nome: string, metadata: Record<string, unknown> = {},
         <p style="font-size:32px;margin:0;">🎀✨</p>
         <p style="font-size:16px;color:#2E7D32;font-weight:700;margin:10px 0 4px;">Vantagens VIP ativas</p>
         <p style="font-size:13px;color:#555;margin:0;line-height:1.6;">
-          10% OFF na 1ª compra · ${textoFreteInline(regiao)}<br/>
+          ${metadata.ja_comprou ? "Desconto exclusivo" : "10% OFF na 1ª compra"} · ${textoFreteInline(regiao)}<br/>
           Mimo surpresa em todo pedido · Lançamentos antes de todo mundo
         </p>
       </div>
@@ -1615,11 +1643,14 @@ function buildVipInviteEmail(nome: string, metadata: Record<string, unknown> = {
       </p>
       <div style="background:#fef6fa;border-radius:12px;padding:24px;text-align:center;margin:20px 0;">
         <p style="font-size:36px;margin:0;">🎁💕</p>
-        <p style="font-size:18px;color:#fe68c4;font-weight:700;margin:12px 0 6px;">Sua 1ª compra especial</p>
+        <p style="font-size:18px;color:#fe68c4;font-weight:700;margin:12px 0 6px;">
+          ${metadata.ja_comprou ? "Vantagens exclusivas pra você" : "Sua 1ª compra especial"}
+        </p>
         <p style="font-size:14px;color:#555;margin:0;line-height:1.5;">
-          Use o cupom <strong style="color:#fe68c4;">BIBELO10</strong> e ganhe 10% OFF<br/>
-          ${textoFreteInline(regiao)}<br/>
-          Mimo surpresa em todo pedido
+          ${metadata.ja_comprou
+            ? `${textoFreteInline(regiao)}<br/>Mimo surpresa em todo pedido · Desconto exclusivo para membros`
+            : `Use o cupom <strong style="color:#fe68c4;">BIBELO10</strong> e ganhe 10% OFF<br/>${textoFreteInline(regiao)}<br/>Mimo surpresa em todo pedido`
+          }
         </p>
       </div>
       ${ctaButton("Conhecer a loja", "https://www.papelariabibelo.com.br/?utm_source=email&utm_medium=flow&utm_campaign=vip_convite")}
