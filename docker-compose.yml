@@ -222,6 +222,32 @@ services:
       driver: "json-file"
       options: { max-size: "5m", max-file: "2" }
 
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: bibelo_waha
+    restart: unless-stopped
+    environment:
+      TZ:                        America/Sao_Paulo
+      WHATSAPP_API_KEY:          "${WAHA_API_KEY}"
+      WAHA_LOG_LEVEL:            ERROR
+      WAHA_DASHBOARD_ENABLED:        "true"
+      WAHA_DASHBOARD_USERNAME:       "${WAHA_DASHBOARD_USER}"
+      WAHA_DASHBOARD_PASSWORD:       "${WAHA_DASHBOARD_PASS}"
+      WHATSAPP_SWAGGER_ENABLED:      "true"
+      WHATSAPP_SWAGGER_USERNAME:     "${WAHA_DASHBOARD_USER}"
+      WHATSAPP_SWAGGER_PASSWORD:     "${WAHA_DASHBOARD_PASS}"
+    volumes:
+      - ./data/waha:/app/.sessions
+    ports:
+      - "127.0.0.1:3030:3000"
+    networks:
+      - bibelo_internal
+    mem_limit: 512m
+    cpus: 0.5
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+
   evolution:
     image: atendai/evolution-api:v2.2.3
     container_name: bibelo_evolution
