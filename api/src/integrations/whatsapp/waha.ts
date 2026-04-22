@@ -12,134 +12,125 @@
 
 import { logger } from "../../utils/logger";
 import { cached } from "../../utils/cache";
-import { query } from "../../db";
+import { query, queryOne } from "../../db";
 
-const WAHA_URL     = (process.env.WAHA_URL     || "").replace(/\/$/, "");
-const WAHA_API_KEY = process.env.WAHA_API_KEY  || "";
-const WAHA_SESSION = process.env.WAHA_SESSION  || "default";
+const WAHA_URL           = (process.env.WAHA_URL     || "").replace(/\/$/, "");
+const WAHA_API_KEY       = process.env.WAHA_API_KEY  || "";
+const WAHA_SESSION       = process.env.WAHA_SESSION  || "default";
 const WAHA_GRUPO_VIP_JID = process.env.WAHA_GRUPO_VIP_JID || "";
 
-// Cache Redis — lista completa de membros
-const CACHE_KEY      = "waha:grupo_vip:participantes";
-const CACHE_TTL_S    = 30 * 60; // 30 minutos
+const CACHE_KEY   = "waha:grupo_vip:participantes";
+const CACHE_TTL_S = 30 * 60; // 30 minutos
 
-// Anti-ban: cooldown entre fetchs consecutivos
 let ultimoFetch = 0;
-const COOLDOWN_MS = 60_000; // 1 minuto mínimo entre chamadas ao WAHA
+const COOLDOWN_MS = 60_000;
 
-// ── Normalizar telefone → JID WhatsApp ──────────────────────────
+// ── Normalizar telefone → número limpo com DDI 55 ──────────────
 
-export function normalizarTelefoneJid(telefone: string): string | null {
+export function normalizarTelefone(telefone: string): string | null {
   if (!telefone) return null;
   const digits = telefone.replace(/\D/g, "");
 
-  // Com código do país 55 (Brasil)
-  if (digits.length === 13 && digits.startsWith("55")) return `${digits}@c.us`;
-  if (digits.length === 12 && digits.startsWith("55")) return `${digits}@c.us`;
-
-  // Sem código do país — DDD + número
-  if (digits.length === 11) return `55${digits}@c.us`; // celular 9 dígitos
-  if (digits.length === 10) return `55${digits}@c.us`; // fixo 8 dígitos
+  if (digits.length === 13 && digits.startsWith("55")) return digits;
+  if (digits.length === 12 && digits.startsWith("55")) return digits;
+  if (digits.length === 11) return `55${digits}`;
+  if (digits.length === 10) return `55${digits}`;
 
   return null;
 }
 
-// ── Buscar participantes do grupo via WAHA ───────────────────────
+// Mantém compatibilidade com código existente que usa @c.us
+export function normalizarTelefoneJid(telefone: string): string | null {
+  const n = normalizarTelefone(telefone);
+  return n ? `${n}@c.us` : null;
+}
+
+// ── Buscar participantes via /participants (suporta addressingMode=lid) ──
 
 async function fetchParticipantesWaha(): Promise<string[]> {
   if (!WAHA_URL || !WAHA_GRUPO_VIP_JID) {
-    logger.warn("WAHA: WAHA_URL ou WAHA_GRUPO_VIP_JID não configurados — verificação de grupo VIP desativada");
+    logger.warn("WAHA: WAHA_URL ou WAHA_GRUPO_VIP_JID não configurados — verificação VIP desativada");
     return [];
   }
 
   const agora = Date.now();
-  if (agora - ultimoFetch < COOLDOWN_MS) {
-    // Dentro do cooldown — retorna vazio (chamador usará cache anterior)
-    return [];
-  }
-
+  if (agora - ultimoFetch < COOLDOWN_MS) return [];
   ultimoFetch = agora;
 
   try {
-    const url = `${WAHA_URL}/api/${encodeURIComponent(WAHA_SESSION)}/groups/${encodeURIComponent(WAHA_GRUPO_VIP_JID)}`;
+    // /participants retorna phoneNumber mesmo em grupos com addressingMode=lid
+    const url = `${WAHA_URL}/api/${encodeURIComponent(WAHA_SESSION)}/groups/${encodeURIComponent(WAHA_GRUPO_VIP_JID)}/participants`;
     const resp = await fetch(url, {
-      method: "GET",
-      headers: {
-        "X-Api-Key": WAHA_API_KEY,
-        "Accept": "application/json",
-      },
+      headers: { "X-Api-Key": WAHA_API_KEY, "Accept": "application/json" },
       signal: AbortSignal.timeout(10_000),
     });
 
     if (!resp.ok) {
-      logger.error("WAHA: erro HTTP ao buscar grupo VIP", { status: resp.status, url });
+      logger.error("WAHA: erro HTTP ao buscar participantes", { status: resp.status });
       return [];
     }
 
-    const data = await resp.json() as { participants?: Array<{ id: string }> };
-    const jids = (data.participants || []).map(p => p.id.toLowerCase());
+    type Participant = { id: string; phoneNumber?: string };
+    const data = await resp.json() as Participant[];
+    const participantes = Array.isArray(data) ? data : [];
 
-    logger.info("WAHA: lista de membros do grupo VIP atualizada", { total: jids.length });
-    return jids;
+    const numeros: string[] = [];
+    for (const p of participantes) {
+      // phoneNumber = "5547XXXXXXXX@s.whatsapp.net" (modo LID — preferencial)
+      // id          = "5547XXXXXXXX@c.us"           (modo clássico)
+      const raw = p.phoneNumber
+        ? p.phoneNumber.split("@")[0]
+        : p.id.includes("@lid") ? null : p.id.split("@")[0];
+      if (!raw) continue;
+      const n = normalizarTelefone(raw);
+      if (n) numeros.push(n);
+    }
+
+    logger.info("WAHA: lista de membros do grupo VIP atualizada", { total: numeros.length });
+    return numeros;
   } catch (err) {
     logger.error("WAHA: falha ao buscar participantes do grupo VIP", { err: String(err) });
     return [];
   }
 }
 
-// ── Obter set de participantes (com cache Redis 30min) ───────────
+// ── Obter set de participantes (com cache Redis 30min) ──────────
 
 async function getParticipantes(): Promise<Set<string>> {
-  const jids = await cached<string[]>(CACHE_KEY, CACHE_TTL_S, fetchParticipantesWaha);
-  return new Set(jids);
+  const numeros = await cached<string[]>(CACHE_KEY, CACHE_TTL_S, fetchParticipantesWaha);
+  return new Set(numeros);
 }
 
-// ── API pública: verificar se telefone é membro do grupo VIP ────
+// ── Verificar se telefone é membro do grupo VIP ─────────────────
 
-/**
- * Retorna:
- *  true  → é membro confirmado
- *  false → não é membro
- *  null  → não foi possível verificar (WAHA não configurado, timeout, etc.)
- */
 export async function eMembroGrupoVip(telefone: string): Promise<boolean | null> {
   if (!WAHA_URL || !WAHA_GRUPO_VIP_JID) return null;
 
-  const jid = normalizarTelefoneJid(telefone);
-  if (!jid) return null;
+  const n = normalizarTelefone(telefone);
+  if (!n) return null;
 
   const participantes = await getParticipantes();
   if (participantes.size === 0) return null;
 
-  return participantes.has(jid);
+  return participantes.has(n);
 }
 
-// ── Verificar e persistir resultado no banco ────────────────────
+// ── Verificar e persistir no banco (cache 24h por cliente) ──────
 
-/**
- * Verifica membro e persiste em crm.customers.
- * Usa o campo `vip_grupo_wp` como cache de longa duração (24h).
- * Só chama WAHA se o campo for NULL ou estiver desatualizado.
- */
 export async function verificarEPersistirVip(
   customerId: string,
   telefone: string,
 ): Promise<boolean | null> {
-  // Verificar cache no banco (24h)
-  const cached_row = await query<{ vip_grupo_wp: boolean | null; vip_grupo_wp_em: string | null }>(
+  const row = await queryOne<{ vip_grupo_wp: boolean | null; vip_grupo_wp_em: string | null }>(
     `SELECT vip_grupo_wp, vip_grupo_wp_em FROM crm.customers WHERE id = $1`,
     [customerId],
   );
-  const row = cached_row[0];
+
   if (row?.vip_grupo_wp_em) {
     const idade = Date.now() - new Date(row.vip_grupo_wp_em).getTime();
-    if (idade < 24 * 60 * 60 * 1000) {
-      // Cache válido — retorna sem consultar WAHA
-      return row.vip_grupo_wp ?? null;
-    }
+    if (idade < 24 * 60 * 60 * 1000) return row.vip_grupo_wp ?? null;
   }
 
-  // Cache expirado ou ausente — consulta WAHA
   const resultado = await eMembroGrupoVip(telefone);
   if (resultado !== null) {
     await query(
@@ -148,4 +139,42 @@ export async function verificarEPersistirVip(
     );
   }
   return resultado;
+}
+
+// ── Sync em bulk: atualiza todos os clientes do CRM de uma vez ──
+
+export async function syncWahaVipBulk(): Promise<{ atualizados: number; vip: number; naoVip: number }> {
+  if (!WAHA_URL || !WAHA_GRUPO_VIP_JID) {
+    logger.warn("WAHA: sync bulk ignorado — variáveis não configuradas");
+    return { atualizados: 0, vip: 0, naoVip: 0 };
+  }
+
+  // Forçar refresh ignorando cooldown
+  ultimoFetch = 0;
+  const participantes = await getParticipantes();
+
+  if (participantes.size === 0) {
+    logger.warn("WAHA: sync bulk abortado — lista vazia (sessão desconectada?)");
+    return { atualizados: 0, vip: 0, naoVip: 0 };
+  }
+
+  const clientes = await query<{ id: string; telefone: string }>(
+    `SELECT id, telefone FROM crm.customers WHERE telefone IS NOT NULL AND telefone != ''`,
+  );
+
+  let vip = 0, naoVip = 0;
+  for (const c of clientes) {
+    const n = normalizarTelefone(c.telefone);
+    if (!n) continue;
+    const isVip = participantes.has(n);
+    await query(
+      `UPDATE crm.customers SET vip_grupo_wp = $2, vip_grupo_wp_em = NOW() WHERE id = $1`,
+      [c.id, isVip],
+    );
+    if (isVip) vip++; else naoVip++;
+  }
+
+  const atualizados = vip + naoVip;
+  logger.info("WAHA: sync bulk concluído", { atualizados, vip, naoVip, membrosGrupo: participantes.size });
+  return { atualizados, vip, naoVip };
 }

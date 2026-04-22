@@ -5,6 +5,7 @@ import { authMiddleware } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { getAuthUrl, exchangeCode } from "../integrations/bling/auth";
 import { syncCustomers, syncOrders, syncProducts, syncStock, syncNfEntrada, syncContasPagar, incrementalSync, syncProductCategories, fetchCategoryMap, syncProductImages, syncProductGtins } from "../integrations/bling/sync";
+import { syncWahaVipBulk } from "../integrations/whatsapp/waha";
 import { syncLogisticaObjetos } from "../integrations/bling/logistica";
 import { getNuvemShopAuthUrl, exchangeNuvemShopCode, getNuvemShopToken } from "../integrations/nuvemshop/auth";
 import { syncNuvemShop, registerNsWebhooks } from "../integrations/nuvemshop/sync";
@@ -740,5 +741,20 @@ syncRouter.get("/auth/bling/callback", async (req: Request, res: Response) => {
 
     const appUrl = process.env.APP_URL || "http://localhost:3000";
     res.redirect(`${appUrl}/sync?bling=error`);
+  }
+});
+
+// ── POST /api/sync/waha/vip — sync membros grupo VIP WhatsApp ──
+
+syncRouter.post("/waha/vip", authMiddleware, async (_req: Request, res: Response) => {
+  logger.info("Sync WAHA VIP manual iniciado");
+  res.json({ message: "Sync VIP iniciado em background. Acompanhe pelos logs." });
+
+  try {
+    const result = await syncWahaVipBulk();
+    logger.info("Sync WAHA VIP concluído", result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    logger.error("Sync WAHA VIP falhou", { error: message });
   }
 });

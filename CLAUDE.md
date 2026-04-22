@@ -237,4 +237,4 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 21 de Abril de 2026 — Assinaturas de Módulos Sou Parceira (Fluxo de Caixa + Relatório de Vendas, R$7,90/mês ou R$80,58/ano, PIX via MP Orders API + Cartão via Checkout Pro, webhook HMAC, multi-tenant, 50 testes de segurança, 801 testes totais)*
+*Última atualização: 22 de Abril de 2026 — WAHA Grupo VIP: P0 sync inicial (135 membros → 42 atualizados), P1 webhook real-time group.v2.participants, HMAC-SHA512, cron semanal seg 08h, 16 testes automatizados. Infra: dashboard 10.0.111.7:8888 (WireGuard only), status/homolog/Medusa Admin restritos à rede WG via nginx + AdGuard DNS split-horizon.*

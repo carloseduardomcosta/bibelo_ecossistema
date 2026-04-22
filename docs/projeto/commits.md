@@ -1812,3 +1812,42 @@ Sync automático BullMQ ativo: `meta-audiences-sync` às 03:00 BRT diariamente.
 **Fix XSS `descricao` em `schemaVenda`:** `.transform(s => s.replace(/<[^>]*>/g, "").trim())` no Zod — tags HTML removidas antes do banco.
 
 **Fix pdf-lib no ambiente de testes:** `npm install pdf-lib` no `api/node_modules` do host — restaurou 801 testes passando (de 96 após regressão causada pelo commit da impressão em 18/04).
+
+
+### feat(waha): P1 webhook real-time group.v2.participants + P0 sync inicial
+
+**`api/src/integrations/whatsapp/webhook.ts`** (novo)
+- Handler `POST /api/webhooks/waha` para evento `group.v2.participants`
+- HMAC-SHA512 via `x-webhook-hmac-token` — `timingSafeEqual`, chave via `WAHA_WEBHOOK_HMAC_KEY`
+- Actions `add` → `vip_grupo_wp = true`, `remove` → `vip_grupo_wp = false`. `promote`/`demote` ignorados.
+- Match de telefone por número normalizado com DDI ou sem DDI (`REGEXP_REPLACE`)
+- Fire-and-forget: responde 200 imediatamente, processa em background
+
+**`api/src/integrations/whatsapp/waha.ts`** (refactor)
+- `normalizarTelefone()` exportada (retorna número limpo sem @c.us) — usada pelo webhook
+- `normalizarTelefoneJid()` mantida para retrocompatibilidade
+- `syncWahaVipBulk()`: cron BullMQ toda segunda-feira 08h BRT (job `waha-vip-sync`)
+- P0 executado: 135 membros → 6 VIP + 36 não-VIP = 42 registros atualizados
+
+**`docker-compose.yml`** (waha service)
+- `WHATSAPP_HOOK_URL: "http://api:4000/api/webhooks/waha"`
+- `WHATSAPP_HOOK_EVENTS: "group.v2.participants"`
+- `WHATSAPP_HOOK_HMAC_KEY: "${WAHA_WEBHOOK_HMAC_KEY:-}"`
+
+**`api/src/integrations/whatsapp/webhook.test.ts`** (novo — 16 testes)
+- Clientes de teste com DDD 00 (inexistente no Brasil) — zero dados reais
+- 5 describe: autenticação/estrutura, add, remove, actions ignoradas, segurança
+- Cobre: HMAC válido/inválido, grupo correto/errado, matching com/sem DDI, múltiplos participantes, body vazio
+
+### feat(infra): dashboard WireGuard + controle de acesso VPN
+
+**`/opt/dashboard/`** (novo serviço)
+- nginx:alpine em `10.0.111.7:8888` (bind WireGuard only) — `network_mode: host`
+- Cards clicáveis: Infraestrutura (AdGuard, CUPS, Uptime Kuma), Media Stack (Jellyfin, qBittorrent, Sonarr, Prowlarr, Bazarr), BibelôCRM (CRM, Medusa Admin, Storefront, WAHA), Em Breve (UniFi Controller)
+- Health check real via `/probe/*` (nginx → serviços): verde=online, vermelho=offline, âmbar=verificando
+- Auto-refresh 60s, botão "Verificar" manual, UFW liberado `10.0.111.0/28:8888`
+
+**Restrições WireGuard-only:**
+- `status.papelariabibelo.com.br` → nginx `allow 10.0.111.0/28; deny all;` + AdGuard DNS rewrite → 10.0.111.7
+- `homolog.papelariabibelo.com.br` → idem (DNS rewrite + nginx server block)
+- `api.papelariabibelo.com.br/app` (Medusa Admin) → `allow 10.0.111.0/28; allow IPs casa/Netskope; deny all`

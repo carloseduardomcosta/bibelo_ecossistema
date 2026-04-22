@@ -56,6 +56,18 @@
 - **Status:** aguardando Carlos adicionar `instagram_basic` + `instagram_manage_insights` ao token Meta
 - Token atual já tem: `pages_show_list` ✅ `pages_read_engagement` ✅ `ads_read` ✅ `ads_management` ✅
 
+## WAHA — Grupo VIP WhatsApp (ativo)
+- **Engine:** NOWEB (sem Chromium, baixo consumo de RAM)
+- **Container:** `bibelo_waha`, porta interna 3000 → exposta em 3030
+- **Sessão:** `default` — reconecta automaticamente (`WHATSAPP_RESTART_ALL_SESSIONS: true`)
+- **Uso:** somente leitura — verifica membros do grupo VIP. Zero interação com usuários.
+- **Variáveis .env:** `WAHA_URL`, `WAHA_API_KEY`, `WAHA_SESSION`, `WAHA_GRUPO_VIP_JID`, `WAHA_WEBHOOK_HMAC_KEY`
+- **P0 — Sync inicial:** `POST /api/sync/waha/vip` — carrega todos os membros do grupo, atualiza `crm.customers.vip_grupo_wp`. Cache Redis 30min (`waha:grupo_vip:participantes`). Cron BullMQ toda segunda-feira 08h BRT.
+- **P1 — Webhook real-time:** `POST /api/webhooks/waha` — evento `group.v2.participants` (add/remove) → atualiza `vip_grupo_wp` + `vip_grupo_wp_em` em tempo real. HMAC-SHA512 via `x-webhook-hmac-token`. Ações `promote`/`demote` ignoradas.
+- **Match de telefone:** normaliza número do WAHA (phoneNumber `5547...@s.whatsapp.net`) e busca no banco com DDI ou sem DDI via `REGEXP_REPLACE`.
+- **Testes:** `api/src/integrations/whatsapp/webhook.test.ts` — 16 testes. Clientes com DDD 00 (inexistente), sem dados reais.
+- **Arquivos:** `api/src/integrations/whatsapp/waha.ts` (sync + normalizarTelefone), `webhook.ts` (handler), `routes/sync.ts` (POST /sync/waha/vip), `queues/sync.queue.ts` (cron)
+
 ## Chatwoot + Meta Cloud API (WhatsApp + Instagram) — planejado
 - Plano completo: `docs/integracoes/whatsapp-chatwoot.md`
 - Chatwoot self-hosted em chat.papelariabibelo.com.br

@@ -1,6 +1,6 @@
 # Status das Integrações — BibelôCRM
 
-Última atualização: 17 de Abril de 2026
+Última atualização: 22 de Abril de 2026
 
 | Integração | Status | Observações |
 |-----------|--------|-------------|
@@ -28,6 +28,9 @@
 | Opt-out Email (LGPD) | ✅ produção | descadastro 1-click, campanhas e fluxos respeitam opt-out |
 | Chatwoot (multi-canal) | 📋 planejado | WhatsApp + Instagram DM via Meta Cloud API oficial — docs/integracoes/whatsapp-chatwoot.md |
 | Evolution API (Clube VIP) | ✅ produção | v2.2.3, porta 8080, webhook GROUP_PARTICIPANTS_UPDATE → vincula membro ao CRM (whatsapp_jid), cria customer se novo. Somente leitura — sem envio de mensagens |
+| WAHA Grupo VIP | ✅ produção | Engine NOWEB, porta 3030. P0: sync inicial via `POST /api/sync/waha/vip` (6 VIP + 36 não-VIP de 135 membros). P1: webhook real-time `group.v2.participants` → atualiza `vip_grupo_wp` + `vip_grupo_wp_em` em `crm.customers`. HMAC-SHA512. Cron semanal seg 08h. 16 testes automatizados. |
+| Infra Dashboard | ✅ produção | http://10.0.111.7:8888 (WireGuard only). Cards clicáveis para todos os serviços com health check real. Auto-refresh 60s. |
+| WireGuard Access Control | ✅ produção | status, homolog e Medusa Admin (/app) restritos à rede WireGuard (10.0.111.0/28) via nginx allow/deny + AdGuard DNS split-horizon. |
 | Meta Ads Dashboard | ✅ produção | Graph API v25.0, 6 endpoints insights + 7 históricos, BullMQ sync 6h, migration 050 |
 | Meta Custom Audiences | ✅ produção | TOS aceitos 17/04/2026, 4 segmentos (Clientes 8, Leads 13, Inativos 4, Recentes 4), sync diário 03:00 BRT, endpoint manual POST /api/meta-ads/audiences/sync |
 | Tracking Comportamental | ✅ produção | page_view, product_view, add_to_cart, search, checkout — script JS via GTM |

@@ -8,6 +8,7 @@ import { refreshReviewsCache } from "../integrations/google/reviews";
 import { syncMetaAds } from "../services/meta.service";
 import { syncInstagram } from "../integrations/meta/instagram";
 import { syncAudiences } from "../integrations/meta/audiences";
+import { syncWahaVipBulk } from "../integrations/whatsapp/waha";
 import { query, queryOne } from "../db";
 
 // ── Redis connection ───────────────────────────────────────────
@@ -141,6 +142,12 @@ export const syncWorker = new Worker(
           break;
         }
 
+        case "waha-vip-sync": {
+          const wahaResult = await syncWahaVipBulk();
+          result = { processed: wahaResult.atualizados, ...wahaResult };
+          break;
+        }
+
         case "cleanup-old-data": {
           const tracking = await query(
             "DELETE FROM crm.tracking_events WHERE criado_em < NOW() - INTERVAL '90 days'"
@@ -245,7 +252,13 @@ export async function registerScheduledJobs(): Promise<void> {
     repeat: { pattern: "0 6 * * *" },
   });
 
-  logger.info("Jobs agendados registrados: bling-sync (30min), scores (2h), google-reviews (6h), cleanup (4h), meta-ads (6h), instagram (7h), meta-audiences (6h UTC/3h BRT)");
+  // WAHA VIP sync: toda segunda-feira às 08:00 BRT = 11:00 UTC
+  // Atualiza campo vip_grupo_wp em crm.customers com base nos membros do grupo WhatsApp
+  await syncQueue.add("waha-vip-sync", {}, {
+    repeat: { pattern: "0 11 * * 1" },
+  });
+
+  logger.info("Jobs agendados: bling-sync (30min), scores (2h), google-reviews (6h), cleanup (4h), meta-ads (6h), instagram (7h), meta-audiences (6h UTC), waha-vip (seg 8h)");
 }
 
 // ── Event listeners ────────────────────────────────────────────
