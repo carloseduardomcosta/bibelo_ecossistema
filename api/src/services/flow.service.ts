@@ -62,7 +62,8 @@ interface FlowStep {
   template?: string;
   delay_horas: number;
   // Campos de condição (só quando tipo === "condicao"):
-  condicao?: "email_aberto" | "email_clicado" | "comprou" | "visitou_site" | "viu_produto" | "abandonou_cart" | "score_minimo" | "membro_grupo_vip";
+  condicao?: "email_aberto" | "email_clicado" | "comprou" | "visitou_site" | "viu_produto" | "abandonou_cart" | "score_minimo" | "membro_grupo_vip"
+           | "dias_sem_compra" | "total_pedidos_minimo" | "engajamento_email_zero" | "valor_carrinho_minimo" | "nao";
   ref_step?: number;    // qual email step verificar (para email_aberto/email_clicado)
   parametros?: Record<string, unknown>;
   sim?: number;         // índice do step se TRUE (-1 = completar fluxo)
@@ -333,6 +334,71 @@ async function evaluateCondition(
       return resultado === true;
     }
 
+    // ── Novas condições (migration 054/055) ──────────────────────
+
+    case "dias_sem_compra": {
+      // true quando MAX(criado_em) de order_items é NULL (nunca comprou) ou > N dias atrás
+      const dias = (parametros?.dias as number) || 30;
+      const row = await queryOne<{ ultima: string | null }>(
+        "SELECT MAX(criado_em)::text AS ultima FROM crm.order_items WHERE customer_id = $1",
+        [customerId],
+      );
+      if (!row?.ultima) return true; // nunca comprou
+      const diffDias = (Date.now() - new Date(row.ultima).getTime()) / 86_400_000;
+      return diffDias > dias;
+    }
+
+    case "total_pedidos_minimo": {
+      // true quando o cliente tem >= N pedidos distintos em order_items
+      const minimo = (parametros?.minimo as number) ?? 1;
+      const row = await queryOne<{ total: string }>(
+        "SELECT COUNT(DISTINCT order_id)::text AS total FROM crm.order_items WHERE customer_id = $1",
+        [customerId],
+      );
+      return parseInt(row?.total || "0", 10) >= minimo;
+    }
+
+    case "engajamento_email_zero": {
+      // true quando o cliente não abriu nenhum email nos últimos 30 dias.
+      // NOTA: quando true, o executeStep persiste _skip_emails: true no metadata da execução.
+      // Isso faz com que TODOS os steps de email subsequentes nesta execução sejam pulados
+      // como camada de segurança adicional ao branching do fluxo.
+      // ATENÇÃO: nao(engajamento_email_zero) avalia corretamente o inverso,
+      // mas NÃO ativa o flag _skip_emails — a proteção só existe na forma positiva.
+      const row = await queryOne<{ total: string }>(
+        `SELECT COUNT(*)::text AS total FROM marketing.email_events
+         WHERE customer_id = $1 AND tipo = 'opened' AND criado_em >= NOW() - INTERVAL '30 days'`,
+        [customerId],
+      );
+      return parseInt(row?.total || "0", 10) === 0;
+    }
+
+    case "valor_carrinho_minimo": {
+      // true quando o carrinho pendente mais recente tem valor < N (ou não existe carrinho)
+      const minimo = (parametros?.minimo as number) ?? 0;
+      const row = await queryOne<{ valor: string | null }>(
+        `SELECT valor::text FROM marketing.pedidos_pendentes
+         WHERE customer_id = $1 AND convertido = false
+         ORDER BY criado_em DESC LIMIT 1`,
+        [customerId],
+      );
+      if (!row?.valor) return true; // sem carrinho = abaixo do mínimo
+      return parseFloat(row.valor) < minimo;
+    }
+
+    case "nao": {
+      // Negação de qualquer outra condição. Exemplo: nao(comprou), nao(membro_grupo_vip).
+      // Parâmetros são passados inalterados para a condição interna.
+      // NOTA: nao(engajamento_email_zero) inverte corretamente, mas NÃO propaga _skip_emails.
+      const inner = (parametros?.condicao as string) || "";
+      if (!inner) {
+        logger.warn("evaluateCondition nao(): parâmetro 'condicao' ausente", { executionId });
+        return false;
+      }
+      const innerResult = await evaluateCondition(inner, executionId, customerId, refStep, parametros);
+      return !innerResult;
+    }
+
     default:
       logger.warn("evaluateCondition: condição desconhecida", { condicao, executionId });
       return false;
@@ -496,6 +562,16 @@ export async function executeStep(executionId: string): Promise<boolean> {
           proximoIndex: targetIndex,
         });
 
+        // Proteção adicional para engajamento_email_zero: persiste flag no metadata
+        // para que executeEmailStep pule emails mesmo que o designer esqueça de rotear o branch
+        if (currentStep.condicao === "engajamento_email_zero" && passed) {
+          const updatedMeta = { ...execution.metadata, _skip_emails: true };
+          await query(
+            "UPDATE marketing.flow_executions SET metadata = $2 WHERE id = $1",
+            [executionId, JSON.stringify(updatedMeta)],
+          );
+        }
+
         // Marca step como concluído e avança com branching (early return)
         await query(
           `UPDATE marketing.flow_step_executions SET status = 'concluido', resultado = $3, executado_em = NOW()
@@ -647,6 +723,12 @@ async function executeEmailStep(
 ): Promise<Record<string, unknown>> {
   if (!customer.email) {
     return { skipped: true, reason: "Cliente sem email" };
+  }
+
+  // Proteção extra: se engajamento_email_zero foi true nesta execução, pula todos os emails.
+  // Garante que nenhum email saia mesmo que o fluxo não rotear o branch corretamente.
+  if (metadata._skip_emails === true) {
+    return { skipped: true, reason: "engajamento_email_zero" };
   }
 
   // Garantir que customer_id esteja no metadata (necessário para cross-sell/recompra)
