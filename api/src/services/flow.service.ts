@@ -652,6 +652,17 @@ async function executeEmailStep(
     [`%${step.template || ""}%`]
   );
 
+  // ── Enriquecer metadata com status VIP real do banco ──────────
+  // vip_confirmado: lido diretamente de crm.customers.vip_grupo_wp
+  // Substitui a dependência de metadata.fonte === "grupo_vip" nos templates
+  if (metadata.vip_confirmado === undefined) {
+    const vipRow = await queryOne<{ vip_grupo_wp: boolean | null }>(
+      "SELECT vip_grupo_wp FROM crm.customers WHERE id = $1",
+      [customer.id],
+    );
+    metadata.vip_confirmado = vipRow?.vip_grupo_wp === true;
+  }
+
   // ── Verificar histórico de compras do cliente ─────────────────
   // ja_comprou: usado pelos templates para adaptar mensagens de "primeira compra"
   if (metadata.ja_comprou === undefined) {
@@ -1550,7 +1561,7 @@ function buildLeadCouponEmail(nome: string, metadata: Record<string, unknown>): 
 // ── Template: FOMO Grupo VIP WhatsApp ─────────────────────────
 
 function buildFomoVipEmail(nome: string, metadata: Record<string, unknown> = {}, regiao: Regiao = null): string {
-  const isVip = metadata.fonte === "grupo_vip";
+  const isVip = metadata.vip_confirmado === true || metadata.fonte === "grupo_vip";
 
   if (isVip) {
     // Já é VIP — mostrar benefícios de compra e urgência
@@ -1631,7 +1642,7 @@ function buildProductVisitedEmail(nome: string, metadata: Record<string, unknown
 // ── Template: Convite VIP WhatsApp ────────────────────────────
 
 function buildVipInviteEmail(nome: string, metadata: Record<string, unknown> = {}, regiao: Regiao = null): string {
-  const isVip = metadata.fonte === "grupo_vip";
+  const isVip = metadata.vip_confirmado === true || metadata.fonte === "grupo_vip";
 
   if (isVip) {
     // Já é VIP — reforçar engajamento com a loja
@@ -1676,6 +1687,39 @@ function buildVipInviteEmail(nome: string, metadata: Record<string, unknown> = {
     ${ctaButton("Aceitar convite VIP", GRUPO_VIP_URL)}
     <p style="font-size:13px;color:#999;text-align:center;">
       Grupo com +115 membros. Sem spam, prometemos! 💕
+    </p>
+  `);
+}
+
+// ── Template: Boas-vindas VIP (disparado pelo webhook vip.joined) ─
+
+function buildVipWelcomeEmail(nome: string, metadata: Record<string, unknown> = {}, regiao: Regiao = null): string {
+  const jaComprou = !!metadata.ja_comprou;
+  return emailWrapper(`
+    <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🎀</p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">
+      Que alegria ter você no <strong>Clube VIP Bibelô</strong>!
+      Preparamos benefícios exclusivos pra quem faz parte do nosso grupo.
+    </p>
+    <div style="background:linear-gradient(135deg,#fef6fa,#fff7c1);border-radius:14px;padding:24px;text-align:center;margin:20px 0;">
+      <p style="font-size:36px;margin:0;">🎁✨</p>
+      <p style="font-size:18px;color:#fe68c4;font-weight:700;margin:12px 0 8px;">Seus benefícios VIP</p>
+      <p style="font-size:14px;color:#555;margin:0;line-height:1.8;">
+        ${jaComprou
+          ? `Frete especial para Sul e Sudeste · Acesso antecipado a lançamentos<br/>Mimo surpresa em todo pedido · Promoções só para o grupo`
+          : `Use o cupom <strong style="color:#fe68c4;font-size:16px;">BIBELO10</strong> e ganhe <strong>10% OFF</strong> na 1ª compra<br/>${textoFreteInline(regiao)} · Mimo surpresa em todo pedido<br/>Acesso antecipado a lançamentos`
+        }
+      </p>
+    </div>
+    ${!jaComprou ? `
+    <div style="background:#fff;border:2px dashed #fe68c4;border-radius:12px;padding:16px;text-align:center;margin:16px 0;">
+      <p style="font-size:13px;color:#888;margin:0 0 4px;">Seu cupom VIP</p>
+      <p style="font-size:28px;font-weight:700;color:#fe68c4;letter-spacing:2px;margin:0;">BIBELO10</p>
+      <p style="font-size:12px;color:#aaa;margin:6px 0 0;">10% OFF · válido para 1ª compra</p>
+    </div>` : ""}
+    ${ctaButton("Explorar a loja agora", "https://www.papelariabibelo.com.br/?utm_source=email&utm_medium=flow&utm_campaign=vip_welcome")}
+    <p style="font-size:13px;color:#999;text-align:center;">
+      Fique de olho no grupo — novidades chegam por lá primeiro! 💕
     </p>
   `);
 }
@@ -1813,6 +1857,9 @@ export async function buildFlowEmail(nome: string, templateName: string, metadat
   if (lower.includes("convite vip") || lower.includes("convite whatsapp")) {
     return buildVipInviteEmail(nome, metadata, regiao);
   }
+  if (lower.includes("boas-vindas vip") || lower.includes("bem-vinda vip")) {
+    return buildVipWelcomeEmail(nome, metadata, regiao);
+  }
   if (lower.includes("lembrete") && (lower.includes("avalia") || lower.includes("review"))) {
     return buildReviewReminderEmail(nome, metadata);
   }
@@ -1886,7 +1933,7 @@ function getFlowSubject(templateName: string, nome: string, metadata: Record<str
     return `🎁 ${nome || "Oi"}, seu cupom exclusivo está esperando!`;
   }
   if (lower.includes("fomo") || lower.includes("grupo vip")) {
-    if (metadata.fonte === "grupo_vip") {
+    if (metadata.vip_confirmado === true || metadata.fonte === "grupo_vip") {
       return `${nome || "Oi"}, novidades exclusivas pra você, VIP! 🔥`;
     }
     return `${nome || "Oi"}, +115 membros já garantiram — e você? 🔥`;
@@ -1894,8 +1941,11 @@ function getFlowSubject(templateName: string, nome: string, metadata: Record<str
   if (lower.includes("produto visitado") || lower.includes("viu produto")) {
     return `${nome || "Oi"}, ainda de olho? Temos boas notícias! 👀`;
   }
+  if (lower.includes("boas-vindas vip") || lower.includes("bem-vinda vip")) {
+    return `Bem-vinda ao Clube VIP Bibelô, ${nome || "Cliente"}! 🎀`;
+  }
   if (lower.includes("convite vip") || lower.includes("convite whatsapp")) {
-    if (metadata.fonte === "grupo_vip") {
+    if (metadata.vip_confirmado === true || metadata.fonte === "grupo_vip") {
       return `${nome || "Oi"}, sua 1ª compra VIP com 10% OFF! 🎁`;
     }
     return `${nome || "Oi"}, você foi convidada para o grupo VIP! 🎀`;

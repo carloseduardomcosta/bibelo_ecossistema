@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { query } from "../../db";
 import { logger } from "../../utils/logger";
 import { normalizarTelefone } from "./waha";
+import { triggerFlow } from "../../services/flow.service";
 
 export const wahaWebhookRouter = Router();
 
@@ -108,6 +109,14 @@ wahaWebhookRouter.post("/", async (req: Request, res: Response) => {
         vip: isVip,
         action,
       });
+
+      // Novo membro no grupo → fluxo de boas-vindas VIP
+      if (isVip) {
+        triggerFlow("vip.joined", c.id, { fonte: "grupo_vip" }).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : "Erro";
+          logger.error("WAHA webhook: erro ao disparar fluxo vip.joined", { customerId: c.id, error: msg });
+        });
+      }
     }
 
     if (customers.length === 0) {
