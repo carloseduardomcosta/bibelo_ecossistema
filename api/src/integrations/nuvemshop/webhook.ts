@@ -4,6 +4,7 @@ import { query, queryOne } from "../../db";
 import { logger } from "../../utils/logger";
 import { upsertCustomer, calculateScore } from "../../services/customer.service";
 import { triggerFlow, registerPendingOrder, markOrderConverted } from "../../services/flow.service";
+import { insertOrderItems } from "../../services/order-items.service";
 import { getNuvemShopToken, nsRequest } from "./auth";
 import { sendMetaConversionEvent } from "../meta/conversions";
 
@@ -175,6 +176,22 @@ async function processOrder(resourceId: string, event: string): Promise<void> {
     if (cupomUsado) {
       logger.info("NuvemShop: pedido com cupom", { orderId: resourceId, cupom: cupomUsado, customerId });
     }
+
+    // Desnormaliza itens para crm.order_items (idempotente)
+    const nsItems = products.map((p) => ({
+      name: p.name,
+      quantity: p.quantity,
+      price: p.price,
+      image_url: (p.image as Record<string, unknown>)?.src || null,
+      product_id: p.product_id,
+    }));
+    await insertOrderItems({
+      source: "nuvemshop",
+      orderId: resourceId,
+      customerId,
+      items: nsItems,
+      createdAt: (order.created_at as string) || null,
+    });
   }
 
   // ── Motor de fluxos: disparar automações ──

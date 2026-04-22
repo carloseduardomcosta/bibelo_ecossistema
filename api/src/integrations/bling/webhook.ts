@@ -3,6 +3,7 @@ import { Router, Request, Response } from "express";
 import { query, queryOne } from "../../db";
 import { logger } from "../../utils/logger";
 import { upsertCustomer, calculateScore } from "../../services/customer.service";
+import { insertOrderItems } from "../../services/order-items.service";
 import { getValidToken, BLING_API } from "./auth";
 import { rateLimitedGet } from "./sync";
 
@@ -175,6 +176,15 @@ async function processPedido(data: Record<string, unknown>, evento: string): Pro
       pedido.data || null,
     ]
   );
+
+  // Desnormaliza itens para crm.order_items (idempotente)
+  await insertOrderItems({
+    source: "bling",
+    orderId: String(pedido.id),
+    customerId,
+    items: itens,
+    createdAt: (pedido.data as string) || null,
+  });
 
   if (customerId) {
     await calculateScore(customerId);

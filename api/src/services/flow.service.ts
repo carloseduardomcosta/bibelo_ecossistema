@@ -2587,12 +2587,12 @@ export async function checkRepurchaseDue(): Promise<number> {
     }>(`
       SELECT sub.sku, sub.nome, sub.valor, sub.vezes
       FROM (
-        SELECT item->>'codigo' AS sku, item->>'descricao' AS nome,
-          ROUND(AVG((item->>'valor')::numeric), 2)::float AS valor,
+        SELECT sku, nome,
+          ROUND(AVG(valor_unitario), 2)::float AS valor,
           COUNT(*)::int AS vezes
-        FROM sync.bling_orders o, jsonb_array_elements(o.itens) AS item
-        WHERE o.customer_id = $1 AND item->>'codigo' IS NOT NULL
-        GROUP BY item->>'codigo', item->>'descricao'
+        FROM crm.order_items
+        WHERE customer_id = $1 AND sku IS NOT NULL
+        GROUP BY sku, nome
         HAVING COUNT(*) >= 2
       ) sub
       LEFT JOIN sync.nuvemshop_products np ON LOWER(np.sku) = LOWER(sub.sku)
@@ -2702,40 +2702,45 @@ async function buildCrossSellEmail(nome: string, metadata: Record<string, unknow
     `);
   }
 
-  // Buscar última compra do cliente
-  const ultimaCompra = await queryOne<{ itens: any }>(`
-    SELECT itens FROM sync.bling_orders
-    WHERE customer_id = $1 AND itens IS NOT NULL AND jsonb_array_length(itens) > 0
-    ORDER BY criado_bling DESC LIMIT 1
+  // Buscar itens da última compra do cliente (Bling ou NuvemShop)
+  const itensDaUltimaCompra = await query<{
+    sku: string | null; nome: string; image_url: string | null;
+  }>(`
+    SELECT sku, nome, image_url
+    FROM crm.order_items
+    WHERE customer_id = $1
+      AND criado_em = (
+        SELECT MAX(oi2.criado_em) FROM crm.order_items oi2 WHERE oi2.customer_id = $1
+      )
+    ORDER BY posicao
   `, [customerId]);
 
   const skusComprados: string[] = [];
   const itensComprados: Array<{ nome: string; sku: string }> = [];
-  if (ultimaCompra?.itens) {
-    for (const item of ultimaCompra.itens) {
-      if (item.codigo) {
-        skusComprados.push(item.codigo);
-        itensComprados.push({ nome: item.descricao || item.codigo, sku: item.codigo });
-      }
+  for (const item of itensDaUltimaCompra) {
+    if (item.sku) {
+      skusComprados.push(item.sku);
+      itensComprados.push({ nome: item.nome, sku: item.sku });
+    } else {
+      itensComprados.push({ nome: item.nome, sku: "" });
     }
   }
 
-  // Buscar recomendações baseadas nos itens comprados
+  // Buscar recomendações por filtro colaborativo (co-compras)
   let recomendacoes: Array<{ sku: string; nome: string; valor: number; img: string | null }> = [];
 
   if (skusComprados.length > 0) {
     const recs = await query<{ sku: string; nome: string; valor: number }>(`
       WITH pares AS (
         SELECT
-          CASE WHEN a.value->>'codigo' = ANY($1::text[]) THEN b.value->>'codigo' ELSE a.value->>'codigo' END AS sku_recom,
-          CASE WHEN a.value->>'codigo' = ANY($1::text[]) THEN b.value->>'descricao' ELSE a.value->>'descricao' END AS nome,
-          CASE WHEN a.value->>'codigo' = ANY($1::text[]) THEN (b.value->>'valor')::numeric ELSE (a.value->>'valor')::numeric END AS valor
-        FROM sync.bling_orders o,
-          jsonb_array_elements(o.itens) WITH ORDINALITY AS a(value, ord_a),
-          jsonb_array_elements(o.itens) WITH ORDINALITY AS b(value, ord_b)
-        WHERE jsonb_array_length(o.itens) >= 2
-          AND a.ord_a < b.ord_a
-          AND (a.value->>'codigo' = ANY($1::text[]) OR b.value->>'codigo' = ANY($1::text[]))
+          CASE WHEN a.sku = ANY($1::text[]) THEN b.sku ELSE a.sku END AS sku_recom,
+          CASE WHEN a.sku = ANY($1::text[]) THEN b.nome ELSE a.nome END AS nome,
+          CASE WHEN a.sku = ANY($1::text[]) THEN b.valor_unitario ELSE a.valor_unitario END AS valor
+        FROM crm.order_items a
+        JOIN crm.order_items b
+          ON a.order_id = b.order_id AND a.source = b.source AND a.posicao < b.posicao
+        WHERE a.sku IS NOT NULL AND b.sku IS NOT NULL
+          AND (a.sku = ANY($1::text[]) OR b.sku = ANY($1::text[]))
       )
       SELECT sku_recom AS sku, nome, ROUND(AVG(valor), 2)::float AS valor
       FROM pares
@@ -2745,24 +2750,20 @@ async function buildCrossSellEmail(nome: string, metadata: Record<string, unknow
       LIMIT 4
     `, [skusComprados]);
 
-    // Buscar imagens HD (NuvemShop 1024x1024, fallback Bling thumbnail)
     if (recs.length > 0) {
       const imgs = await fetchProductImages(recs.map(r => r.sku));
-      recomendacoes = recs.map(r => ({
-        ...r,
-        img: imgs[r.sku] || null,
-      }));
+      recomendacoes = recs.map(r => ({ ...r, img: imgs[r.sku] || null }));
     }
   }
 
-  // Se não achou recomendações, busca top produtos recentes
+  // Fallback: top produtos recentes do catálogo geral
   if (recomendacoes.length === 0) {
     const topRows = await query<{ sku: string; nome: string; valor: number }>(`
-      SELECT item->>'codigo' AS sku, item->>'descricao' AS nome, ROUND(AVG((item->>'valor')::numeric), 2)::float AS valor
-      FROM sync.bling_orders o, jsonb_array_elements(o.itens) AS item
-      WHERE item->>'codigo' IS NOT NULL AND item->>'codigo' != ALL($1::text[])
-        AND o.criado_bling >= NOW() - INTERVAL '2 months'
-      GROUP BY item->>'codigo', item->>'descricao'
+      SELECT sku, nome, ROUND(AVG(valor_unitario), 2)::float AS valor
+      FROM crm.order_items
+      WHERE sku IS NOT NULL AND sku != ALL($1::text[])
+        AND criado_em >= NOW() - INTERVAL '2 months'
+      GROUP BY sku, nome
       ORDER BY COUNT(*) DESC LIMIT 4
     `, [skusComprados]);
 
