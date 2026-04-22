@@ -1851,3 +1851,56 @@ Sync automático BullMQ ativo: `meta-audiences-sync` às 03:00 BRT diariamente.
 - `status.papelariabibelo.com.br` → nginx `allow 10.0.111.0/28; deny all;` + AdGuard DNS rewrite → 10.0.111.7
 - `homolog.papelariabibelo.com.br` → idem (DNS rewrite + nginx server block)
 - `api.papelariabibelo.com.br/app` (Medusa Admin) → `allow 10.0.111.0/28; allow IPs casa/Netskope; deny all`
+
+---
+
+### feat(order-items): crm.order_items desnormaliza itens de pedidos Bling+NuvemShop
+**Hash:** fc50103
+
+**migration 054** — `crm.order_items` com colunas: `id UUID PK`, `source VARCHAR`, `order_id VARCHAR`, `customer_id UUID FK`, `posicao INT NOT NULL DEFAULT 0`, `sku VARCHAR`, `nome VARCHAR`, `quantidade NUMERIC`, `valor_unitario NUMERIC`, `image_url TEXT`, `product_ref VARCHAR`, `criado_em TIMESTAMPTZ`.  
+`UNIQUE (source, order_id, posicao)` para idempotência em re-processamento de webhooks. Coluna `posicao` (em vez de sku+nome) resolve kits com produtos duplicados.
+
+**Backfill:** 685 itens Bling (241 pedidos) + 25 NuvemShop (5 pedidos) migrados da coluna `itens JSONB`.
+
+**`api/src/services/order-items.service.ts`** (novo) — `insertOrderItems()` chamado pelos webhooks Bling e NuvemShop em tempo real, `ON CONFLICT DO NOTHING`.
+
+---
+
+### feat(notificacoes-operador): alertas WhatsApp manuais com contexto real para o operador
+**Hash:** c2970a3
+
+**migration 055** — `crm.notificacoes_operador` com índice parcial `UNIQUE (tipo, customer_id) WHERE status = 'pendente'` para dedup (recria após marcar enviado/ignorado).
+
+**`api/src/services/notificacoes-operador.service.ts`** (novo) — 5 funções:
+- `createNotificacaoOperador()` — insere com `ON CONFLICT DO NOTHING RETURNING id`; retorna `null` se já existe pendente
+- `checkHighIntentClients()` — 4+ produtos distintos em 48h sem comprar → notifica operador
+- `checkVipInactivos()` — VIPs sem compra há 60+ dias → notifica operador  
+- `sendOperatorDailySummary()` — email HTML às 9h BRT com todos os pendentes agrupados por tipo e links wa.me clicáveis
+- `buildMensagem()` — mensagem pre-preenchida por tipo para abrir direto no WhatsApp
+
+**`api/src/routes/notificacoes.ts`** — 2 novos endpoints: `GET /operador` + `PATCH /operador/:id`.
+
+**`api/src/queues/flow.queue.ts`** — 3 novos jobs BullMQ: `flow-check-high-intent` (6h), `flow-check-vip-inativo` (diário 08:45 BRT), `flow-resumo-operador` (diário 9h BRT).
+
+**`api/src/integrations/whatsapp/webhook.ts`** — ao detectar novo VIP no grupo, chama `createNotificacaoOperador({ tipo: "novo_membro_grupo_vip" })`.
+
+**`api/src/services/flow.service.ts`** — `checkAbandonedCarts()` cria notificação automática quando carrinho ≥ R$80; `executeWhatsAppStep()` substituído por `createNotificacaoOperador({ tipo: "whatsapp_step" })` com dados do template e gatilho.
+
+---
+
+### feat(flow-motor): 5 novas condições em evaluateCondition + proteção _skip_emails
+**Hash:** eae97cd
+
+5 novas condições no switch de `evaluateCondition()`:
+- `dias_sem_compra` (parâmetro `dias`) — consulta `MAX(criado_em)` em `crm.order_items`
+- `total_pedidos_minimo` (parâmetro `minimo`) — conta `DISTINCT order_id` em `crm.order_items`
+- `engajamento_email_zero` — zero opens em 30 dias → persiste `_skip_emails: true` na execução → emails subsequentes pulados automaticamente. `nao(engajamento_email_zero)` NÃO propaga o flag (comentado no código).
+- `valor_carrinho_minimo` (parâmetro `minimo`) — consulta `marketing.pedidos_pendentes` não convertidos
+- `nao` (parâmetro `condicao`) — inverte qualquer outra condição via recursão
+
+`FlowStep.condicao` TypeScript union type expandido para incluir os 5 novos nomes.
+
+---
+
+### fix(e2e-tests): skipIf Medusa offline nos testes E2E
+Top-level `await fetch(MEDUSA/health)` + `describe.skipIf(!medusaAvailable)` em todos os describes dos arquivos `e2e-bling-to-storefront.test.ts` e `e2e-purchase-flow.test.ts`. Resultado: **817 testes, 0 falhas**.

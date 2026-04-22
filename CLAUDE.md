@@ -237,4 +237,4 @@ Para cada issue: **arquivo:linha**, **severidade** (Critical/High/Medium/Low), *
 ---
 
 *BibelôCRM — Ecossistema Bibelô*
-*Última atualização: 22 de Abril de 2026 — WAHA Grupo VIP: P0 sync inicial (135 membros → 42 atualizados), P1 webhook real-time group.v2.participants, HMAC-SHA512, cron semanal seg 08h, 16 testes automatizados. Infra: dashboard 10.0.111.7:8888 (WireGuard only), status/homolog/Medusa Admin restritos à rede WG via nginx + AdGuard DNS split-horizon.*
+*Última atualização: 22 de Abril de 2026 — Growth session: crm.order_items (migration 054, desnormaliza itens Bling+NuvemShop, UNIQUE posicao), crm.notificacoes_operador (migration 055, links wa.me pré-preenchidos, resumo diário email), 5 novas condições motor de fluxos (dias_sem_compra, total_pedidos_minimo, engajamento_email_zero+_skip_emails, valor_carrinho_minimo, nao), 817 testes passando. WAHA Grupo VIP: P0 sync inicial, P1 webhook real-time, HMAC-SHA512. Infra: dashboard 10.0.111.7:8888 (WireGuard only).*

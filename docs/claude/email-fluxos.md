@@ -3,7 +3,13 @@
 Documentação completa: `docs/marketing/email-templates.md` — todos os 23 templates, fluxos, layout, proxy.
 
 ## Motor condicional
-Steps tipo "condicao" avaliam 7 tipos: `email_aberto`, `email_clicado`, `comprou`, `visitou_site`, `viu_produto`, `abandonou_cart`, `score_minimo` → branching (sim/nao → targetIndex)
+Steps tipo "condicao" avaliam 12 tipos: `email_aberto`, `email_clicado`, `comprou`, `visitou_site`, `viu_produto`, `abandonou_cart`, `score_minimo`, `membro_grupo_vip` → branching original. Mais 5 novas condições (migration 054/055):
+
+- `dias_sem_compra` — parâmetro `dias` (default 30). Consulta `MAX(criado_em)` em `crm.order_items`. Verdadeiro se nunca comprou ou passou X dias.
+- `total_pedidos_minimo` — parâmetro `minimo` (default 1). Conta `DISTINCT order_id` em `crm.order_items`. Verdadeiro se ≥ mínimo.
+- `engajamento_email_zero` — zero opens em `marketing.email_events` nos últimos 30 dias. Quando verdadeiro, persiste `_skip_emails: true` em `flow_executions.metadata` → steps de email subsequentes são pulados automaticamente. **Atenção:** `nao(engajamento_email_zero)` NÃO propaga o flag `_skip_emails` — proteção só existe na forma positiva.
+- `valor_carrinho_minimo` — parâmetro `minimo`. Consulta `marketing.pedidos_pendentes` não convertidos. Verdadeiro se carrinho < mínimo (para pular steps de valor baixo).
+- `nao` — parâmetro `condicao` (string). Inverte qualquer outra condição. Ex: `nao(comprou)` = cliente não comprou.
 
 ## 11 fluxos ativos
 carrinho abandonado (12), nutrição lead (12), reativação (10), produto visitado (10), lead quente (10), pós-compra (8), boas-vindas 1ª compra (3), lead boas-vindas (1), cross-sell (6), carrinho tracking (4), recompra (4)

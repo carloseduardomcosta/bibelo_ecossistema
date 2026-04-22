@@ -1,6 +1,6 @@
 # Status das Integrações — BibelôCRM
 
-Última atualização: 22 de Abril de 2026
+Última atualização: 22 de Abril de 2026 (sessão growth: order_items + notificacoes_operador + condições motor)
 
 | Integração | Status | Observações |
 |-----------|--------|-------------|
@@ -21,7 +21,9 @@
 | NuvemShop Webhooks | ✅ produção | 9 webhooks — order/created,updated,paid,fulfilled,cancelled + customer/* + product/* |
 | Resend E-mail | ✅ produção | remetente "Papelaria Bibelô", 14 templates, domínio verificado |
 | Amazon SES | ⏳ sandbox | sa-east-1, DKIM verificado, dual provider (SES/Resend), dashboard consumo, aguardando produção |
-| Motor de Fluxos | ✅ produção | 10 fluxos ativos, BullMQ process-steps 1min, check-abandoned 5min, check-interest 15min |
+| Motor de Fluxos | ✅ produção | 11 fluxos ativos, BullMQ process-steps 1min, check-abandoned 5min, check-interest 15min. 12 condições (5 novas: dias_sem_compra, total_pedidos_minimo, engajamento_email_zero, valor_carrinho_minimo, nao). `_skip_emails` flag para não-engajados. |
+| crm.order_items | ✅ produção | migration 054 — desnormaliza itens Bling+NuvemShop. UNIQUE(source, order_id, posicao). Alimentado pelos webhooks Bling/NuvemShop em tempo real. Base para recompra, cross-sell, condições do motor. 685 Bling + 25 NuvemShop items migrados. |
+| Notificações Operador | ✅ produção | migration 055 — crm.notificacoes_operador. Links wa.me pré-preenchidos. 5 tipos: carrinho alto valor, high intent, VIP inativo, novo VIP, WhatsApp step. Resumo diário 9h BRT por email. |
 | Carrinho Abandonado | ✅ produção | detecta order/created sem paid após 2h, recovery_url real do checkout |
 | Avaliação Pós-Entrega | ✅ produção | webhook order/fulfilled → email 12h após entrega |
 | Caça-Leads (Popup) | ✅ produção | popup JS via GTM, captura email+WhatsApp, verificação email obrigatória |

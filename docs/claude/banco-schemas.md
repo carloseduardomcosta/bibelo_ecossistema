@@ -3,6 +3,10 @@
 ## crm
 `customers` (campos extras: `fantasia VARCHAR(255)`, `ie VARCHAR(50)` — migration 045), `customer_scores`, `interactions`, `deals`, `segments`, `tracking_events`, `visitor_customers`
 
+`order_items` (id UUID PK, source VARCHAR[bling/nuvemshop], order_id VARCHAR, customer_id UUID FK, posicao INT, sku VARCHAR, nome VARCHAR, quantidade NUMERIC, valor_unitario NUMERIC, image_url TEXT, product_ref VARCHAR, criado_em TIMESTAMPTZ — migration 054. UNIQUE (source, order_id, posicao). Desnormaliza itens de bling_orders + nuvemshop_orders para queries de recompra/cross-sell sem jsonb_array_elements)
+
+`notificacoes_operador` (id UUID PK, tipo VARCHAR[carrinho_abandonado_alto_valor/cliente_high_intent/cliente_vip_inativo/novo_membro_grupo_vip/whatsapp_step], customer_id UUID FK, titulo VARCHAR(300), descricao TEXT, dados JSONB, whatsapp VARCHAR(30), link_direto TEXT, status VARCHAR[pendente/enviado/ignorado] DEFAULT pendente, created_at, updated_at — migration 055. Índice parcial UNIQUE (tipo, customer_id) WHERE status = 'pendente' para dedup. Links wa.me pré-preenchidos para o operador enviar no WhatsApp)
+
 `modulos` (id VARCHAR PK, nome, descricao, ativo BOOL, preco_mensal NUMERIC — módulos assinatura Sou Parceira. IDs ativos: `fluxo_caixa`, `relatorio_vendas` a R$7,90/mês)
 
 `revendedora_modulos` (revendedora_id, modulo_id PK, ativo_desde, expira_em, plano[mensal/anual], status[ativo], ultimo_pagamento_em — migration 052 adicionou `status`, `ultimo_pagamento_em`, `proximo_vencimento_em`)
