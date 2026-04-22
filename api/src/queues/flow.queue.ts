@@ -1,6 +1,6 @@
 import { Queue, Worker } from "bullmq";
 import { logger } from "../utils/logger";
-import { processReadySteps, checkAbandonedCarts, checkProductInterest, checkLeadCartAbandoned, checkUnverifiedLeads, checkRepurchaseDue, checkTrackingCartAbandoned } from "../services/flow.service";
+import { processReadySteps, checkAbandonedCarts, checkProductInterest, checkLeadCartAbandoned, checkUnverifiedLeads, checkRepurchaseDue, checkTrackingCartAbandoned, checkHighIntentClients, checkVipInactivos, sendOperatorDailySummary } from "../services/flow.service";
 import { query } from "../db";
 
 // ── Redis connection ───────────────────────────────────────────
@@ -74,6 +74,24 @@ export const flowWorker = new Worker(
         case "flow-check-tracking-cart": {
           const triggered = await checkTrackingCartAbandoned();
           result = { triggered };
+          break;
+        }
+
+        case "flow-check-high-intent": {
+          const criadas = await checkHighIntentClients();
+          result = { criadas };
+          break;
+        }
+
+        case "flow-check-vip-inativo": {
+          const criadas = await checkVipInactivos();
+          result = { criadas };
+          break;
+        }
+
+        case "flow-resumo-operador": {
+          await sendOperatorDailySummary();
+          result = { enviado: true };
           break;
         }
 
@@ -157,7 +175,22 @@ export async function registerFlowJobs(): Promise<void> {
     repeat: { pattern: "*/15 * * * *" },
   });
 
-  logger.info("Flow jobs registrados: process-steps (1min), check-abandoned (5min), check-interest (15min), check-lead-cart (10min), check-unverified (2h), check-recompra (6h)");
+  // Clientes com alto interesse (4+ produtos em 48h): a cada 6 horas (07, 13, 19, 01 BRT)
+  await flowQueue.add("flow-check-high-intent", {}, {
+    repeat: { pattern: "0 10,16,22,4 * * *" },  // 07, 13, 19, 01 BRT = UTC-3
+  });
+
+  // VIPs inativos (60+ dias sem compra): 1x/dia às 08:45 BRT (11:45 UTC)
+  await flowQueue.add("flow-check-vip-inativo", {}, {
+    repeat: { pattern: "45 11 * * *" },
+  });
+
+  // Resumo diário para o operador: 9h BRT (12h UTC)
+  await flowQueue.add("flow-resumo-operador", {}, {
+    repeat: { pattern: "0 12 * * *" },
+  });
+
+  logger.info("Flow jobs registrados: process-steps (1min), check-abandoned (5min), check-interest (15min), check-lead-cart (10min), check-unverified (2h), check-recompra (6h), high-intent (6h), vip-inativo (diário 08:45), resumo-operador (diário 9h)");
 }
 
 // ── Event listeners ────────────────────────────────────────────

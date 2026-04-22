@@ -4,6 +4,7 @@ import { query } from "../../db";
 import { logger } from "../../utils/logger";
 import { normalizarTelefone } from "./waha";
 import { triggerFlow } from "../../services/flow.service";
+import { createNotificacaoOperador } from "../../services/notificacoes-operador.service";
 
 export const wahaWebhookRouter = Router();
 
@@ -110,12 +111,30 @@ wahaWebhookRouter.post("/", async (req: Request, res: Response) => {
         action,
       });
 
-      // Novo membro no grupo → fluxo de boas-vindas VIP
+      // Novo membro no grupo → fluxo de boas-vindas VIP + notificação operador
       if (isVip) {
         triggerFlow("vip.joined", c.id, { fonte: "grupo_vip" }).catch((err: unknown) => {
           const msg = err instanceof Error ? err.message : "Erro";
           logger.error("WAHA webhook: erro ao disparar fluxo vip.joined", { customerId: c.id, error: msg });
         });
+
+        // Buscar nome e telefone para notificação com contexto real
+        const customerRow = await query<{ nome: string; telefone: string | null }>(
+          "SELECT nome, telefone FROM crm.customers WHERE id = $1",
+          [c.id],
+        );
+        const cd = customerRow[0];
+        if (cd) {
+          createNotificacaoOperador({
+            tipo: "novo_membro_grupo_vip",
+            customerId: c.id,
+            nomeCliente: cd.nome,
+            telefone: cd.telefone || n, // telefone do banco ou o raw do WAHA
+            titulo: `💎 Novo membro VIP identificado — ${cd.nome}`,
+            descricao: `Entrou no grupo via WhatsApp (${n})`,
+            dados: { telefone_raw: n, numero_waha: raw },
+          }).catch(() => {/* ignora silenciosamente — não bloqueia o fluxo */});
+        }
       }
     }
 

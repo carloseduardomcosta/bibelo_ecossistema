@@ -8,6 +8,8 @@ import crypto from "crypto";
 import { escHtml } from "../utils/sanitize";
 import { type Regiao, detectarRegiao, bannerFretep, textoFreteInline, itemFreteHtml } from "../utils/regiao";
 import { verificarEPersistirVip } from "../integrations/whatsapp/waha";
+import { createNotificacaoOperador } from "./notificacoes-operador.service";
+export { checkHighIntentClients, checkVipInactivos, sendOperatorDailySummary } from "./notificacoes-operador.service";
 
 const GRUPO_VIP_URL = "https://chat.whatsapp.com/DzOJHBZ2vECF1taXiRRv6g";
 
@@ -458,7 +460,11 @@ export async function executeStep(executionId: string): Promise<boolean> {
         break;
 
       case "whatsapp":
-        resultado = await executeWhatsAppStep(customer, currentStep, execution.metadata);
+        resultado = await executeWhatsAppStep(customer, currentStep, {
+          ...execution.metadata,
+          _flow_gatilho: flow.gatilho,
+          _flow_nome: flow.nome,
+        });
         break;
 
       case "wait":
@@ -812,27 +818,43 @@ async function executeEmailStep(
 async function executeWhatsAppStep(
   customer: { id: string; nome: string; telefone: string | null },
   step: FlowStep,
-  _metadata: Record<string, unknown>
+  metadata: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   if (!customer.telefone) {
     return { skipped: true, reason: "Cliente sem telefone" };
   }
 
-  // Evolution API ainda pendente — loga e pula
-  const evolutionUrl = process.env.EVOLUTION_API_URL;
-  const evolutionKey = process.env.EVOLUTION_API_KEY;
+  const gatilho = metadata._flow_gatilho as string | undefined;
+  const flowNome = metadata._flow_nome as string | undefined;
+  const template = step.template || "";
 
-  if (!evolutionUrl || !evolutionKey || evolutionKey === "PREENCHER") {
-    logger.warn("Evolution API não configurada — WhatsApp step pulado", {
-      customerId: customer.id,
-      template: step.template,
-    });
-    return { skipped: true, reason: "Evolution API não configurada" };
-  }
+  // Cria notificação para o operador enviar manualmente via wa.me
+  const notifId = await createNotificacaoOperador({
+    tipo: "whatsapp_step",
+    customerId: customer.id,
+    nomeCliente: customer.nome,
+    telefone: customer.telefone,
+    titulo: `💬 WhatsApp pendente — ${customer.nome}${template ? ` (${template})` : ""}`,
+    descricao: flowNome ? `Fluxo: ${flowNome}` : undefined,
+    dados: {
+      template,
+      gatilho: gatilho || null,
+      flow_nome: flowNome || null,
+      metadata_resumo: Object.fromEntries(
+        Object.entries(metadata)
+          .filter(([k]) => !k.startsWith("_"))
+          .slice(0, 6)
+      ),
+    },
+  });
 
-  // TODO: implementar envio via Evolution API quando estiver configurada
-  // const response = await fetch(`${evolutionUrl}/message/sendText/bibelocrm`, { ... });
-  return { skipped: true, reason: "Evolution API pendente de implementação" };
+  logger.info("WhatsApp step → notificação operador criada", {
+    customerId: customer.id,
+    template,
+    notifId,
+  });
+
+  return { notificacao_criada: true, notif_id: notifId };
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -2076,6 +2098,30 @@ export async function checkAbandonedCarts(): Promise<number> {
         "UPDATE marketing.pedidos_pendentes SET notificado = true WHERE id = $1",
         [cart.id]
       );
+    }
+
+    // Carrinho de alto valor → alerta para o operador enviar WhatsApp manual
+    if (cart.valor >= 80) {
+      const customerData = await queryOne<{ nome: string; telefone: string | null }>(
+        "SELECT nome, telefone FROM crm.customers WHERE id = $1",
+        [cart.customer_id]
+      );
+      if (customerData?.telefone) {
+        await createNotificacaoOperador({
+          tipo: "carrinho_abandonado_alto_valor",
+          customerId: cart.customer_id,
+          nomeCliente: customerData.nome,
+          telefone: customerData.telefone,
+          titulo: `🛒 Carrinho R$ ${Number(cart.valor).toFixed(2).replace(".", ",")} — ${customerData.nome}`,
+          descricao: `Pedido #${cart.ns_order_id}`,
+          dados: {
+            valor: cart.valor,
+            ns_order_id: cart.ns_order_id,
+            itens: Array.isArray(itens) ? itens.slice(0, 3) : [],
+            recovery_url: recoveryUrl || null,
+          },
+        });
+      }
     }
   }
 
