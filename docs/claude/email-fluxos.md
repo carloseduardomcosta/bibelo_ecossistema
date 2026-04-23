@@ -77,6 +77,26 @@ Antes de executar qualquer step de email, o motor verifica se o cliente já rece
 
 **Arquivos:** `flow.service.ts` (verificação + fix do campo template no caminho DB), `email.ts` (registro `template_nome` nas campanhas regulares)
 
+## URLs de produtos em emails — `fetchProductUrls()`
+
+`api/src/services/flow.service.ts` — resolve URL NuvemShop para cada SKU de recomendação em 3 passos:
+
+**Passo 1 — cache local (`sync.nuvemshop_products`)**
+- 1a: match exato `UPPER(sku) = UPPER($1)`
+- 1b: prefixo `UPPER(sku) LIKE 'BASE%'` — resolve variantes do mesmo produto
+
+**Passo 2 — NuvemShop API** (`GET /products?sku={sku}`, timeout 3s)
+- Cache-warming automático: persiste em `sync.nuvemshop_products` via `ON CONFLICT (ns_id) DO UPDATE SET dados_raw = $4, sincronizado_em = NOW()` — NÃO sobrescreve `sku` para evitar corrupção
+- **Validação de false positive**: após receber o produto da API, verifica se algum `variant.sku` bate com o SKU buscado (exato ou sem sufixo `_[A-Z0-9]{1,20}$`). Se não bater → descarta e cai no passo 3. A NS API retorna o primeiro produto do catálogo quando nenhum bate — comportamento silencioso.
+
+**Passo 3 — fallback `nomeToSlug()`**
+- Gera handle canônico a partir do nome do produto com strip de sufixos de variante (`VARIANTE_RE_URL`)
+- Produz URL `/produtos/{handle}/` sempre, mesmo sem entrada no cache NS
+
+**Guard `isValidSku(sku)`**
+- Rejeita SKUs com espaços ou `length >= 60` (nome-como-SKU do Bling — ex: `CANETA LEONORA 0.7 WOW...`)
+- SKUs inválidos: pula direto ao passo 3, sem chamada de API, sem cache
+
 ## Regras gerais
 - `triggerFlow` nunca re-executa (ignora se já existe execução dentro de 90 dias)
 - Reativação só para quem tem pelo menos 1 pedido

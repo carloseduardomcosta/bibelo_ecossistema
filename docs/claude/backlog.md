@@ -29,6 +29,18 @@ Melhoria completa da infraestrutura de email marketing:
 5. **17 testes** em `email-validation.test.ts` — bloqueios de contexto + estrutura HTML dos templates
 6. **VIP context enrichment** — `vip.joined` enriquece metadata com últimos 3 produtos; `buildVipWelcomeEmail` usa saudação personalizada
 
+## ✅ Sessão 23/04/2026 — URLs reais + fixes de qualidade
+
+**Resolvido:**
+
+1. `fetchProductUrls()` em `flow.service.ts` — resolução em 3 passos (cache NS → API com warm → nomeToSlug fallback). Emails de cross-sell e recompra agora incluem URLs reais de produto.
+2. Guard `isValidSku()` — rejeita nome-como-SKU do Bling antes de chamar a API.
+3. Validação de false positive NS API — descarta produto errado quando nenhum variant.sku bate.
+4. `upsertCustomer()` — 3 níveis de proteção contra `customers_email_key` (pre-check + catch UPDATE + catch/merge INSERT). Fix para 3 contatos Bling que quebravam o sync a cada 30min.
+5. Throttle 60s em `POST /api/email/teste/:tipo/:customerId` — retorna 429 em chamadas duplicadas.
+
+**Testes:** 852/852 passando.
+
 ## Próximos itens de backlog
 
-_Nenhum item pendente de pré-requisito no momento._
+_Nenhum item pendente relacionado ao tema emails/cross-sell/product-URLs no momento._

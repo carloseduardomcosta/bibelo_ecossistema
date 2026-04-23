@@ -1923,3 +1923,97 @@ Match falhava para contas com número antigo no WhatsApp (8 dígitos locais, sem
 
 **Resultado sync:** 138 membros no grupo, 13 VIP identificados no CRM (eram 6 antes do fix).
 **Testes:** 835 passando (+18 novos: 15 unitários `waha.test.ts` + 3 integração 9º dígito `webhook.test.ts`).
+
+---
+
+## Sessão 23/04/2026 — URLs reais em emails de cross-sell + fix duplicidade email Bling + idempotência endpoint
+
+### feat(cross-sell): URLs reais de produtos via cache NS + API fallback — `f5cb162`
+
+**`api/src/services/flow.service.ts`** — `fetchProductUrls()` (novo, ~100 linhas)
+
+Resolução de URL em 3 passos para cada SKU de recomendação:
+
+1. **Cache local** (`sync.nuvemshop_products`):
+   - Passo 1a: `UPPER(sku) = UPPER($1)` — match exato
+   - Passo 1b: `UPPER(sku) LIKE 'BASE%'` — prefixo do SKU (resolve variantes)
+2. **NuvemShop API** (`GET /products?sku={sku}`, timeout 3s) — cache-warming automático: persiste resultado em `sync.nuvemshop_products` via `ON CONFLICT (ns_id) DO UPDATE SET dados_raw = $4, sincronizado_em = NOW()` (NÃO sobrescreve `sku` — evita corrupção por nome-como-SKU)
+3. **Fallback `nomeToSlug()`** — gera handle canônico a partir do nome do produto com strip de sufixos de variante (`VARIANTE_RE_URL`)
+
+**`isValidSku(sku)`** (nova guard):
+- Rejeita SKUs com espaços ou `length >= 60` — produto-nome-como-SKU do Bling (ex: `CANETA LEONORA 0.7 WOW...`)
+- SKUs inválidos: pular diretamente ao passo 3 sem API, sem cache
+
+Emails de cross-sell e recompra passam por `fetchProductUrls()` uma vez por conjunto de SKUs — sem N+1.
+
+---
+
+### fix(cross-sell): descartar match falso-positivo da API NuvemShop por SKU — `bd22b5f`
+
+**`api/src/services/flow.service.ts`** — `apiLookup()` agora valida o produto retornado
+
+A NuvemShop API retorna o **primeiro produto do catálogo** quando nenhum produto bate com o SKU buscado (false positive silencioso). Exemplo: `CANET_COLORS_0001` retornava `caneta-cis-0-7-spiro` (ns_id 324629586) cujas variantes são `CANE_CIS_SPYRO_01_ROXO` etc. — nenhuma casa com `CANET_COLORS_0001`.
+
+**Fix — validação após resposta da API:**
+```typescript
+const skuUpper = sku.toUpperCase();
+const skuParent = skuUpper.replace(/_[A-Z0-9]{1,20}$/, "");
+const variantMatch = prod.variants.find(v => {
+  const vUp = (v.sku || "").toUpperCase();
+  return vUp === skuUpper || vUp === skuParent;
+});
+if (!variantMatch) {
+  logger.warn("fetchProductUrls: match inválido — nenhum variant bate com o SKU buscado", ...);
+  return "";  // cai no fallback nomeToSlug
+}
+```
+
+Resultado: `CANET_COLORS_0001` agora resolve via `nomeToSlug()` → `/produtos/caneta-esf-divert-gel-apagavel-0-7mm-colors-brw/` (URL correta).
+
+Também limpa do banco entradas com `sku LIKE '% %'` (SKUs-nome que haviam sido persistidos por versões anteriores sem `isValidSku`).
+
+---
+
+### fix(sync): upsertCustomer não falha mais com duplicate email do Bling — `584b7fd`
+
+**`api/src/services/customer.service.ts`** — 3 níveis de proteção contra `customers_email_key`
+
+3 contatos Bling (IDs 18075452532, 18033405187, 17964935015) causavam erro `duplicate key violates unique constraint "customers_email_key"` a cada ciclo de sync (30min). O upsert encontrava o cliente por `bling_id`, mas o UPDATE incluía um email que já pertencia a outro CRM customer.
+
+**Nível 1 — pre-check no UPDATE:**
+```typescript
+if (dados.email && existing.email?.toLowerCase() !== dados.email.toLowerCase()) {
+  const emailConflict = await queryOne("SELECT id FROM crm.customers WHERE LOWER(email) = LOWER($1) AND id != $2", [dados.email, existing.id]);
+  if (emailConflict) {
+    dados = { ...dados, email: undefined };  // ignora o campo email neste update
+  }
+}
+```
+
+**Nível 2 — catch no UPDATE:**
+- Se o UPDATE ainda lançar `customers_email_key` (race condition), retorna o customer existente sem alterar.
+
+**Nível 3 — catch+merge no INSERT:**
+- Se o INSERT lança `customers_email_key`, busca o customer por email e chama `upsertCustomer()` recursivamente — agora `existing` é encontrado e segue o caminho de UPDATE.
+
+---
+
+### fix(email-teste): idempotência 60s no endpoint POST /email/teste — `c9bf442`
+
+**`api/src/routes/sync.ts`** — throttle em memória por `tipo:customerId:email`
+
+O endpoint `POST /api/email/teste/:tipo/:customerId` podia ser chamado em rafagas (duplo clique, re-render React), disparando o mesmo email 2× em segundos para `carloseduardocostatj@gmail.com`.
+
+**Fix — Map module-level:**
+```typescript
+const testeEmailThrottle = new Map<string, number>();
+// ...
+const throttleKey = `${tipo}:${customerId}:${TESTE_EMAIL}`;
+const lastSent = testeEmailThrottle.get(throttleKey);
+if (lastSent && Date.now() - lastSent < 60_000) {
+  return res.status(429).json({ error: "Email de teste já enviado nos últimos 60s. Aguarde antes de reenviar." });
+}
+testeEmailThrottle.set(throttleKey, Date.now());
+```
+
+**Testes:** 852/852 passando após todas as correções.
