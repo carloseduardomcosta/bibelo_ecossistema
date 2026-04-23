@@ -41,6 +41,18 @@ Melhoria completa da infraestrutura de email marketing:
 
 **Testes:** 852/852 passando.
 
+## ✅ Sessão 23/04/2026 (tarde) — visitor_id + paginação NS + cache URLs
+
+**Resolvido:**
+
+1. **visitor_id não vinculado no retorno de lead verificado** — `leads.ts`: no caminho `ja_verificado` (e `pendente`), visitor_id agora é sempre vinculado ao customer + tracking_events retroativamente atribuídos. Corrige sininho que não tocava para clientes retornantes com 4+ product views.
+2. **`syncNsProducts()` 404 na paginação** — `nuvemshop/sync.ts`: NS retorna HTTP 404 (não `[]`) ao esgotar páginas. Fix captura 404 e faz `break`. 133 produtos sincronizados.
+3. **Rota `POST /api/sync/nuvemshop/produtos`** — popula cache de URLs de produtos sob demanda.
+4. **`customers_cpf_key`** — `customer.service.ts`: pre-check + catch para CPF duplicado no Bling sync (mesmos 2 contatos do email_key).
+5. **`fetchProductUrls` sem `nomeToSlug` fallback** — `flow.service.ts`: remove geração de URLs via nome Bling (404s). Retorna `""` para SKUs não resolvidos.
+
+**Mapeamento de casos similares:** todos os outros caminhos de visitor_id já estavam corretos (tracking `/identify`, webhook NuvemShop, landing pages chamam `/leads/capture`).
+
 ## Próximos itens de backlog
 
-_Nenhum item pendente relacionado ao tema emails/cross-sell/product-URLs no momento._
+_Nenhum item pendente crítico no momento._

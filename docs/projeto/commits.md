@@ -2017,3 +2017,79 @@ testeEmailThrottle.set(throttleKey, Date.now());
 ```
 
 **Testes:** 852/852 passando após todas as correções.
+
+---
+
+## Sessão 23/04/2026 (tarde) — Fix visitor_id + paginação NS + cache URLs
+
+### fix(leads/ns): vincula visitor_id em retorno de lead verificado + corrige paginação NS — `87eb62f`
+
+**Contexto:** visitante de Parobe/RS clicou no banner, preencheu o popup, mas o sininho não tocou e nenhum fluxo disparou. Diagnóstico revelou dois bugs independentes.
+
+---
+
+#### Bug 1 — visitor_id não vinculado para leads que retornam (`leads.ts`)
+
+**Problema:** quando uma cliente com cadastro já verificado (`email_verificado = true`) preenchia o popup novamente (novo dispositivo, esqueceu o cadastro), o sistema retornava `ja_verificado` corretamente mas **saía sem vincular o `visitor_id` ao customer**. Todo o histórico de navegação dessa visita ficava anônimo (`customer_id = NULL` nos `tracking_events`).
+
+Consequência: o job `checkHighIntentClients` (a cada 6h) exige `t.customer_id IS NOT NULL` — visitante com 7 product_views ficou invisível e o sininho **não tocou**, mesmo estando acima do limiar de 4 produtos.
+
+**Fix — `api/src/routes/leads.ts` no bloco `ja_existia`:**
+```typescript
+// Mesmo para lead já existente, vincula o visitor_id atual ao customer
+if (visitor_id && customer.id) {
+  await query(
+    `INSERT INTO crm.visitor_customers (visitor_id, customer_id)
+     VALUES ($1, $2) ON CONFLICT (visitor_id) DO NOTHING`,
+    [visitor_id, customer.id]
+  ).catch(() => {});
+  await query(
+    `UPDATE crm.tracking_events SET customer_id = $2
+     WHERE visitor_id = $1 AND customer_id IS NULL`,
+    [visitor_id, customer.id]
+  ).catch(() => {});
+}
+```
+
+Aplica-se tanto ao caminho `ja_verificado` quanto ao `pendente` (reenvio de verificação) — ambos agora vinculam corretamente.
+
+**Mapeamento de outros casos similares:** todos os demais caminhos já estavam corretos:
+- `tracking.ts` `/identify`: usa `DO UPDATE SET customer_id` — correto
+- `nuvemshop/webhook.ts`: usa `DO UPDATE SET customer_id` — correto
+- Landing pages: chamam `/api/leads/capture` — coberto por este fix
+
+---
+
+#### Bug 2 — `syncNsProducts()` falha com 404 na paginação (`nuvemshop/sync.ts`)
+
+**Problema:** a NuvemShop API retorna HTTP 404 (não array vazio `[]`) quando não há mais páginas. Com 130 produtos e `per_page=200`, a página 1 retorna todos os produtos com HTTP 200, mas a página 2 retorna HTTP 404. O `nsRequest()` lançava exceção, quebrando o sync com `"Request failed with status code 404"`.
+
+**Fix — captura 404 como fim de paginação:**
+```typescript
+try {
+  products = await nsRequest("get", `products?page=${page}&per_page=200`, token);
+} catch (err: unknown) {
+  // NS retorna HTTP 404 quando não há mais páginas (não um array vazio)
+  const status = (err as { response?: { status?: number } }).response?.status;
+  if (status === 404) break;
+  throw err;
+}
+```
+
+**Resultado:** 133 produtos sincronizados no cache `sync.nuvemshop_products`, todos com `canonical_url` e `handle` reais. `fetchProductUrls()` agora resolve URLs para 100% dos produtos via cache local, sem chamada à API a cada email.
+
+---
+
+#### Rota nova — `POST /api/sync/nuvemshop/produtos` (`routes/sync.ts`)
+
+Rota autenticada para popular/atualizar o cache de URLs de produtos NuvemShop. Executa `syncNsProducts()` em background.
+
+---
+
+#### Fix complementar — `customers_cpf_key` (`customer.service.ts`)
+
+Dois contatos Bling (CPFs 18033405187 e 17964935015) também causavam `duplicate key violates unique constraint "customers_cpf_key"`. Mesmo padrão do `customers_email_key`: pre-check + catch no UPDATE.
+
+#### Fix complementar — `fetchProductUrls` sem `nomeToSlug` fallback (`flow.service.ts`)
+
+Removido o fallback `nomeToSlug()` que gerava URLs a partir de nomes do Bling — os handles Bling não correspondem aos handles NuvemShop, causando links 404 nos emails de cross-sell. Agora retorna `""` para SKUs não resolvidos, e o template usa `/novidades` como fallback seguro.
