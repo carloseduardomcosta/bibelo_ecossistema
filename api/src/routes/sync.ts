@@ -18,6 +18,9 @@ export const syncRouter = Router();
 
 // ── OAuth state store (in-memory, 5-min TTL) ──────────────────
 const oauthStates = new Map<string, number>();
+
+// ── Throttle para endpoint de teste de email (60s por tipo+customer+destino) ──
+const testeEmailThrottle = new Map<string, number>();
 const OAUTH_STATE_TTL_MS = 5 * 60 * 1000;
 
 function generateOAuthState(): string {
@@ -821,6 +824,15 @@ syncRouter.post("/email/teste/:tipo/:customerId", authMiddleware, async (req: Re
     ADMIN_EMAILS.includes(paraRaw)
   );
   const TESTE_EMAIL = isAllowedEmail ? paraRaw : "contato@papelariabibelo.com.br";
+
+  // Idempotência: não reenviar o mesmo email de teste nos últimos 60s
+  const throttleKey = `${tipo}:${customerId}:${TESTE_EMAIL}`;
+  const lastSent = testeEmailThrottle.get(throttleKey);
+  if (lastSent && Date.now() - lastSent < 60_000) {
+    res.status(429).json({ error: "Email de teste já enviado nos últimos 60s. Aguarde antes de reenviar." });
+    return;
+  }
+  testeEmailThrottle.set(throttleKey, Date.now());
 
   try {
     const regiao = detectarRegiao({ estado: customer.estado, telefone: customer.telefone });
