@@ -103,6 +103,20 @@ export async function upsertCustomer(dados: CustomerData): Promise<Customer> {
   }
 
   if (existing) {
+    // Se o novo email já pertence a OUTRO cliente, ignorar o email neste update
+    if (dados.email && existing.email?.toLowerCase() !== dados.email.toLowerCase()) {
+      const emailConflict = await queryOne<{ id: string }>(
+        "SELECT id FROM crm.customers WHERE LOWER(email) = LOWER($1) AND id != $2",
+        [dados.email, existing.id]
+      );
+      if (emailConflict) {
+        logger.warn("upsertCustomer: email já pertence a outro cliente, ignorando campo email", {
+          nome: dados.nome, email: dados.email, existingId: existing.id, conflictId: emailConflict.id,
+        });
+        dados = { ...dados, email: undefined };
+      }
+    }
+
     const fields: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
@@ -119,26 +133,57 @@ export async function upsertCustomer(dados: CustomerData): Promise<Customer> {
 
     if (fields.length > 0) {
       values.push(existing.id);
-      const updated = await queryOne<Customer>(
-        `UPDATE crm.customers SET ${fields.join(", ")} WHERE id = $${idx} RETURNING *`,
-        values
-      );
-      return updated!;
+      try {
+        const updated = await queryOne<Customer>(
+          `UPDATE crm.customers SET ${fields.join(", ")} WHERE id = $${idx} RETURNING *`,
+          values
+        );
+        return updated!;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "";
+        if (msg.includes("customers_email_key")) {
+          // Conflito de email no UPDATE — retornar sem alterar email
+          logger.warn("upsertCustomer: UPDATE causou conflito de email, retornando sem alterar", {
+            nome: dados.nome, id: existing.id,
+          });
+          return existing;
+        }
+        throw err;
+      }
     }
     return existing;
   }
 
+  // INSERT — se email já existe, merge com o customer existente
   const cols = Object.keys(dados).filter((k) => dados[k as keyof CustomerData] !== undefined);
   const vals = cols.map((k) => dados[k as keyof CustomerData]);
   const placeholders = cols.map((_, i) => `$${i + 1}`);
 
-  const created = await queryOne<Customer>(
-    `INSERT INTO crm.customers (${cols.join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING *`,
-    vals
-  );
-
-  logger.info("Cliente criado via upsert", { id: created!.id, nome: dados.nome });
-  return created!;
+  try {
+    const created = await queryOne<Customer>(
+      `INSERT INTO crm.customers (${cols.join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING *`,
+      vals
+    );
+    logger.info("Cliente criado via upsert", { id: created!.id, nome: dados.nome });
+    return created!;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("customers_email_key") && dados.email) {
+      // Email em conflito: merge com o customer que já possui esse email
+      const byEmail = await queryOne<Customer>(
+        "SELECT * FROM crm.customers WHERE LOWER(email) = LOWER($1)",
+        [dados.email]
+      );
+      if (byEmail) {
+        logger.warn("upsertCustomer: INSERT com email duplicado, merge com cliente existente", {
+          nome: dados.nome, email: dados.email, existingId: byEmail.id,
+        });
+        // Recursão: agora existing é encontrado, segue o caminho de UPDATE
+        return upsertCustomer({ ...dados });
+      }
+    }
+    throw err;
+  }
 }
 
 // ── Calcular Score ─────────────────────────────────────────────
