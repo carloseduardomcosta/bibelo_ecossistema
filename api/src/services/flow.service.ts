@@ -751,6 +751,15 @@ async function executeEmailStep(
     metadata.vip_confirmado = vipRow?.vip_grupo_wp === true;
   }
 
+  // Se o cliente já é VIP e o step é o email FOMO/grupo VIP, pular inteiramente.
+  // Ela já está no grupo — não faz sentido enviar nenhuma versão do email.
+  // O fluxo avança normalmente para o próximo step via proximo/+1.
+  const tplNome = (step.template || "").toLowerCase();
+  if (metadata.vip_confirmado === true && (tplNome.includes("fomo") || tplNome.includes("convite vip") || tplNome.includes("lead convite"))) {
+    logger.info("Skip email grupo VIP: cliente já é membro", { customerId: customer.id, template: step.template });
+    return { skipped: true, reason: "ja_membro_vip" };
+  }
+
   // ── Verificar histórico de compras do cliente ─────────────────
   // ja_comprou: usado pelos templates para adaptar mensagens de "primeira compra"
   if (metadata.ja_comprou === undefined) {
@@ -1664,7 +1673,7 @@ function buildLeadCouponEmail(nome: string, metadata: Record<string, unknown>): 
 
 // ── Template: FOMO Grupo VIP WhatsApp ─────────────────────────
 
-function buildFomoVipEmail(nome: string, metadata: Record<string, unknown> = {}, regiao: Regiao = null): string {
+function buildFomoVipEmail(nome: string, metadata: Record<string, unknown> = {}, regiao: Regiao = null, membrosVip = 115): string {
   const isVip = metadata.vip_confirmado === true || metadata.fonte === "grupo_vip";
 
   if (isVip) {
@@ -1696,11 +1705,11 @@ function buildFomoVipEmail(nome: string, metadata: Record<string, unknown> = {},
     <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 🔥</p>
     <p style="font-size:15px;color:#555;line-height:1.6;">
       Sabia que a Papelaria Bibelô tem um <strong>grupo VIP no WhatsApp</strong>
-      com mais de 115 membros?
+      com mais de ${membrosVip} membros?
     </p>
     <div style="background:linear-gradient(135deg,#E8F5E9,#fff7c1);border-radius:12px;padding:20px;text-align:center;margin:20px 0;">
       <p style="font-size:32px;margin:0;">💬✨</p>
-      <p style="font-size:16px;color:#2E7D32;font-weight:700;margin:10px 0 4px;">Grupo VIP · +115 membros</p>
+      <p style="font-size:16px;color:#2E7D32;font-weight:700;margin:10px 0 4px;">Grupo VIP · +${membrosVip} membros</p>
       <p style="font-size:13px;color:#555;margin:0;">Lançamentos antecipados · Promoções exclusivas · Esgota rápido!</p>
     </div>
     <p style="font-size:15px;color:#555;line-height:1.6;">
@@ -1953,7 +1962,12 @@ export async function buildFlowEmail(nome: string, templateName: string, metadat
     return buildLeadCouponEmail(nome, metadata);
   }
   if (lower.includes("fomo") || lower.includes("grupo vip")) {
-    return buildFomoVipEmail(nome, metadata, regiao);
+    const countRow = await queryOne<{ total: string }>(
+      "SELECT COUNT(*)::text AS total FROM crm.customers WHERE vip_grupo_wp = true"
+    );
+    const membrosVip = parseInt(countRow?.total || "115", 10);
+    metadata.membros_vip = membrosVip; // disponibiliza para getFlowSubject
+    return buildFomoVipEmail(nome, metadata, regiao, membrosVip);
   }
   if (lower.includes("produto visitado") || lower.includes("viu produto")) {
     return buildProductVisitedEmail(nome, metadata, regiao);
@@ -2040,7 +2054,7 @@ function getFlowSubject(templateName: string, nome: string, metadata: Record<str
     if (metadata.vip_confirmado === true || metadata.fonte === "grupo_vip") {
       return `${nome || "Oi"}, novidades exclusivas pra você, VIP! 🔥`;
     }
-    return `${nome || "Oi"}, +115 membros já garantiram — e você? 🔥`;
+    return `${nome || "Oi"}, +${metadata.membros_vip ?? 115} membros já garantiram — e você? 🔥`;
   }
   if (lower.includes("produto visitado") || lower.includes("viu produto")) {
     return `${nome || "Oi"}, ainda de olho? Temos boas notícias! 👀`;
