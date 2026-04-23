@@ -2885,29 +2885,53 @@ async function buildCrossSellEmail(nome: string, metadata: Record<string, unknow
     }
   }
 
-  // Buscar recomendações por filtro colaborativo (co-compras)
+  // Collaborative filtering por nome_base — agrupa variantes (Cor:X, Tinta:X, etc.)
+  // antes de recomendar, evitando sugerir "caneta azul → caneta vermelha"
+  const VARIANTE_RE = `\\s+(Cor|Tinta|Cor/Estampa|Cor/Cheiro|Cor/Forma|Estampa|Miolo|Tamanho|Modelo|Tipo)\\s*:.*$`;
+
   let recomendacoes: Array<{ sku: string; nome: string; valor: number; img: string | null }> = [];
 
   if (skusComprados.length > 0) {
     const recs = await query<{ sku: string; nome: string; valor: number }>(`
-      WITH pares AS (
+      WITH
+      -- Nome base do cliente (sem sufixo de variante)
+      base_comprada AS (
         SELECT
-          CASE WHEN a.sku = ANY($1::text[]) THEN b.sku ELSE a.sku END AS sku_recom,
-          CASE WHEN a.sku = ANY($1::text[]) THEN b.nome ELSE a.nome END AS nome,
-          CASE WHEN a.sku = ANY($1::text[]) THEN b.valor_unitario ELSE a.valor_unitario END AS valor
+          sku,
+          REGEXP_REPLACE(nome, '${VARIANTE_RE}', '', 'i') AS nome_base
+        FROM crm.order_items
+        WHERE customer_id = $2
+      ),
+      -- Co-compras: produtos que aparecem no mesmo pedido que os SKUs do cliente
+      co_compras AS (
+        SELECT
+          b.sku AS sku_recom,
+          b.nome AS nome_recom,
+          REGEXP_REPLACE(b.nome, '${VARIANTE_RE}', '', 'i') AS nome_base_recom,
+          b.valor_unitario AS valor,
+          COUNT(*) AS frequencia
         FROM crm.order_items a
         JOIN crm.order_items b
-          ON a.order_id = b.order_id AND a.source = b.source AND a.posicao < b.posicao
-        WHERE a.sku IS NOT NULL AND b.sku IS NOT NULL
-          AND (a.sku = ANY($1::text[]) OR b.sku = ANY($1::text[]))
+          ON a.order_id = b.order_id AND a.source = b.source AND a.sku != b.sku
+        WHERE a.sku = ANY($1::text[])
+          AND b.sku IS NOT NULL
+          AND b.customer_id != $2   -- exclui pedidos do próprio cliente
+        GROUP BY b.sku, b.nome, b.valor_unitario
       )
-      SELECT sku_recom AS sku, nome, ROUND(AVG(valor), 2)::float AS valor
-      FROM pares
-      WHERE sku_recom != ALL($1::text[]) AND sku_recom IS NOT NULL
-      GROUP BY sku_recom, nome
-      ORDER BY COUNT(*) DESC
+      SELECT
+        cc.sku_recom AS sku,
+        cc.nome_recom AS nome,
+        ROUND(AVG(cc.valor), 2)::float AS valor
+      FROM co_compras cc
+      -- Excluir produtos com mesmo nome_base que o cliente já comprou
+      WHERE NOT EXISTS (
+        SELECT 1 FROM base_comprada bc WHERE bc.nome_base = cc.nome_base_recom
+      )
+      AND cc.sku_recom != ALL($1::text[])
+      GROUP BY cc.sku_recom, cc.nome_recom
+      ORDER BY SUM(cc.frequencia) DESC
       LIMIT 4
-    `, [skusComprados]);
+    `, [skusComprados, customerId]);
 
     if (recs.length > 0) {
       const imgs = await fetchProductImages(recs.map(r => r.sku));
@@ -2915,16 +2939,22 @@ async function buildCrossSellEmail(nome: string, metadata: Record<string, unknow
     }
   }
 
-  // Fallback: top produtos recentes do catálogo geral
+  // Fallback: produtos mais populares que o cliente nunca comprou (por nome_base)
   if (recomendacoes.length === 0) {
     const topRows = await query<{ sku: string; nome: string; valor: number }>(`
+      WITH historico_cliente AS (
+        SELECT REGEXP_REPLACE(nome, '${VARIANTE_RE}', '', 'i') AS nome_base
+        FROM crm.order_items WHERE customer_id = $2
+      )
       SELECT sku, nome, ROUND(AVG(valor_unitario), 2)::float AS valor
       FROM crm.order_items
-      WHERE sku IS NOT NULL AND sku != ALL($1::text[])
+      WHERE sku IS NOT NULL
+        AND sku != ALL($1::text[])
         AND criado_em >= NOW() - INTERVAL '2 months'
+        AND REGEXP_REPLACE(nome, '${VARIANTE_RE}', '', 'i') NOT IN (SELECT nome_base FROM historico_cliente)
       GROUP BY sku, nome
       ORDER BY COUNT(*) DESC LIMIT 4
-    `, [skusComprados]);
+    `, [skusComprados, customerId]);
 
     const imgs2 = await fetchProductImages(topRows.map(r => r.sku));
     recomendacoes = topRows.map(r => ({ ...r, img: imgs2[r.sku] || null }));
