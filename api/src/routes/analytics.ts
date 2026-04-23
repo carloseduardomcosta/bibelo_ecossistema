@@ -1265,6 +1265,127 @@ analyticsRouter.get("/cross-sell/recommend/:customerId", async (req: Request, re
   });
 });
 
+// ── GET /api/analytics/timeline-unificado — feed único de todas as atividades ─
+
+const JANELA_MAP: Record<string, string> = {
+  "1h":  "1 hour",
+  "24h": "24 hours",
+  "7d":  "7 days",
+  "30d": "30 days",
+};
+
+analyticsRouter.get("/timeline-unificado", authMiddleware, async (req: Request, res: Response) => {
+  const janela = JANELA_MAP[String(req.query.janela || "24h")] || "24 hours";
+  const limit  = Math.min(parseInt(String(req.query.limit  || "60"),  10), 200);
+  const offset = parseInt(String(req.query.offset || "0"), 10);
+
+  const rows = await query<{
+    tipo: string; subtipo: string; descricao: string | null;
+    detalhe: string | null; valor: number | null;
+    customer_nome: string | null; customer_email: string | null;
+    geo_city: string | null; geo_region: string | null;
+    criado_em: string;
+  }>(
+    `SELECT tipo, subtipo, descricao, detalhe, valor,
+            customer_nome, customer_email, geo_city, geo_region, criado_em
+     FROM (
+       -- ── Eventos de site (tracking) ──────────────────────────────
+       SELECT
+         'site'                   AS tipo,
+         t.evento                 AS subtipo,
+         COALESCE(t.resource_nome, t.pagina, t.evento) AS descricao,
+         NULL::text               AS detalhe,
+         t.resource_preco         AS valor,
+         c.nome                   AS customer_nome,
+         c.email                  AS customer_email,
+         t.geo_city, t.geo_region,
+         t.criado_em
+       FROM crm.tracking_events t
+       LEFT JOIN crm.customers c ON c.id = t.customer_id
+       WHERE t.criado_em >= NOW() - $1::interval
+         AND t.evento IN ('product_view','add_to_cart','popup_submit','banner_click','search','purchase')
+
+       UNION ALL
+
+       -- ── Emails enviados por fluxo ────────────────────────────────
+       SELECT
+         'email_fluxo'            AS tipo,
+         f.nome                   AS subtipo,
+         c.nome                   AS descricao,
+         fse.resultado->>'template' AS detalhe,
+         NULL::numeric            AS valor,
+         c.nome                   AS customer_nome,
+         c.email                  AS customer_email,
+         NULL, NULL,
+         fse.executado_em         AS criado_em
+       FROM marketing.flow_step_executions fse
+       JOIN marketing.flow_executions fe ON fe.id = fse.execution_id
+       JOIN marketing.flows f            ON f.id  = fe.flow_id
+       JOIN crm.customers c             ON c.id  = fe.customer_id
+       WHERE fse.tipo = 'email' AND fse.status = 'concluido'
+         AND fse.executado_em >= NOW() - $1::interval
+
+       UNION ALL
+
+       -- ── Interações de email (opens, clicks, bounces) ─────────────
+       SELECT
+         'email_interacao'        AS tipo,
+         ee.tipo                  AS subtipo,
+         COALESCE(c.nome, c.email) AS descricao,
+         CASE WHEN ee.tipo = 'clicked' THEN ee.link ELSE NULL END AS detalhe,
+         NULL::numeric            AS valor,
+         c.nome                   AS customer_nome,
+         c.email                  AS customer_email,
+         NULL, NULL,
+         ee.criado_em
+       FROM marketing.email_events ee
+       JOIN crm.customers c ON c.id = ee.customer_id
+       WHERE ee.tipo IN ('opened','clicked','bounced','complained')
+         AND ee.criado_em >= NOW() - $1::interval
+
+       UNION ALL
+
+       -- ── Novos leads capturados ───────────────────────────────────
+       SELECT
+         'lead'                   AS tipo,
+         COALESCE(l.fonte, 'popup') AS subtipo,
+         COALESCE(l.nome, l.email)  AS descricao,
+         CASE WHEN l.email_verificado THEN 'verificado' ELSE 'pendente' END AS detalhe,
+         NULL::numeric            AS valor,
+         l.nome                   AS customer_nome,
+         l.email                  AS customer_email,
+         NULL, NULL,
+         l.criado_em
+       FROM marketing.leads l
+       WHERE l.criado_em >= NOW() - $1::interval
+
+       UNION ALL
+
+       -- ── Vendas NuvemShop ─────────────────────────────────────────
+       SELECT
+         'venda'                  AS tipo,
+         no.status                AS subtipo,
+         c.nome                   AS descricao,
+         no.numero                AS detalhe,
+         no.valor                 AS valor,
+         c.nome                   AS customer_nome,
+         c.email                  AS customer_email,
+         NULL, NULL,
+         no.webhook_em            AS criado_em
+       FROM sync.nuvemshop_orders no
+       JOIN crm.customers c ON c.id = no.customer_id
+       WHERE no.webhook_em >= NOW() - $1::interval
+         AND no.status IN ('paid','pago','processing','completed','aprovado')
+
+     ) combined
+     ORDER BY criado_em DESC
+     LIMIT $2 OFFSET $3`,
+    [janela, limit, offset]
+  );
+
+  res.json(rows);
+});
+
 // ── GET /api/analytics/flow-activity — atividade de fluxos para o Dashboard ───
 
 analyticsRouter.get("/flow-activity", async (req: Request, res: Response) => {

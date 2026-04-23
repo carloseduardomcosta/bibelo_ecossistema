@@ -83,6 +83,14 @@ export const flowWorker = new Worker(
           break;
         }
 
+        case "flow-cleanup-tracking": {
+          const del = await query(
+            `DELETE FROM crm.tracking_events WHERE criado_em < NOW() - INTERVAL '90 days'`
+          );
+          result = { deletados: (del as unknown as { rowCount: number }).rowCount || 0 };
+          break;
+        }
+
         case "flow-check-vip-inativo": {
           const criadas = await checkVipInactivos();
           result = { criadas };
@@ -190,7 +198,12 @@ export async function registerFlowJobs(): Promise<void> {
     repeat: { pattern: "0 12 * * *" },
   });
 
-  logger.info("Flow jobs registrados: process-steps (1min), check-abandoned (5min), check-interest (15min), check-lead-cart (10min), check-unverified (2h), check-recompra (6h), high-intent (6h), vip-inativo (diário 08:45), resumo-operador (diário 9h)");
+  // Limpeza de tracking_events antigos (> 90 dias): 3h BRT (6h UTC)
+  await flowQueue.add("flow-cleanup-tracking", {}, {
+    repeat: { pattern: "0 6 * * *" },
+  });
+
+  logger.info("Flow jobs registrados: process-steps (1min), check-abandoned (5min), check-interest (15min), check-lead-cart (10min), check-unverified (2h), check-recompra (6h), high-intent (6h), vip-inativo (diário 08:45), resumo-operador (diário 9h), cleanup-tracking (3h BRT)");
 }
 
 // ── Event listeners ────────────────────────────────────────────

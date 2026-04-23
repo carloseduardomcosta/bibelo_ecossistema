@@ -133,6 +133,153 @@ const PERIODOS = [
   { value: '1a', label: '1 ano' },
 ];
 
+// ── Componente: Timeline Unificada ──────────────────────────
+
+interface TimelineItem {
+  tipo: string; subtipo: string; descricao: string | null;
+  detalhe: string | null; valor: number | null;
+  customer_nome: string | null; customer_email: string | null;
+  geo_city: string | null; geo_region: string | null;
+  criado_em: string;
+}
+
+const JANELAS = [
+  { value: '1h',  label: '1h' },
+  { value: '24h', label: '24h' },
+  { value: '7d',  label: '7 dias' },
+  { value: '30d', label: '30 dias' },
+];
+
+function tipoConfig(tipo: string, subtipo: string) {
+  if (tipo === 'venda')          return { bg: 'bg-emerald-400/15', text: 'text-emerald-400', icon: '💰', label: 'Venda' };
+  if (tipo === 'lead')           return { bg: 'bg-violet-400/15',  text: 'text-violet-400',  icon: '✨', label: subtipo === 'verificado' || subtipo === 'grupo_vip' ? 'Lead verificado' : 'Novo lead' };
+  if (tipo === 'email_fluxo')    return { bg: 'bg-pink-400/15',    text: 'text-pink-400',    icon: '📧', label: 'Email enviado' };
+  if (tipo === 'email_interacao') {
+    if (subtipo === 'opened')    return { bg: 'bg-emerald-400/15', text: 'text-emerald-400', icon: '👁', label: 'Abriu email' };
+    if (subtipo === 'clicked')   return { bg: 'bg-blue-400/15',    text: 'text-blue-400',    icon: '🔗', label: 'Clicou' };
+    if (subtipo === 'bounced')   return { bg: 'bg-red-400/15',     text: 'text-red-400',     icon: '⚠️', label: 'Bounce' };
+    if (subtipo === 'complained') return { bg: 'bg-amber-400/15',  text: 'text-amber-400',   icon: '🚫', label: 'Spam' };
+  }
+  if (tipo === 'site') {
+    if (subtipo === 'add_to_cart')  return { bg: 'bg-amber-400/15',  text: 'text-amber-400',  icon: '🛒', label: 'Adicionou ao carrinho' };
+    if (subtipo === 'product_view') return { bg: 'bg-blue-400/15',   text: 'text-blue-400',   icon: '👀', label: 'Viu produto' };
+    if (subtipo === 'popup_submit') return { bg: 'bg-violet-400/15', text: 'text-violet-400', icon: '📋', label: 'Preencheu popup' };
+    if (subtipo === 'banner_click') return { bg: 'bg-pink-400/15',   text: 'text-pink-400',   icon: '🖱', label: 'Clicou banner' };
+    if (subtipo === 'search')       return { bg: 'bg-gray-400/15',   text: 'text-gray-400',   icon: '🔍', label: 'Pesquisou' };
+    if (subtipo === 'purchase')     return { bg: 'bg-emerald-400/15',text: 'text-emerald-400',icon: '✅', label: 'Compra' };
+  }
+  return { bg: 'bg-gray-400/15', text: 'text-gray-400', icon: '●', label: subtipo };
+}
+
+function TimelineUnificada() {
+  const [janela, setJanela] = useState<string>('24h');
+  const [items, setItems] = useState<TimelineItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  const fetch = useCallback(async (j: string) => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/analytics/timeline-unificado?janela=${j}&limit=60`);
+      setItems(res.data || []);
+      setLastUpdate(new Date());
+    } catch { /* silencioso */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetch(janela); }, [janela, fetch]);
+
+  // Auto-refresh a cada 30s
+  useEffect(() => {
+    const id = setInterval(() => fetch(janela), 30_000);
+    return () => clearInterval(id);
+  }, [janela, fetch]);
+
+  return (
+    <div className="bg-bibelo-card border border-bibelo-border rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-medium text-bibelo-text flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          Linha do Tempo
+        </h3>
+        <div className="flex items-center gap-2">
+          {lastUpdate && (
+            <span className="text-[10px] text-bibelo-muted hidden sm:block">
+              atualizado {timeAgo(lastUpdate.toISOString())}
+            </span>
+          )}
+          <div className="flex gap-1">
+            {JANELAS.map(j => (
+              <button
+                key={j.value}
+                onClick={() => setJanela(j.value)}
+                className={`text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${
+                  janela === j.value
+                    ? 'bg-bibelo-pink text-white'
+                    : 'bg-bibelo-border text-bibelo-muted hover:text-bibelo-text'
+                }`}
+              >
+                {j.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {loading && !items.length ? (
+        <div className="py-8 text-center text-bibelo-muted text-sm">Carregando...</div>
+      ) : !items.length ? (
+        <div className="py-8 text-center text-bibelo-muted text-sm">Nenhuma atividade no período</div>
+      ) : (
+        <div className="space-y-0.5 max-h-[520px] overflow-y-auto pr-1 scrollbar-thin">
+          {items.map((item, i) => {
+            const cfg = tipoConfig(item.tipo, item.subtipo);
+            const quem = item.customer_nome || item.customer_email;
+            const local = [item.geo_city, item.geo_region].filter(Boolean).join('/');
+            return (
+              <div key={i} className="flex items-start gap-3 py-2.5 border-b border-bibelo-border/40 last:border-0">
+                <div className={`w-7 h-7 rounded-full ${cfg.bg} flex items-center justify-center shrink-0 text-sm mt-0.5`}>
+                  {cfg.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className={`text-[10px] font-semibold uppercase tracking-wide ${cfg.text}`}>{cfg.label}</span>
+                      {item.tipo === 'email_fluxo' && (
+                        <span className="text-[10px] text-bibelo-muted ml-1">· {item.subtipo}</span>
+                      )}
+                      <p className="text-xs text-bibelo-text truncate mt-0.5">
+                        {quem || (local ? `Visitante de ${local}` : 'Visitante anônimo')}
+                      </p>
+                      {item.descricao && item.descricao !== quem && (
+                        <p className="text-[10px] text-bibelo-muted truncate">{item.descricao}</p>
+                      )}
+                      {item.detalhe && item.tipo !== 'email_fluxo' && (
+                        <p className="text-[10px] text-bibelo-muted truncate">{item.detalhe}</p>
+                      )}
+                      {!quem && local && (
+                        <p className="text-[10px] text-bibelo-muted">{local}</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      {item.valor != null && item.valor > 0 && (
+                        <p className="text-xs font-semibold text-emerald-400">
+                          R$ {Number(item.valor).toFixed(2).replace('.', ',')}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-bibelo-muted">{timeAgo(item.criado_em)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Componente: Próximos Emails com Preview ──────────────────
 
 interface UpcomingEmail {
@@ -162,9 +309,9 @@ function UpcomingEmailsCard() {
   }, []);
 
   useEffect(() => { fetchUpcoming(); }, [fetchUpcoming]);
-  // Refresh a cada 2min
+  // Refresh a cada 30s
   useEffect(() => {
-    const id = setInterval(fetchUpcoming, 120_000);
+    const id = setInterval(fetchUpcoming, 30_000);
     return () => clearInterval(id);
   }, [fetchUpcoming]);
 
@@ -890,6 +1037,16 @@ export default function Dashboard() {
               )}
             </div>
           </div>
+          {/* ── Linha do Tempo Unificada ─────────────────────────── */}
+          <div className="mt-8 mb-4">
+            <h2 className="text-lg font-semibold text-bibelo-text flex items-center gap-2" style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}>
+              <Zap size={18} className="text-amber-400" />
+              Atividades em Tempo Real
+            </h2>
+            <p className="text-xs text-bibelo-muted mt-0.5">Vendas, leads, emails, site — atualiza a cada 30s</p>
+          </div>
+          <TimelineUnificada />
+
           {/* ── Atividade de Fluxos ─────────────────────────────── */}
           {flowActivity && (
             <>
