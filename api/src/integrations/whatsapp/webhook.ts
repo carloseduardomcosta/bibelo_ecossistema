@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import crypto from "crypto";
 import { query } from "../../db";
 import { logger } from "../../utils/logger";
-import { normalizarTelefone } from "./waha";
+import { normalizarTelefone, variantesNumero } from "./waha";
 import { triggerFlow } from "../../services/flow.service";
 import { createNotificacaoOperador } from "../../services/notificacoes-operador.service";
 
@@ -85,17 +85,17 @@ wahaWebhookRouter.post("/", async (req: Request, res: Response) => {
     const n = normalizarTelefone(raw);
     if (!n) continue;
 
-    // Busca por número normalizado com DDI ou sem DDI
-    const semDdi = n.startsWith("55") ? n.slice(2) : n;
+    // Todas as variantes: com DDI, sem DDI, com e sem 9º dígito
+    const todas = variantesNumero(n).flatMap(v => [
+      v,
+      v.startsWith("55") ? v.slice(2) : v,
+    ]);
 
     const customers = await query<{ id: string }>(
       `SELECT id FROM crm.customers
        WHERE telefone IS NOT NULL
-         AND (
-           REGEXP_REPLACE(telefone, '[^0-9]', '', 'g') = $1
-           OR REGEXP_REPLACE(telefone, '[^0-9]', '', 'g') = $2
-         )`,
-      [n, semDdi],
+         AND REGEXP_REPLACE(telefone, '[^0-9]', '', 'g') = ANY($1::text[])`,
+      [todas],
     );
 
     for (const c of customers) {
