@@ -2093,3 +2093,54 @@ Dois contatos Bling (CPFs 18033405187 e 17964935015) também causavam `duplicate
 #### Fix complementar — `fetchProductUrls` sem `nomeToSlug` fallback (`flow.service.ts`)
 
 Removido o fallback `nomeToSlug()` que gerava URLs a partir de nomes do Bling — os handles Bling não correspondem aos handles NuvemShop, causando links 404 nos emails de cross-sell. Agora retorna `""` para SKUs não resolvidos, e o template usa `/novidades` como fallback seguro.
+
+---
+
+## Sessão 23/04/2026 (noite) — Timeline unificada no Dashboard
+
+### feat(dashboard): timeline unificada com 5 fontes + cleanup automático — `72267d3`
+
+**Motivação:** o Dashboard mostrava apenas atividades de fluxos com polling lento. Carlos pediu uma visão unificada e em tempo real do que acontece no ecossistema.
+
+---
+
+#### Novo endpoint — `GET /api/analytics/timeline-unificado` (`routes/analytics.ts`)
+
+UNION ALL de 5 fontes de dados com parâmetro `?janela=1h|24h|7d|30d` (padrão `24h`) e paginação `?limit` (máx 200, padrão 60) + `?offset`:
+
+| Fonte | Tipo | Exemplos |
+|-------|------|---------|
+| `crm.tracking_events` | `site` | page_view, product_view, add_to_cart, purchase |
+| `marketing.flow_step_executions` | `automacao` | email enviado, step concluído |
+| `marketing.email_events` | `email` | open, click, bounce, complaint |
+| `marketing.leads` | `lead` | novo lead capturado |
+| `sync.nuvemshop_orders` | `venda` | pedido NuvemShop aprovado |
+
+Campos retornados: `tipo`, `subtipo`, `descricao`, `detalhe`, `valor`, `customer_nome`, `customer_email`, `geo_city`, `geo_region`, `criado_em`.
+
+---
+
+#### Cleanup automático — `flow-cleanup-tracking` (`queues/flow.queue.ts`)
+
+Novo job BullMQ diário às 3h BRT (06:00 UTC):
+```sql
+DELETE FROM crm.tracking_events WHERE criado_em < NOW() - INTERVAL '90 days'
+```
+Garante que o banco não cresce indefinidamente. Eventos dos últimos 90 dias são mantidos para analytics histórico.
+
+---
+
+#### Componente `TimelineUnificada` (`frontend/src/pages/Dashboard.tsx`)
+
+- Polling a cada **30 segundos** (era manual/inexistente)
+- Seletor de janela: 1h / 24h / 7d / 30d
+- Ícones e cores por tipo: site (azul), automação (roxo), email (verde), lead (laranja), venda (rosa)
+- Lista scrollável com até 60 eventos — link "carregar mais"
+- Exibe cidade/estado quando disponível (tracking)
+- Mostra nome/email do cliente quando vinculado
+
+**Inserido acima da seção "Atividade de Fluxos" existente.**
+
+---
+
+**Testes:** 852/852 passando após rebuild.
