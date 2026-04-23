@@ -2999,13 +2999,29 @@ async function apiLookup(sku: string): Promise<string> {
   if (!products || products.length === 0) return "";
 
   const prod = products[0];
+
+  // Validar match: pelo menos um variant deve ter o SKU buscado.
+  // Sem essa verificação, a API retorna o primeiro produto do catálogo como falso positivo.
+  const skuUpper = sku.toUpperCase();
+  const skuParent = skuUpper.replace(/_[A-Z0-9]{1,20}$/, "");
+  const variantMatch = (prod.variants as Array<{ sku: string }>).find(v => {
+    const vUp = (v.sku || "").toUpperCase();
+    return vUp === skuUpper || vUp === skuParent;
+  });
+  if (!variantMatch) {
+    logger.warn("fetchProductUrls: match inválido — nenhum variant bate com o SKU buscado", {
+      sku, nsId: prod.id, variantSkus: (prod.variants as Array<{ sku: string }>).map(v => v.sku).slice(0, 5),
+    });
+    return "";
+  }
+
   const handle = typeof prod.handle === "object" ? (prod.handle as Record<string, string>).pt || "" : String(prod.handle || "");
   const url = prod.canonical_url || (handle ? `${NS_PROD_BASE}${handle}/` : "");
   if (!url) return "";
 
   // Persiste no cache para as próximas chamadas (ns_id como chave de conflito)
   const nsId = String(prod.id);
-  const matchedSku = prod.variants.find(v => v.sku?.toUpperCase() === sku.toUpperCase())?.sku || sku;
+  const matchedSku = variantMatch.sku || sku;
   await query(
     `INSERT INTO sync.nuvemshop_products (ns_id, nome, sku, preco, custo, estoque, imagens, publicado, dados_raw, sincronizado_em)
      VALUES ($1, $2, $3, 0, 0, NULL, '[]', true, $4, NOW())
