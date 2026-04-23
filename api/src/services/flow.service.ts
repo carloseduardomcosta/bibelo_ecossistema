@@ -1175,6 +1175,7 @@ function buildCartCouponEmail(nome: string, metadata: Record<string, unknown>): 
 function buildThankYouEmail(nome: string, metadata: Record<string, unknown>): string {
   const cupom = metadata.cupom ? escHtml(String(metadata.cupom)) : "";
   const isPrimeiraCompra = metadata.primeira_compra === true;
+  const isVip = metadata.vip_confirmado === true;
 
   const cupomBlock = cupom ? `
     <div style="background:linear-gradient(135deg,#ffe5ec,#fff7c1);border:2px dashed #fe68c4;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
@@ -1182,6 +1183,16 @@ function buildThankYouEmail(nome: string, metadata: Record<string, unknown>): st
       <p style="font-size:28px;font-weight:700;color:#fe68c4;margin:8px 0;letter-spacing:2px;">${cupom}</p>
       <p style="font-size:15px;color:#555;margin:0;font-weight:600;">10% OFF na sua próxima compra</p>
       <p style="font-size:12px;color:#999;margin:6px 0 0;">Cupom de uso único · Válido por 30 dias</p>
+    </div>` : "";
+
+  const vipBlock = isVip ? `
+    <div style="background:linear-gradient(135deg,#fef6fa,#ffe5ec);border-radius:12px;padding:18px;text-align:center;margin:20px 0;border:1px solid #fce4ec;">
+      <p style="font-size:22px;margin:0;">👑💕</p>
+      <p style="font-size:14px;font-weight:700;color:#fe68c4;margin:8px 0 4px;">Você é do Clube VIP Bibelô!</p>
+      <p style="font-size:13px;color:#666;margin:0;line-height:1.5;">
+        Seu pedido recebe um mimo surpresa especialmente para membros do clube.
+        Fique de olho no grupo do WhatsApp para novidades exclusivas 🎀
+      </p>
     </div>` : "";
 
   return emailWrapper(`
@@ -1200,6 +1211,7 @@ function buildThankYouEmail(nome: string, metadata: Record<string, unknown>): st
       <p style="color:#fe68c4;font-weight:700;font-size:16px;margin:10px 0 4px;">Pedido confirmado!</p>
       <p style="color:#888;font-size:13px;margin:0;">Já estamos separando tudo com carinho</p>
     </div>
+    ${vipBlock}
     ${cupomBlock}
     <p style="font-size:15px;color:#555;line-height:1.6;">
       A Bibelô é feita de pessoas que amam papelaria tanto quanto você.
@@ -1418,17 +1430,23 @@ async function buildWelcomeEmail(nome: string, regiao: Regiao = null): Promise<s
 
 // ── Template: Reativação de Inativo ────────────────────────────
 
-async function buildReactivationEmail(nome: string, regiao: Regiao = null): Promise<string> {
+async function buildReactivationEmail(nome: string, regiao: Regiao = null, metadata: Record<string, unknown> = {}): Promise<string> {
   const productsGrid = await buildNfProductsGrid(4);
+  const ultimoProduto = metadata.ultimo_produto ? escHtml(String(metadata.ultimo_produto)) : null;
+  const diasSemCompra = typeof metadata.dias_sem_compra === "number" ? metadata.dias_sem_compra : null;
+
+  const saudadeTexto = ultimoProduto && diasSemCompra
+    ? `Você comprou <strong>${ultimoProduto}</strong> há ${diasSemCompra} dias e sentimos sua falta!`
+    : ultimoProduto
+    ? `Da última vez você levou <strong>${ultimoProduto}</strong> — e você sumiu! 😢`
+    : "Faz um tempinho que você não aparece por aqui e sentimos sua falta!";
 
   return emailWrapper(`
     <p style="font-size:16px;color:#333;">Oi, <strong>${escHtml(nome || "Cliente")}</strong>! 👋</p>
-    <p style="font-size:15px;color:#555;line-height:1.6;">
-      Faz um tempinho que você não aparece por aqui e sentimos sua falta!
-    </p>
+    <p style="font-size:15px;color:#555;line-height:1.6;">${saudadeTexto}</p>
     <div style="background:#FCE4EC;border-radius:8px;padding:20px;text-align:center;margin:20px 0;">
       <p style="font-size:40px;margin:0;">💌</p>
-      <p style="color:#C2185B;font-weight:600;margin:10px 0 0;">Temos novidades para você!</p>
+      <p style="color:#C2185B;font-weight:600;margin:10px 0 0;">Temos novidades esperando por você!</p>
     </div>
     ${productsGrid}
     <div style="background:#fff7c1;border-radius:10px;padding:14px;text-align:center;margin:20px 0;">
@@ -1953,7 +1971,7 @@ export async function buildFlowEmail(nome: string, templateName: string, metadat
     return await buildWelcomeEmail(nome, regiao);
   }
   if (lower.includes("reativação") || lower.includes("saudade") || lower.includes("inativ") || lower.includes("sentimos")) {
-    return await buildReactivationEmail(nome, regiao);
+    return await buildReactivationEmail(nome, regiao, metadata);
   }
   if (lower.includes("novidades") || lower.includes("semana")) {
     return await buildNewsEmail(nome, regiao);
@@ -2445,7 +2463,8 @@ export async function checkProductInterest(): Promise<number> {
       resource_nome: item.resource_nome,
       resource_preco: item.resource_preco,
       resource_imagem: item.resource_imagem,
-      recovery_url: productUrl,
+      pagina: productUrl,       // lido por buildProductVisitedEmail
+      recovery_url: productUrl, // compatibilidade
       views: parseInt(item.views, 10),
       itens: [{
         name: item.resource_nome,

@@ -96,9 +96,21 @@ export const syncWorker = new Worker(
               const totalPedidos = (hasPurchase ? parseInt(hasPurchase.total, 10) : 0);
 
               if (totalPedidos > 0) {
+                // Último produto comprado — personaliza o email de reativação
+                const ultimoItem = await queryOne<{ nome: string; criado_em: string }>(
+                  `SELECT nome, criado_em FROM crm.order_items
+                   WHERE customer_id = $1 ORDER BY criado_em DESC LIMIT 1`,
+                  [c.id]
+                );
+                const diasSemCompra = ultimoItem
+                  ? Math.floor((Date.now() - new Date(ultimoItem.criado_em).getTime()) / 86_400_000)
+                  : null;
+
                 await triggerFlow("customer.inactive", c.id, {
                   risco_anterior: riscoAntes,
                   risco_atual: "alto",
+                  ultimo_produto: ultimoItem?.nome ?? null,
+                  dias_sem_compra: diasSemCompra,
                 });
                 reactivationTriggered++;
               }
