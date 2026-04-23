@@ -18,6 +18,17 @@ O CF por nome de produto recomendava variantes de cor da mesma linha (ex: caneta
 
 ---
 
+## ✅ Itens 1-6 — RESOLVIDOS (23/04/2026)
+
+Melhoria completa da infraestrutura de email marketing:
+
+1. **validateEmailContext** + migration `056_email_send_log` — bloqueia opt-out, email inválido, URL sem produto, cross-sell sem co-compras, recompra sem estoque Bling
+2. **Audit de templates** — preheader em todos os templates principais, `toTitleCase()` para nomes ALL CAPS do Bling, guard de URL explícito para produto-visitado
+3. **Fallback dual-provider** — Resend primário → SES fallback automático (sem intervenção manual). SES como primário quando `EMAIL_PROVIDER=ses` (pós-sandbox)
+4. **Preview/Teste** — `GET /api/email/preview/:tipo/:customerId` e `POST /api/email/teste/:tipo/:customerId`
+5. **17 testes** em `email-validation.test.ts` — bloqueios de contexto + estrutura HTML dos templates
+6. **VIP context enrichment** — `vip.joined` enriquece metadata com últimos 3 produtos; `buildVipWelcomeEmail` usa saudação personalizada
+
 ## Próximos itens de backlog
 
 _Nenhum item pendente de pré-requisito no momento._

@@ -796,7 +796,8 @@ syncRouter.get("/email/preview/:tipo/:customerId", authMiddleware, async (req: R
 
 // ── POST /api/email/teste/:tipo/:customerId ─────────────────────
 // Envia o email para contato@papelariabibelo.com.br (nunca para o cliente real).
-// Body opcional: { metadata: {} } para passar dados extras ao template.
+// Body opcional: { metadata: {}, para: "outro@dominio.com" }
+// ?para= query param também aceito (apenas emails @papelariabibelo.com.br ou do admin).
 
 syncRouter.post("/email/teste/:tipo/:customerId", authMiddleware, async (req: Request, res: Response) => {
   const { tipo, customerId } = req.params;
@@ -812,7 +813,14 @@ syncRouter.post("/email/teste/:tipo/:customerId", authMiddleware, async (req: Re
     return;
   }
 
-  const TESTE_EMAIL = "contato@papelariabibelo.com.br";
+  const ALLOWED_DOMAINS = ["papelariabibelo.com.br", "gmail.com"];
+  const ADMIN_EMAILS = ["carloseduardocostatj@gmail.com", "carlos.macedo@unifique.com.br"];
+  const paraRaw = (req.body?.para as string) || (req.query?.para as string) || "";
+  const isAllowedEmail = paraRaw && (
+    ALLOWED_DOMAINS.some(d => paraRaw.endsWith(`@${d}`)) ||
+    ADMIN_EMAILS.includes(paraRaw)
+  );
+  const TESTE_EMAIL = isAllowedEmail ? paraRaw : "contato@papelariabibelo.com.br";
 
   try {
     const regiao = detectarRegiao({ estado: customer.estado, telefone: customer.telefone });

@@ -1530,7 +1530,7 @@ function buildLeadCartEmail(nome: string, metadata: Record<string, unknown>): st
     <p style="font-size:13px;color:#999;text-align:center;">
       Frete calculado no carrinho.${jaComprou ? "" : " Cupom válido para primeira compra."}
     </p>
-  `);
+  `, undefined, "Seu cupom exclusivo ainda está ativo — use antes que expire! ⏰");
 }
 
 // ── Template: Produtos Populares (drip dia 2) ─────────────────
@@ -1833,7 +1833,7 @@ function buildVipInviteEmail(nome: string, metadata: Record<string, unknown> = {
         </p>
       </div>
       ${ctaButton("Conhecer a loja", "https://www.papelariabibelo.com.br/?utm_source=email&utm_medium=flow&utm_campaign=vip_convite")}
-    `);
+    `, undefined, "Você é VIP Bibelô — benefícios exclusivos esperando por você 🎁");
   }
 
   // Lead normal — convite para o grupo
@@ -1856,7 +1856,7 @@ function buildVipInviteEmail(nome: string, metadata: Record<string, unknown> = {
     <p style="font-size:13px;color:#999;text-align:center;">
       Grupo com +115 membros. Sem spam, prometemos! 💕
     </p>
-  `);
+  `, undefined, "Convite exclusivo para o Grupo VIP Bibelô no WhatsApp 🎀");
 }
 
 // ── Template: Boas-vindas VIP (disparado pelo webhook vip.joined) ─
@@ -2869,6 +2869,30 @@ async function fetchProductImages(skus: string[]): Promise<Record<string, string
     }
   }
 
+  // Fallback: variantes filhas sem imagem → tenta SKU pai (remove sufixo _COR, _VARIANTE)
+  const stillMissing = skus.filter(s => !imgs[s] && !imgs[s.toUpperCase()] && !imgs[s.toLowerCase()]);
+  if (stillMissing.length > 0) {
+    const parentSkus = stillMissing.map(s => s.replace(/_[A-Z0-9]{1,20}$/, "")).filter(p => p.length > 0);
+    if (parentSkus.length > 0) {
+      const parentRows = await query<{ sku: string; img: string }>(
+        `SELECT sku, imagens->0->>'url' AS img FROM sync.bling_products WHERE sku = ANY($1) AND imagens IS NOT NULL AND jsonb_array_length(imagens) > 0`,
+        [parentSkus],
+      );
+      const parentImgs: Record<string, string> = {};
+      for (const r of parentRows) {
+        if (!r.img) continue;
+        const hashMatch = r.img.match(/\/t\/([a-f0-9]{32})/);
+        parentImgs[r.sku] = hashMatch
+          ? `https://dcdn-us.mitiendanube.com/stores/007/290/881/products/${hashMatch[1]}-1024-1024.jpg`
+          : r.img;
+      }
+      for (const sku of stillMissing) {
+        const parentSku = sku.replace(/_[A-Z0-9]{1,20}$/, "");
+        if (parentImgs[parentSku]) imgs[sku] = parentImgs[parentSku];
+      }
+    }
+  }
+
   // Normalizar: garantir que o SKU original (case-sensitive) tenha a imagem
   const result: Record<string, string> = {};
   for (const sku of skus) {
@@ -2878,19 +2902,148 @@ async function fetchProductImages(skus: string[]): Promise<Record<string, string
 }
 
 // ── Helper: buscar URL da NuvemShop para um produto ──────────────
+// Passo 1: cache local (sync.nuvemshop_products) — SKU exato + prefixo pai
+// Passo 2: API NuvemShop para os ainda não resolvidos — persiste resultado no cache
+// SKU real: sem espaços, curto. Nome-como-SKU: tem espaços ou é muito longo.
+function isValidSku(sku: string): boolean {
+  return !sku.includes(" ") && sku.length < 60;
+}
 
-async function fetchProductUrls(skus: string[]): Promise<Record<string, string>> {
-  if (skus.length === 0) return {};
-  const rows = await query<{ sku: string; url: string }>(
-    `SELECT sku, dados_raw->>'canonical_url' AS url FROM sync.nuvemshop_products WHERE LOWER(sku) = ANY($1) AND dados_raw->>'canonical_url' IS NOT NULL`,
-    [skus.map(s => s.toLowerCase())],
+// Passo 3: slug do nome com VARIANTE_RE (último recurso se API falhar/timeout)
+
+const VARIANTE_RE_URL = /\s+(Cor(?:\/[A-Za-zÀ-ɏ]+)?|Tinta|Estampa|Miolo|Tamanho|Modelo|Tipo|Embalagem|Aroma|Fragrância|Fragr[aâ]ncia|Sabor|Forma|S[ée]rie)\s*:.*$/i;
+
+function nomeToSlug(nome: string): string {
+  return nome
+    .replace(VARIANTE_RE_URL, "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^\w\s-]/g, " ")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 80);
+}
+
+type UrlRow = { sku: string; canonical: string | null; handle: string | null };
+const NS_PROD_BASE = "https://www.papelariabibelo.com.br/produtos/";
+
+// Extrai URL de um registro NuvemShop (canonical_url tem precedência)
+function urlFromRow(r: { canonical: string | null; handle: string | null }): string {
+  if (r.canonical) return r.canonical;
+  if (r.handle) return `${NS_PROD_BASE}${r.handle}/`;
+  return "";
+}
+
+// Passo 1a: query por SKU exato
+async function cacheQueryExact(lookupSkus: string[]): Promise<Record<string, string>> {
+  if (lookupSkus.length === 0) return {};
+  const rows = await query<UrlRow>(
+    `SELECT sku, dados_raw->>'canonical_url' AS canonical, dados_raw->'handle'->>'pt' AS handle
+     FROM sync.nuvemshop_products WHERE LOWER(sku) = ANY($1)`,
+    [lookupSkus.map(s => s.toLowerCase())],
   );
-  const urls: Record<string, string> = {};
-  for (const r of rows) urls[r.sku.toUpperCase()] = r.url;
-  // Normalizar
+  const map: Record<string, string> = {};
+  for (const r of rows) {
+    const url = urlFromRow(r);
+    if (url) map[r.sku.toUpperCase()] = url;
+  }
+  return map;
+}
+
+// Passo 1b: query por prefixo de SKU pai (ex: CANET_BRW_UNC_0001%)
+async function cacheQueryPrefix(sku: string): Promise<string> {
+  const prefix = sku.replace(/_[A-Z0-9]{1,20}$/, "");
+  if (prefix === sku) return ""; // sem sufixo removível
+  const rows = await query<UrlRow>(
+    `SELECT sku, dados_raw->>'canonical_url' AS canonical, dados_raw->'handle'->>'pt' AS handle
+     FROM sync.nuvemshop_products WHERE UPPER(sku) LIKE $1 LIMIT 1`,
+    [`${prefix}%`],
+  );
+  return rows[0] ? urlFromRow(rows[0]) : "";
+}
+
+// Passo 2: API NuvemShop + persiste no cache
+async function apiLookup(sku: string): Promise<string> {
+  if (!isValidSku(sku)) return "";  // nome-como-SKU: pular API, usar fallback nomeToSlug
+
+  const token = await getNuvemShopToken();
+  if (!token) return "";
+
+  type NsProduct = {
+    id: number; handle: Record<string, string> | string; canonical_url?: string;
+    variants: Array<{ sku: string }>; [k: string]: unknown;
+  };
+
+  // Timeout de 3s — não trava a geração do email se API lenta
+  const timeoutPromise = new Promise<NsProduct[]>((_, reject) =>
+    setTimeout(() => reject(new Error("timeout")), 3000)
+  );
+
+  let products: NsProduct[];
+  try {
+    products = await Promise.race([
+      nsRequest<NsProduct[]>("get", `products?sku=${encodeURIComponent(sku)}&per_page=5`, token),
+      timeoutPromise,
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg === "timeout") {
+      logger.warn("fetchProductUrls: timeout na API NuvemShop", { sku });
+    } else {
+      logger.warn("fetchProductUrls: erro na API NuvemShop", { sku, error: msg });
+    }
+    return "";
+  }
+
+  if (!products || products.length === 0) return "";
+
+  const prod = products[0];
+  const handle = typeof prod.handle === "object" ? (prod.handle as Record<string, string>).pt || "" : String(prod.handle || "");
+  const url = prod.canonical_url || (handle ? `${NS_PROD_BASE}${handle}/` : "");
+  if (!url) return "";
+
+  // Persiste no cache para as próximas chamadas (ns_id como chave de conflito)
+  const nsId = String(prod.id);
+  const matchedSku = prod.variants.find(v => v.sku?.toUpperCase() === sku.toUpperCase())?.sku || sku;
+  await query(
+    `INSERT INTO sync.nuvemshop_products (ns_id, nome, sku, preco, custo, estoque, imagens, publicado, dados_raw, sincronizado_em)
+     VALUES ($1, $2, $3, 0, 0, NULL, '[]', true, $4, NOW())
+     ON CONFLICT (ns_id) DO UPDATE SET dados_raw = $4, sincronizado_em = NOW()`,
+    [nsId, String((prod.name as Record<string, string>)?.pt || prod.name || matchedSku), matchedSku, JSON.stringify(prod)],
+  ).catch(e => logger.warn("fetchProductUrls: erro ao persistir cache NS", { sku, error: String(e) }));
+
+  logger.info("fetchProductUrls: URL resolvida via API NuvemShop", { sku, url, nsId });
+  return url;
+}
+
+async function fetchProductUrls(skus: string[], nomes: string[] = []): Promise<Record<string, string>> {
+  if (skus.length === 0) return {};
+
+  // Passo 1: cache local — SKU exato
+  const resolved: Record<string, string> = await cacheQueryExact(skus);
+
+  // Para os não resolvidos: prefixo do SKU pai no cache
+  const afterExact = skus.filter(s => !resolved[s.toUpperCase()]);
+  for (const sku of afterExact) {
+    const url = await cacheQueryPrefix(sku);
+    if (url) resolved[sku.toUpperCase()] = url;
+  }
+
+  // Passo 2: API NuvemShop para os ainda sem URL
+  const afterCache = skus.filter(s => !resolved[s.toUpperCase()]);
+  for (const sku of afterCache) {
+    const url = await apiLookup(sku);
+    if (url) resolved[sku.toUpperCase()] = url;
+  }
+
+  // Passo 3: slug do nome como último recurso
   const result: Record<string, string> = {};
-  for (const sku of skus) {
-    result[sku] = urls[sku] || urls[sku.toUpperCase()] || "";
+  for (let i = 0; i < skus.length; i++) {
+    const sku = skus[i];
+    result[sku] =
+      resolved[sku.toUpperCase()] ||
+      (nomes[i] ? `${NS_PROD_BASE}${nomeToSlug(nomes[i])}/` : "");
   }
   return result;
 }
@@ -2937,7 +3090,7 @@ async function buildCrossSellEmail(nome: string, metadata: Record<string, unknow
 
   // Collaborative filtering por nome_base — agrupa variantes (Cor:X, Tinta:X, etc.)
   // antes de recomendar, evitando sugerir "caneta azul → caneta vermelha"
-  const VARIANTE_RE = `\\s+(Cor|Tinta|Cor/Estampa|Cor/Cheiro|Cor/Forma|Estampa|Miolo|Tamanho|Modelo|Tipo)\\s*:.*$`;
+  const VARIANTE_RE = `\\s+(Cor(?:/[A-Za-z\\u00C0-\\u024F]+)?|Tinta|Estampa|Miolo|Tamanho|Modelo|Tipo|Embalagem|Aroma|Fragrância|Fragr[aâ]ncia|Sabor|Forma|S[ée]rie)\\s*:.*$`;
 
   let recomendacoes: Array<{ sku: string; nome: string; valor: number; img: string | null }> = [];
 
@@ -2964,22 +3117,30 @@ async function buildCrossSellEmail(nome: string, metadata: Record<string, unknow
         JOIN crm.order_items b
           ON a.order_id = b.order_id AND a.source = b.source AND a.sku != b.sku
         WHERE a.sku = ANY($1::text[])
-          AND b.sku IS NOT NULL
+          AND b.sku IS NOT NULL AND b.sku != '' AND b.sku != '-' AND LENGTH(b.sku) > 1
           AND b.customer_id != $2   -- exclui pedidos do próprio cliente
         GROUP BY b.sku, b.nome, b.valor_unitario
+      ),
+      -- Deduplica variantes: mantém só 1 SKU por nome_base (o mais frequente)
+      dedup AS (
+        SELECT DISTINCT ON (nome_base_recom)
+          sku_recom, nome_recom, nome_base_recom, valor,
+          SUM(frequencia) OVER (PARTITION BY nome_base_recom) AS freq_total
+        FROM co_compras
+        ORDER BY nome_base_recom, frequencia DESC
       )
       SELECT
-        cc.sku_recom AS sku,
-        cc.nome_recom AS nome,
-        ROUND(AVG(cc.valor), 2)::float AS valor
-      FROM co_compras cc
+        d.sku_recom AS sku,
+        d.nome_recom AS nome,
+        ROUND(AVG(d.valor), 2)::float AS valor
+      FROM dedup d
       -- Excluir produtos com mesmo nome_base que o cliente já comprou
       WHERE NOT EXISTS (
-        SELECT 1 FROM base_comprada bc WHERE bc.nome_base = cc.nome_base_recom
+        SELECT 1 FROM base_comprada bc WHERE bc.nome_base = d.nome_base_recom
       )
-      AND cc.sku_recom != ALL($1::text[])
-      GROUP BY cc.sku_recom, cc.nome_recom
-      ORDER BY SUM(cc.frequencia) DESC
+      AND d.sku_recom != ALL($1::text[])
+      GROUP BY d.sku_recom, d.nome_recom, d.freq_total
+      ORDER BY d.freq_total DESC
       LIMIT 4
     `, [skusComprados, customerId]);
 
@@ -2996,23 +3157,25 @@ async function buildCrossSellEmail(nome: string, metadata: Record<string, unknow
         SELECT REGEXP_REPLACE(nome, '${VARIANTE_RE}', '', 'i') AS nome_base
         FROM crm.order_items WHERE customer_id = $2
       )
-      SELECT sku, nome, ROUND(AVG(valor_unitario), 2)::float AS valor
+      SELECT DISTINCT ON (REGEXP_REPLACE(nome, '${VARIANTE_RE}', '', 'i'))
+        sku, nome, ROUND(AVG(valor_unitario) OVER (PARTITION BY sku), 2)::float AS valor
       FROM crm.order_items
-      WHERE sku IS NOT NULL
+      WHERE sku IS NOT NULL AND sku != '' AND sku != '-' AND LENGTH(sku) > 1
         AND sku != ALL($1::text[])
         AND criado_em >= NOW() - INTERVAL '2 months'
         AND REGEXP_REPLACE(nome, '${VARIANTE_RE}', '', 'i') NOT IN (SELECT nome_base FROM historico_cliente)
-      GROUP BY sku, nome
-      ORDER BY COUNT(*) DESC LIMIT 4
+      ORDER BY REGEXP_REPLACE(nome, '${VARIANTE_RE}', '', 'i'), COUNT(*) OVER (PARTITION BY sku) DESC
+      LIMIT 4
     `, [skusComprados, customerId]);
 
     const imgs2 = await fetchProductImages(topRows.map(r => r.sku));
     recomendacoes = topRows.map(r => ({ ...r, img: imgs2[r.sku] || null }));
   }
 
-  // Buscar URLs da NuvemShop para links clicáveis
+  // Buscar URLs da NuvemShop para links clicáveis (fallback: slug gerado do nome)
   const allSkus = recomendacoes.map(r => r.sku);
-  const urls = await fetchProductUrls(allSkus);
+  const allNomes = recomendacoes.map(r => r.nome);
+  const urls = await fetchProductUrls(allSkus, allNomes);
 
   // Montar HTML dos produtos recomendados
   let productsHtml = "";
@@ -3049,7 +3212,10 @@ async function buildCrossSellEmail(nome: string, metadata: Record<string, unknow
 
   // Mencionar o que compraram
   const compradosText = itensComprados.length > 0
-    ? itensComprados.slice(0, 2).map(i => `<strong>${escHtml(i.nome.length > 40 ? i.nome.slice(0, 37) + "..." : i.nome)}</strong>`).join(", ")
+    ? itensComprados.slice(0, 2).map(i => {
+        const nomeFormatado = toTitleCase(i.nome.length > 40 ? i.nome.slice(0, 37) + "..." : i.nome);
+        return `<strong>${escHtml(nomeFormatado)}</strong>`;
+      }).join(", ")
     : "sua última compra";
 
   return emailWrapper(`
@@ -3060,7 +3226,7 @@ async function buildCrossSellEmail(nome: string, metadata: Record<string, unknow
     </p>
     <div style="background:linear-gradient(135deg,#fff7c1,#ffe5ec);border-radius:12px;padding:2px;">
       <div style="text-align:center;padding:10px;">
-        <span style="background:#fe68c4;color:#fff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;">COMBINA COM VOCÊ ✨</span>
+        <span style="background:#fe68c4;color:#fff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;">Combina com você ✨</span>
       </div>
       ${productsHtml}
     </div>
@@ -3086,13 +3252,14 @@ async function buildRepurchaseEmail(nome: string, metadata: Record<string, unkno
         Faz um tempinho que você não aparece! Temos novidades esperando por você.
       </p>
       ${ctaButton("Ver novidades", "https://www.papelariabibelo.com.br/novidades?utm_source=email&utm_medium=flow&utm_campaign=recompra")}
-    `);
+    `, undefined, "Hora de repor seus favoritos — estoque reservado para você 💕");
   }
 
-  // Buscar imagens HD e URLs dos produtos frequentes
+  // Buscar imagens HD e URLs dos produtos frequentes (fallback: slug do nome)
   const skus = produtosFrequentes.map(p => p.sku);
+  const nomes = produtosFrequentes.map(p => p.nome);
   const imgs = await fetchProductImages(skus);
-  const urls = await fetchProductUrls(skus);
+  const urls = await fetchProductUrls(skus, nomes);
 
   // Montar grid de produtos
   const cards = produtosFrequentes.map((p, i) => {
@@ -3132,7 +3299,7 @@ async function buildRepurchaseEmail(nome: string, metadata: Record<string, unkno
     </p>
     <div style="background:linear-gradient(135deg,#fff7c1,#ffe5ec);border-radius:12px;padding:2px;">
       <div style="text-align:center;padding:12px 10px 4px;">
-        <span style="background:#fe68c4;color:#fff;padding:5px 16px;border-radius:20px;font-size:12px;font-weight:600;letter-spacing:0.5px;">SEUS FAVORITOS 💕</span>
+        <span style="background:#fe68c4;color:#fff;padding:5px 16px;border-radius:20px;font-size:12px;font-weight:600;letter-spacing:0.5px;">Seus favoritos 💕</span>
       </div>
       ${productsHtml}
     </div>
