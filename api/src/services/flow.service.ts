@@ -7,7 +7,7 @@ import { gerarLinkDescadastro, proxyImageUrl, warmProxyImage } from "../routes/e
 import crypto from "crypto";
 import { escHtml } from "../utils/sanitize";
 import { type Regiao, detectarRegiao, bannerFretep, textoFreteInline, itemFreteHtml } from "../utils/regiao";
-import { verificarEPersistirVip } from "../integrations/whatsapp/waha";
+import { verificarEPersistirVip, getGrupoVipTotal } from "../integrations/whatsapp/waha";
 import { createNotificacaoOperador } from "./notificacoes-operador.service";
 export { checkHighIntentClients, checkVipInactivos, sendOperatorDailySummary } from "./notificacoes-operador.service";
 
@@ -1962,11 +1962,9 @@ export async function buildFlowEmail(nome: string, templateName: string, metadat
     return buildLeadCouponEmail(nome, metadata);
   }
   if (lower.includes("fomo") || lower.includes("grupo vip")) {
-    const countRow = await queryOne<{ total: string }>(
-      "SELECT COUNT(*)::text AS total FROM crm.customers WHERE vip_grupo_wp = true"
-    );
-    const membrosVip = parseInt(countRow?.total || "115", 10);
-    metadata.membros_vip = membrosVip; // disponibiliza para getFlowSubject
+    const totalWaha = await getGrupoVipTotal();
+    const membrosVip = totalWaha > 0 ? totalWaha : 115;
+    metadata.membros_vip = membrosVip;
     return buildFomoVipEmail(nome, metadata, regiao, membrosVip);
   }
   if (lower.includes("produto visitado") || lower.includes("viu produto")) {

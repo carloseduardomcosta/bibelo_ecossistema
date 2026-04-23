@@ -55,6 +55,29 @@ export async function cached<T>(key: string, ttlSeconds: number, fn: () => Promi
 }
 
 /**
+ * Salvar um valor diretamente no cache (sem factory)
+ */
+export async function cacheSet<T>(key: string, ttlSeconds: number, value: T): Promise<void> {
+  const redis = await getClient();
+  if (!redis) return;
+  redis.setEx(key, ttlSeconds, JSON.stringify(value)).catch(() => {});
+}
+
+/**
+ * Ler um valor diretamente do cache (sem factory)
+ */
+export async function cacheGet<T>(key: string): Promise<T | null> {
+  const redis = await getClient();
+  if (!redis) return null;
+  try {
+    const raw = await redis.get(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Invalidar cache por padrão de chave
  */
 export async function invalidateCache(pattern: string): Promise<void> {
