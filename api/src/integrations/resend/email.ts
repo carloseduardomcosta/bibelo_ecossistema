@@ -62,66 +62,96 @@ export async function sendEmail(params: SendEmailParams): Promise<{ id: string }
   const rawFrom = params.from || process.env.EMAIL_FROM || "noreply@papelariabibelo.com.br";
   const from = rawFrom.includes("<") ? rawFrom : `Papelaria Bibelô <${rawFrom}>`;
   const replyTo = params.replyTo || process.env.EMAIL_REPLY_TO || "contato@papelariabibelo.com.br";
-  const provider = getEmailProvider();
+  const primaryProvider = getEmailProvider();
 
-  // ── SES ────────────────────────────────────────────────────
-  if (provider === "ses") {
-    try {
-      const result = await sesSendEmail({
-        from,
-        to: params.to,
-        subject: params.subject,
-        html: params.html,
-        text: params.text,
-        replyTo,
-        tags: params.tags,
+  // ── Helpers por provider ────────────────────────────────────────
+
+  async function trySes(): Promise<{ id: string }> {
+    const result = await sesSendEmail({
+      from, to: params.to, subject: params.subject,
+      html: params.html, text: params.text, replyTo, tags: params.tags,
+    });
+    logger.info("Email enviado via SES", { id: result.id, to: params.to });
+    return result;
+  }
+
+  async function tryResend(): Promise<{ id: string } | null> {
+    const client = getClient();
+    if (!client) return null;
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { data, error } = await client.emails.send({
+        from, to: params.to, subject: params.subject,
+        html: params.html, text: params.text, reply_to: replyTo, tags: params.tags,
       });
-      logger.info("Email enviado via SES", { id: result.id, to: params.to, subject: params.subject });
-      return result;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro SES";
-      logger.error("Erro ao enviar email via SES", { error: msg, to: params.to });
-      throw new Error(msg);
+
+      if (error) {
+        const msg = error.message || "";
+        const isTemporary = msg.includes("rate") || msg.includes("429") || msg.includes("500") || msg.includes("503") || msg.includes("timeout");
+        if (isTemporary && attempt === 0) {
+          logger.warn("Resend erro temporário — retentando em 3s", { error: msg, to: params.to });
+          await new Promise((r) => setTimeout(r, 3000));
+          continue;
+        }
+        throw new Error(msg);
+      }
+
+      logger.info("Email enviado via Resend", { id: data?.id, to: params.to });
+      return data ? { id: data.id } : null;
+    }
+    return null;
+  }
+
+  // ── Ordem: primário + fallback automático ─────────────────────
+  // EMAIL_PROVIDER=ses  → SES primeiro, Resend como fallback
+  // EMAIL_PROVIDER=resend (default) → Resend primeiro, SES como fallback
+  // Nota: SES está em sandbox — manter EMAIL_PROVIDER=resend até produção SES estar liberado
+
+  if (primaryProvider === "ses") {
+    try {
+      return await trySes();
+    } catch (sesErr) {
+      const sesMsg = sesErr instanceof Error ? sesErr.message : "Erro SES";
+      logger.warn("SES falhou — tentando Resend como fallback", { error: sesMsg, to: params.to });
+      try {
+        const result = await tryResend();
+        if (result) return result;
+      } catch (resendErr) {
+        logger.error("Fallback Resend também falhou", { error: resendErr instanceof Error ? resendErr.message : String(resendErr), to: params.to });
+      }
+      throw new Error(`Ambos providers falharam. SES: ${sesMsg}`);
     }
   }
 
-  // ── Resend (fallback) ──────────────────────────────────────
+  // Resend como primário (default)
   const client = getClient();
   if (!client) {
+    // Resend não configurado: tenta SES diretamente
+    if (isSesConfigured()) {
+      logger.warn("Resend não configurado — usando SES", { to: params.to });
+      return await trySes();
+    }
     logger.warn("Nenhum provider de email configurado", { to: params.to, subject: params.subject });
     return null;
   }
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const { data, error } = await client.emails.send({
-      from,
-      to: params.to,
-      subject: params.subject,
-      html: params.html,
-      text: params.text,
-      reply_to: replyTo,
-      tags: params.tags,
-    });
-
-    if (error) {
-      const msg = error.message || "";
-      const isTemporary = msg.includes("rate") || msg.includes("429") || msg.includes("500") || msg.includes("503") || msg.includes("timeout");
-
-      if (isTemporary && attempt === 0) {
-        logger.warn("Resend erro temporário — retentando em 3s", { error: msg, to: params.to });
-        await new Promise((r) => setTimeout(r, 3000));
-        continue;
+  try {
+    const result = await tryResend();
+    if (result) return result;
+    throw new Error("Resend retornou null");
+  } catch (resendErr) {
+    const resendMsg = resendErr instanceof Error ? resendErr.message : "Erro Resend";
+    if (isSesConfigured()) {
+      logger.warn("Resend falhou — tentando SES como fallback", { error: resendMsg, to: params.to });
+      try {
+        return await trySes();
+      } catch (sesErr) {
+        logger.error("Fallback SES também falhou", { error: sesErr instanceof Error ? sesErr.message : String(sesErr), to: params.to });
+        throw new Error(`Ambos providers falharam. Resend: ${resendMsg}`);
       }
-
-      logger.error("Erro ao enviar email via Resend", { error: msg, to: params.to, attempt });
-      throw new Error(msg);
     }
-
-    logger.info("Email enviado via Resend", { id: data?.id, to: params.to, subject: params.subject });
-    return data ? { id: data.id } : null;
+    throw resendErr;
   }
-
-  return null;
 }
 
 // ── Enviar campanha para segmento ───────────────────────────────

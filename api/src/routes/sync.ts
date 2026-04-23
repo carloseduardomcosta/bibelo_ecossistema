@@ -10,6 +10,9 @@ import { syncLogisticaObjetos } from "../integrations/bling/logistica";
 import { getNuvemShopAuthUrl, exchangeNuvemShopCode, getNuvemShopToken } from "../integrations/nuvemshop/auth";
 import { syncNuvemShop, registerNsWebhooks } from "../integrations/nuvemshop/sync";
 import { sendOrderConfirmationEmail, sendPaymentApprovedEmail, sendShippingEmail } from "../services/storefront-email.service";
+import { buildFlowEmail, getFlowSubject } from "../services/flow.service";
+import { sendEmail } from "../integrations/resend/email";
+import { detectarRegiao } from "../utils/regiao";
 
 export const syncRouter = Router();
 
@@ -756,5 +759,79 @@ syncRouter.post("/waha/vip", authMiddleware, async (_req: Request, res: Response
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro";
     logger.error("Sync WAHA VIP falhou", { error: message });
+  }
+});
+
+// ── GET /api/email/preview/:tipo/:customerId ────────────────────
+// Retorna o HTML do email gerado para o cliente, sem enviar.
+// Útil para visualizar o template com dados reais antes de disparar.
+
+syncRouter.get("/email/preview/:tipo/:customerId", authMiddleware, async (req: Request, res: Response) => {
+  const { tipo, customerId } = req.params;
+
+  const customer = await queryOne<{ id: string; nome: string; email: string | null; telefone: string | null; estado: string | null }>(
+    "SELECT id, nome, email, telefone, estado FROM crm.customers WHERE id = $1",
+    [customerId]
+  ).catch(() => null);
+
+  if (!customer) {
+    res.status(404).json({ error: "Cliente não encontrado" });
+    return;
+  }
+
+  try {
+    const regiao = detectarRegiao({ estado: customer.estado, telefone: customer.telefone });
+    const metadata: Record<string, unknown> = { customer_id: customerId };
+    const html = await buildFlowEmail(customer.nome, tipo, metadata, regiao);
+    const subject = getFlowSubject(tipo, customer.nome, metadata);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("X-Email-Subject", Buffer.from(subject).toString("base64"));
+    res.send(html);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    logger.error("Erro ao gerar preview de email", { tipo, customerId, error: message });
+    res.status(500).json({ error: "Erro ao gerar preview", detalhe: message });
+  }
+});
+
+// ── POST /api/email/teste/:tipo/:customerId ─────────────────────
+// Envia o email para contato@papelariabibelo.com.br (nunca para o cliente real).
+// Body opcional: { metadata: {} } para passar dados extras ao template.
+
+syncRouter.post("/email/teste/:tipo/:customerId", authMiddleware, async (req: Request, res: Response) => {
+  const { tipo, customerId } = req.params;
+  const extraMetadata = (req.body?.metadata as Record<string, unknown>) || {};
+
+  const customer = await queryOne<{ id: string; nome: string; email: string | null; telefone: string | null; estado: string | null }>(
+    "SELECT id, nome, email, telefone, estado FROM crm.customers WHERE id = $1",
+    [customerId]
+  ).catch(() => null);
+
+  if (!customer) {
+    res.status(404).json({ error: "Cliente não encontrado" });
+    return;
+  }
+
+  const TESTE_EMAIL = "contato@papelariabibelo.com.br";
+
+  try {
+    const regiao = detectarRegiao({ estado: customer.estado, telefone: customer.telefone });
+    const metadata: Record<string, unknown> = { customer_id: customerId, ...extraMetadata };
+    const html = await buildFlowEmail(customer.nome, tipo, metadata, regiao);
+    const subject = getFlowSubject(tipo, customer.nome, metadata);
+
+    const result = await sendEmail({
+      to: TESTE_EMAIL,
+      subject: `[TESTE] ${subject}`,
+      html,
+      tags: [{ name: "type", value: "email_teste" }],
+    });
+
+    logger.info("Email de teste enviado", { tipo, customerId, messageId: result?.id, para: TESTE_EMAIL });
+    res.json({ ok: true, messageId: result?.id, para: TESTE_EMAIL, assunto: subject });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    logger.error("Erro ao enviar email de teste", { tipo, customerId, error: message });
+    res.status(500).json({ error: "Erro ao enviar email de teste", detalhe: message });
   }
 });

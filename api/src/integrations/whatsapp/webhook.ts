@@ -113,7 +113,23 @@ wahaWebhookRouter.post("/", async (req: Request, res: Response) => {
 
       // Novo membro no grupo → fluxo de boas-vindas VIP + notificação operador
       if (isVip) {
-        triggerFlow("vip.joined", c.id, { fonte: "grupo_vip" }).catch((err: unknown) => {
+        // Enriquecer com últimos 3 produtos comprados para personalizar o email VIP
+        const ultimasCompras = await query<{ nome: string; sku: string | null; valor: number }>(
+          `SELECT nome, sku, valor_unitario::float AS valor
+           FROM crm.order_items
+           WHERE customer_id = $1
+           ORDER BY criado_em DESC LIMIT 3`,
+          [c.id],
+        ).catch(() => [] as Array<{ nome: string; sku: string | null; valor: number }>);
+
+        const vipMetadata: Record<string, unknown> = {
+          fonte: "grupo_vip",
+          ultimas_compras: ultimasCompras,
+          ja_comprou: ultimasCompras.length > 0,
+          ultimo_produto: ultimasCompras[0]?.nome ?? null,
+        };
+
+        triggerFlow("vip.joined", c.id, vipMetadata).catch((err: unknown) => {
           const msg = err instanceof Error ? err.message : "Erro";
           logger.error("WAHA webhook: erro ao disparar fluxo vip.joined", { customerId: c.id, error: msg });
         });
