@@ -62,11 +62,13 @@
 - **Sessão:** `default` — reconecta automaticamente (`WHATSAPP_RESTART_ALL_SESSIONS: true`)
 - **Uso:** somente leitura — verifica membros do grupo VIP. Zero interação com usuários.
 - **Variáveis .env:** `WAHA_URL`, `WAHA_API_KEY`, `WAHA_SESSION`, `WAHA_GRUPO_VIP_JID`, `WAHA_WEBHOOK_HMAC_KEY`
-- **P0 — Sync inicial:** `POST /api/sync/waha/vip` — carrega todos os membros do grupo, atualiza `crm.customers.vip_grupo_wp`. Cache Redis 30min (`waha:grupo_vip:participantes`). Cron BullMQ toda segunda-feira 08h BRT.
+- **P0 — Sync inicial:** `POST /api/sync/waha/vip` — carrega todos os membros do grupo, atualiza `crm.customers.vip_grupo_wp`. Cache Redis 30min (`waha:grupo_vip:participantes`). Total bruto salvo em `waha:grupo_vip:total` (24h TTL) → usado pelo email FOMO para exibir contagem real. Cron BullMQ toda segunda-feira 08h BRT.
 - **P1 — Webhook real-time:** `POST /api/webhooks/waha` — evento `group.v2.participants` (add/remove) → atualiza `vip_grupo_wp` + `vip_grupo_wp_em` em tempo real. HMAC-SHA512 via `x-webhook-hmac-token`. Ações `promote`/`demote` ignoradas.
-- **Match de telefone:** normaliza número do WAHA (phoneNumber `5547...@s.whatsapp.net`) e busca no banco com DDI ou sem DDI via `REGEXP_REPLACE`.
-- **Testes:** `api/src/integrations/whatsapp/webhook.test.ts` — 16 testes. Clientes com DDD 00 (inexistente), sem dados reais.
-- **Arquivos:** `api/src/integrations/whatsapp/waha.ts` (sync + normalizarTelefone), `webhook.ts` (handler), `routes/sync.ts` (POST /sync/waha/vip), `queues/sync.queue.ts` (cron)
+- **Match de telefone:** `normalizarTelefone()` normaliza para DDI 55. `variantesNumero()` gera variantes com e sem 9º dígito — resolve contas WhatsApp antigas (8 dígitos locais) que correspondem a números CRM modernos (9 dígitos) e vice-versa. Busca SQL usa `= ANY($1::text[])` com todas as variantes.
+- **Contador email FOMO:** `getGrupoVipTotal()` lê Redis (`waha:grupo_vip:total`) — retorna total bruto do grupo (ex: 138). Fallback 0 se Redis vazio (primeiro boot). `flow.service.ts` usa esse valor em vez de COUNT do banco.
+- **Guard email VIP:** `flow.service.ts` pula steps de email FOMO/convite-VIP quando `vip_confirmado = true` — evita enviar "entre no grupo" para quem já está no grupo.
+- **Testes:** `waha.test.ts` (15 unitários: normalizarTelefone + variantesNumero) + `webhook.test.ts` (20 integração: auth, add/remove, 9º dígito, segurança). DDD 00 fictício — sem dados reais.
+- **Arquivos:** `waha.ts` (sync + normalizarTelefone + variantesNumero + getGrupoVipTotal), `webhook.ts` (handler), `routes/sync.ts`, `queues/sync.queue.ts` (cron), `utils/cache.ts` (cacheSet/cacheGet)
 
 ## Chatwoot + Meta Cloud API (WhatsApp + Instagram) — planejado
 - Plano completo: `docs/integracoes/whatsapp-chatwoot.md`

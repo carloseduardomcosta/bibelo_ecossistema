@@ -30,7 +30,7 @@
 | Opt-out Email (LGPD) | ✅ produção | descadastro 1-click, campanhas e fluxos respeitam opt-out |
 | Chatwoot (multi-canal) | 📋 planejado | WhatsApp + Instagram DM via Meta Cloud API oficial — docs/integracoes/whatsapp-chatwoot.md |
 | Evolution API (Clube VIP) | ✅ produção | v2.2.3, porta 8080, webhook GROUP_PARTICIPANTS_UPDATE → vincula membro ao CRM (whatsapp_jid), cria customer se novo. Somente leitura — sem envio de mensagens |
-| WAHA Grupo VIP | ✅ produção | Engine NOWEB, porta 3030. P0: sync inicial via `POST /api/sync/waha/vip` (6 VIP + 36 não-VIP de 135 membros). P1: webhook real-time `group.v2.participants` → atualiza `vip_grupo_wp` + `vip_grupo_wp_em` em `crm.customers`. HMAC-SHA512. Cron semanal seg 08h. 16 testes automatizados. |
+| WAHA Grupo VIP | ✅ produção | Engine NOWEB, porta 3030. 138 membros reais no grupo. P0: sync bulk via `POST /api/sync/waha/vip` (13 VIP + 29 não-VIP de 42 clientes CRM). P1: webhook real-time `group.v2.participants` → atualiza `vip_grupo_wp` + `vip_grupo_wp_em`. HMAC-SHA512. Cron semanal seg 08h. Total grupo salvo no Redis (CACHE_KEY_TOTAL, 24h) → email FOMO exibe contagem real. variantesNumero() resolve match com/sem 9º dígito Brasil. 35 testes automatizados. |
 | Infra Dashboard | ✅ produção | http://10.0.111.7:8888 (WireGuard only). Cards clicáveis para todos os serviços com health check real. Auto-refresh 60s. |
 | WireGuard Access Control | ✅ produção | status, homolog e Medusa Admin (/app) restritos à rede WireGuard (10.0.111.0/28) via nginx allow/deny + AdGuard DNS split-horizon. |
 | Meta Ads Dashboard | ✅ produção | Graph API v25.0, 6 endpoints insights + 7 históricos, BullMQ sync 6h, migration 050 |

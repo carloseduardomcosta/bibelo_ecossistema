@@ -1904,3 +1904,22 @@ Sync automático BullMQ ativo: `meta-audiences-sync` às 03:00 BRT diariamente.
 
 ### fix(e2e-tests): skipIf Medusa offline nos testes E2E
 Top-level `await fetch(MEDUSA/health)` + `describe.skipIf(!medusaAvailable)` em todos os describes dos arquivos `e2e-bling-to-storefront.test.ts` e `e2e-purchase-flow.test.ts`. Resultado: **817 testes, 0 falhas**.
+
+---
+
+### fix(waha): contador real do grupo VIP + match número sem 9º dígito
+
+**Problema:** email FOMO exibia 6 (clientes VIP no CRM) em vez de 138 (total real do grupo).
+Match falhava para contas com número antigo no WhatsApp (8 dígitos locais, sem o 9º dígito).
+
+**Solução:**
+- `waha.ts`: salva total bruto do grupo no Redis (`waha:grupo_vip:total`, TTL 24h) durante `fetchParticipantesWaha()`
+- `waha.ts`: exporta `getGrupoVipTotal()` — lê Redis, fallback 0
+- `waha.ts`: `variantesNumero(n)` gera variantes com e sem 9º dígito (padrão brasileiro desde 2016)
+- `eMembroGrupoVip()` e `syncWahaVipBulk()` usam `variantesNumero()` no match
+- `webhook.ts`: query SQL `= ANY($1::text[])` com todas as variantes (P1 real-time)
+- `flow.service.ts`: FOMO usa `getGrupoVipTotal()` — mostra 138 não 6
+- `cache.ts`: adiciona `cacheSet()` e `cacheGet()` para acesso direto ao Redis sem factory
+
+**Resultado sync:** 138 membros no grupo, 13 VIP identificados no CRM (eram 6 antes do fix).
+**Testes:** 835 passando (+18 novos: 15 unitários `waha.test.ts` + 3 integração 9º dígito `webhook.test.ts`).
