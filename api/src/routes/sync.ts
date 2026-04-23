@@ -8,7 +8,7 @@ import { syncCustomers, syncOrders, syncProducts, syncStock, syncNfEntrada, sync
 import { syncWahaVipBulk } from "../integrations/whatsapp/waha";
 import { syncLogisticaObjetos } from "../integrations/bling/logistica";
 import { getNuvemShopAuthUrl, exchangeNuvemShopCode, getNuvemShopToken } from "../integrations/nuvemshop/auth";
-import { syncNuvemShop, registerNsWebhooks } from "../integrations/nuvemshop/sync";
+import { syncNuvemShop, registerNsWebhooks, syncNsProducts } from "../integrations/nuvemshop/sync";
 import { sendOrderConfirmationEmail, sendPaymentApprovedEmail, sendShippingEmail } from "../services/storefront-email.service";
 import { buildFlowEmail, getFlowSubject } from "../services/flow.service";
 import { sendEmail } from "../integrations/resend/email";
@@ -272,6 +272,29 @@ syncRouter.post("/nuvemshop", authMiddleware, async (_req: Request, res: Respons
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro na sincronização";
     logger.error("Sync NuvemShop manual falhou", { error: message });
+  }
+});
+
+// ── POST /api/sync/nuvemshop/produtos — cache completo de produtos NS ─
+// Pagina todos os produtos publicados da NuvemShop e popula sync.nuvemshop_products.
+// Necessário para que fetchProductUrls() resolva URLs sem chamar a API produto a produto.
+
+syncRouter.post("/nuvemshop/produtos", authMiddleware, async (_req: Request, res: Response) => {
+  const token = await getNuvemShopToken();
+  if (!token) {
+    res.status(400).json({ error: "NuvemShop não conectada. Autorize primeiro." });
+    return;
+  }
+
+  logger.info("Sync produtos NuvemShop (cache URLs) iniciado em background");
+  res.json({ message: "Sync de produtos NuvemShop iniciado em background. Acompanhe pelos logs." });
+
+  try {
+    const total = await syncNsProducts();
+    logger.info("Sync produtos NuvemShop concluído", { total });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro";
+    logger.error("Sync produtos NuvemShop falhou", { error: message });
   }
 });
 

@@ -3033,7 +3033,7 @@ async function apiLookup(sku: string): Promise<string> {
   return url;
 }
 
-async function fetchProductUrls(skus: string[], nomes: string[] = []): Promise<Record<string, string>> {
+async function fetchProductUrls(skus: string[]): Promise<Record<string, string>> {
   if (skus.length === 0) return {};
 
   // Passo 1: cache local — SKU exato
@@ -3053,13 +3053,11 @@ async function fetchProductUrls(skus: string[], nomes: string[] = []): Promise<R
     if (url) resolved[sku.toUpperCase()] = url;
   }
 
-  // Passo 3: slug do nome como último recurso
+  // Sem URL verificada → retorna "" para que o email use o fallback /novidades
+  // (evita URLs geradas de nome Bling que podem não existir na NS e causam 404)
   const result: Record<string, string> = {};
-  for (let i = 0; i < skus.length; i++) {
-    const sku = skus[i];
-    result[sku] =
-      resolved[sku.toUpperCase()] ||
-      (nomes[i] ? `${NS_PROD_BASE}${nomeToSlug(nomes[i])}/` : "");
+  for (const sku of skus) {
+    result[sku] = resolved[sku.toUpperCase()] || "";
   }
   return result;
 }
@@ -3191,7 +3189,7 @@ async function buildCrossSellEmail(nome: string, metadata: Record<string, unknow
   // Buscar URLs da NuvemShop para links clicáveis (fallback: slug gerado do nome)
   const allSkus = recomendacoes.map(r => r.sku);
   const allNomes = recomendacoes.map(r => r.nome);
-  const urls = await fetchProductUrls(allSkus, allNomes);
+  const urls = await fetchProductUrls(allSkus);
 
   // Montar HTML dos produtos recomendados
   let productsHtml = "";
@@ -3271,11 +3269,10 @@ async function buildRepurchaseEmail(nome: string, metadata: Record<string, unkno
     `, undefined, "Hora de repor seus favoritos — estoque reservado para você 💕");
   }
 
-  // Buscar imagens HD e URLs dos produtos frequentes (fallback: slug do nome)
+  // Buscar imagens HD e URLs dos produtos frequentes
   const skus = produtosFrequentes.map(p => p.sku);
-  const nomes = produtosFrequentes.map(p => p.nome);
   const imgs = await fetchProductImages(skus);
-  const urls = await fetchProductUrls(skus, nomes);
+  const urls = await fetchProductUrls(skus);
 
   // Montar grid de produtos
   const cards = produtosFrequentes.map((p, i) => {

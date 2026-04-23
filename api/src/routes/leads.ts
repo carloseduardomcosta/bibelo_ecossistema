@@ -240,6 +240,22 @@ leadsRouter.post("/capture", publicLimiter, async (req: Request, res: Response) 
   );
 
   if (insertResult?.ja_existia) {
+    // Mesmo para lead já existente, vincula o visitor_id atual ao customer
+    // para que browsing anônimo seja atribuído corretamente (high-intent, tracking)
+    if (visitor_id && customer.id) {
+      await query(
+        `INSERT INTO crm.visitor_customers (visitor_id, customer_id)
+         VALUES ($1, $2)
+         ON CONFLICT (visitor_id) DO NOTHING`,
+        [visitor_id, customer.id]
+      ).catch(() => {});
+      await query(
+        `UPDATE crm.tracking_events SET customer_id = $2
+         WHERE visitor_id = $1 AND customer_id IS NULL`,
+        [visitor_id, customer.id]
+      ).catch(() => {});
+    }
+
     if (insertResult.email_verificado) {
       // Já verificado — não entrega cupom de novo
       res.json({ ok: true, verificacao: "ja_verificado", mensagem: "Você já está cadastrada! Verifique seu e-mail para o cupom." });

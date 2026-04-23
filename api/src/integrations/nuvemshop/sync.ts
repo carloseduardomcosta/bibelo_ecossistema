@@ -126,9 +126,17 @@ export async function syncNsProducts(): Promise<number> {
   let total = 0;
 
   while (true) {
-    const products = await nsRequest<Array<Record<string, unknown>>>(
-      "get", `products?page=${page}&per_page=200`, token
-    );
+    let products: Array<Record<string, unknown>>;
+    try {
+      products = await nsRequest<Array<Record<string, unknown>>>(
+        "get", `products?page=${page}&per_page=200`, token
+      );
+    } catch (err: unknown) {
+      // NS retorna HTTP 404 quando não há mais páginas (não um array vazio)
+      const status = (err as { response?: { status?: number } }).response?.status;
+      if (status === 404) break;
+      throw err;
+    }
 
     if (!products || products.length === 0) break;
 

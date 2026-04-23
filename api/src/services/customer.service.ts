@@ -117,6 +117,20 @@ export async function upsertCustomer(dados: CustomerData): Promise<Customer> {
       }
     }
 
+    // Se o novo CPF já pertence a OUTRO cliente, ignorar o CPF neste update
+    if (dados.cpf && existing.cpf !== dados.cpf) {
+      const cpfConflict = await queryOne<{ id: string }>(
+        "SELECT id FROM crm.customers WHERE cpf = $1 AND id != $2",
+        [dados.cpf, existing.id]
+      );
+      if (cpfConflict) {
+        logger.warn("upsertCustomer: CPF já pertence a outro cliente, ignorando campo cpf", {
+          nome: dados.nome, existingId: existing.id, conflictId: cpfConflict.id,
+        });
+        dados = { ...dados, cpf: undefined };
+      }
+    }
+
     const fields: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
@@ -142,8 +156,13 @@ export async function upsertCustomer(dados: CustomerData): Promise<Customer> {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "";
         if (msg.includes("customers_email_key")) {
-          // Conflito de email no UPDATE — retornar sem alterar email
           logger.warn("upsertCustomer: UPDATE causou conflito de email, retornando sem alterar", {
+            nome: dados.nome, id: existing.id,
+          });
+          return existing;
+        }
+        if (msg.includes("customers_cpf_key")) {
+          logger.warn("upsertCustomer: UPDATE causou conflito de CPF, retornando sem alterar", {
             nome: dados.nome, id: existing.id,
           });
           return existing;
