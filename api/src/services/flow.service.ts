@@ -129,8 +129,8 @@ export async function triggerFlow(
   }
 
   // Rate limit: max 1 email por 12h por cliente — exceto gatilhos transacionais
-  // Transacionais (pós-compra, carrinho, boas-vindas) são urgentes e não devem ser bloqueados
-  const gatilhosTransacionais = ["order.paid", "order.first", "order.abandoned", "order.delivered"];
+  // Transacionais (pós-compra, carrinho, boas-vindas, grupo VIP) são urgentes e não devem ser bloqueados
+  const gatilhosTransacionais = ["order.paid", "order.first", "order.abandoned", "order.delivered", "vip.joined"];
   if (!gatilhosTransacionais.includes(gatilho)) {
     const recentEmail = await queryOne<{ id: string }>(
       `SELECT fse.id FROM marketing.flow_step_executions fse
@@ -150,9 +150,10 @@ export async function triggerFlow(
   const executionIds: string[] = [];
 
   for (const flow of flows) {
-    // Leads VIP já recebem boas-vindas inline — pular fluxo duplicado
-    if (metadata.fonte === "grupo_vip" && flow.nome.toLowerCase().includes("boas-vindas")) {
-      logger.info("triggerFlow: pular boas-vindas para lead VIP (já recebeu inline)", { flowId: flow.id, customerId });
+    // Leads VIP (form) já recebem boas-vindas inline — pular fluxo lead.captured de boas-vindas
+    // NÃO pular fluxos vip.joined (entrada real no grupo WA) mesmo com fonte="grupo_vip"
+    if (metadata.fonte === "grupo_vip" && flow.gatilho === "lead.captured" && flow.nome.toLowerCase().includes("boas-vindas")) {
+      logger.info("triggerFlow: pular boas-vindas lead.captured para lead VIP (já recebeu inline)", { flowId: flow.id, customerId });
       continue;
     }
 

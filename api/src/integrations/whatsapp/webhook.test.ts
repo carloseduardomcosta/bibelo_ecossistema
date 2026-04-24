@@ -53,6 +53,7 @@ beforeAll(async () => {
   process.env.WAHA_GRUPO_VIP_JID    = GRUPO_VIP_JID;
   process.env.WAHA_WEBHOOK_HMAC_KEY = ""; // sem HMAC em testes
 
+  await query("DELETE FROM crm.notificacoes_operador WHERE customer_id IN ($1,$2,$3,$4)", [TEST_ID_A, TEST_ID_B, TEST_ID_C, TEST_ID_D]);
   await query("DELETE FROM crm.customers WHERE id IN ($1,$2,$3,$4)", [TEST_ID_A, TEST_ID_B, TEST_ID_C, TEST_ID_D]);
   await query(
     `INSERT INTO crm.customers (id, nome, email, telefone, vip_grupo_wp, vip_grupo_wp_em)
@@ -66,6 +67,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await query("DELETE FROM crm.notificacoes_operador WHERE customer_id IN ($1,$2,$3,$4)", [TEST_ID_A, TEST_ID_B, TEST_ID_C, TEST_ID_D]);
   await query("DELETE FROM crm.customers WHERE id IN ($1,$2,$3,$4)", [TEST_ID_A, TEST_ID_B, TEST_ID_C, TEST_ID_D]);
 });
 
