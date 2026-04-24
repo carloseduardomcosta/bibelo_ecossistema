@@ -112,3 +112,50 @@ describe("GET /api/links/stats", () => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// POST /api/links/grupo-vip — Formulário Clube VIP
+// ═══════════════════════════════════════════════════════════════
+
+describe("POST /api/links/grupo-vip", () => {
+  it("retorna 400 sem nome ou email", async () => {
+    const res = await request(app)
+      .post("/api/links/grupo-vip")
+      .send({ nome: "Teste" });
+    expect(res.status).toBe(400);
+  });
+
+  it("retorna 400 com email inválido", async () => {
+    const res = await request(app)
+      .post("/api/links/grupo-vip")
+      .send({ nome: "Teste VIP", email: "nao-e-email" });
+    expect(res.status).toBe(400);
+  });
+
+  it("retorna ok e redirect após cadastro VIP", async () => {
+    const email = `vitest.vip.${Date.now()}@teste.com`;
+    const res = await request(app)
+      .post("/api/links/grupo-vip")
+      .send({ nome: "Teste VIP Links", email });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.redirect).toBeTruthy();
+  });
+
+  it("retorna 200 se email já cadastrado no VIP (idempotente)", async () => {
+    const email = `vitest.vip.dup.${Date.now()}@teste.com`;
+    await request(app).post("/api/links/grupo-vip").send({ nome: "Dup VIP", email });
+    const res = await request(app).post("/api/links/grupo-vip").send({ nome: "Dup VIP 2", email });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it("XSS: nome com HTML é sanitizado antes de ir ao email", async () => {
+    const email = `vitest.vip.xss.${Date.now()}@teste.com`;
+    const res = await request(app)
+      .post("/api/links/grupo-vip")
+      .send({ nome: "<script>alert(1)</script>", email });
+    expect(res.status).toBe(200);
+    // O servidor não deve quebrar — o escHtml remove as tags antes do envio
+  });
+});

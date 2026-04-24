@@ -5,6 +5,7 @@ import { resolveGeo } from "../utils/geoip";
 import { upsertCustomer } from "../services/customer.service";
 import { triggerFlow } from "../services/flow.service";
 import { sendEmail } from "../integrations/resend/email";
+import { escHtml } from "../utils/sanitize";
 import { logger } from "../utils/logger";
 import { authMiddleware } from "../middleware/auth";
 import rateLimit from "express-rate-limit";
@@ -1124,6 +1125,7 @@ linksRouter.post("/grupo-vip", limiter, async (req: Request, res: Response) => {
 
   // Email de boas-vindas para a membro (se tem email)
   if (email) {
+    const nomeEsc = escHtml(nome);
     sendEmail({
       to: email,
       subject: `💖 Bem-vinda ao Clube VIP Bibelô, ${nome}!`,
@@ -1138,26 +1140,37 @@ linksRouter.post("/grupo-vip", limiter, async (req: Request, res: Response) => {
     <div style="height:3px;background:linear-gradient(90deg,#25D366,#1da851,#25D366);"></div>
     <div style="padding:32px 30px;text-align:center;">
       <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 20px;">
-        Oi, <strong style="color:#fe68c4;">${nome}</strong>! Que bom ter voc&ecirc; no nosso Clube VIP!
+        Oi, <strong style="color:#fe68c4;">${nomeEsc}</strong>! Que bom ter voc&ecirc; no nosso Clube VIP!
       </p>
+      <div style="background:linear-gradient(135deg,#fff0f8,#ffe5ec);border:2px dashed #fe68c4;border-radius:16px;padding:20px 24px;margin:0 0 20px;">
+        <p style="margin:0 0 6px;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Seu cupom de boas-vindas</p>
+        <p style="margin:0 0 4px;font-size:28px;font-weight:700;color:#fe68c4;letter-spacing:3px;">BIBELO10</p>
+        <p style="margin:0;font-size:13px;color:#666;">10% OFF na 1&ordf; compra &mdash; use no checkout</p>
+      </div>
       <div style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border-radius:12px;padding:16px 20px;margin:0 0 24px;text-align:left;">
-        <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x1F3F7;&#xFE0F; 10% de desconto na 1&ordf; compra</p>
         <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x1F69A; Frete gr&aacute;tis Sul/Sudeste acima de R$79</p>
         <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x1F381; Mimo surpresa em toda compra</p>
         <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x2728; Lan&ccedil;amentos antes de todo mundo</p>
         <p style="margin:0;font-size:13px;color:#166534;">&#x1F496; Promo&ccedil;&otilde;es exclusivas para o clube</p>
       </div>
       <a href="https://www.papelariabibelo.com.br/?utm_source=email&amp;utm_medium=vip&amp;utm_campaign=boas_vindas" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:14px 40px;border-radius:50px;text-decoration:none;font-weight:600;font-size:15px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
-        Conferir novidades
+        Comprar agora com 10% OFF
       </a>
     </div>
     <div style="padding:14px 30px;background:#fafafa;text-align:center;border-top:1px solid #ffe5ec;">
-      <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibel&ocirc; &middot; <span style="color:#fe68c4;">papelariabibelo.com.br</span></p>
+      <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibel&ocirc; &middot; <a href="https://www.papelariabibelo.com.br/descadastrar/?email=${encodeURIComponent(email)}" style="color:#ccc;text-decoration:none;">Descadastrar</a></p>
     </div>
   </div>
 </div>
 </body></html>`,
       tags: [{ name: "type", value: "vip_welcome" }],
+    }).then(() => {
+      // Registra que o email foi enviado para rastreabilidade
+      query(
+        `INSERT INTO crm.interactions (customer_id, tipo, canal, descricao, metadata)
+         VALUES ($1, 'email_enviado', 'email', $2, $3)`,
+        [customer.id, "Boas-vindas Clube VIP (com cupom BIBELO10)", JSON.stringify({ template: "vip_welcome_inline", cupom: "BIBELO10" })]
+      ).catch(() => {});
     }).catch(err => {
       logger.warn("Falha ao enviar boas-vindas VIP", { email, error: String(err) });
     });
