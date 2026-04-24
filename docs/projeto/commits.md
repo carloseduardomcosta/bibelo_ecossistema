@@ -2166,3 +2166,27 @@ Garante que o banco não cresce indefinidamente. Eventos dos últimos 90 dias s�
 - `POST /api/links/grupo-vip` — 400 sem nome/email, 400 email inválido, 200 com redirect, idempotente (200 em duplicata), XSS no nome
 
 **Resultado:** 857/857 testes passando.
+
+---
+
+## Sessão 23/04/2026 (noite — auditoria fluxo VIP)
+
+### fix(vip-flow): 3 bugs críticos no fluxo vip.joined — commit `356bdc8`
+
+**Contexto:** Auditoria completa dos fluxos automáticos para membros VIP após o caso da Fran Roedel.
+
+**Bug 1 — Guard linha 154 `flow.service.ts` (crítico)**
+O guard `includes("boas-vindas")` bloqueava TODOS os fluxos com "boas-vindas" no nome quando `fonte = "grupo_vip"`. Isso incluía o fluxo "Boas-vindas Clube VIP" (gatilho `vip.joined`), ou seja: nenhum membro real do grupo WhatsApp recebia o email de boas-vindas VIP. O fix adiciona `flow.gatilho === "lead.captured"` para restringir o guard apenas ao fluxo que já tem cobertura pelo email inline.
+
+**Bug 2 — Rate limit (crítico)**
+`vip.joined` não estava em `gatilhosTransacionais`. Clientes que receberam qualquer email nas últimas 12h (ex: compraram e receberam boas-vindas de primeira compra) tinham o fluxo VIP inteiramente bloqueado. Fix: adicionado "vip.joined" à lista de transacionais.
+
+**Bug 3 — Condição `comprou` no fluxo vip.joined**
+A condição `comprou` usa `flowStart` como janela temporal. Clientes que compraram ANTES de entrar no grupo (flowStart mais recente que a compra) recebiam "Convite VIP" (CTA de primeira compra) 72h depois, mesmo já sendo compradores. Fix: mudança de `comprou` para `total_pedidos_minimo` (minimo:1) diretamente no banco — avalia histórico completo.
+
+**Fix adicional — webhook.test.ts (limpeza)**
+`afterAll` deletava `crm.customers` (FK ON DELETE SET NULL) mas não `crm.notificacoes_operador`. Cada run de testes deixava 4 notificações orphaned com `customer_id = NULL` no feed do operador. Acumulou 58 notificações de teste (corrigidas no banco). Fix: DELETE explícito antes de deletar customers em beforeAll/afterAll.
+
+**Estado limpo confirmado:** 7 notificações reais pendentes, 0 órfãs, 0 de teste.
+
+**Resultado:** 857/857 testes passando. Fluxo VIP impecável.
