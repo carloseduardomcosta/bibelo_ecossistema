@@ -2144,3 +2144,25 @@ Garante que o banco não cresce indefinidamente. Eventos dos últimos 90 dias s�
 ---
 
 **Testes:** 852/852 passando após rebuild.
+
+---
+
+## Sessão 23/04/2026 (noite — continuação)
+
+### fix(vip): cupom BIBELO10 no email de boas-vindas VIP — commit `8007768`
+
+**Causa raiz:** Cliente Fran Roedel entrou no Clube VIP (form inline) e recebeu email de boas-vindas mencionando "10% de desconto" mas **sem o código BIBELO10**. O fluxo "Lead boas-vindas clube" era corretamente bloqueado pelo guard VIP em `triggerFlow()` (evita email duplicado), então o único disparo era o email inline em `links.ts` — que não tinha o código.
+
+**Fix aplicado em `api/src/routes/links.ts`:**
+- Adicionado bloco destaque com `BIBELO10` (28px, rosa, dashed border) no topo do email
+- CTA alterado de "Conferir novidades" → "Comprar agora com 10% OFF"
+- Registro de interação em `crm.interactions` após envio (template `vip_welcome_inline` + `cupom: "BIBELO10"`) para rastreabilidade e dedup
+- `escHtml()` aplicado ao nome do usuário (XSS)
+- Link de descadastro no rodapé (LGPD)
+
+**Guard `triggerFlow` em `flow.service.ts` permanece correto** — prevenção de email duplicado é a behavior esperada; o fix está em tornar o email inline completo.
+
+**Novos testes em `api/src/routes/links.test.ts`:**
+- `POST /api/links/grupo-vip` — 400 sem nome/email, 400 email inválido, 200 com redirect, idempotente (200 em duplicata), XSS no nome
+
+**Resultado:** 857/857 testes passando.
