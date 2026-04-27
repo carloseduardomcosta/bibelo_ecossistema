@@ -133,6 +133,7 @@ campaignsRouter.get("/novidades-nf", async (_req: Request, res: Response) => {
           OR bp.gtin = nei.codigo_produto
           OR (nei.gtin IS NOT NULL AND bp.gtin = nei.gtin)
           OR REPLACE(TRIM(bp.sku), ' - ', ' ') = REPLACE(TRIM(nei.codigo_produto), ' - ', ' ')
+          OR LOWER(TRIM(bp.nome)) = LOWER(TRIM(nei.descricao))
         )
         AND bp.ativo = true
         AND bp.preco_venda > 0
@@ -285,6 +286,7 @@ campaignsRouter.get("/nfs/:id/produtos", async (req: Request, res: Response) => 
         OR bp.gtin = nei.codigo_produto
         OR (nei.gtin IS NOT NULL AND bp.gtin = nei.gtin)
         OR REPLACE(TRIM(bp.sku), ' - ', ' ') = REPLACE(TRIM(nei.codigo_produto), ' - ', ' ')
+        OR LOWER(TRIM(bp.nome)) = LOWER(TRIM(nei.descricao))
       )
       AND bp.ativo = true
       AND bp.preco_venda > 0
@@ -917,6 +919,7 @@ campaignsRouter.post("/gerar-personalizada", async (req: Request, res: Response)
           OR bp.gtin = nei.codigo_produto
           OR (nei.gtin IS NOT NULL AND bp.gtin = nei.gtin)
           OR REPLACE(TRIM(bp.sku), ' - ', ' ') = REPLACE(TRIM(nei.codigo_produto), ' - ', ' ')
+          OR LOWER(TRIM(bp.nome)) = LOWER(TRIM(nei.descricao))
         )
         AND bp.ativo = true AND bp.preco_venda > 0 AND jsonb_array_length(bp.imagens) > 0
         LEFT JOIN sync.bling_stock bs ON bs.bling_product_id = bp.bling_id

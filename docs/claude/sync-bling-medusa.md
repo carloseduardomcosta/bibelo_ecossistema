@@ -106,11 +106,16 @@ Sem a NF sincronizada, o produto não aparece — mesmo completo no catálogo.
 | Nova NF + Carlos sincronizou via CRM | Aparece em até 5 min |
 | Nova NF + Carlos NÃO sincronizou | Não aparece |
 
-### Match produto NF × catálogo (4 critérios OR)
+### Match produto NF × catálogo (5 critérios OR)
 1. SKU exato: `TRIM(bp.sku) = TRIM(nei.codigo_produto)`
 2. GTIN como código: `bp.gtin = nei.codigo_produto`
 3. GTIN direto: `nei.gtin IS NOT NULL AND bp.gtin = nei.gtin`
 4. Separador normalizado: `REPLACE(TRIM(bp.sku), ' - ', ' ') = REPLACE(TRIM(nei.codigo_produto), ' - ', ' ')`
+5. Nome do catálogo = descrição do item na NF: `LOWER(TRIM(bp.nome)) = LOWER(TRIM(nei.descricao))`
+
+O critério 5 foi adicionado em 27/04/2026 para cobrir dois casos reais identificados na NF 099777:
+- Produtos cadastrados no Bling **sem SKU** (nome é o único identificador confiável)
+- Produtos cujo código do fornecedor na NF difere completamente do SKU interno (`CLIPS TONS PASTEL - BRW` → `CLIPS_N2_0002`)
 
 Produtos pai+filho não usam GTIN — só SKU com sufixo (`CADERNETA_BRW - AZUL`).
 

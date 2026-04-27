@@ -509,6 +509,7 @@ nfEntradaRouter.post("/:id/sync-imagens", authMiddleware, async (req: Request, r
        OR bp.gtin = nei.codigo_produto
        OR (nei.gtin IS NOT NULL AND bp.gtin = nei.gtin)
        OR REPLACE(TRIM(bp.sku), ' - ', ' ') = REPLACE(TRIM(nei.codigo_produto), ' - ', ' ')
+       OR LOWER(TRIM(bp.nome)) = LOWER(TRIM(nei.descricao))
      )
      WHERE nei.nota_id = $1`,
     [nota.id]
@@ -613,7 +614,9 @@ nfEntradaRouter.post("/sync/bling", async (req: Request, res: Response) => {
       if (!nf) { resultado.erros++; continue }
 
       const chaveAcesso: string = (nf.chaveAcesso || "").replace(/\D/g, "").slice(0, 44)
-      const numero: string = nf.numero || ""
+      // Usa nfBase.numero (da listagem) pois preserva zeros à esquerda como string.
+      // nf.numero (do detalhe) pode chegar como número e perder os zeros.
+      const numero: string = String(nfBase.numero || nf.numero || "")
 
       // Situação 2 = cancelada no Bling (não importar)
       if (nf.situacao === 2) {
@@ -749,6 +752,7 @@ nfEntradaRouter.post("/sync/bling", async (req: Request, res: Response) => {
              OR bp.gtin = nei.codigo_produto
              OR (nei.gtin IS NOT NULL AND bp.gtin = nei.gtin)
              OR REPLACE(TRIM(bp.sku), ' - ', ' ') = REPLACE(TRIM(nei.codigo_produto), ' - ', ' ')
+             OR LOWER(TRIM(bp.nome)) = LOWER(TRIM(nei.descricao))
            )
            WHERE nei.nota_id IN (${placeholders})`,
           notaIdsImportadas
