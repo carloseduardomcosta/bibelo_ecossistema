@@ -5,19 +5,20 @@
 # Cron sugerido: 0 4 * * 0  (domingos às 4h)
 #
 # Conteúdo:
-#   secrets  — .env, .secrets/, rclone.conf
-#   nginx    — sites-enabled, nginx.conf
-#   ssl      — certificados Let's Encrypt
-#   crontab  — crontab do root
-#   docker   — docker-compose.yml
-#   db       — pg_dump bibelocrm + medusa_db (comprimidos)
-#   redis    — dump.rdb
-#   uploads  — imagens e arquivos enviados pelos usuários (/uploads/)
-#   waha     — sessão WhatsApp (evita re-autenticação após restore)
-#   uptime   — histórico do Uptime Kuma
-#   ufw      — regras de firewall
-#   systemd  — services customizados
+#   secrets    — .env, .secrets/, rclone.conf
+#   nginx      — sites-enabled, nginx.conf
+#   ssl        — certificados Let's Encrypt
+#   crontab    — crontab do root
+#   docker     — docker-compose.yml
+#   db         — pg_dump bibelocrm + medusa_db (comprimidos)
+#   redis      — dump.rdb
+#   uploads    — imagens e arquivos enviados pelos usuários (/uploads/)
+#   waha       — sessão WhatsApp (evita re-autenticação após restore)
+#   uptime     — histórico do Uptime Kuma
+#   ufw        — regras de firewall
+#   systemd    — services customizados
 #   inventario — snapshot do estado do sistema
+#   bitwarden  — atualiza nota segura do .env no Bitwarden (requer BW_* no .env)
 # ═══════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -165,10 +166,88 @@ else
   echo "${LOG} [SKIP] rclone não configurado"
 fi
 
+# ── Bitwarden — atualiza nota segura do .env ─────────────────────
+BW_MASTER_PASS_FILE="${APP_DIR}/.secrets/bw_master_pass"
+if [ -n "${BW_CLIENTID:-}" ] && [ -n "${BW_CLIENTSECRET:-}" ] && \
+   [ -n "${BW_ITEM_ID_ENV:-}" ] && [ -f "${BW_MASTER_PASS_FILE}" ]; then
+  echo "${LOG} Atualizando .env no Bitwarden..."
+  BW_CLI=$(command -v bw 2>/dev/null || echo "")
+
+  # Instala bw CLI temporariamente se não disponível
+  BW_TMP=""
+  if [ -z "${BW_CLI}" ]; then
+    BW_TMP="/tmp/bw_dr_$$"
+    mkdir -p "${BW_TMP}"
+    curl -sL "https://vault.bitwarden.com/download/?app=cli&platform=linux" -o "${BW_TMP}/bw.zip" 2>/dev/null \
+      && unzip -q "${BW_TMP}/bw.zip" -d "${BW_TMP}" 2>/dev/null \
+      && chmod +x "${BW_TMP}/bw" \
+      && BW_CLI="${BW_TMP}/bw"
+  fi
+
+  if [ -n "${BW_CLI}" ] && [ -x "${BW_CLI}" ]; then
+    BW_MASTER_PASS=$(cat "${BW_MASTER_PASS_FILE}")
+    export BW_CLIENTID BW_CLIENTSECRET
+    export XDG_CONFIG_HOME="/tmp/bw_config_$$"
+    mkdir -p "${XDG_CONFIG_HOME}"
+
+    # Login + unlock
+    "${BW_CLI}" login --apikey 2>/dev/null
+    BW_SESSION=$("${BW_CLI}" unlock "${BW_MASTER_PASS}" --raw 2>/dev/null) || BW_SESSION=""
+
+    if [ -n "${BW_SESSION}" ]; then
+      NOW=$(date '+%Y-%m-%d %H:%M')
+      # Busca item atual e atualiza apenas notes + atualizado_em
+      python3 - "${BW_CLI}" "${BW_SESSION}" "${BW_ITEM_ID_ENV}" "${NOW}" << 'PYEOF'
+import json, subprocess, sys
+
+bw       = sys.argv[1]
+session  = sys.argv[2]
+item_id  = sys.argv[3]
+now      = sys.argv[4]
+env_text = open('/opt/bibelocrm/.env').read()
+
+# Busca item existente
+r = subprocess.run([bw,'get','item',item_id,'--session',session], capture_output=True, text=True)
+item = json.loads(r.stdout)
+
+# Atualiza campos
+item['notes'] = env_text
+for f in item.get('fields', []):
+    if f['name'] == 'atualizado_em':
+        f['value'] = now
+
+# Envia de volta
+encoded = subprocess.run([bw,'encode'], input=json.dumps(item), capture_output=True, text=True).stdout.strip()
+result  = subprocess.run([bw,'edit','item',item_id,'--session',session], input=encoded, capture_output=True, text=True)
+if result.returncode == 0:
+    print('OK')
+else:
+    print('ERR: ' + result.stderr[:200])
+PYEOF
+      BWRESULT=$?
+      "${BW_CLI}" lock --session "${BW_SESSION}" 2>/dev/null || true
+      "${BW_CLI}" logout 2>/dev/null || true
+      [ "${BWRESULT}" -eq 0 ] \
+        && echo "${LOG} [OK] Bitwarden .env atualizado" \
+        || echo "${LOG} [ERR] Falha ao atualizar Bitwarden"
+    else
+      echo "${LOG} [ERR] Bitwarden: falha ao desbloquear cofre"
+    fi
+
+    # Limpa config temporária e CLI temporário
+    rm -rf "${XDG_CONFIG_HOME}" "${BW_TMP}"
+    unset XDG_CONFIG_HOME
+  else
+    echo "${LOG} [SKIP] Bitwarden CLI não disponível e não foi possível instalar"
+  fi
+else
+  echo "${LOG} [SKIP] Bitwarden não configurado (BW_* no .env ou bw_master_pass ausente)"
+fi
+
 # ── Limpeza local ─────────────────────────────────────────────────
 rm -rf "${DR_DIR}"
 # Mantém apenas os 2 últimos DR locais
 ls -t "${APP_DIR}"/backups/dr_*.tar.gz 2>/dev/null | tail -n +3 | xargs rm -f 2>/dev/null || true
 
 echo "${LOG} Disaster Recovery concluído! (${SIZE})"
-echo "${LOG} Conteúdo: .env, secrets, nginx, SSL, crontab, PostgreSQL (crm+medusa), Redis, uploads, WAHA, Uptime Kuma, UFW, inventário"
+echo "${LOG} Conteúdo: .env, secrets, nginx, SSL, crontab, PostgreSQL (crm+medusa), Redis, uploads, WAHA, Uptime Kuma, UFW, inventário, Bitwarden"
