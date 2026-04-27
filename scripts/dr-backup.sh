@@ -3,6 +3,21 @@
 # DR Backup — Disaster Recovery completo do BibelôCRM
 # Envia snapshot semanal para Google Drive
 # Cron sugerido: 0 4 * * 0  (domingos às 4h)
+#
+# Conteúdo:
+#   secrets  — .env, .secrets/, rclone.conf
+#   nginx    — sites-enabled, nginx.conf
+#   ssl      — certificados Let's Encrypt
+#   crontab  — crontab do root
+#   docker   — docker-compose.yml
+#   db       — pg_dump bibelocrm + medusa_db (comprimidos)
+#   redis    — dump.rdb
+#   uploads  — imagens e arquivos enviados pelos usuários (/uploads/)
+#   waha     — sessão WhatsApp (evita re-autenticação após restore)
+#   uptime   — histórico do Uptime Kuma
+#   ufw      — regras de firewall
+#   systemd  — services customizados
+#   inventario — snapshot do estado do sistema
 # ═══════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -101,6 +116,36 @@ echo "${LOG} Gerando inventário..."
   ls /etc/letsencrypt/live/ 2>/dev/null | grep -v README
 } > "${DR_DIR}/inventario.txt" 2>/dev/null
 
+# ── 11. Uploads dos usuários ──────────────────────────────────────
+echo "${LOG} Copiando uploads..."
+if [ -d "${APP_DIR}/uploads" ] && [ "$(ls -A "${APP_DIR}/uploads" 2>/dev/null)" ]; then
+  tar -czf "${DR_DIR}/uploads.tar.gz" -C "${APP_DIR}" uploads 2>/dev/null \
+    && echo "${LOG} uploads: $(du -sh "${DR_DIR}/uploads.tar.gz" | cut -f1)" \
+    || echo "${LOG} [ERR] Falha ao compactar uploads"
+else
+  echo "${LOG} [SKIP] uploads vazio ou inexistente"
+fi
+
+# ── 12. Sessão WAHA (WhatsApp) ────────────────────────────────────
+echo "${LOG} Copiando sessão WAHA..."
+if [ -d "${APP_DIR}/data/waha" ] && [ "$(ls -A "${APP_DIR}/data/waha" 2>/dev/null)" ]; then
+  tar -czf "${DR_DIR}/waha-session.tar.gz" -C "${APP_DIR}/data" waha 2>/dev/null \
+    && echo "${LOG} waha: $(du -sh "${DR_DIR}/waha-session.tar.gz" | cut -f1)" \
+    || echo "${LOG} [ERR] Falha ao compactar WAHA"
+else
+  echo "${LOG} [SKIP] WAHA vazio ou inexistente"
+fi
+
+# ── 13. Histórico Uptime Kuma ─────────────────────────────────────
+echo "${LOG} Copiando Uptime Kuma..."
+if [ -d "${APP_DIR}/data/uptime" ] && [ "$(ls -A "${APP_DIR}/data/uptime" 2>/dev/null)" ]; then
+  tar -czf "${DR_DIR}/uptime-kuma.tar.gz" -C "${APP_DIR}/data" uptime 2>/dev/null \
+    && echo "${LOG} uptime: $(du -sh "${DR_DIR}/uptime-kuma.tar.gz" | cut -f1)" \
+    || echo "${LOG} [ERR] Falha ao compactar Uptime Kuma"
+else
+  echo "${LOG} [SKIP] Uptime Kuma vazio ou inexistente"
+fi
+
 # ── Compactar tudo ────────────────────────────────────────────────
 echo "${LOG} Compactando..."
 tar -czf "${DR_FILE}" -C /tmp "dr_${DATE}"
@@ -126,4 +171,4 @@ rm -rf "${DR_DIR}"
 ls -t "${APP_DIR}"/backups/dr_*.tar.gz 2>/dev/null | tail -n +3 | xargs rm -f 2>/dev/null || true
 
 echo "${LOG} Disaster Recovery concluído! (${SIZE})"
-echo "${LOG} Conteúdo: .env, secrets, nginx, SSL, crontab, PostgreSQL (crm+medusa), Redis, UFW, inventário"
+echo "${LOG} Conteúdo: .env, secrets, nginx, SSL, crontab, PostgreSQL (crm+medusa), Redis, uploads, WAHA, Uptime Kuma, UFW, inventário"
