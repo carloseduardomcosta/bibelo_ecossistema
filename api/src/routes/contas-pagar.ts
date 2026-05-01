@@ -179,8 +179,8 @@ contasPagarRouter.post("/:id/pagar", async (req: Request, res: Response) => {
   }
   const dataPagamento = parse.data.data_pagamento || new Date().toISOString().split("T")[0];
 
-  const conta = await queryOne<{ valor: number; contato_bling_id: string }>(
-    "SELECT valor, contato_bling_id FROM sync.bling_contas_pagar WHERE bling_id = $1",
+  const conta = await queryOne<{ valor: number; contato_bling_id: string; situacao: number; dados_raw: unknown }>(
+    "SELECT valor, contato_bling_id, situacao, dados_raw FROM sync.bling_contas_pagar WHERE bling_id = $1",
     [blingId]
   );
 
@@ -189,17 +189,33 @@ contasPagarRouter.post("/:id/pagar", async (req: Request, res: Response) => {
     return;
   }
 
+  if (conta.situacao === 2) {
+    res.status(400).json({ error: "Esta conta já foi paga" });
+    return;
+  }
+
+  if (conta.situacao === 9) {
+    res.status(400).json({ error: "Esta conta foi paga ou cancelada diretamente no Bling" });
+    return;
+  }
+
   try {
     const token = await getValidToken();
 
     // Cria bordero no Bling (registra pagamento)
     const valorPago = typeof conta.valor === 'string' ? parseFloat(conta.valor) : conta.valor;
+    const raw = conta.dados_raw as { detalhe?: { portador?: { id: number } }; portador?: { id: number } } | null;
+    const portadorId = raw?.detalhe?.portador?.id || raw?.portador?.id || null;
+
+    const pagamento: Record<string, unknown> = {
+      contaPagar: { id: parseInt(blingId, 10) },
+      valorPago,
+    };
+    if (portadorId) pagamento.portador = { id: portadorId };
+
     await axios.post(`${BLING_API}/borderos`, {
       data: dataPagamento,
-      pagamentos: [{
-        contaPagar: { id: parseInt(blingId, 10) },
-        valorPago,
-      }],
+      pagamentos: [pagamento],
     }, {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     });

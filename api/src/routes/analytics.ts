@@ -344,7 +344,7 @@ analyticsRouter.get("/contas-pagar", async (req: Request, res: Response) => {
       COUNT(*) FILTER (WHERE situacao = 1 AND vencimento < CURRENT_DATE)::text AS vencidas,
       COALESCE(SUM(valor) FILTER (WHERE situacao = 1 AND vencimento < CURRENT_DATE), 0)::text AS valor_vencido
     FROM sync.bling_contas_pagar
-    WHERE 1=1 __DATE_FILTER__
+    WHERE situacao != 9 __DATE_FILTER__
   `, [], cpDateFilter, [...cpDateParams]);
 
   const resumo = await queryOne<{
@@ -355,11 +355,9 @@ analyticsRouter.get("/contas-pagar", async (req: Request, res: Response) => {
 
   // Build contas query with status filter + date filter
   const contasWhere = conditions.length > 0
-    ? `WHERE ${conditions.join(" AND ")} `
-    : (cpDateFilter ? "WHERE 1=1 " : "");
-  const contasDatePart = conditions.length > 0
-    ? cpDateFilter
-    : (cpDateFilter ? cpDateFilter.replace("AND", "AND") : "");
+    ? `WHERE situacao != 9 AND ${conditions.join(" AND ")} `
+    : "WHERE situacao != 9 ";
+  const contasDatePart = cpDateFilter || "";
   const contasQ = buildQuery(`
     SELECT bling_id, situacao, vencimento, valor, numero_documento, historico,
            contato_nome, forma_pagamento, data_pagamento, valor_pago
@@ -383,7 +381,7 @@ analyticsRouter.get("/contas-pagar", async (req: Request, res: Response) => {
            COUNT(*)::text AS total,
            COALESCE(SUM(valor), 0)::text AS valor
     FROM sync.bling_contas_pagar
-    WHERE 1=1 __DATE_FILTER__
+    WHERE situacao != 9 __DATE_FILTER__
     GROUP BY contato_nome
     ORDER BY SUM(valor) DESC
     LIMIT 10

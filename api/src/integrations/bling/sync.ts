@@ -1151,8 +1151,18 @@ export async function syncContasPagar(since?: string): Promise<number> {
             );
             logger.info("Conta a pagar reconciliada", { bling_id, situacao: situacaoAtual });
           }
-        } catch {
-          // ignora erro individual — não impede o sync
+        } catch (err: unknown) {
+          // Se Bling retornar 404, a conta foi paga/cancelada direto no Bling sem bordero.
+          // Marca como situacao=9 (cancelada/não encontrada) para não aparecer como pendente.
+          const status = (err as { response?: { status?: number } })?.response?.status;
+          if (status === 404) {
+            await query(
+              "UPDATE sync.bling_contas_pagar SET situacao=9, sincronizado_em=NOW() WHERE bling_id=$1",
+              [bling_id]
+            );
+            logger.info("Conta a pagar não encontrada no Bling — marcada como cancelada", { bling_id });
+          }
+          // outros erros: ignora para não parar o sync
         }
       }
     }
@@ -1216,7 +1226,7 @@ export async function syncNfEntrada(): Promise<number> {
         }
 
         const valorProdutos = itens.reduce((s, i) => s + ((i.valorTotal as number) || 0), 0);
-        const numero = (nfe.numero as string || "").replace(/^0+/, "");
+        const numero = String(nfe.numero || "");
 
         // Insere NF
         const inserted = await queryOne<{ id: string }>(

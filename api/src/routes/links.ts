@@ -31,17 +31,9 @@ interface LinkItem {
 
 const LINKS: LinkItem[] = [
   {
-    slug: "loja",
-    titulo: "Acessar Loja On-line",
-    url: "https://www.papelariabibelo.com.br",
-    icone: "🛍️",
-    destaque: true,
-    utm: { source: "instagram", medium: "bio_link", campaign: "menu" },
-  },
-  {
     slug: "whatsapp",
     titulo: "Fale conosco no WhatsApp",
-    url: "https://api.whatsapp.com/send/?phone=5547933862514&text=Ol%C3%A1%2C+vim+pelo+link+do+Instagram!",
+    url: "https://api.whatsapp.com/send/?phone=5547933862514&text=Ol%C3%A1%2C+vim+do+MENU+Boas+Vindas+e+gostaria+de+mais+informa%C3%A7%C3%B5es.",
     icone: "💬",
   },
   {
@@ -55,12 +47,6 @@ const LINKS: LinkItem[] = [
     titulo: "Preencha o formulário",
     url: "/api/links/formulario",
     icone: "📋",
-  },
-  {
-    slug: "parcerias",
-    titulo: "Parcerias e B2B",
-    url: "/api/links/parcerias",
-    icone: "🤝",
   },
 ];
 
@@ -82,7 +68,7 @@ linksRouter.get("/go/:slug", limiter, async (req: Request, res: Response) => {
   const link = LINKS.find(l => l.slug === slug);
 
   if (!link) {
-    res.redirect("https://www.papelariabibelo.com.br");
+    res.redirect("https://api.whatsapp.com/send/?phone=5547933862514&text=Ol%C3%A1%2C+vim+do+MENU+Boas+Vindas+e+gostaria+de+mais+informa%C3%A7%C3%B5es.");
     return;
   }
 
@@ -113,24 +99,95 @@ linksRouter.get("/go/:slug", limiter, async (req: Request, res: Response) => {
   res.redirect(302, destino);
 });
 
+// ── GET /api/links/pageview — pixel público de page view ─────
+
+linksRouter.get("/pageview", limiter, (req: Request, res: Response) => {
+  const ip = getRealIp(req);
+  const geo = resolveGeo(ip);
+  query(
+    `INSERT INTO marketing.link_clicks (slug, ip, geo_city, geo_region, geo_country, user_agent, referer)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      "page_view",
+      geo?.ip || null,
+      geo?.city || null,
+      geo?.region || null,
+      geo?.country || null,
+      (req.headers["user-agent"] || "").slice(0, 500),
+      (req.headers["referer"] || "").slice(0, 500),
+    ]
+  ).catch(() => {});
+  res.status(204).end();
+});
+
 // ── GET /api/links/stats — stats dos cliques (protegido) ─────
 
 linksRouter.get("/stats", authMiddleware, async (_req: Request, res: Response) => {
-  const stats = await query<{ slug: string; cliques: string; ultimo: string }>(
-    `SELECT slug, COUNT(*)::text AS cliques, MAX(criado_em)::text AS ultimo
-     FROM marketing.link_clicks
-     WHERE criado_em > NOW() - INTERVAL '30 days'
-     GROUP BY slug ORDER BY cliques DESC`
-  );
+  const [porLink, porDia, porEstado, porReferer, porHora] = await Promise.all([
+    // cliques por link + CTR em relação a page_views
+    query<{ slug: string; cliques: string; ultimo: string }>(
+      `SELECT slug, COUNT(*)::text AS cliques, MAX(criado_em)::text AS ultimo
+       FROM marketing.link_clicks
+       WHERE criado_em > NOW() - INTERVAL '30 days'
+       GROUP BY slug ORDER BY cliques DESC`
+    ),
+    // cliques + page_views por dia (últimos 30d)
+    query<{ dia: string; page_views: string; cliques: string }>(
+      `SELECT criado_em::date::text AS dia,
+              COUNT(*) FILTER (WHERE slug = 'page_view')::text AS page_views,
+              COUNT(*) FILTER (WHERE slug <> 'page_view')::text AS cliques
+       FROM marketing.link_clicks
+       WHERE criado_em > NOW() - INTERVAL '30 days'
+       GROUP BY criado_em::date ORDER BY dia DESC LIMIT 30`
+    ),
+    // top estados
+    query<{ estado: string; cliques: string }>(
+      `SELECT COALESCE(geo_region, 'Desconhecido') AS estado, COUNT(*)::text AS cliques
+       FROM marketing.link_clicks
+       WHERE criado_em > NOW() - INTERVAL '30 days' AND slug <> 'page_view'
+       GROUP BY geo_region ORDER BY cliques DESC LIMIT 8`
+    ),
+    // top referers (origem do tráfego)
+    query<{ referer: string; visitas: string }>(
+      `SELECT
+         CASE
+           WHEN referer IS NULL OR referer = '' THEN 'Direto'
+           WHEN referer ILIKE '%instagram%' THEN 'Instagram'
+           WHEN referer ILIKE '%google%'    THEN 'Google'
+           WHEN referer ILIKE '%facebook%'  THEN 'Facebook'
+           WHEN referer ILIKE '%whatsapp%'  THEN 'WhatsApp'
+           ELSE regexp_replace(referer, '^https?://([^/]+).*', '\\1')
+         END AS referer,
+         COUNT(*)::text AS visitas
+       FROM marketing.link_clicks
+       WHERE criado_em > NOW() - INTERVAL '30 days' AND slug = 'page_view'
+       GROUP BY 1 ORDER BY visitas DESC LIMIT 6`
+    ),
+    // distribuição por hora do dia
+    query<{ hora: string; visitas: string }>(
+      `SELECT EXTRACT(HOUR FROM criado_em AT TIME ZONE 'America/Sao_Paulo')::int::text AS hora,
+              COUNT(*)::text AS visitas
+       FROM marketing.link_clicks
+       WHERE criado_em > NOW() - INTERVAL '30 days' AND slug = 'page_view'
+       GROUP BY 1 ORDER BY 1`
+    ),
+  ]);
 
-  const total = await query<{ dia: string; cliques: string }>(
-    `SELECT criado_em::date::text AS dia, COUNT(*)::text AS cliques
-     FROM marketing.link_clicks
-     WHERE criado_em > NOW() - INTERVAL '30 days'
-     GROUP BY criado_em::date ORDER BY dia DESC LIMIT 30`
-  );
+  // totais dos últimos 30d
+  const totalViews   = porLink.find(r => r.slug === 'page_view');
+  const totalCliques = porLink.filter(r => r.slug !== 'page_view').reduce((s, r) => s + parseInt(r.cliques), 0);
+  const views30d     = parseInt(totalViews?.cliques || '0');
+  const ctr30d       = views30d > 0 ? Math.round(totalCliques / views30d * 100) : 0;
 
-  res.json({ stats, porDia: total, links: LINKS.map(l => ({ slug: l.slug, titulo: l.titulo })) });
+  res.json({
+    resumo: { views30d, cliques30d: totalCliques, ctr30d },
+    porLink: porLink.filter(r => r.slug !== 'page_view'),
+    porDia,
+    porEstado,
+    porReferer,
+    porHora,
+    links: LINKS.map(l => ({ slug: l.slug, titulo: l.titulo })),
+  });
 });
 
 // ── GET /api/links/page — página HTML dos links ──────────────
@@ -154,9 +211,9 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Papelaria Bibelô — Links</title>
-  <meta name="description" content="Papelaria Bibelô — Loja On-line, WhatsApp, Clube VIP e mais">
+  <meta name="description" content="Papelaria Bibelô — Fale no WhatsApp, Clube VIP e mais">
   <meta property="og:title" content="Papelaria Bibelô">
-  <meta property="og:description" content="Papelaria Bibelô — Loja On-line, WhatsApp, Clube VIP e mais">
+  <meta property="og:description" content="Papelaria Bibelô — Fale no WhatsApp, Clube VIP e mais">
   <meta property="og:image" content="https://boasvindas.papelariabibelo.com.br/logo.png">
   <meta property="og:type" content="website">
   <link rel="icon" href="/logo.png">
@@ -291,10 +348,10 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
       line-height: 1.4;
     }
 
-    /* ===== BANNER DESTAQUE LOJA ===== */
-    .loja-banner {
+    /* ===== BANNER DESTAQUE WHATSAPP ===== */
+    .wa-banner {
       margin: 0;
-      background: linear-gradient(135deg, #f43f8e 0%, #ec4899 50%, #db2777 100%);
+      background: linear-gradient(135deg, #128C7E 0%, #25d366 60%, #20ba5a 100%);
       padding: 14px 20px;
       display: flex;
       align-items: center;
@@ -305,11 +362,11 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
       overflow: hidden;
       transition: filter 0.2s ease, transform 0.15s ease;
     }
-    .loja-banner:hover {
+    .wa-banner:hover {
       filter: brightness(1.08);
       transform: scaleY(1.02);
     }
-    .loja-banner::before {
+    .wa-banner::before {
       content: '';
       position: absolute;
       inset: 0;
@@ -323,13 +380,24 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
       100% { transform: translateX(100%); }
     }
 
-    .loja-icon {
-      font-size: 32px;
+    .wa-icon {
       flex-shrink: 0;
-      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: wa-pulse 1.8s ease-in-out infinite;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
     }
-    .loja-texto { flex: 1; }
-    .loja-badge {
+    .wa-icon svg {
+      width: 38px;
+      height: 38px;
+    }
+    @keyframes wa-pulse {
+      0%, 100% { transform: scale(1); }
+      50%       { transform: scale(1.12); }
+    }
+    .wa-texto { flex: 1; }
+    .wa-badge {
       display: inline-block;
       background: rgba(255,255,255,0.25);
       color: var(--white);
@@ -341,20 +409,20 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
       border-radius: 20px;
       margin-bottom: 4px;
     }
-    .loja-titulo {
+    .wa-titulo {
       font-size: 18px;
       font-weight: 900;
       line-height: 1.2;
       display: block;
     }
-    .loja-sub {
+    .wa-sub {
       font-size: 12px;
       font-weight: 600;
       opacity: 0.88;
       margin-top: 2px;
       display: block;
     }
-    .loja-arrow {
+    .wa-arrow {
       flex-shrink: 0;
       width: 36px;
       height: 36px;
@@ -505,11 +573,11 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
       .avatar-wrap { margin-bottom: 6px; }
       .nome { font-size: 20px; margin-bottom: 2px; }
       .boas-vindas { font-size: 13px; margin-bottom: 0; }
-      .loja-banner { padding: 10px 16px; }
-      .loja-icon { font-size: 26px; }
-      .loja-titulo { font-size: 16px; }
-      .loja-badge { font-size: 9px; padding: 1px 6px; margin-bottom: 2px; }
-      .loja-sub { font-size: 11px; }
+      .wa-banner { padding: 10px 16px; }
+      .wa-icon svg { width: 30px; height: 30px; }
+      .wa-titulo { font-size: 16px; }
+      .wa-badge { font-size: 9px; padding: 1px 6px; margin-bottom: 2px; }
+      .wa-sub { font-size: 11px; }
       .body { padding: 10px 14px; gap: 6px; }
       .link-btn { padding: 10px 12px; font-size: 14px; }
       .btn-icon { font-size: 19px; width: 26px; }
@@ -529,24 +597,22 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
 
     <!-- HEADER -->
     <div class="header">
-      <a href="/api/links/go/loja" target="_blank" rel="noopener" class="avatar-wrap">
+      <a href="/api/links/go/whatsapp" target="_blank" rel="noopener" class="avatar-wrap">
         <span class="avatar-ring"></span>
         <img src="/logo.png" alt="Papelaria Bibelô" class="avatar">
       </a>
       <h1 class="nome">Papelaria Bibelô</h1>
-      <p class="boas-vindas">A sua papelaria fofa como bibelôs</p>
-      <p class="bio">Timbó/SC &middot; Entregamos para todo o Brasil</p>
     </div>
 
-    <!-- BANNER LOJA -->
-    <a href="/api/links/go/loja" target="_blank" rel="noopener" class="loja-banner" aria-label="Acessar Loja On-line da Papelaria Bibelô">
-      <span class="loja-icon">🛍️</span>
-      <span class="loja-texto">
-        <span class="loja-badge">✨ Compre aqui</span>
-        <span class="loja-titulo">Acessar Loja On-line</span>
-        <span class="loja-sub">papelariabibelo.com.br</span>
+    <!-- BANNER WHATSAPP -->
+    <a href="/api/links/go/whatsapp" target="_blank" rel="noopener" class="wa-banner" aria-label="Fale conosco no WhatsApp da Papelaria Bibelô">
+      <span class="wa-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="white"><path d="M16 2C8.28 2 2 8.28 2 16c0 2.46.65 4.8 1.8 6.82L2 30l7.38-1.76A13.94 13.94 0 0 0 16 30c7.72 0 14-6.28 14-14S23.72 2 16 2zm0 25.5a11.44 11.44 0 0 1-5.83-1.6l-.42-.25-4.38 1.05 1.08-4.27-.28-.44A11.46 11.46 0 0 1 4.5 16C4.5 9.6 9.6 4.5 16 4.5S27.5 9.6 27.5 16 22.4 27.5 16 27.5zm6.28-8.6c-.34-.17-2.02-.99-2.34-1.1-.31-.11-.54-.17-.76.17-.23.34-.87 1.1-1.07 1.33-.2.23-.39.26-.73.09-.34-.17-1.44-.53-2.74-1.69-1.01-.9-1.7-2.01-1.9-2.35-.2-.34-.02-.52.15-.69.15-.15.34-.39.51-.59.17-.2.23-.34.34-.57.11-.23.06-.43-.03-.6-.09-.17-.76-1.84-1.05-2.52-.27-.65-.55-.56-.76-.57h-.65c-.23 0-.59.09-.9.43-.31.34-1.18 1.15-1.18 2.8s1.2 3.25 1.38 3.47c.17.23 2.37 3.62 5.74 5.07.8.35 1.43.56 1.92.71.81.26 1.54.22 2.12.13.65-.1 2.02-.82 2.3-1.62.28-.8.28-1.48.2-1.62-.08-.14-.31-.23-.65-.4z"/></svg></span>
+      <span class="wa-texto">
+        <span class="wa-badge">✨ Veja o portfólio</span>
+        <span class="wa-titulo">Fale conosco no WhatsApp</span>
+        <span class="wa-sub">Atendimento + produtos disponíveis</span>
       </span>
-      <span class="loja-arrow">
+      <span class="wa-arrow">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </span>
     </a>
@@ -561,23 +627,12 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </a>
 
-      <a href="/api/links/go/whatsapp" target="_blank" rel="noopener" class="link-btn whatsapp">
-        <span class="btn-icon">💬</span>
-        <span class="btn-label">Fale conosco no WhatsApp</span>
-        <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-      </a>
-
       <a href="/api/links/go/formulario" target="_blank" rel="noopener" class="link-btn">
         <span class="btn-icon">📋</span>
         <span class="btn-label">Cadastre-se para novidades</span>
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </a>
 
-      <a href="/api/links/go/parcerias" target="_blank" rel="noopener" class="link-btn">
-        <span class="btn-icon">🤝</span>
-        <span class="btn-label">Parcerias e atacado (B2B)</span>
-        <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-      </a>
 
     </div>
 
@@ -586,16 +641,18 @@ linksRouter.get("/page", (_req: Request, res: Response) => {
     <!-- FOOTER -->
     <div class="footer">
       <p class="footer-info">
-        <a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener" class="footer-link">papelariabibelo.com.br</a>
-        <br>&copy; Papelaria Bibelô &mdash; CNPJ 63.961.764/0001-63 &mdash; 2026. Todos os direitos reservados.
+        &copy; Papelaria Bibelô &mdash; CNPJ 63.961.764/0001-63 &mdash; 2026. Todos os direitos reservados.
       </p>
     </div>
 
   </div>
 
   <script>
+    // pixel de page view
+    fetch('/api/links/pageview', { method: 'GET', keepalive: true }).catch(function(){});
+
     document.addEventListener('DOMContentLoaded', function() {
-      var items = document.querySelectorAll('.link-btn, .loja-banner');
+      var items = document.querySelectorAll('.link-btn, .wa-banner');
       items.forEach(function(el, i) {
         el.style.opacity = '0';
         el.style.transform = 'translateY(16px)';
@@ -721,7 +778,7 @@ linksRouter.get("/formulario", (_req: Request, res: Response) => {
     </form>
 
     <div class="footer">
-      <p><a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener">papelariabibelo.com.br</a><br>&copy; Papelaria Bibelô &mdash; 63.961.764/0001-63 &mdash; 2026. Todos os direitos reservados.</p>
+      <p>&copy; Papelaria Bibelô &mdash; 63.961.764/0001-63 &mdash; 2026. Todos os direitos reservados.</p>
     </div>
   </div>
 
@@ -972,7 +1029,7 @@ linksRouter.get("/grupo-vip", (_req: Request, res: Response) => {
     </form>
 
     <div class="footer">
-      <p><a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener">papelariabibelo.com.br</a><br>&copy; Papelaria Bibelô &mdash; 63.961.764/0001-63 &mdash; 2026. Todos os direitos reservados.</p>
+      <p>&copy; Papelaria Bibelô &mdash; 63.961.764/0001-63 &mdash; 2026. Todos os direitos reservados.</p>
     </div>
   </div>
 
@@ -1153,12 +1210,12 @@ linksRouter.post("/grupo-vip", limiter, async (req: Request, res: Response) => {
         <p style="margin:0 0 6px;font-size:13px;color:#166534;">&#x2728; Lan&ccedil;amentos antes de todo mundo</p>
         <p style="margin:0;font-size:13px;color:#166534;">&#x1F496; Promo&ccedil;&otilde;es exclusivas para o clube</p>
       </div>
-      <a href="https://www.papelariabibelo.com.br/?utm_source=email&amp;utm_medium=vip&amp;utm_campaign=boas_vindas" style="display:inline-block;background:linear-gradient(135deg,#fe68c4,#f472b6);color:#fff;padding:14px 40px;border-radius:50px;text-decoration:none;font-weight:600;font-size:15px;box-shadow:0 4px 15px rgba(254,104,196,0.3);">
-        Comprar agora com 10% OFF
+      <a href="https://api.whatsapp.com/send/?phone=5547933862514&amp;text=Ol%C3%A1%2C+sou+do+Clube+VIP+e+gostaria+de+ver+os+produtos+dispon%C3%ADveis!" style="display:inline-block;background:linear-gradient(135deg,#128C7E,#25d366);color:#fff;padding:14px 40px;border-radius:50px;text-decoration:none;font-weight:600;font-size:15px;box-shadow:0 4px 15px rgba(37,211,102,0.3);">
+        Ver produtos no WhatsApp 💬
       </a>
     </div>
     <div style="padding:14px 30px;background:#fafafa;text-align:center;border-top:1px solid #ffe5ec;">
-      <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibel&ocirc; &middot; <a href="https://www.papelariabibelo.com.br/descadastrar/?email=${encodeURIComponent(email)}" style="color:#ccc;text-decoration:none;">Descadastrar</a></p>
+      <p style="color:#bbb;font-size:11px;margin:0;">Papelaria Bibel&ocirc; &middot; <a href="https://webhook.papelariabibelo.com.br/api/email/unsubscribe?email=${encodeURIComponent(email)}" style="color:#ccc;text-decoration:none;">Descadastrar</a></p>
     </div>
   </div>
 </div>
@@ -1195,353 +1252,3 @@ linksRouter.post("/grupo-vip", limiter, async (req: Request, res: Response) => {
   });
 });
 
-// ══════════════════════════════════════════════════════════════════
-// PARCERIAS B2B — Formulário de contato para empresas
-// ══════════════════════════════════════════════════════════════════
-
-linksRouter.get("/parcerias", (_req: Request, res: Response) => {
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Content-Security-Policy",
-    "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none';"
-  );
-
-  res.send(`<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Parcerias B2B — Papelaria Bibelô</title>
-  <meta name="description" content="Entre em contato para parcerias, atacado e revenda com a Papelaria Bibelô">
-  <link rel="icon" href="/logo.png">
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <style>
-    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-    :root{--pink:#fe68c4;--rosa:#ffe5ec;--amarelo:#fff7c1;--dark:#2d2d2d;--mid:#6b4c6b;--soft:#a07090;--white:#fff;--blue:#3b82f6;--blue-dark:#2563eb}
-    body{font-family:'Nunito','Segoe UI',Arial,sans-serif;background:linear-gradient(160deg,#ffe0ef 0%,#fce7f3 40%,#fff0f6 100%);min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;padding:0}
-    .card{width:100%;max-width:480px;background:var(--white);border-radius:0 0 28px 28px;box-shadow:0 10px 40px rgba(254,104,196,0.15);overflow:hidden;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
-    .header{background:linear-gradient(160deg,var(--amarelo) 0%,var(--rosa) 100%);padding:24px 20px 18px;text-align:center;border-bottom:3px solid var(--pink);position:relative;overflow:hidden}
-    .header::before{content:'';position:absolute;width:120px;height:120px;border-radius:50%;opacity:0.12;background:var(--pink);top:-40px;right:-30px}
-    .avatar{width:56px;height:56px;border-radius:50%;border:3px solid var(--pink);box-shadow:0 4px 15px rgba(254,104,196,0.3);margin:0 auto 10px;display:block}
-    .badge{display:inline-block;background:linear-gradient(135deg,var(--blue),var(--blue-dark));color:var(--white);font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;padding:4px 14px;border-radius:20px;margin-bottom:8px}
-    .header h1{font-size:20px;font-weight:900;color:var(--dark);margin-bottom:4px}
-    .header p{font-size:12px;color:var(--soft);font-weight:600}
-    .form-body{padding:16px 20px;flex:1;display:flex;flex-direction:column;gap:12px}
-    .form-intro{font-size:13px;color:var(--mid);font-weight:600;line-height:1.4;text-align:center}
-    .field{display:flex;flex-direction:column;gap:4px}
-    .field label{font-size:11px;font-weight:800;color:var(--mid);text-transform:uppercase;letter-spacing:0.8px}
-    .field input,.field select,.field textarea{padding:11px 14px;border:2px solid #dbeafe;border-radius:10px;font-size:14px;font-family:'Nunito',sans-serif;font-weight:600;color:var(--dark);outline:none;transition:border-color 0.2s;resize:vertical}
-    .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,0.1)}
-    .field input::placeholder,.field textarea::placeholder{color:#93c5fd;font-weight:500}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .submit-btn{padding:14px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--blue) 0%,var(--blue-dark) 100%);color:var(--white);font-size:15px;font-weight:900;font-family:'Nunito',sans-serif;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 15px rgba(59,130,246,0.3);margin-top:4px}
-    .submit-btn:hover{filter:brightness(1.08);transform:translateY(-2px)}
-    .submit-btn:active{transform:translateY(0)}
-    .submit-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none}
-    .msg{padding:10px 14px;border-radius:10px;font-size:13px;font-weight:700;text-align:center;display:none}
-    .msg.ok{display:block;background:#f0fff6;color:#166534;border:2px solid #bbf7d0}
-    .msg.err{display:block;background:#fff5f5;color:#991b1b;border:2px solid #fecaca}
-    .footer{background:linear-gradient(135deg,var(--amarelo),#fff5fb);padding:12px 20px;text-align:center;border-top:2px solid #fce7f3}
-    .footer p{font-size:11px;color:var(--soft);font-weight:600}
-    .footer a{color:var(--pink);text-decoration:none;font-weight:700}
-    .back-link{display:inline-flex;align-items:center;gap:6px;color:var(--pink);font-size:13px;font-weight:700;text-decoration:none;margin-top:2px}
-    .back-link:hover{text-decoration:underline}
-    @media(max-height:700px){.header{padding:16px 16px 12px}.avatar{width:44px;height:44px}.header h1{font-size:18px}.form-body{padding:12px 16px;gap:10px}}
-    @media(min-width:481px){body{padding:24px 16px 48px}.card{min-height:auto;border-radius:28px}}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="header">
-      <img src="/logo.png" alt="Papelaria Bibelô" class="avatar">
-      <div class="badge">Parcerias B2B</div>
-      <h1>Vamos trabalhar juntos?</h1>
-      <p>Atacado, revenda e parcerias corporativas</p>
-    </div>
-
-    <form class="form-body" id="b2bForm">
-      <p class="form-intro">Preencha o formulário abaixo e entraremos em contato para alinhar os detalhes da parceria.</p>
-
-      <div class="field">
-        <label for="nome">Nome completo</label>
-        <input type="text" id="nome" name="nome" placeholder="Seu nome" required maxlength="200">
-      </div>
-
-      <div class="field">
-        <label for="empresa">Empresa</label>
-        <input type="text" id="empresa" name="empresa" placeholder="Nome da empresa" maxlength="200">
-      </div>
-
-      <div class="row">
-        <div class="field">
-          <label for="documento">CPF ou CNPJ</label>
-          <input type="text" id="documento" name="documento" placeholder="000.000.000-00" maxlength="20">
-        </div>
-        <div class="field">
-          <label for="telefone">Telefone</label>
-          <input type="tel" id="telefone" name="telefone" placeholder="(47) 9 9999-9999" maxlength="20">
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="email">E-mail</label>
-        <input type="email" id="email" name="email" placeholder="contato@empresa.com" required maxlength="200">
-      </div>
-
-      <div class="field">
-        <label for="assunto">Assunto</label>
-        <select id="assunto" name="assunto" required>
-          <option value="">Selecione...</option>
-          <option value="atacado">Compra no atacado</option>
-          <option value="revenda">Revenda de produtos</option>
-          <option value="corporativo">Brindes corporativos</option>
-          <option value="evento">Eventos e workshops</option>
-          <option value="outro">Outro assunto</option>
-        </select>
-      </div>
-
-      <div style="margin:4px 0 2px;border-top:2px solid #dbeafe;padding-top:12px;">
-        <p style="font-size:11px;font-weight:800;color:#6b4c6b;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;">Endereço (opcional)</p>
-        <div class="row">
-          <div class="field">
-            <label for="cep">CEP</label>
-            <input type="text" id="cep" name="cep" placeholder="00000-000" maxlength="9" inputmode="numeric">
-          </div>
-          <div class="field" style="display:flex;flex-direction:column;justify-content:flex-end;">
-            <span id="cep-status" style="font-size:11px;color:#60a5fa;margin-top:18px;"></span>
-          </div>
-        </div>
-        <div class="row">
-          <div class="field" style="grid-column:span 2">
-            <label for="logradouro">Logradouro</label>
-            <input type="text" id="logradouro" name="logradouro" placeholder="Rua, Avenida..." maxlength="200">
-          </div>
-        </div>
-        <div class="row">
-          <div class="field">
-            <label for="numero">Número</label>
-            <input type="text" id="numero" name="numero" placeholder="123" maxlength="20">
-          </div>
-          <div class="field">
-            <label for="complemento">Complemento</label>
-            <input type="text" id="complemento" name="complemento" placeholder="Apto, sala..." maxlength="100">
-          </div>
-        </div>
-        <div class="field">
-          <label for="bairro">Bairro</label>
-          <input type="text" id="bairro" name="bairro" placeholder="Nome do bairro" maxlength="100">
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="mensagem">Mensagem</label>
-        <textarea id="mensagem" name="mensagem" rows="3" placeholder="Conte-nos sobre sua necessidade..." maxlength="2000"></textarea>
-      </div>
-
-      <div class="msg" id="msg"></div>
-
-      <button type="submit" class="submit-btn" id="submitBtn">Enviar solicitação</button>
-
-      <a href="/" class="back-link">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-        Voltar ao menu
-      </a>
-    </form>
-
-    <div class="footer">
-      <p><a href="https://www.papelariabibelo.com.br/" target="_blank" rel="noopener">papelariabibelo.com.br</a><br>&copy; Papelaria Bibelô &mdash; 63.961.764/0001-63 &mdash; 2026. Todos os direitos reservados.</p>
-    </div>
-  </div>
-
-  <script>
-    document.getElementById('b2bForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      var btn = document.getElementById('submitBtn');
-      var msg = document.getElementById('msg');
-      btn.disabled = true;
-      btn.textContent = 'Enviando...';
-      msg.className = 'msg';
-      msg.style.display = 'none';
-
-      var cepRaw = document.getElementById('cep').value.replace(/\D/g,'');
-      var data = {
-        nome: document.getElementById('nome').value.trim(),
-        empresa: document.getElementById('empresa').value.trim() || undefined,
-        documento: document.getElementById('documento').value.trim() || undefined,
-        telefone: document.getElementById('telefone').value.trim() || undefined,
-        email: document.getElementById('email').value.trim(),
-        assunto: document.getElementById('assunto').value,
-        mensagem: document.getElementById('mensagem').value.trim() || undefined,
-        cep: cepRaw.length === 8 ? cepRaw : undefined,
-        logradouro: document.getElementById('logradouro').value.trim() || undefined,
-        numero: document.getElementById('numero').value.trim() || undefined,
-        complemento: document.getElementById('complemento').value.trim() || undefined,
-        bairro: document.getElementById('bairro').value.trim() || undefined
-      };
-
-      fetch('/api/links/parcerias', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(res) {
-        if (res.ok) {
-          msg.className = 'msg ok';
-          msg.textContent = res.mensagem;
-          msg.style.display = 'block';
-          btn.textContent = 'Enviado!';
-          document.getElementById('b2bForm').reset();
-        } else {
-          msg.className = 'msg err';
-          msg.textContent = res.error || 'Erro ao enviar. Tente novamente.';
-          msg.style.display = 'block';
-          btn.disabled = false;
-          btn.textContent = 'Enviar solicitação';
-        }
-      })
-      .catch(function() {
-        msg.className = 'msg err';
-        msg.textContent = 'Erro de conexão. Tente novamente.';
-        msg.style.display = 'block';
-        btn.disabled = false;
-        btn.textContent = 'Enviar solicitação';
-      });
-    });
-
-    // ViaCEP auto-fill
-    document.getElementById('cep').addEventListener('input', function() {
-      var raw = this.value.replace(/\\D/g,'');
-      if (raw.length > 5) this.value = raw.slice(0,5) + '-' + raw.slice(5,8);
-      else this.value = raw;
-      if (raw.length === 8) {
-        document.getElementById('cep-status').textContent = 'Buscando...';
-        fetch('https://viacep.com.br/ws/' + raw + '/json/')
-          .then(function(r){ return r.json(); })
-          .then(function(d){
-            if (d.erro) { document.getElementById('cep-status').textContent = 'CEP não encontrado'; return; }
-            document.getElementById('logradouro').value = d.logradouro || '';
-            document.getElementById('bairro').value = d.bairro || '';
-            document.getElementById('cep-status').textContent = d.localidade + '/' + d.uf;
-            document.getElementById('numero').focus();
-          })
-          .catch(function(){ document.getElementById('cep-status').textContent = ''; });
-      } else {
-        document.getElementById('cep-status').textContent = '';
-      }
-    });
-  </script>
-</body>
-</html>`);
-});
-
-// ── POST /api/links/parcerias — processar solicitação B2B ────
-
-const parceriasSchema = z.object({
-  nome: z.string().min(1).max(200),
-  empresa: z.string().max(200).optional(),
-  documento: z.string().max(20).optional(),
-  telefone: z.string().max(20).optional(),
-  email: z.string().email().max(200),
-  assunto: z.enum(["atacado", "revenda", "corporativo", "evento", "outro"]),
-  mensagem: z.string().max(2000).optional(),
-  cep:         z.string().regex(/^\d{8}$/).optional(),
-  logradouro:  z.string().max(200).optional(),
-  numero:      z.string().max(20).optional(),
-  complemento: z.string().max(100).optional(),
-  bairro:      z.string().max(100).optional(),
-});
-
-const ASSUNTO_LABELS: Record<string, string> = {
-  atacado: "Compra no atacado",
-  revenda: "Revenda de produtos",
-  corporativo: "Brindes corporativos",
-  evento: "Eventos e workshops",
-  outro: "Outro assunto",
-};
-
-linksRouter.post("/parcerias", limiter, async (req: Request, res: Response) => {
-  const parsed = parceriasSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ ok: false, error: "Preencha nome, e-mail e assunto corretamente." });
-    return;
-  }
-
-  const { assunto, mensagem } = parsed.data;
-  const nome = parsed.data.nome.replace(/[<>"'&]/g, "");
-  const empresa = (parsed.data.empresa || "").replace(/[<>"'&]/g, "");
-  const documento = (parsed.data.documento || "").replace(/[<>"'&]/g, "");
-  const telefone = (parsed.data.telefone || "").replace(/[<>"'&]/g, "");
-  const email = parsed.data.email.toLowerCase().trim();
-  const msgClean = (mensagem || "").replace(/[<>"'&]/g, "");
-  const cep = (parsed.data.cep || "").replace(/\D/g, "");
-  const logradouro = (parsed.data.logradouro || "").replace(/[<>"'&]/g, "");
-  const numero = (parsed.data.numero || "").replace(/[<>"'&]/g, "");
-  const complemento = (parsed.data.complemento || "").replace(/[<>"'&]/g, "");
-  const bairro = (parsed.data.bairro || "").replace(/[<>"'&]/g, "");
-  const enderecoCompleto = [logradouro, numero, complemento, bairro, cep ? `CEP ${cep}` : ""]
-    .filter(Boolean).join(", ");
-
-  // Cria/vincula customer no CRM
-  const customer = await upsertCustomer({
-    nome,
-    email,
-    telefone: telefone || undefined,
-    canal_origem: "parcerias_b2b",
-  });
-
-  // Registra interação no CRM
-  await query(
-    `INSERT INTO crm.interactions (customer_id, tipo, canal, descricao, metadata)
-     VALUES ($1, 'parceria_b2b', 'email', $2, $3)`,
-    [customer.id, `Solicitação B2B: ${ASSUNTO_LABELS[assunto]}`, JSON.stringify({ nome, empresa, documento, telefone, email, assunto, mensagem: msgClean, endereco: enderecoCompleto || undefined })]
-  );
-
-  // Cria deal B2B no pipeline
-  await query(
-    `INSERT INTO crm.deals (customer_id, titulo, valor, etapa, origem, probabilidade, notas)
-     VALUES ($1, $2, 0, 'prospeccao', 'parcerias_b2b', 40, $3)`,
-    [customer.id, `B2B: ${empresa || nome} — ${ASSUNTO_LABELS[assunto]}`, `${empresa ? `Empresa: ${empresa}\\n` : ""}${documento ? `Doc: ${documento}\\n` : ""}${telefone ? `Tel: ${telefone}\\n` : ""}${enderecoCompleto ? `Endereço: ${enderecoCompleto}\\n` : ""}Assunto: ${ASSUNTO_LABELS[assunto]}\\n${msgClean ? `Mensagem: ${msgClean}` : ""}`]
-  );
-
-  // Registra clique
-  const ip = getRealIp(req);
-  const geo = resolveGeo(ip);
-  query(
-    `INSERT INTO marketing.link_clicks (slug, ip, geo_city, geo_region, geo_country, user_agent, referer)
-     VALUES ('parcerias-submit', $1, $2, $3, $4, $5, $6)`,
-    [geo?.ip || null, geo?.city || null, geo?.region || null, geo?.country || null,
-     (req.headers["user-agent"] || "").slice(0, 500), (req.headers["referer"] || "").slice(0, 500)]
-  ).catch(() => {});
-
-  // Email para o admin com todos os dados
-  sendEmail({
-    to: "contato@papelariabibelo.com.br",
-    subject: `🤝 Parceria B2B: ${empresa || nome} — ${ASSUNTO_LABELS[assunto]}`,
-    html: `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f5f0f2;font-family:'Segoe UI',Arial,sans-serif;">
-  <div style="max-width:500px;margin:20px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06);">
-    <div style="background:linear-gradient(135deg,#3b82f6,#2563eb);padding:24px;text-align:center;">
-      <p style="color:#fff;font-size:20px;font-weight:700;margin:0;">Nova solicitação B2B</p>
-      <p style="color:rgba(255,255,255,0.8);font-size:14px;font-weight:600;margin:4px 0 0;">${ASSUNTO_LABELS[assunto]}</p>
-    </div>
-    <div style="padding:24px;">
-      <p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Nome:</strong> ${nome}</p>
-      ${empresa ? `<p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Empresa:</strong> ${empresa}</p>` : ""}
-      ${documento ? `<p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>CPF/CNPJ:</strong> ${documento}</p>` : ""}
-      ${telefone ? `<p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Telefone:</strong> ${telefone}</p>` : ""}
-      <p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Email:</strong> <a href="mailto:${email}" style="color:#3b82f6;">${email}</a></p>
-      ${enderecoCompleto ? `<p style="font-size:15px;color:#333;margin:0 0 10px;"><strong>Endereço:</strong> ${enderecoCompleto}</p>` : ""}
-      ${msgClean ? `<div style="margin:16px 0 0;padding:14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;"><p style="font-size:12px;color:#64748b;margin:0 0 6px;font-weight:700;">MENSAGEM:</p><p style="font-size:14px;color:#334155;margin:0;line-height:1.5;white-space:pre-wrap;">${msgClean}</p></div>` : ""}
-      <p style="font-size:12px;color:#999;margin:16px 0 0;">Via formulário de parcerias (boasvindas.papelariabibelo.com.br)</p>
-    </div>
-  </div>
-</body></html>`,
-    tags: [{ name: "type", value: "b2b_notification" }],
-  }).catch(err => {
-    logger.warn("Falha ao notificar parceria B2B", { email, error: String(err) });
-  });
-
-  logger.info("Solicitação de parceria B2B", { nome, empresa, email, assunto });
-  res.json({ ok: true, mensagem: "Solicitação enviada com sucesso! Entraremos em contato em breve." });
-});

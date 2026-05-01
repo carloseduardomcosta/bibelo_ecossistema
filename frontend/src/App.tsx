@@ -36,6 +36,7 @@ import Filas from './pages/Filas';
 import Sistema from './pages/Sistema';
 import SEO from './pages/SEO';
 import LandingPages from './pages/LandingPages';
+import MenuBoasvindas from './pages/MenuBoasvindas';
 import LojaOnline from './pages/LojaOnline';
 import CategoriasSync from './pages/CategoriasSync';
 import CatalogoWhatsApp from './pages/CatalogoWhatsApp';
@@ -129,6 +130,7 @@ export default function App() {
               <Route path="/sistema" element={<Sistema />} />
               <Route path="/seo" element={<SEO />} />
               <Route path="/landing-pages" element={<LandingPages />} />
+              <Route path="/menu-boasvindas" element={<MenuBoasvindas />} />
               <Route path="/loja-online" element={<LojaOnline />} />
               <Route path="/categorias-sync" element={<CategoriasSync />} />
               <Route path="/catalogo-whatsapp" element={<CatalogoWhatsApp />} />
