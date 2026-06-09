@@ -35,7 +35,7 @@ Repositório: https://github.com/carloseduardomcosta/bibelo_ecossistema
 ## Estrutura de diretórios (resumo)
 
 ```
-/opt/bibelocrm/
+/opt/pessoal/bibelocrm/
 ├── api/src/
 │   ├── server.ts               ← entrada principal
 │   ├── routes/                  ← 18 arquivos de rotas (ver docs/api/rotas.md)
@@ -73,7 +73,7 @@ Schemas e tabelas completos: @docs/claude/banco-schemas.md
 
 ## Variáveis de ambiente
 
-Ficam em `/opt/bibelocrm/.env` — nunca commitar. Ver `.env.example` para todos os campos.
+Ficam em `/opt/pessoal/bibelocrm/.env` — nunca commitar. Ver `.env.example` para todos os campos.
 
 ---
 
@@ -157,6 +157,43 @@ bash scripts/test.sh src/routes/leads.test.ts  # específico
 
 ---
 
+## Estado atual dos serviços (2026-06-09)
+
+Apenas os serviços necessários para `papelariabibelo.com.br` estão rodando:
+
+| Container | Estado | Serve |
+|---|---|---|
+| `bibelo_postgres` | ✅ running | banco de dados |
+| `bibelo_redis` | ✅ running | cache/filas |
+| `bibelo_api` | ✅ running | `crm.papelariabibelo.com.br/api/` |
+| `bibelo_frontend` | ✅ running | `crm.papelariabibelo.com.br` |
+| `bibelo_medusa` | ⏸ parado | e-commerce (não ativo) |
+| `bibelo_storefront_v2` | ⏸ parado | loja online (não ativa) |
+| `bibelo_waha` | ⏸ parado | WhatsApp (não ativo) |
+| `bibelo_evolution` | ⏸ parado | WhatsApp alt (não ativo) |
+| `bibelo_uptime` | ⏸ parado | monitoramento (não ativo) |
+
+`boasvindas.papelariabibelo.com.br` e `papelariabibelo.com.br` (redirect 301) são servidos
+diretamente pelo `proxy_nginx` via arquivo estático — **não precisam de container**.
+
+### Redes Docker
+`api` e `frontend` estão em **duas redes**: `bibelo_network` (interna) + `proxy_net` (externa).
+Isso é obrigatório para o `proxy_nginx` resolver `bibelo_api:4000` e `bibelo_frontend:3000`.
+
+### Para subir todos os serviços
+```bash
+cd /opt/pessoal/bibelocrm
+docker compose up -d
+```
+
+### Para subir apenas o essencial (papelariabibelo.com.br)
+```bash
+cd /opt/pessoal/bibelocrm
+docker compose up -d postgres redis api frontend
+```
+
+---
+
 ## Comandos do dia a dia
 ```bash
 # RTK instalado — prefixar com "rtk" nos comandos pesados para economia de tokens
@@ -166,7 +203,7 @@ rtk docker compose up -d --build api               # rebuild API
 rtk docker compose up -d --build frontend          # rebuild frontend
 rtk curl -s http://localhost:4000/health           # health check
 rtk docker compose exec postgres psql -U bibelocrm bibelocrm  # psql
-bash scripts/backup.sh                             # backup (usa rtk vitest internamente)
+bash scripts/backup.sh                             # backup
 rtk ufw status                                     # firewall
 ```
 
@@ -174,7 +211,7 @@ rtk ufw status                                     # firewall
 
 ## Fluxo de deploy
 ```
-git push origin main → GitHub Actions → rsync VPS → docker compose up -d --build → health check
+git push origin main → GitHub Actions → rsync /opt/pessoal/bibelocrm/ no VPS → docker compose up -d --build → health check
 ```
 
 ---

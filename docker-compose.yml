@@ -76,6 +76,7 @@ services:
       redis:    { condition: service_healthy }
     networks:
       - bibelo_internal
+      - proxy_net
     volumes:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
@@ -112,6 +113,7 @@ services:
       - "127.0.0.1:3000:3000"
     networks:
       - bibelo_internal
+      - proxy_net
     logging:
       driver: "json-file"
       options: { max-size: "10m", max-file: "3" }
@@ -299,3 +301,6 @@ networks:
     ipam:
       config:
         - subnet: 172.21.0.0/16
+  proxy_net:
+    external: true
+    name: proxy_net
