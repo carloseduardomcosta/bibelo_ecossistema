@@ -22,7 +22,7 @@
 # ═══════════════════════════════════════════════════════════════════
 set -euo pipefail
 
-APP_DIR="/opt/bibelocrm"
+APP_DIR="/opt/pessoal/bibelocrm"
 DATE=$(date '+%Y%m%d_%H%M%S')
 DR_DIR="/tmp/dr_${DATE}"
 DR_FILE="${APP_DIR}/backups/dr_${DATE}.tar.gz"
@@ -204,7 +204,7 @@ bw       = sys.argv[1]
 session  = sys.argv[2]
 item_id  = sys.argv[3]
 now      = sys.argv[4]
-env_text = open('/opt/bibelocrm/.env').read()
+env_text = open('/opt/pessoal/bibelocrm/.env').read()
 
 # Busca item existente
 r = subprocess.run([bw,'get','item',item_id,'--session',session], capture_output=True, text=True)

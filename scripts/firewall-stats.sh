@@ -2,8 +2,8 @@
 # Coleta stats de firewall/SSH e processa ações pendentes do CRM
 # Roda no HOST via cron a cada minuto
 
-OUT="/opt/bibelocrm/data/firewall-stats.json"
-PENDING="/opt/bibelocrm/data/firewall-pending.json"
+OUT="/opt/pessoal/bibelocrm/data/firewall-stats.json"
+PENDING="/opt/pessoal/bibelocrm/data/firewall-pending.json"
 
 # ── Processar ações pendentes do CRM ──────────────────────────
 if [ -f "$PENDING" ] && [ -s "$PENDING" ]; then
@@ -20,7 +20,7 @@ if [ -f "$PENDING" ] && [ -s "$PENDING" ]; then
         if ! echo "$CURRENT_IGNORE" | grep -q "$IP"; then
           fail2ban-client set sshd addignoreip "$IP" 2>/dev/null
         fi
-        echo "$(date): ADDED $IP ($LABEL)" >> /opt/bibelocrm/logs/firewall-actions.log
+        echo "$(date): ADDED $IP ($LABEL)" >> /opt/pessoal/bibelocrm/logs/firewall-actions.log
         ;;
       remove)
         # Encontrar e deletar regra UFW
@@ -29,11 +29,11 @@ if [ -f "$PENDING" ] && [ -s "$PENDING" ]; then
           echo "y" | ufw delete "$RULE_NUM" 2>/dev/null
         fi
         fail2ban-client set sshd delignoreip "$IP" 2>/dev/null
-        echo "$(date): REMOVED $IP" >> /opt/bibelocrm/logs/firewall-actions.log
+        echo "$(date): REMOVED $IP" >> /opt/pessoal/bibelocrm/logs/firewall-actions.log
         ;;
       unban)
         fail2ban-client set sshd unbanip "$IP" 2>/dev/null
-        echo "$(date): UNBANNED $IP" >> /opt/bibelocrm/logs/firewall-actions.log
+        echo "$(date): UNBANNED $IP" >> /opt/pessoal/bibelocrm/logs/firewall-actions.log
         ;;
     esac
   done < <(python3 -c "

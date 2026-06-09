@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP_DIR: /opt/bibelocrm
+  APP_DIR: /opt/pessoal/bibelocrm
 
 jobs:
   build:
@@ -65,7 +65,7 @@ jobs:
         run: |
           ssh -p 60222 -i ~/.ssh/id_ed25519 root@${{ secrets.VPS_HOST }} << 'ENDSSH'
             set -e
-            cd /opt/bibelocrm
+            cd /opt/pessoal/bibelocrm
             echo "📦 Instalando dependências de teste..."
             cd api && npm install --prefer-offline --no-audit 2>/dev/null && cd ..
             echo "🧪 Rodando testes..."

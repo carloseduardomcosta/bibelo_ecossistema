@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script para verificar e restaurar service zones de shipping
-# Adicionar ao crontab: 0 */6 * * * /opt/bibelocrm/scripts/fix-shipping-zones.sh
+# Adicionar ao crontab: 0 */6 * * * /opt/pessoal/bibelocrm/scripts/fix-shipping-zones.sh
 
 DB_CONN="postgresql://bibelocrm:HIsuQhnt8PwK7erxL1GR9phd8M6yoN52@postgres:5432/medusa_db"
 

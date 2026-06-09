@@ -9,8 +9,8 @@ exec >> "$LOG" 2>&1
 
 echo "=== $(date '+%Y-%m-%d %H:%M:%S %Z') — Iniciando virada DNS papelariabibelo.com.br ==="
 
-CF_TOKEN=$(grep CLOUDFLARE_API_TOKEN /opt/bibelocrm/.env | cut -d= -f2)
-CF_ZONE=$(grep CLOUDFLARE_ZONE_ID /opt/bibelocrm/.env | cut -d= -f2)
+CF_TOKEN=$(grep CLOUDFLARE_API_TOKEN /opt/pessoal/bibelocrm/.env | cut -d= -f2)
+CF_ZONE=$(grep CLOUDFLARE_ZONE_ID /opt/pessoal/bibelocrm/.env | cut -d= -f2)
 VPS_IP="187.77.254.241"
 
 # IDs dos dois A records (obtidos em 01/05/2026)

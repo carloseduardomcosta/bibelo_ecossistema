@@ -10,7 +10,7 @@
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
-APP_DIR="/opt/bibelocrm"
+APP_DIR="/opt/pessoal/bibelocrm"
 BACKUP_DIR="${APP_DIR}/backups/restore-points"
 RETENTION_DAYS=30
 source "${APP_DIR}/.env"

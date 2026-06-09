@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-APP_DIR="/opt/bibelocrm"
+APP_DIR="/opt/pessoal/bibelocrm"
 BACKUP_DIR="${APP_DIR}/backups"
 DATE=$(date '+%Y%m%d_%H%M%S')
 BACKUP_FILE="${BACKUP_DIR}/bibelocrm_${DATE}.sql.gz"

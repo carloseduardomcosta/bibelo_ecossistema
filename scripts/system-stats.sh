@@ -2,8 +2,8 @@
 # Gera JSON com stats do sistema para a API ler
 # Roda no HOST via cron a cada minuto
 
-OUT="/opt/bibelocrm/data/system-stats.json"
-BASE="/opt/bibelocrm"
+OUT="/opt/pessoal/bibelocrm/data/system-stats.json"
+BASE="/opt/pessoal/bibelocrm"
 
 # Disk
 DISK_TOTAL=$(df -h / | tail -1 | awk '{print $2}')

@@ -31,7 +31,7 @@ read -rsp "$(echo -e ${YELLOW}JWT Secret [mín. 32 chars]:${NC} )" JWT_SECRET; e
 [[ ${#DB_PASS} -lt 12 ]]    && error "Senha do banco precisa ter pelo menos 12 caracteres"
 [[ ${#JWT_SECRET} -lt 32 ]] && error "JWT secret precisa ter pelo menos 32 caracteres"
 
-APP_DIR="/opt/bibelocrm"
+APP_DIR="/opt/pessoal/bibelocrm"
 
 section "1/6 — Sistema base"
 apt-get update -qq && apt-get upgrade -y -qq
@@ -236,7 +236,7 @@ EVOLUTION_API_URL=http://evolution:8080
 EVOLUTION_API_KEY=PREENCHER
 EVOLUTION_INSTANCE=bibelocrm
 
-BACKUP_DIR=/opt/bibelocrm/backups
+BACKUP_DIR=/opt/pessoal/bibelocrm/backups
 R2_BUCKET=bibelocrm-backups
 R2_ACCOUNT_ID=PREENCHER
 R2_ACCESS_KEY=PREENCHER
@@ -250,15 +250,15 @@ log ".env criado em ${APP_DIR}/.env"
 
 # Cron de backup
 cat > /etc/cron.d/bibelocrm-backup << 'CRONEOF'
-0 3 * * * root /opt/bibelocrm/scripts/backup.sh >> /opt/bibelocrm/logs/backup.log 2>&1
-0 4 * * 0 root find /opt/bibelocrm/logs -name "*.log" -mtime +30 -delete
+0 3 * * * root /opt/pessoal/bibelocrm/scripts/backup.sh >> /opt/pessoal/bibelocrm/logs/backup.log 2>&1
+0 4 * * 0 root find /opt/pessoal/bibelocrm/logs -name "*.log" -mtime +30 -delete
 CRONEOF
 chmod 644 /etc/cron.d/bibelocrm-backup
 log "Backup automático às 3h configurado"
 
 # Logrotate
 cat > /etc/logrotate.d/bibelocrm << 'LOGEOF'
-/opt/bibelocrm/logs/*.log {
+/opt/pessoal/bibelocrm/logs/*.log {
   daily
   rotate 14
   compress
