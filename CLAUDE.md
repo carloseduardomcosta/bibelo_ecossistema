@@ -157,24 +157,33 @@ bash scripts/test.sh src/routes/leads.test.ts  # específico
 
 ---
 
-## Estado atual dos serviços (2026-06-09)
+## Estado atual dos serviços (2026-06-12) — STACK DESLIGADA
 
-Apenas os serviços necessários para `papelariabibelo.com.br` estão rodando:
+**⚠️ Todos os containers foram desligados permanentemente em 12/06/2026.**
 
-| Container | Estado | Serve |
+O projeto BibelôCRM foi descontinuado. Nenhum container está rodando.
+Os volumes de dados (postgres, redis) foram preservados em `/opt/pessoal/bibelocrm/data/`.
+
+| Container | Estado | Observação |
 |---|---|---|
-| `bibelo_postgres` | ✅ running | banco de dados |
-| `bibelo_redis` | ✅ running | cache/filas |
-| `bibelo_api` | ✅ running | `crm.papelariabibelo.com.br/api/` |
-| `bibelo_frontend` | ✅ running | `crm.papelariabibelo.com.br` |
-| `bibelo_medusa` | ⏸ parado | e-commerce (não ativo) |
-| `bibelo_storefront_v2` | ⏸ parado | loja online (não ativa) |
-| `bibelo_waha` | ⏸ parado | WhatsApp (não ativo) |
-| `bibelo_evolution` | ⏸ parado | WhatsApp alt (não ativo) |
-| `bibelo_uptime` | ⏸ parado | monitoramento (não ativo) |
+| `bibelo_postgres` | 🔴 removido | dados em `./data/postgres` |
+| `bibelo_redis` | 🔴 removido | dados em `./data/redis` |
+| `bibelo_api` | 🔴 removido | — |
+| `bibelo_frontend` | 🔴 removido | — |
+| `bibelo_medusa` | 🔴 parado antes | — |
+| `bibelo_storefront_v2` | 🔴 parado antes | — |
+| `bibelo_waha` | 🔴 parado antes | — |
+| `bibelo_evolution` | 🔴 parado antes | — |
+| `bibelo_uptime` | 🔴 parado antes | — |
 
-`boasvindas.papelariabibelo.com.br` e `papelariabibelo.com.br` (redirect 301) são servidos
+`boasvindas.papelariabibelo.com.br` e `papelariabibelo.com.br` continuam sendo servidos
 diretamente pelo `proxy_nginx` via arquivo estático — **não precisam de container**.
+
+### Para restaurar (se necessário)
+```bash
+cd /opt/pessoal/bibelocrm
+docker compose up -d postgres redis api frontend
+```
 
 ### Redes Docker
 `api` e `frontend` estão em **duas redes**: `bibelo_network` (interna) + `proxy_net` (externa).
